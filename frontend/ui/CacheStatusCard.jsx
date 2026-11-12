@@ -84,7 +84,7 @@ export function CacheStatusCard({
     ['registration', status.registered ? text.values.registered : text.values.notRegistered],
     ['active', status.active ? text.values.active : text.values.inactive],
     ['controlled', status.controlled ? text.values.controlled : text.values.uncontrolled],
-    ['scope', status.scope || '—'],
+    ['scope', status.scope || '-'],
     ['caches', caches],
   ] : [];
 

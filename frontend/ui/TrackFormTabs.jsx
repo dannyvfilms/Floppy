@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Icon } from './Icon';
 import { Button } from './Button';
 import { FormError, FormStatus, FormTextField } from './MediaCardFormControls';
+import { SelectField } from './SelectField';
 
 const DEFAULT_LABELS = {
   general: 'General',
@@ -63,6 +65,19 @@ function tabLabel(tab, labels) {
   if (tab.id === 'general') return labels.general;
   if (tab.label) return tab.label;
   return tab.id;
+}
+
+function SideTab({ tab, active, onSelect, palette, labels, wide }) {
+  const color = active ? palette.text : palette.textMuted;
+  return <Pressable accessibilityRole="tab" accessibilityLabel={tabLabel(tab, labels)}
+    accessibilityState={{ selected: active }} onPress={() => onSelect(tab.id)}
+    style={({ pressed, hovered, focused }) => [styles.sideTab, wide ? styles.sideTabWide : styles.sideTabNarrow, {
+      backgroundColor: active ? palette.tabActive || palette.border
+        : pressed || hovered ? palette.hoverDim || palette.surface : 'transparent',
+    }, focused && palette.focusStyle]}>
+    {tab.icon ? <Icon spec={tab.icon} color={color} size={wide ? 20 : 16} /> : null}
+    <Text style={[styles.sideTabText, { color, fontSize: wide ? 14 : 12 }]}>{tabLabel(tab, labels)}</Text>
+  </Pressable>;
 }
 
 function TabButton({ tab, active, onSelect, palette, labels }) {
@@ -185,42 +200,69 @@ function PlaysBody({ tab, palette, labels }) {
   </View>;
 }
 
+function TabHeading({ title, help, palette, large = false }) {
+  return <View style={styles.heading}>
+    <Text accessibilityRole="header" style={[large ? styles.headingLarge : styles.headingSmall, {
+      color: palette.textSecondary }]}>{title}</Text>
+    {help ? <Text style={[large ? styles.headingHelpLarge : styles.headingHelp, { color: palette.textMuted }]}>{help}</Text> : null}
+  </View>;
+}
+
 function StatusHistoryBody({ tab, palette, labels }) {
   const changes = tab.changes || [];
-  if (!changes.length) return <EmptyRow text={labels.noStatusChanges} palette={palette} />;
   return <View style={styles.stack}>
-    {changes.map(change => <View key={change.id} style={[styles.row, { backgroundColor: palette.surfaceStrong }]}>
-      <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: palette.text }]}>
+    <TabHeading title={labels.statusHistory} help={labels.statusHistoryHelp} palette={palette} />
+    {!changes.length ? <EmptyRow text={labels.noStatusChanges} palette={palette} /> : null}
+    {changes.map(change => <View key={change.id} style={[styles.historyRow, { backgroundColor: palette.surfaceStrong }]}>
+      <View style={styles.historyTop}>
+        <Text style={[styles.historyTitle, { color: palette.text }]}>
           {change.old ? `${change.old} → ` : ''}{change.next || labels.noStatus}
         </Text>
-        <Text style={[styles.rowDetail, { color: palette.textSecondary }]}>
-          {change.reason ? `by ${change.reason}` : labels.sourceNotRecorded}
-        </Text>
+        {change.date ? <Text style={[styles.historyDate, { color: palette.textMuted }]}>{change.date}</Text> : null}
       </View>
-      {change.date ? <Text style={[styles.rowDate, { color: palette.textMuted }]}>{change.date}</Text> : null}
+      <Text style={[styles.historyReason, { color: palette.textSecondary }]}>
+        {change.reason ? `by ${change.reason}` : labels.sourceNotRecorded}
+      </Text>
     </View>)}
   </View>;
 }
 
 function DiscoverBody({ tab, palette, labels, onDiscoverToggle }) {
+  const initial = tab.hidden ? 'hidden' : 'visible';
+  const [value, setValue] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => { setValue(initial); }, [initial]);
+  const changed = value !== initial;
   return <View style={styles.stack}>
-    <Text style={[styles.help, { color: palette.textSecondary }]}>
-      {tab.hidden ? labels.hidden : labels.shown}
-    </Text>
-    <Button label={tab.hidden ? labels.unhide : labels.hide} tone={tab.hidden ? 'surface' : 'danger-solid'}
-      busy={busy} disabled={busy || !tab.canToggle} onPress={async () => {
-        setBusy(true);
-        setError('');
-        try {
-          await onDiscoverToggle?.(!tab.hidden, tab.itemId);
-        } catch (failure) {
-          setError(failure.message || labels.discoverFailed);
-        }
-        setBusy(false);
-      }} palette={palette} />
+    <TabHeading large title={labels.discoverTitle || labels.discover}
+      help={labels.discoverHelp} palette={palette} />
+    <View style={[styles.panel, { backgroundColor: palette.surfaceStrong }]}>
+      <View style={styles.panelTop}>
+        <Text style={[styles.panelLabel, { color: palette.textSecondary }]}>{labels.discoverStatus || 'Status'}</Text>
+        <Text style={[styles.panelHint, { color: palette.textMuted }]}>
+          {tab.hidden ? labels.currentlyHidden : labels.currentlyVisible}
+        </Text>
+      </View>
+      <SelectField labelHidden filter label={labels.discoverStatus || 'Status'} value={value}
+        options={[{ value: 'visible', label: labels.discoverVisible || 'Visible' },
+          { value: 'hidden', label: labels.discoverHiddenOption || 'Hidden' }]}
+        palette={{ ...palette, surfaceStrong: palette.surface, border: palette.inputBorder || palette.border }}
+        onChange={event => setValue(event.target.value)} />
+    </View>
+    <View style={styles.panelActions}>
+      <Button label={labels.save || 'Save'} tone={changed ? 'primary' : 'surface'} busy={busy}
+        disabled={busy || !tab.canToggle || !changed} onPress={async () => {
+          setBusy(true);
+          setError('');
+          try {
+            await onDiscoverToggle?.(value === 'hidden', tab.itemId);
+          } catch (failure) {
+            setError(failure.message || labels.discoverFailed);
+          }
+          setBusy(false);
+        }} palette={palette} />
+    </View>
     {error ? <FormError message={error} palette={palette} /> : null}
   </View>;
 }
@@ -259,26 +301,67 @@ export function TrackTabs({
   onTagCreate,
   onArtworkSave,
   onDiscoverToggle,
+  sidebar = false,
 }) {
   const labels = labelsFor(suppliedLabels);
   const palette = resolvePalette(suppliedPalette);
-  const allTabs = [{ id: 'general', label: labels.general }, ...tabs];
+  const { width } = useWindowDimensions();
+  const allTabs = tabs.some(tab => tab.id === 'general')
+    ? tabs : [{ id: 'general', label: labels.general }, ...tabs];
   const active = allTabs.find(tab => tab.id === activeId) || allTabs[0];
+  const body = <TabBody tab={active} palette={palette} labels={labels} handlers={{
+    generalContent, onRetry, onTagToggle, onTagCreate, onArtworkSave, onDiscoverToggle,
+  }} />;
+  if (sidebar) {
+    const wide = width >= 640;
+    return <View style={[styles.sideRoot, wide && styles.sideRootWide]}>
+      <View style={[wide ? styles.aside : styles.asideNarrow, {
+        backgroundColor: palette.background, borderColor: palette.border,
+      }]}>
+        {allTabs.map(tab => <SideTab key={tab.id} tab={tab} active={tab.id === active.id}
+          onSelect={onChange} palette={palette} labels={labels} wide={wide} />)}
+      </View>
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.sideBody}
+        contentContainerStyle={[styles.sideBodyContent, wide && styles.sideBodyWide]}>{body}</ScrollView>
+    </View>;
+  }
   return <View style={styles.root}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.nav}
       contentContainerStyle={styles.navContent}>
       {allTabs.map(tab => <TabButton key={tab.id} tab={tab} active={tab.id === active.id}
         onSelect={onChange} palette={palette} labels={labels} />)}
     </ScrollView>
-    <View style={styles.body}>
-      <TabBody tab={active} palette={palette} labels={labels} handlers={{
-        generalContent, onRetry, onTagToggle, onTagCreate, onArtworkSave, onDiscoverToggle,
-      }} />
-    </View>
+    <View style={styles.body}>{body}</View>
   </View>;
 }
 
 const styles = StyleSheet.create({
+  heading: { gap: 4, marginBottom: 4 },
+  headingSmall: { fontSize: 14, fontWeight: '500' },
+  headingLarge: { fontSize: 18, fontWeight: '500' },
+  headingHelp: { fontSize: 12 },
+  headingHelpLarge: { fontSize: 14 },
+  historyRow: { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, gap: 4 },
+  historyTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12 },
+  historyTitle: { fontSize: 14 },
+  historyDate: { fontSize: 12 },
+  historyReason: { fontSize: 12 },
+  panel: { borderRadius: 6, padding: 16, gap: 16 },
+  panelTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  panelLabel: { fontSize: 14, fontWeight: '500' },
+  panelHint: { fontSize: 12 },
+  panelActions: { flexDirection: 'row', justifyContent: 'flex-end' },
+  sideRoot: { flexShrink: 1, minHeight: 0 },
+  sideRootWide: { flexDirection: 'row', minHeight: 576 },
+  aside: { width: 224, flexShrink: 0, padding: 12, gap: 4, borderRightWidth: 1 },
+  asideNarrow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1 },
+  sideTab: { flexDirection: 'row', alignItems: 'center', borderRadius: 8 },
+  sideTabWide: { gap: 12, paddingHorizontal: 16, paddingVertical: 12 },
+  sideTabNarrow: { flex: 1, justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  sideTabText: { fontWeight: '500' },
+  sideBody: { flex: 1, minWidth: 0 },
+  sideBodyContent: { padding: 16, gap: 12 },
+  sideBodyWide: { padding: 24 },
   root: { gap: 12 },
   nav: { flexGrow: 0 },
   navContent: { flexDirection: 'row', gap: 8, paddingVertical: 2 },

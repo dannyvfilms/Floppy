@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { build } from 'esbuild';
 import { inspectUniversal, inspectWebAdapter, isNativeAppShellPresentation, legacyStatements, validateRegistry } from './check_ui_architecture.mjs';
 
 const native = "import React from 'react'; import {View, Text} from 'react-native'; export function Card(){ return <View><Text>ok</Text></View>; }";
@@ -131,4 +133,54 @@ test('native application shell screens are allowed outside frontend but still ch
   assert.deepEqual(inspectUniversal(native, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
   assert.deepEqual(inspectUniversal("import React from 'react'; import {Screen} from './Screen'; export default function Home(){return <Screen/>}", 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
   assert.ok(inspectUniversal(`${native}; <div/>`, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }).length);
+});
+
+// The island dispatch already supports these roots; a missing host selector
+// leaves server fallbacks mounted forever and browser interactions time out.
+test('every island renderer branch is discoverable by the host selector', () => {
+  const source = readFileSync(new URL('../frontend/settings/index.js', import.meta.url), 'utf8');
+  const selector = source.match(/const selector = '([^']+)'/)?.[1];
+  const dispatch = source.split('const kind = host.matches(')[1]?.split('    try {')[0];
+  assert.ok(selector, 'missing browser island host selector');
+  assert.ok(dispatch, 'missing browser island renderer dispatch');
+  const roots = new Set(selector.split(',').map(item => item.trim()));
+  const dispatched = [...dispatch.matchAll(/host\.matches\('([^']+)'\)/g)]
+    .flatMap(([, selectors]) => selectors.split(',').map(item => item.trim()));
+  assert.ok(dispatched.length > 60, 'expected the full island dispatcher');
+  for (const root of dispatched) {
+    assert.ok(roots.has(root), `island renderer cannot discover ${root}`);
+  }
+});
+
+
+test('browser artwork and edition adapters resolve their shared presentation without a self-import', async () => {
+  const adapter = 'frontend/ui/ArtworkPicker.web.jsx';
+  const { metafile } = await build({
+    entryPoints: [adapter], bundle: true, write: false, metafile: true,
+    format: 'esm', jsx: 'automatic',
+    resolveExtensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js',
+      '.tsx', '.ts', '.jsx', '.js', '.css', '.json'],
+    alias: { 'react-native': 'react-native-web' },
+    define: { 'process.env.NODE_ENV': '"production"', global: 'globalThis' },
+  });
+  assert.equal(metafile.inputs[adapter].imports.some(input => input.path === adapter), false,
+    'the browser adapter must not recursively render itself as shared presentation');
+  assert.ok(metafile.inputs['frontend/ui/ArtworkPicker.jsx'],
+    'both picker adapters must bundle the shared React Native presentation');
+});
+
+
+test('native error-report adapter resolves shared presentation without a self-import', async () => {
+  const adapter = 'frontend/errors/ErrorReportPanel.native.jsx';
+  const { metafile } = await build({
+    entryPoints: [adapter], bundle: true, write: false, metafile: true,
+    format: 'esm', jsx: 'automatic', packages: 'external',
+    resolveExtensions: ['.ios.tsx', '.ios.ts', '.ios.jsx', '.ios.js',
+      '.native.tsx', '.native.ts', '.native.jsx', '.native.js',
+      '.tsx', '.ts', '.jsx', '.js', '.json'],
+  });
+  assert.equal(metafile.inputs[adapter].imports.some(input => input.path === adapter), false,
+    'the native adapter must not recursively render itself as shared presentation');
+  assert.ok(metafile.inputs['frontend/errors/ErrorReportPanel.jsx'],
+    'the native adapter must bundle the shared traceback panel');
 });

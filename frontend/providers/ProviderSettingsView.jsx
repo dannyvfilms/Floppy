@@ -110,6 +110,7 @@ export function connectionSettingsModel(credentials, pageLabels = {}) {
       personalSave: translated(labels, 'Save personal key'),
       personalSaving: translated(labels, 'Saving…'),
       personalSaved: translated(labels, 'Personal key saved'),
+      personalRemoved: translated(labels, 'Personal key removed'),
       personalError: translated(labels, 'Could not save the personal key. Try again.'),
       instanceHelp: translated(labels, 'These credentials are shared across the instance.'),
       personalHelp: translated(labels, 'Your key may avoid shared instance or bundled rate limits.'),
@@ -319,6 +320,7 @@ export function ProviderSettingsView({
   onSave,
   onClear,
   onOpenLink,
+  linkPropsForUrl,
   onSetDefault,
   onFollowUp,
   onImport,
@@ -327,6 +329,7 @@ export function ProviderSettingsView({
   onConnect,
   onDisconnect,
   onCopy,
+  accountContent,
   palette = {},
   buttonPalette = {},
 }) {
@@ -365,9 +368,10 @@ export function ProviderSettingsView({
         <View style={styles.headingRow}>
           {heading ? <SectionHeading palette={colors}>{heading}</SectionHeading> : null}
           {credentials.setupHint
-            ? <Chip label={keyLabel} link hasPopup onPress={() => setSetupHint(credentials)} palette={keyPalette} />
+            ? <Chip testID="provider-key-link" label={keyLabel} link hasPopup onPress={() => setSetupHint(credentials)} palette={keyPalette} />
             : credentials.getKeyUrl
-              ? <Chip label={keyLabel} link onPress={keyAction} palette={keyPalette} />
+              ? <Chip testID="provider-key-link" label={keyLabel} link onPress={keyAction}
+                  {...(linkPropsForUrl?.(credentials.getKeyUrl) || {})} palette={keyPalette} />
               : null}
         </View>
         <ConnectionSettings model={card} onSave={onSave} onClear={onClear} showKeyLink={false}
@@ -388,11 +392,12 @@ export function ProviderSettingsView({
       const heading = account.heading || translated(combinedLabels(account, pageLabels), 'Connection settings');
       rendered.push(<React.Fragment key="account">
         {heading ? <SectionHeading palette={colors}>{heading}</SectionHeading> : null}
-        <AccountSettings model={card} onConnect={onConnect} onDisconnect={onDisconnect}
-          onFollowUp={followUp => (onFollowUp || onOpenLink)?.(followUp?.url)} palette={palette} buttonPalette={buttonPalette} />
+        {accountContent || <AccountSettings model={card} onConnect={onConnect} onDisconnect={onDisconnect}
+          onFollowUp={followUp => (onFollowUp || onOpenLink)?.(followUp?.url)} palette={palette} buttonPalette={buttonPalette} />}
       </React.Fragment>);
     }
     if (section === 'guides') {
+      if (model.guidesSessionRequired) rendered.push(<Text key="guide-session-required" style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }}>Sign in with your username and password to manage this.</Text>);
       guides.forEach((guide, index) => rendered.push(<SetupGuide key={`guide-${index}`}
         {...setupGuideProps(guide, copy, pageLabels)} onCopy={onCopy} onOpenLink={onOpenLink}
         palette={palette} buttonPalette={buttonPalette} />));

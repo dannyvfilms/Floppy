@@ -28,6 +28,6 @@ export function Chip({ label, palette, onPress, link = false, accessibilityRole,
 
 const styles = StyleSheet.create({
   frame: { borderWidth: 1, borderStyle: 'solid', paddingHorizontal: 8, paddingVertical: 4,
-    flexShrink: 0, maxWidth: '100%' },
+    flexShrink: 0, maxWidth: '100%', textDecorationLine: 'none' },
   text: { fontSize: 12, lineHeight: 16, textDecorationLine: 'none' },
 });

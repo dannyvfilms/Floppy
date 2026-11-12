@@ -473,6 +473,16 @@ class MovieWatchTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed movie lookup answers with the fixed detail only."""
+        with patch(
+            "api.fork_views_tracking.resolve_or_create_movie",
+            side_effect=RuntimeError("secret /srv/private/path"),
+        ):
+            response = self._watch()
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json(), {"detail": "Could not resolve movie."})
+
     def test_watch_creates_play(self):
         """POST watch appends a MoviePlay with the given end_date."""
         response = self._watch(payload={"end_date": "2024-03-05T00:00:00Z"})
@@ -730,6 +740,19 @@ class HistoryTimelineTests(FloppyApiTestCase):
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
 
+    def test_movie_entry_says_it_is_a_tracker_row(self):
+        """B03: aggregate movie rows are tracker rows, not play rows."""
+        response = self.call_api("get", "api_history", headers=self.auth_headers)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+            if entry["media_type"] == "movie"
+        ]
+        self.assertTrue(entries)
+        self.assertEqual(entries[0]["record_type"], "movie_tracker")
+        self.assertEqual(entries[0]["instance_id"], self.movie_medias[0].id)
+
     def test_history_day_entries_are_capped(self):
         """A day with many plays doesn't blow up the response body (#1004).
 
@@ -939,6 +962,19 @@ class HistoryTimelineTests(FloppyApiTestCase):
         for day in days:
             for entry in day["entries"]:
                 self.assertEqual(entry["media_type"], "game")
+
+    def test_unknown_history_media_type_names_the_token(self):
+        """An unknown media_type answers with the written message."""
+        response = self.call_api(
+            "get",
+            "api_history",
+            params={"media_type": "vhs"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            response.json(), {"detail": "Unsupported history media type: vhs"}
+        )
 
     def test_episode_history_includes_parent_show_name(self):
         """Episode entries identify their parent show on every history path."""
@@ -1193,6 +1229,23 @@ class HistoryRecordDeleteTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(Movie.objects.filter(id=movie.id).exists())
 
+    def test_delete_failure_returns_the_written_message(self):
+        """A deletion that fails answers with the service's own text."""
+        from app.fork_services_history import HistoryDeletionError
+
+        with patch(
+            "app.fork_services_history.delete_history_record_core",
+            side_effect=HistoryDeletionError("Deletion failed"),
+        ):
+            response = self.call_api(
+                "delete",
+                "api_history_record",
+                args=("movie", "1"),
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.json(), {"detail": "Deletion failed"})
+
     def test_delete_unknown_record_not_found(self):
         """Unknown history ids return 404."""
         response = self.call_api(
@@ -1283,3 +1336,41 @@ class EpisodeBulkTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class HistoryEpisodeFilterReproTests(FloppyApiTestCase):
+    """Explicit media_type=episode must return the same plays as the tv alias (#1873)."""
+
+    def setUp(self):
+        """Give an episode a concrete end date so it appears in history."""
+        super().setUp()
+        cache.clear()
+        episode = self.episode_medias[0]
+        episode.end_date = datetime.datetime(2024, 5, 10, 12, tzinfo=datetime.UTC)
+        episode.save(update_fields=["end_date"])
+
+    def _episode_entries(self, **params):
+        response = self.call_api(
+            "get",
+            "api_history",
+            params=params or None,
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        return [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+            if entry["media_type"] == "episode"
+        ]
+
+    def test_unfiltered_and_tv_alias_include_episode(self):
+        self.assertTrue(self._episode_entries())
+        self.assertTrue(self._episode_entries(media_type="tv"))
+
+    def test_explicit_episode_filter_includes_episode(self):
+        self.assertTrue(self._episode_entries(media_type="episode"))
+
+    def test_entry_item_carries_library_bucket(self):
+        entry = self._episode_entries()[0]
+        self.assertEqual(entry["item"]["library_media_type"], "episode")

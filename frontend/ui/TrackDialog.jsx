@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { TrackForm } from './TrackForm';
 
 const DEFAULT_PALETTE = {
@@ -116,6 +117,7 @@ function repeatActionsFor(model, onSaveAsNew, onRewatch, onSecondaryAction) {
   if (repeat.canSaveAsNew) {
     actions.push({
       key: 'save-as-new',
+      tone: 'primary',
       label: repeat.saveAsNewLabel || 'Save as new entry',
       onPress: values => onSaveAsNew?.(values),
     });
@@ -125,6 +127,7 @@ function repeatActionsFor(model, onSaveAsNew, onRewatch, onSecondaryAction) {
       key: 'rewatch',
       label: repeat.rewatchLabel,
       tone: 'surface',
+      needsSince: repeat.rewatchAction === 'start',
       onPress: values => onRewatch?.(repeat.rewatchAction, values),
     });
   }

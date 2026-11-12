@@ -10,7 +10,7 @@ import { SettingsPage } from './SettingsView';
 
 export const settingsAdvancedCopy = {
   title: 'Advanced',
-  copy: 'Administration tools for logs, image caching, caches and the server port.',
+  copy: '',
 };
 
 // Advanced administration cards in the server page order. Permission-gated
@@ -30,10 +30,10 @@ export function SettingsAdvancedView({
   const copy = { ...settingsAdvancedCopy, ...(labels || {}) };
   return <View><SettingsPage title={copy.title} copy={copy.copy} palette={palette} heading={heading}>
     {content || <>
-    <LogsCard {...logs} palette={palette} buttonPalette={buttonPalette} labels={labels} icons={icons} />
-    <ImageCacheCard {...imageCache} palette={palette} buttonPalette={buttonPalette} labels={labels} icons={icons} />
-    <CacheManagementCard {...cacheManagement} palette={palette} buttonPalette={buttonPalette} labels={labels} icons={icons} />
-    <ServerPortCard {...serverPort} palette={palette} buttonPalette={buttonPalette} labels={labels} icons={icons} />
+    <LogsCard {...logs} palette={palette} buttonPalette={buttonPalette} labels={labels.logs || labels} icons={icons} />
+    <ImageCacheCard {...imageCache} palette={palette} buttonPalette={buttonPalette} labels={labels.imageCache || labels} icons={icons} />
+    <CacheManagementCard {...cacheManagement} palette={palette} buttonPalette={buttonPalette} labels={labels.cache || labels} icons={icons} />
+    <ServerPortCard {...serverPort} palette={palette} buttonPalette={buttonPalette} labels={labels.serverPort || labels} icons={icons} />
     </>}
   </SettingsPage></View>;
 }

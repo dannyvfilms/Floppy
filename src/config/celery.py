@@ -62,6 +62,23 @@ def _enable_fault_log(**_kwargs):
     run_state.enable_fault_log()
 
 
+@worker_ready.connect
+def _warm_database_on_start(**_kwargs):
+    """Queue a page-cache warm now instead of waiting for the hourly schedule.
+
+    A restart is when the cache is coldest. The interactive worker skips it:
+    the task runs on the background queue and one request is enough.
+    """
+    if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
+        return
+    import logging
+
+    try:
+        app.send_task("Warm database page cache", ignore_result=True)
+    except Exception:  # a start must not fail because the broker is slow
+        logging.getLogger(__name__).debug("startup warm not queued", exc_info=True)
+
+
 @worker_shutting_down.connect
 def _log_shutdown(sig=None, how=None, **_kwargs):
     """Record which tasks were running when the worker was told to stop."""

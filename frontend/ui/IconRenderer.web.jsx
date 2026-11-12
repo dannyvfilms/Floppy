@@ -9,10 +9,10 @@ function Shape({ node }) {
   return React.createElement(node.tag, props, ...node.children.map((child, index) => <Shape key={index} node={child} />));
 }
 
-export function Icon({ spec, className }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox={spec.viewBox}
+export function Icon({ spec, className, color, size }) {
+  return <svg xmlns="http://www.w3.org/2000/svg" width={size || '1em'} height={size || '1em'} viewBox={spec.viewBox}
     fill={spec.root.fill} stroke={spec.root.stroke} strokeWidth={spec.root['stroke-width']}
-    strokeLinecap={spec.root['stroke-linecap']} strokeLinejoin={spec.root['stroke-linejoin']} className={className} aria-hidden="true">
+    strokeLinecap={spec.root['stroke-linecap']} strokeLinejoin={spec.root['stroke-linejoin']} className={className} style={color ? { color } : undefined} aria-hidden="true">
     {spec.children.map((child, index) => <Shape key={index} node={child} />)}
   </svg>;
 }

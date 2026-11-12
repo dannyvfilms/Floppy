@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import IntegrityError
+from django.db.models import Exists, OuterRef
 from django.db.utils import OperationalError
 from django.utils.timezone import datetime, localdate, make_aware
 
@@ -37,7 +38,15 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
-from app.models import BasicMedia, Episode, Item, MediaTypes, Sources
+from app.models import (
+    BasicMedia,
+    CollectionEntry,
+    Episode,
+    Item,
+    MediaTypes,
+    MoviePlay,
+    Sources,
+)
 from app.providers import services, tmdb
 from app.services import metadata_resolution
 from app.services.metadata_sync import enrich_synced_item, sync_podcast_show_from_rss
@@ -52,9 +61,15 @@ from app.statistics import (
 )
 from events import tasks
 from events.models import Event
+from integrations.oauth_scope_info import has_full_account_access
 from integrations.state.ratings import rating_edit
-from lists.forms import validate_public_slug
+from lists.forms import CustomListForm, validate_public_slug
 from lists.models import CustomList, CustomListItem
+from lists.views_helpers import (
+    _build_media_type_breakdown,
+    _get_list_completed_counts,
+    _get_list_last_watched_dates,
+)
 
 from . import fork_helpers  # FORK: history sorting overlay
 from .changes_history_processor import (
@@ -81,14 +96,20 @@ from .contract_serializers import (
     TrackedMediaUpdateRequestSerializer,
     TrackMediaRequestSerializer,
 )
-from .errors import database_busy_response, validation_error_code
+from .errors import (
+    database_busy_response,
+    failure_response,
+    validation_error_code,
+)
 from .helpers import (
     apply_image_url,
     apply_list_sort,
     build_game_lengths_summary,
     build_lists_by_item_id,
+    build_tags_by_item_id,
     check_source_type,
     check_valid_type,
+    filter_item_bucket,
     get_item_lists,
     get_media_type_availability,
     paginate_data,
@@ -99,6 +120,7 @@ from .helpers import (
     resolve_episode_coordinate_for_request,
     resolve_item_queryset,  # FORK: bucket-aware Item resolution
     try_parse_date,
+    unsupported_fields,
     validate_body,
 )
 from .idempotency import idempotent_create
@@ -333,6 +355,23 @@ class InfoView(drf_views.APIView):
         return Response(response_data, status=HTTP.OK)
 
 
+def _sort_lists_by_last_watched(user, custom_lists, sort_order):
+    """Return the lists ordered by their latest watch date (newest first by default)."""
+    rows = list(custom_lists.values_list("id", "name"))
+    last_watched = _get_list_last_watched_dates(user, [row[0] for row in rows])
+    sign = 1 if sort_order == "asc" else -1
+    rows.sort(
+        key=lambda row: (
+            row[0] not in last_watched,
+            last_watched[row[0]].timestamp() * sign if row[0] in last_watched else 0,
+            row[1].casefold(),
+            row[0],
+        ),
+    )
+    by_id = {custom_list.id: custom_list for custom_list in custom_lists}
+    return [by_id[row[0]] for row in rows]
+
+
 # /api/v1/lists/
 class ListsView(drf_views.APIView):
     """Lists view."""
@@ -352,19 +391,57 @@ class ListsView(drf_views.APIView):
             search=search,
         )
 
-        sort, sort_order = parse_sort_filter(sort_filter)
-        sorted_lists = apply_list_sort(custom_lists, sort, sort_order)
-        if sorted_lists is None:
-            return Response(
-                {"detail": "Invalid sorting"},
-                status=HTTP.NOT_FOUND,
+        # Lists holding at least one item of this media type, like the web
+        # hub's "All Types" filter.
+        media_type = request.GET.get("media_type", "")
+        if media_type and media_type != "all":
+            if media_type not in MediaTypes.values:
+                return Response(
+                    {"detail": "Invalid media type"},
+                    status=HTTP.BAD_REQUEST,
+                )
+            custom_lists = custom_lists.filter(
+                Exists(
+                    CustomListItem.objects.filter(
+                        custom_list_id=OuterRef("pk"),
+                        item__media_type=media_type,
+                    ),
+                ),
             )
 
-        paginated_data = paginate_data(request, sorted_lists, limit, offset)
+        sort, sort_order = parse_sort_filter(sort_filter)
+        if sort == "watched":
+            # The web's "Last Watched" sort: the newest watch date among a
+            # list's items; lists never watched come last.
+            sorted_lists = _sort_lists_by_last_watched(
+                user,
+                custom_lists,
+                sort_order,
+            )
+            paginated_data = paginate_data(
+                request,
+                sorted_lists,
+                limit,
+                offset,
+                total=len(sorted_lists),
+                already_sliced=False,
+            )
+        else:
+            sorted_lists = apply_list_sort(custom_lists, sort, sort_order)
+            if sorted_lists is None:
+                return Response(
+                    {"detail": "Invalid sorting"},
+                    status=HTTP.NOT_FOUND,
+                )
+            paginated_data = paginate_data(request, sorted_lists, limit, offset)
+        completed_counts = _get_list_completed_counts(
+            user,
+            [custom_list.id for custom_list in paginated_data["results"]],
+        )
         serialized_data = serialize_data(
             paginated_data["results"],
             many=True,
-            context={"include_items": False},
+            context={"include_items": False, "completed_counts": completed_counts},
         )
         paginated_data["results"] = serialized_data
         return Response(paginated_data, status=HTTP.OK)
@@ -437,6 +514,25 @@ class ListsView(drf_views.APIView):
 
         if visibility != "public":
             allow_recommendations = False
+        # FORK: tags, notes and smart creation for native clients.
+        tags = CustomListForm._normalize_tags(body.get("tags"))
+        include_notes = bool(body.get("include_notes", False))
+        if visibility not in ("public", "unlisted"):
+            include_notes = False
+        is_smart = bool(body.get("is_smart", False))
+        smart_fields = {}
+        if is_smart:
+            from app.library_query.adapters import (
+                SMART_RULES_CURRENT_SEMANTICS,
+                SMART_RULES_SEMANTICS_KEY,
+            )
+
+            smart_fields = {
+                "is_smart": True,
+                "smart_filters": {
+                    SMART_RULES_SEMANTICS_KEY: str(SMART_RULES_CURRENT_SEMANTICS),
+                },
+            }
 
         try:
             # TODO: move to lists/models.py
@@ -447,6 +543,9 @@ class ListsView(drf_views.APIView):
                 visibility=visibility,
                 public_slug=public_slug,
                 allow_recommendations=allow_recommendations,
+                tags=tags,
+                include_notes=include_notes,
+                **smart_fields,
             )
 
             if collaborator_ids:
@@ -549,11 +648,19 @@ class ListDetailView(drf_views.APIView):
         if err:
             return err
         lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
+        item_ids = [getattr(entry, "item_id", None) or entry.pk for entry in paginated_data["results"]]
+        list_added_by_item_id = dict(
+            CustomListItem.objects.filter(custom_list=user_list, item_id__in=item_ids)
+            .values_list("item_id", "date_added")
+        )
         serialized_list = serialize_data(
             user_list,
             context={
                 "paginated_items": paginated_data,
                 "lists_by_item_id": lists_by_item_id,
+                "list_added_by_item_id": list_added_by_item_id,
+                "completed_counts": _get_list_completed_counts(user, [user_list.id]),
+                "media_type_breakdown": _build_media_type_breakdown(user_list),
             },
         )
 
@@ -578,6 +685,19 @@ class ListDetailView(drf_views.APIView):
                 {
                     "detail": "You do not have permission to edit this list.",
                 },
+                status=HTTP.FORBIDDEN,
+            )
+
+        # External tokens never write smart lists (CanWriteBoundList), so they
+        # may not create one by converting a manual list either.
+        if (
+            "is_smart" in body
+            and hasattr(request.auth, "has_scope")
+            and not has_full_account_access(request.auth)
+            and bool(body.get("is_smart")) != custom_list.is_smart
+        ):
+            return Response(
+                {"detail": "Only the account owner may change a list's type."},
                 status=HTTP.FORBIDDEN,
             )
 
@@ -645,6 +765,32 @@ class ListDetailView(drf_views.APIView):
                     status=HTTP.BAD_REQUEST,
                 )
             custom_list.visibility = "public" if is_public else "private"
+        if "tags" in body:
+            custom_list.tags = CustomListForm._normalize_tags(
+                body.get("tags"),
+            )
+        if "include_notes" in body:
+            custom_list.include_notes = bool(body.get("include_notes"))
+        if "is_smart" in body:
+            # Mirrors CustomListForm.save: a list that turns smart is
+            # evaluated with the current semantics; one that stops being smart
+            # drops its rules (its items stay).
+            make_smart = bool(body.get("is_smart"))
+            if make_smart and not custom_list.is_smart:
+                from app.library_query.adapters import (
+                    SMART_RULES_CURRENT_SEMANTICS,
+                    SMART_RULES_SEMANTICS_KEY,
+                )
+
+                custom_list.smart_filters = {
+                    **(custom_list.smart_filters or {}),
+                    SMART_RULES_SEMANTICS_KEY: str(SMART_RULES_CURRENT_SEMANTICS),
+                }
+            if not make_smart:
+                custom_list.smart_media_types = []
+                custom_list.smart_excluded_media_types = []
+                custom_list.smart_filters = {}
+            custom_list.is_smart = make_smart
         if "public_slug" in body:
             try:
                 custom_list.public_slug = validate_public_slug(
@@ -663,6 +809,8 @@ class ListDetailView(drf_views.APIView):
 
         if custom_list.visibility != "public":
             custom_list.allow_recommendations = False
+        if custom_list.visibility not in ("public", "unlisted"):
+            custom_list.include_notes = False
 
         custom_list.save()
         serialized_data = serialize_data(
@@ -873,7 +1021,7 @@ def _media_list_response(request, media_type=None):
         )
     except MediaListFilterError as error:
         return Response(
-            {"detail": f"Invalid {error.parameter}: {error}"},
+            {"detail": f"Invalid {error.parameter}: {error.message}"},
             status=HTTP.BAD_REQUEST,
         )
 
@@ -897,10 +1045,12 @@ def _media_list_response(request, media_type=None):
         "request": request,
         "lists_by_item_id": lists_by_item_id,
         "next_episode_by_item_id": next_episode_by_item_id,
+        "tags_by_item_id": build_tags_by_item_id(request.user, page_entries),
     }
     paginated_data["results"] = [
         (
-            MediaSerializer(entry.media, context=serializer_context).data
+            {**MediaSerializer(entry.media, context=serializer_context).data,
+             **({"entry_id": entry.media.pk} if filters.separate_entries else {})}
             if entry.media is not None
             else UntrackedMediaSerializer(entry.item, context=serializer_context).data
         )
@@ -1229,7 +1379,6 @@ class MediaDetailView(drf_views.APIView):
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(error),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -1658,6 +1807,9 @@ class MediaConsumptionHistoryView(drf_views.APIView):
         # tracker row. Untouched movies keep today's single-entry behavior.
         movie_plays = fork_helpers.movie_plays_for_history(user_medias, media_type)
         history_rows = movie_plays if movie_plays is not None else list(user_medias)
+        podcast_plays = fork_helpers.podcast_plays_for_history(user_medias, media_type)
+        if podcast_plays is not None:
+            history_rows = podcast_plays
 
         # FORK: was "TODO: missing sorting"
         history_rows, sort_err = fork_helpers.sort_history_results(
@@ -1738,7 +1890,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        consumption.delete()
+        if isinstance(consumption, MoviePlay):
+            consumption.movie.remove_play(consumption)
+        else:
+            consumption.delete()
 
         return Response(status=HTTP.NO_CONTENT)
 
@@ -1876,6 +2031,18 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
         for field, value in validated_body.items():
             if hasattr(consumption, field):
                 setattr(consumption, field, value)
@@ -1942,6 +2109,7 @@ class MediaListDetailView(drf_views.APIView):
     """Media list detail view."""
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, list_id):
         """Remove a specific media from a specific list."""
         user = request.user
@@ -1983,11 +2151,21 @@ class MediaListDetailView(drf_views.APIView):
                 media_id,
                 source,
                 media_type,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except CustomListItem.DoesNotExist:
             return Response(
                 {"detail": "Media not found in the list."},
                 status=HTTP.NOT_FOUND,
+            )
+        except CustomListItem.MultipleObjectsReturned:
+            return Response(
+                {
+                    "detail": "The list holds this media in several library "
+                    "buckets; pass library_media_type to choose one.",
+                    "code": "AMBIGUOUS_LIBRARY_BUCKET",
+                },
+                status=HTTP.CONFLICT,
             )
 
         list_item.delete()
@@ -2280,6 +2458,7 @@ class MediaSeasonsView(drf_views.APIView):
                         "item": item,
                         "lists": lists,
                         "created_at": None,
+                        "updated_at": None,
                         "score": None,
                         "status": None,
                         "progress": None,
@@ -2920,31 +3099,42 @@ class MediaSeasonEpisodesView(drf_views.APIView):
 
         paginated = paginate_data(request, episodes, limit, offset)
 
-        # TODO: see if this can be optimized with a single query for all episodes instead of one per episode
         # TODO: see if lists infos can be saved in the `episodes` object to avoid using `context` to pass additional parameters
-        lists_by_number = {}
-        for episode in paginated["results"]:
-            episode_number = episode.get("episode_number")
-            if episode_number is None:
-                continue
-            lists_by_number[episode_number] = get_item_lists(
-                user,
-                media_id,
-                source,
-                "episode",
-                season_number=season_number,
-                episode_number=episode_number,
-                library_media_type=request.query_params.get("library_media_type"),
-            )
-
         episode_numbers = [
             episode.get("episode_number")
             for episode in paginated["results"]
             if episode.get("episode_number") is not None
         ]
 
+        lists_by_number = {}
         tracked_by_number = {}
         if episode_numbers:
+            episode_items = filter_item_bucket(
+                Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number__in=episode_numbers,
+                ),
+                MediaTypes.EPISODE.value,
+                library_media_type=request.query_params.get("library_media_type"),
+            ).order_by("id")
+            item_ids_by_number = {}
+            for episode_number, item_id in episode_items.values_list(
+                "episode_number",
+                "id",
+            ):
+                item_ids_by_number.setdefault(episode_number, item_id)
+            lists_by_item_id = CustomListItem.objects.get_user_item_lists_map(
+                user,
+                item_ids_by_number.values(),
+            )
+            lists_by_number = {
+                episode_number: lists_by_item_id.get(item_id, [])
+                for episode_number, item_id in item_ids_by_number.items()
+            }
+
             tracked_episodes = BasicMedia.objects.get_season_episodes(
                 user,
                 media_id,
@@ -2963,6 +3153,9 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 ):
                     tracked_by_number[tracked_number] = tracked
 
+        provider_rows = {
+            episode.get("episode_number"): episode for episode in paginated["results"]
+        }
         paginated["results"] = serialize_data(
             paginated["results"],
             many=True,
@@ -2973,6 +3166,24 @@ class MediaSeasonEpisodesView(drf_views.APIView):
             },
             serializer_class=EpisodeSerializer,
         )
+        # FORK: the web season cards print the provider's overview, air date and
+        # runtime, and whether the viewer owns a copy; the stored item has none.
+        collected_numbers = set()
+        if episode_numbers:
+            owned = set(
+                CollectionEntry.objects.filter(
+                    user=user, item_id__in=item_ids_by_number.values(),
+                ).values_list("item_id", flat=True),
+            )
+            collected_numbers = {
+                number for number, item_id in item_ids_by_number.items() if item_id in owned
+            }
+        for row in paginated["results"]:
+            provider = provider_rows.get((row.get("item") or {}).get("episode_number")) or {}
+            row["overview"] = provider.get("overview") or provider.get("synopsis") or ""
+            row["air_date"] = provider.get("air_date") or ""
+            row["runtime"] = provider.get("runtime")
+            row["collected"] = (row.get("item") or {}).get("episode_number") in collected_numbers
         paginated["media_type_status"] = get_media_type_availability(
             user,
             request.query_params.get("library_media_type") or media_type,
@@ -3256,6 +3467,18 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                     "detail": HTTP.BAD_REQUEST.phrase,
                     "errors": str(error),
                     **validation_error_code(error),
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
                 },
                 status=HTTP.BAD_REQUEST,
             )
@@ -4302,8 +4525,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
@@ -4380,8 +4604,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
@@ -4461,8 +4686,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
@@ -4483,6 +4709,18 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         if error:
             return Response(
                 {"detail": f"{error}", **validation_error_code(error)},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
+                },
                 status=HTTP.BAD_REQUEST,
             )
 

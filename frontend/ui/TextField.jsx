@@ -19,6 +19,7 @@ const keyboardTypes = {
   url: 'url',
   tel: 'phone-pad',
   number: 'number-pad',
+  decimal: 'decimal-pad',
 };
 
 /**
@@ -37,6 +38,7 @@ export function TextField({
   type = 'text',
   placeholder,
   help,
+  helpAfter = false,
   error,
   required = false,
   disabled = false,
@@ -46,8 +48,12 @@ export function TextField({
   accessibilityLabel,
   palette = {},
   trailing = null,
+  trailingWidth = 44,
   size = 'default',
   testID,
+  onSubmitEditing,
+  inputStyle,
+  labelStyle,
 }) {
   const colors = useMemo(() => ({ ...defaultPalette, ...palette }), [palette]);
   const large = size === 'lg';
@@ -58,10 +64,10 @@ export function TextField({
   };
   return <View style={[styles.field, large && styles.fieldLarge]} testID={testID}>
     {!labelHidden ? <View style={styles.labelRow}>
-      <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, large && styles.labelLarge, { color: colors.textMuted }]}>{label}</Text>
+      <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, large && styles.labelLarge, { color: colors.textMuted }, labelStyle]}>{label}</Text>
       {maskedPreview ? <Text style={[styles.masked, { color: colors.textMuted }]}>{maskedPreview}</Text> : null}
     </View> : null}
-    {help ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
+    {help && !helpAfter ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     <View style={styles.inputWrap}>
       <TextInput
         accessibilityLabel={accessibilityLabel || label}
@@ -75,19 +81,23 @@ export function TextField({
         maxLength={maxLength}
         nativeID={id}
         onChangeText={change}
+        onSubmitEditing={onSubmitEditing}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
+        multiline={false}
+        numberOfLines={1}
         secureTextEntry={secure}
         value={value ?? ''}
-        style={[styles.input, large && styles.inputLarge, trailing ? styles.inputWithTrailing : null, {
-          borderColor: error ? colors.danger : colors.border,
+        style={[styles.input, large && styles.inputLarge, trailing ? { paddingRight: trailingWidth } : null, {
+          borderColor: error ? colors.danger : colors.fieldBorder || colors.border,
           backgroundColor: colors.inputBackground || colors.surface,
           color: colors.textSecondary,
           opacity: disabled ? 0.5 : 1,
-        }]}
+        }, inputStyle]}
       />
       {trailing ? <View style={styles.trailingWrap}>{trailing}</View> : null}
     </View>
+    {help && helpAfter ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
   </View>;
 }
@@ -103,8 +113,7 @@ const styles = StyleSheet.create({
   inputWrap: { position: 'relative', justifyContent: 'center' },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
   inputLarge: { borderRadius: 12, height: 50, paddingVertical: 0, paddingTop: 0, paddingBottom: 0,
-    fontSize: 16, lineHeight: 24, textAlignVertical: 'center', includeFontPadding: false },
-  inputWithTrailing: { paddingRight: 44 },
+    fontSize: 16, textAlignVertical: 'center', includeFontPadding: false },
   trailingWrap: { position: 'absolute', right: 6, top: 0, bottom: 0, justifyContent: 'center' },
   error: { fontSize: 12, lineHeight: 17 },
 });

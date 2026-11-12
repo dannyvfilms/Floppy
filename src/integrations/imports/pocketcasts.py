@@ -1625,7 +1625,7 @@ class PocketCastsImporter:
                 e.response is not None
                 and e.response.status_code == HTTPStatus.UNAUTHORIZED
             ):
-                msg = "Pocket Casts token expired during import — please retry"
+                msg = "Pocket Casts token expired during import. Please retry"
                 raise MediaImportError(msg) from e
             logger.warning(
                 "HTTP error fetching play states for podcast %s: %s", podcast_uuid, e
@@ -1666,7 +1666,7 @@ class PocketCastsImporter:
                     e.response is not None
                     and e.response.status_code == HTTPStatus.UNAUTHORIZED
                 ):
-                    msg = "Pocket Casts token expired during import — please retry"
+                    msg = "Pocket Casts token expired during import. Please retry"
                     raise MediaImportError(msg) from e
                 logger.warning(
                     "HTTP error fetching full metadata for podcast %s (page %d): %s",
@@ -2910,7 +2910,7 @@ class PocketCastsImporter:
         # Check for duplicate history entry by comparing end_date (actual play completion time)
         # instead of history_date (when the history record was created)
         latest_history = (
-            podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
+            podcast.plays.filter(end_date__isnull=False).order_by("-end_date").first()
         )
         if latest_history and latest_history.end_date and import_time:
             # Check if we're trying to record history with the same or very similar end_date

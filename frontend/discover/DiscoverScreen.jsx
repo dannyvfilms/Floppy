@@ -1,6 +1,8 @@
 import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { actionIcons } from '../ui/actionIcons';
 import { Badge } from '../ui/Badge';
+import { Icon } from '../ui/Icon';
 import { MediaCard } from '../ui/MediaCard';
 import { RefreshNotice } from '../ui/RefreshNotice';
 import { Rail } from '../ui/Rail';
@@ -129,7 +131,7 @@ export function DiscoverFeedback({
         appearance={{ color: palette.accentText, backgroundColor: palette.accent, borderWidth: 0 }} /> : null}
       <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
         onPress={onDismissToast} style={styles.dismissButton}>
-        <Text style={[styles.dismissText, { color: palette.textMuted }]}>✕</Text>
+        <Icon spec={actionIcons.x} color={palette.textMuted} size={16} />
       </Pressable>
     </View> : null}
     {refreshing ? <Text style={styles.srOnly} accessibilityLiveRegion="polite">{copy.refreshing}</Text> : null}
@@ -407,7 +409,7 @@ export function DiscoverScreen({
         primary onPress={onToggleShowMore} disabled={refreshing} palette={palette} />
       <ToolbarButton label={copy.refresh} onPress={onRefresh}
         disabled={refreshing} palette={palette}>
-        <Text style={[styles.refreshGlyph, { color: palette.textMuted }]}>{refreshing ? '↻' : '⟳'}</Text>
+        <Icon spec={actionIcons.refresh} color={palette.textMuted} size={20} />
       </ToolbarButton>
     </View> : null}
     <DiscoverTabs items={mediaOptions} selected={selectedMediaType} onSelect={onSelectMedia}
@@ -432,7 +434,7 @@ const styles = StyleSheet.create({
   tabs: { gap: 4 },
   tabRow: { gap: 8, paddingVertical: 0, paddingRight: 8 },
   tab: { borderRadius: 9999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
-  tabText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  tabText: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   toolbarButton: { minHeight: 36, borderRadius: 6, borderWidth: 1, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   toolbarText: { fontSize: 13, fontWeight: '600' },

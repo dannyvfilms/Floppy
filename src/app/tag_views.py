@@ -307,21 +307,13 @@ TAG_INDEX_LINKABLE_MEDIA_TYPES = {
 }
 
 
-@require_GET
-def tag_index(request):
-    """Render a page listing the user's tags with per-media-type usage counts."""
-    sort = request.GET.get("sort") or "name"
-
-    tags = list(
-        Tag.objects.filter(user=request.user).annotate(
-            item_count=Count("item_tags", distinct=True),
-        ),
-    )
+def tag_type_counts(user):
+    """Return ``{tag_id: {media_type: item count}}`` for the linkable types."""
     include_anime, _include_tv = metadata_resolution.anime_library_visibility(
-        request.user,
+        user,
     )
     type_counts = (
-        ItemTag.objects.filter(tag__user=request.user)
+        ItemTag.objects.filter(tag__user=user)
         .values("tag_id", "item__media_type", "item__library_media_type")
         .annotate(count=Count("id"))
         .order_by()
@@ -341,6 +333,20 @@ def tag_index(request):
             continue
         counts = counts_by_tag.setdefault(row["tag_id"], {})
         counts[media_type] = counts.get(media_type, 0) + row["count"]
+    return counts_by_tag
+
+
+@require_GET
+def tag_index(request):
+    """Render a page listing the user's tags with per-media-type usage counts."""
+    sort = request.GET.get("sort") or "name"
+
+    tags = list(
+        Tag.objects.filter(user=request.user).annotate(
+            item_count=Count("item_tags", distinct=True),
+        ),
+    )
+    counts_by_tag = tag_type_counts(request.user)
 
     # Every status plus "no status", so the list shows what the count counts:
     # rating-only and tagged-only items sit outside any status view.

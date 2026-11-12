@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
+import { Icon, SearchIcon } from '../ui/Icon';
 import { CatalogCard, CatalogGrid } from '../ui/controls/Catalog';
 import { FilterDropdown } from '../ui/controls/Menu';
 
@@ -237,7 +237,7 @@ export function ProviderDirectoryView({
         }]}>
           <View style={[styles.searchIcon, { fontSize: 20, color: colors.textMuted }]}>
             {model.searchIcon ? <Icon spec={model.searchIcon} />
-              : <Text accessible={false} style={[styles.searchGlyph, { color: colors.textMuted }]}>⌕</Text>}
+              : <SearchIcon color={colors.textMuted} size={20} />}
           </View>
           <TextInput id="provider-search" accessibilityLabel={copy.searchLabel}
             name="q" autoCapitalize="none" autoComplete="off" autoCorrect={false}

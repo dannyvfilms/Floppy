@@ -1187,10 +1187,13 @@ DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
 # analysis_limit bounds each ANALYZE to a row sample, keeping the first run on a
 # multi-GB database short.
 DB_OPTIMIZE_ENABLED = config("DB_OPTIMIZE_ENABLED", default=True, cast=bool)
-# Sequential read of the SQLite file after start so cold page loads hit the OS
-# cache (app/tasks_db_warm.py). Budget is further capped at 25% of free memory.
+# Sequential read of the SQLite file at worker start and hourly, so cold page
+# loads hit the OS cache (app/tasks_db_warm.py). The host shares that cache with
+# everything else it runs, so a database on a slow disk falls out of it within
+# an hour or two of other activity. Budget is further capped at 25% of free
+# memory; the standard tier covers the whole file of a large library.
 DB_WARM_ENABLED = config("DB_WARM_ENABLED", default=True, cast=bool)
-DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 2048), cast=int)
+DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 8192), cast=int)
 DB_WARM_PAUSE_MS = config("DB_WARM_PAUSE_MS", default=20, cast=int)
 # Below this sequential read speed the warm logs a "slow_disk" warning.
 DB_SLOW_DISK_MIB_PER_SECOND = config("DB_SLOW_DISK_MIB_PER_SECOND", default=60, cast=int)
@@ -1996,6 +1999,16 @@ WARMUP_USER_LIMIT = config(
     default=by_tier(10, 20, 50),
     cast=int,
 )
+# History day payloads built ahead of a visit: the days of the last
+# HISTORY_COVERAGE_WINDOW_DAYS (and at least one page), in the user's own game
+# logging style. Older days and the other style are built when a page asks.
+# 0 warms every day; True below also warms the style the user does not use.
+HISTORY_COVERAGE_WINDOW_DAYS = config(
+    "HISTORY_COVERAGE_WINDOW_DAYS", default=62, cast=int
+)
+HISTORY_COVERAGE_BOTH_STYLES = config(
+    "HISTORY_COVERAGE_BOTH_STYLES", default=False, cast=bool
+)
 METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
 # The nightly calendar reload queues a metadata backfill rather than running one
 # inline at up to 5000 items, which used to hold a worker while filling the cache
@@ -2108,7 +2121,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "warm_database_page_cache": {
         "task": "Warm database page cache",
-        "schedule": 60 * 60 * 6,
+        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
@@ -2295,6 +2308,16 @@ SOCIALACCOUNT_PROVIDERS = config(
 SOCIALACCOUNT_ONLY = config("SOCIALACCOUNT_ONLY", default=False, cast=bool)
 if SOCIALACCOUNT_ONLY:
     ACCOUNT_EMAIL_VERIFICATION = "none"
+
+# The built-in Floppy app signs social and OIDC accounts in through the OAuth
+# device flow under a fixed client id. When this is on, the person is told on
+# the approval page that the app gets full access, and its token may then manage
+# the account except for credential disclosure/issuance (including URL secrets,
+# OAuth approval, password/authenticator/recovery and admin credential changes),
+# which require a session (password sign-in). Off: the app gets a scoped token like
+# any other application, and tokens already issued lose full access at once.
+# See integrations.oauth_scope_info.has_full_account_access.
+FLOPPY_APP_FULL_ACCESS = config("FLOPPY_APP_FULL_ACCESS", default=True, cast=bool)
 
 REGISTRATION = config("REGISTRATION", default=True, cast=bool)
 if not REGISTRATION:

@@ -168,7 +168,7 @@ chip that the table says should show.
 
 These cards are built separately, on purpose, because they show a different kind of
 thing or use a different layout: list cards (`lists/components/list_grid.html`),
-history day cards, the Now Playing card, person and cast cards, and statistics highlights.
+history day cards, the Now Playing server-rendered fallback, person and cast cards, and statistics highlights. The React-owned Now Playing card uses this shared MediaCard.
 A person's or studio's list of titles is not one of them: it uses the `credit` surface, with
 `people_views.attach_card_media` loading the viewer's tracking row for each title. The Statistics
 repeat-player strip is still the older hand-built `person_filmography_card.html`.

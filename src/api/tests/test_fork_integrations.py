@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.urls import reverse
 from kombu.exceptions import OperationalError as KombuOperationalError
 
+from integrations.models import ImportRun, IntegrationToken
 from integrations.upload_staging import discard_staged_upload
 
 from .base import FloppyApiTestCase
@@ -115,6 +116,21 @@ class ImportDispatchTests(FloppyApiTestCase):
         self.assertEqual(response.json()["task_id"], "yt-task-1")
         self.addCleanup(discard_staged_upload, mock_delay.call_args.kwargs["file"])
 
+    @patch("api.fork_views_integrations.tasks.import_trakt_export.delay")
+    def test_trakt_export_rejects_selective_modes(self, mock_delay):
+        """Selective modes would silently run the full import, so they are refused (#1873)."""
+        for mode in ("watchlist", "update_collection"):
+            upload = io.BytesIO(b"PK")
+            upload.name = "trakt.zip"
+            response = self.client.post(
+                reverse("api_import_dispatch", args=("trakt-export",)),
+                {"file": upload, "mode": mode},
+                **self.auth_headers,
+            )
+            self.assertEqual(response.status_code, HTTP.BAD_REQUEST, mode)
+            self.assertEqual(response.json()["choices"], ["new", "overwrite"])
+        mock_delay.assert_not_called()
+
     def test_file_missing_rejected(self):
         """File services without an upload return 400."""
         response = self.call_api(
@@ -139,6 +155,50 @@ class ImportActivityTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertIn("results", response.json())
+
+    def test_activity_contains_owned_runs_and_tracker_sections(self):
+        run = ImportRun.objects.create(user=self.user1, source="goodreads", status="completed", created_count=3)
+        ImportRun.objects.create(user=self.user2, source="anilist", status="completed", created_count=99)
+        response = self.call_api("get", "api_imports_activity", headers=self.auth_headers)
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        body = response.json()
+        self.assertEqual([row["id"] for row in body["presentation"]["runs"]], [run.id])
+        self.assertEqual(body["presentation"]["runs"][0]["created"], 3)
+        self.assertEqual(body["presentation"]["runs"][0]["sourceLabel"], "Goodreads")
+        self.assertFalse(body["tracker_activity"]["mal"]["connected"])
+        self.assertEqual([row["slug"] for row in body["tracker_activity"]["services"]], ["tmdb", "wetrakr"])
+
+    def test_scoped_import_reader_does_not_gain_tracker_access_or_writes(self):
+        _token, raw = IntegrationToken.generate(user=self.user1, name="reader", scopes=["imports:read", "imports:write"])
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {raw}"}
+        body = self.call_api("get", "api_imports_activity", headers=headers).json()
+        self.assertNotIn("tracker_activity", body)
+        response = self.call_api("post", "api_imports_activity", headers=headers,
+                                 payload={"path": reverse("mal_mapping_ignore"), "values": {"item_id": 1}})
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_activity_action_rejects_arbitrary_paths(self):
+        for path in ("https://example.test", "//example.test", reverse("home"), "/missing", reverse("mal_mapping_ignore") + "?x=1"):
+            with self.subTest(path=path):
+                response = self.call_api("post", "api_imports_activity", headers=self.auth_headers, payload={"path": path})
+                self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_run_action_keeps_ownership_and_returns_handler_validation(self):
+        other = ImportRun.objects.create(user=self.user2, source="goodreads", status="completed")
+        response = self.call_api("post", "api_imports_activity", headers=self.auth_headers,
+                                 payload={"path": reverse("rollback_import_run", args=[other.id]), "values": {}})
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertTrue(ImportRun.objects.filter(pk=other.pk).exists())
+        invalid = self.call_api("post", "api_imports_activity", headers=self.auth_headers,
+                               payload={"path": reverse("mal_mapping_ignore"), "values": {"item_id": "bad"}})
+        self.assertEqual(invalid.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(invalid.json()["detail"], "Choose a valid anime.")
+
+    def test_mapping_search_uses_the_existing_get_handler(self):
+        response = self.call_api("post", "api_imports_activity", headers=self.auth_headers,
+                                 payload={"path": reverse("mal_mapping_search"), "values": {"q": "ab"}})
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["detail"], "Enter at least three characters.")
 
 
 class ExportTests(FloppyApiTestCase):

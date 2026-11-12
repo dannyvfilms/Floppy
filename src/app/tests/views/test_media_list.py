@@ -4599,3 +4599,18 @@ class GameGroupingViewTests(TestCase):
 
         self.assertEqual(response.context["current_group_by"], "item")
         self.assertEqual(response.context["media_groups"], [])
+
+    def test_group_drilldown_keeps_the_library_alphabet_symbol(self):
+        """The alphabet rail samples the library, including games outside a group."""
+        self._game(1, "Éclair", franchise=("10", "First"))
+        self._game(2, "Ωmega", franchise=("20", "Second"))
+
+        response = self.client.get(
+            self.url, {"group_by": "franchise", "group": "id:20"},
+        )
+
+        self.assertEqual(response.context["alphabet_other_initial"], "É")
+        self.assertEqual(
+            [entry.item.title for entry in response.context["media_list"]],
+            ["Ωmega"],
+        )

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Field
 from django.utils import timezone
 
@@ -637,7 +638,14 @@ def backup_directory(user):
     # forbidden in normal usernames, avoiding collisions with this fallback.
     if username in {"", ".", ".."} or Path(username).name != username:
         username = f"user:{user.pk}"
-    directory = Path(settings.BACKUP_DIR) / username
+    root = os.path.normpath(settings.BACKUP_DIR)
+    path = os.path.normpath(f"{root}{os.sep}{username}")
+    # The name check above already allows no separators. Refusing anything
+    # outside the backup directory keeps that explicit at the point of use.
+    if not path.startswith(root.rstrip(os.sep) + os.sep):
+        message = "Backup directory is outside the configured backup location."
+        raise SuspiciousFileOperation(message)
+    directory = Path(path)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     return directory
 

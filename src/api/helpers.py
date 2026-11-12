@@ -1,5 +1,6 @@
 import logging
 from calendar import monthrange
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
@@ -20,6 +21,7 @@ from app.models import (
     Episode,
     Game,
     Item,
+    ItemTag,
     Manga,
     MediaTypes,
     Movie,
@@ -35,6 +37,25 @@ from lists.models import CustomListItem
 from users.models import MediaStatusChoices
 
 logger = logging.getLogger(__name__)
+
+
+BODY_SLACK_BYTES = 1024 * 1024
+
+
+def body_too_large_response(request, file_limit_bytes, message):
+    """Return 413 when the declared body cannot hold a file within its limit.
+
+    Call before `request.data` is touched: parsing reads the whole body, so a
+    limit applied to the decoded file alone does not bound memory or time. A
+    base64 body is 4/3 of the file, plus a margin for the other JSON fields.
+    """
+    try:
+        declared = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        declared = 0
+    if declared > file_limit_bytes * 4 // 3 + BODY_SLACK_BYTES:
+        return Response({"detail": message}, status=HTTP.REQUEST_ENTITY_TOO_LARGE)
+    return None
 
 
 def resolve_episode_coordinate_for_request(
@@ -252,6 +273,24 @@ def build_lists_by_item_id(user, objects):
     # FORK: batched by item id in one query instead of one query per item —
     # a page of N media entries used to issue N CustomListItem queries.
     return CustomListItem.objects.get_user_item_lists_map(user, item_ids)
+
+
+def build_tags_by_item_id(user, objects):
+    """Map item id to the user's tag names for it, in one query, for a page of rows."""
+    item_ids = {
+        (obj if isinstance(obj, Item) else getattr(obj, "item", None)).id
+        for obj in objects
+        if (obj if isinstance(obj, Item) else getattr(obj, "item", None)) is not None
+    }
+    tags = defaultdict(list)
+    if user is None or not item_ids:
+        return tags
+    rows = ItemTag.objects.filter(item_id__in=item_ids, tag__user=user).values_list(
+        "item_id", "tag__name"
+    )
+    for item_id, name in sorted(rows, key=lambda row: row[1].casefold()):
+        tags[item_id].append(name)
+    return tags
 
 
 def build_parent_id(item):
@@ -561,6 +600,11 @@ def paginate_list_items(request, user, user_list):
     if search_query:
         items = items.filter(title__icontains=search_query)
 
+    # FORK: server-side media type filter for native list pages.
+    media_type_filter = request.GET.get("media_type", "")
+    if media_type_filter:
+        items = items.filter(media_type=media_type_filter)
+
     limit, offset, err = parse_limit_offset(request)
     if err:
         return None, err
@@ -580,7 +624,9 @@ def paginate_list_items(request, user, user_list):
         # No search/filter narrows ``items`` here, so count memberships without
         # joining app_item.
         total = (
-            items.count() if search_query else user_list.customlistitem_set.count()
+            items.count()
+            if (search_query or media_type_filter)
+            else user_list.customlistitem_set.count()
         )
         items = items[offset : offset + limit]
 
@@ -856,15 +902,29 @@ def validate_body(body, media_type):
             return filtered_body, error
 
     if "status" in filtered_body:
-        filtered_body, error = _validate_status(filtered_body)
-        if error:
-            return filtered_body, error
+        if media_type == MediaTypes.COMIC_ISSUE.value and filtered_body["status"] in (None, ""):
+            # ComicissueForm permits an explicitly statusless issue.
+            filtered_body["status"] = None
+        else:
+            filtered_body, error = _validate_status(filtered_body)
+            if error:
+                return filtered_body, error
 
     filtered_body, error = _validate_dates(filtered_body)
     if error:
         return filtered_body, error
 
     return filtered_body, error
+
+
+def unsupported_fields(record, validated_body):
+    """Return requested fields the record has no column for.
+
+    The exact-history records store fewer fields than the media row they hang
+    off (a movie play has no notes or score), so writing them would be silently
+    dropped while the request reported success (#1873).
+    """
+    return sorted(field for field in validated_body if not hasattr(record, field))
 
 
 # ---- Sorting ----
@@ -1038,19 +1098,28 @@ def build_game_lengths_summary(payload):
     return summary
 
 
-def get_tracked_season(user, media_id, source, season_number):
-    """Return the user's tracked Season row for a show/season, or None."""
-    return (
-        Season.objects.filter(
-            item__media_id=media_id,
-            item__source=source,
-            item__season_number=season_number,
-            item__episode_number=None,
-            user=user,
-        )
-        .order_by("id")
-        .first()
+def get_tracked_season(
+    user,
+    media_id,
+    source,
+    season_number,
+    library_media_type=None,
+):
+    """Return the user's tracked Season row for a show/season, or None.
+
+    ``library_media_type`` limits the match to one library bucket; without it
+    the oldest matching Season is returned.
+    """
+    seasons = Season.objects.filter(
+        item__media_id=media_id,
+        item__source=source,
+        item__season_number=season_number,
+        item__episode_number=None,
+        user=user,
     )
+    if library_media_type:
+        seasons = seasons.filter(item__library_media_type=library_media_type)
+    return seasons.order_by("id").first()
 
 
 def validate_episode_score(raw_score):

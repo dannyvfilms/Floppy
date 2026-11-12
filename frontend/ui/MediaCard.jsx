@@ -1,17 +1,15 @@
+import { Modal } from './Modal';
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
 import { CardScrim } from './CardScrim';
+import { Icon } from './Icon';
+import { STATUS_ICON_SPECS } from './statusChipIcons';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
+import { shouldRevealMediaCardActions, shouldShowMediaCardCorner, shouldShowMediaCardLine } from './mediaCardBehavior';
+import { actionIcons } from './actionIcons';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
-const STATUS_GLYPHS = {
-  Completed: '✓',
-  'In progress': '▶',
-  Paused: '❚❚',
-  Planning: '＋',
-  Dropped: '✕',
-};
 const DEFAULT_PALETTE = {
   card: '#27272a',
   text: '#fafafa',
@@ -66,7 +64,8 @@ function Star({ size = 12, color }) {
 
 function Artwork({ model, palette, selection, onPress }) {
   const image = model.image || {};
-  const frame = <View style={[styles.artworkFrame, { aspectRatio: ASPECT[model.shape] || ASPECT.poster }]}
+  const aspectRatio = Number(model.aspectRatio) || ASPECT[model.shape] || ASPECT.poster;
+  const frame = <View style={[styles.artworkFrame, { aspectRatio }]}
     accessible={!onPress} accessibilityLabel={onPress ? undefined : model.title}>
     <ArtworkImage src={image.src} fallback={image.fallback} title={model.title}
       source={image.source} variant="media-card" loading="lazy" decoding="sync"
@@ -116,7 +115,7 @@ function StatusChip({ chip, palette, labels }) {
   if (chip.kind === 'event') {
     return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
       accessible accessibilityLabel={chip.label}>
-      <Text style={[styles.chipGlyph, { color: palette.chipText }]}>◷</Text>
+      <Icon spec={actionIcons.history} size={12} color={palette.chipText} />
       <Text style={[styles.chipText, { color: palette.chipText }]}>{chip.label}</Text>
     </View>;
   }
@@ -124,17 +123,21 @@ function StatusChip({ chip, palette, labels }) {
   const color = palette.statusColors[status] || palette.accent || palette.link;
   return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
     accessible accessibilityLabel={chip.label || status}>
-    <Text style={[styles.chipGlyph, { color }]}>{STATUS_GLYPHS[status] || '•'}</Text>
+    {STATUS_ICON_SPECS[status]
+      ? <Icon spec={STATUS_ICON_SPECS[status]} color={color} size={16} />
+      : chip.icon
+        ? <Icon spec={chip.icon} color={color} size={16} />
+        : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
   </View>;
 }
 
-function CornerChip({ chip, palette, labels, onOpenLink }) {
+function CornerChip({ chip, palette, labels, onOpenLink, compact }) {
   const local = chip.kind === 'local-only' || chip.kind === 'collected';
   const position = chip.kind === 'local-only'
     ? styles.bottomLeft
     : chip.kind === 'runtime' || chip.kind === 'collected' ? styles.bottomRight : styles.topRight;
   const text = chip.kind === 'next-episode'
-    ? `› ${chip.text}`
+    ? `› ${compact ? (chip.compactText || labels.nextEpisodeCompact || 'Next') : chip.text}`
     : chip.kind === 'queue' ? `${chip.text} ›` : chip.text;
   const label = chip.kind === 'next-episode' ? labels.nextEpisode : chip.title || chip.text;
   const appearance = [styles.cornerChip, position, local ? {
@@ -258,7 +261,7 @@ function AltTitle({ label, open, onPress, palette }) {
   </Pressable>;
 }
 
-function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, readOnly, altOpen, setAltOpen }) {
+function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, readOnly, altOpen, setAltOpen, revealed = true }) {
   return <>
     <View style={styles.titleRow}>
       <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} />
@@ -271,7 +274,8 @@ function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, rend
       <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} readOnly={readOnly} />
     </View>
     {altOpen && model.altTitle ? <Text style={[styles.altText, { color: palette.textMuted }]}>{model.altTitle}</Text> : null}
-    {model.lines?.map((line, index) => <Line key={index} line={line} palette={palette} />)}
+    {model.lines?.map((line, index) => shouldShowMediaCardLine(model, line, revealed)
+      ? <Line key={index} line={line} palette={palette} /> : null)}
   </>;
 }
 
@@ -300,6 +304,7 @@ export function MediaCard({
   const copy = {
     altTitle: 'Show alternative title',
     nextEpisode: 'Jump to next episode',
+    nextEpisodeCompact: 'Next',
     noStatus: 'No Status',
     rate: 'Rate',
     close: 'Close',
@@ -322,7 +327,7 @@ export function MediaCard({
       activeSelection.toggle?.();
       return;
     }
-    if (shownActions && !isRevealed) {
+    if (shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }
@@ -332,7 +337,7 @@ export function MediaCard({
   const rowOpen = activeSelection?.active ? activeSelection.toggle : onOpen;
 
   function gatedOpen() {
-    if (shownActions && !activeSelection?.active && !isRevealed) {
+    if (!activeSelection?.active && shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }
@@ -340,7 +345,7 @@ export function MediaCard({
   }
 
   function gatedOpenLink(href) {
-    if (shownActions && !activeSelection?.active && !isRevealed) {
+    if (!activeSelection?.active && shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }
@@ -348,19 +353,28 @@ export function MediaCard({
   }
 
   if (model.layout === 'row') {
-    return <View style={[styles.row, style]}>
-      <View style={styles.rowArtwork}>
+    // `rowSplit` (the search list) puts the title block and the actions on one
+    // line, actions at the end, like the web's list rows.
+    const split = Boolean(model.rowSplit);
+    const metadata = <>
+      <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
+        onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+        altOpen={altOpen} setAltOpen={setAltOpen} />
+      {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
+        style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
+    </>;
+    const actionRow = shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
+      palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null;
+    return <View style={[styles.row, split && styles.rowSplit, split && model.rowWidth ? { width: model.rowWidth } : null, style]}>
+      <View style={split ? styles.rowArtworkSplit : styles.rowArtwork}>
         <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen} />
       </View>
-      <View style={styles.rowBody}>
-        <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
-          onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
-          altOpen={altOpen} setAltOpen={setAltOpen} />
-        {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
-          style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
-        {shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
-          palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null}
-      </View>
+      {split
+        ? <View style={styles.rowBodySplit}>
+          <View style={styles.rowMeta}>{metadata}</View>
+          {actionRow}
+        </View>
+        : <View style={styles.rowBody}>{metadata}{actionRow}</View>}
     </View>;
   }
 
@@ -370,10 +384,10 @@ export function MediaCard({
     borderColor: colors.border,
   }, style]}
     onPointerEnter={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(true);
+      if (event?.nativeEvent?.pointerType === 'mouse' && (shownActions || model.hoverMetadata) && !activeSelection?.active) setReveal(true);
     }}
     onPointerLeave={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(false);
+      if (event?.nativeEvent?.pointerType === 'mouse' && (shownActions || model.hoverMetadata) && !activeSelection?.active) setReveal(false);
     }}>
     <View style={styles.artworkWrap}>
       <View style={styles.artworkStage}>
@@ -381,8 +395,8 @@ export function MediaCard({
         {model.statusChip?.kind === 'media-type'
           ? <MediaTypeChip chip={model.statusChip} palette={colors} />
           : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
-        {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
-          chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
+        {model.cornerChips?.filter(chip => shouldShowMediaCardCorner(model, chip, isRevealed)).map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
+          chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} compact={width <= 120} />)}
         <ProgressBar bar={model.progressBar} palette={colors} />
       </View>
       <View style={styles.bodyStack}>
@@ -390,7 +404,7 @@ export function MediaCard({
         <View style={styles.body}>
           <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
             onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
-            altOpen={altOpen} setAltOpen={setAltOpen} />
+            altOpen={altOpen} setAltOpen={setAltOpen} revealed={isRevealed} />
         </View>
       </View>
       {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
@@ -414,7 +428,7 @@ const styles = StyleSheet.create({
   },
   artworkPlaceholder: { paddingHorizontal: 8, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   body: { padding: 10, gap: 2, zIndex: 1 },
-  bodyStack: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 9 },
+  bodyStack: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 11 },
   // The web card darkens a fixed 3rem above its body, not a percentage of the
   // body, so square and 2:3 cards read the same.
   scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, top: -48, zIndex: 0 },
@@ -432,12 +446,13 @@ const styles = StyleSheet.create({
   score: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   chip: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, maxWidth: '90%' },
-  statusChip: { top: 8, left: 8, zIndex: 6 },
+  statusChip: { top: 8, left: 8, zIndex: 6, height: 24, justifyContent: 'center', paddingVertical: 0 },
   chipText: { fontSize: 11, fontWeight: '600' },
-  chipGlyph: { fontSize: 16, fontWeight: '700' },
+  chipGlyph: { fontSize: 16, fontWeight: '700', lineHeight: 16 },
   mediaChipText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
-  cornerChip: { position: 'absolute', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, zIndex: 10, maxWidth: '90%' },
-  cornerText: { fontSize: 11, fontWeight: '600' },
+  cornerChip: { position: 'absolute', height: 24, justifyContent: 'center', borderRadius: 6,
+    paddingHorizontal: 8, paddingVertical: 0, zIndex: 10, maxWidth: '90%' },
+  cornerText: { fontSize: 11, fontWeight: '600', lineHeight: 16 },
   topRight: { top: 8, right: 8 },
   bottomRight: { bottom: 9, right: 6 },
   bottomLeft: { bottom: 9, left: 6 },
@@ -456,5 +471,9 @@ const styles = StyleSheet.create({
   ratingTitle: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 12, padding: 12, alignItems: 'flex-start' },
   rowArtwork: { width: 64 },
+  rowSplit: { alignItems: 'center', padding: 16 },
+  rowArtworkSplit: { width: 64 },
+  rowBodySplit: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  rowMeta: { flex: 1, minWidth: 0 },
   rowBody: { flex: 1, minWidth: 0 },
 });

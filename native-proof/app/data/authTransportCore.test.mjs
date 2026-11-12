@@ -3,6 +3,9 @@ import test from 'node:test';
 import {
   AUTH_ERROR_CODES,
   AuthError,
+  FIRST_PARTY_CLIENT_ID,
+  FULL_ACCOUNT_SCOPE,
+  PASSWORD_SIGN_IN_REQUIRED,
   buildDeviceVerificationUrl,
   buildProviderLoginUrl,
   createAuthTransport,
@@ -70,6 +73,20 @@ function sessionRoutes({ loginStatus = 302, sessionid = 'session-1', loginBody =
     },
   ];
 }
+
+test('text responses preserve schema formatting without bypassing error handling', async () => {
+  const raw = '{\n  "version": 1\n}\n';
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: {} }) },
+    { match: url => url.endsWith('/api/spec.json'), respond: () => response({ body: raw }) },
+    { match: url => url.endsWith('/api/denied.json'), respond: () => response({ status: 403, body: { detail: 'Not allowed here.' } }) },
+  ]);
+  const auth = createAuthTransport({ storage: createStorage(), fetchImpl });
+  await auth.signInWithToken({ serverUrl: 'https://floppy.example', token: 'test-token' });
+  assert.equal(await auth.request('/api/spec.json', { responseType: 'text' }), raw);
+  assert.deepEqual(await auth.request('/api/spec.json'), { version: 1 });
+  await assert.rejects(() => auth.request('/api/denied.json', { responseType: 'text' }), /Not allowed here/);
+});
 
 test('normalizes server addresses and rejects credentials in the URL', () => {
   assert.equal(normalizeServerUrl('floppy.example'), 'https://floppy.example');
@@ -157,12 +174,40 @@ test('session sign-in sends CSRF and stores only the session cookies', async () 
   assert.match(requestCall.options.headers.Cookie, /sessionid=session-1/);
   assert.match(requestCall.options.headers.Cookie, /csrftoken=csrf-2/);
   assert.equal(requestCall.options.headers['X-CSRFToken'], 'csrf-2');
-  assert.equal(requestCall.options.credentials, 'include');
+  assert.equal(requestCall.options.credentials, 'omit', 'cookies are sent by hand, not by the iOS jar');
 });
 
 function callbody(call) {
   return call.options.body;
 }
+
+test('a comma-joined csrftoken from iOS keeps only the newest value', async () => {
+  const storage = createStorage();
+  const routes = sessionRoutes();
+  routes.unshift({
+    match: (url, options) => url.endsWith('/accounts/login/') && options.method === 'POST',
+    respond: () => ({
+      ...response({ status: 302 }),
+      headers: {
+        get: name => (String(name).toLowerCase() === 'set-cookie'
+          ? 'csrftoken=csrf-1,csrftoken=csrf-2; Path=/; SameSite=Lax, sessionid=session-1; Path=/; HttpOnly'
+          : ''),
+      },
+    }),
+  }, {
+    match: url => url.endsWith('/api/v1/media/movie/'),
+    respond: () => response({ body: { id: 1 } }),
+  });
+  const { fetchImpl, calls } = createFetch(routes);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await auth.signIn({ serverUrl: 'https://floppy.example', username: 'nova', password: 'pw' });
+  await auth.request('/api/v1/media/movie/', { method: 'POST', body: {} });
+  const headers = calls.at(-1).options.headers;
+  assert.match(headers.Cookie, /(^|; )csrftoken=csrf-2(;|$)/);
+  assert.equal(headers.Cookie.includes(','), false);
+  assert.equal(headers['X-CSRFToken'], 'csrf-2');
+});
 
 test('expired CSRF is refreshed once and the write is retried', async () => {
   const storage = createStorage();
@@ -416,4 +461,322 @@ test('auth config only accepts same-server redirect urls', async () => {
   assert.equal(config.providers[0].loginUrl, 'https://floppy.example/accounts/trakt/login/');
   assert.equal(config.connectionsUrl, 'https://floppy.example/accounts/3rdparty/');
   assert.equal(config.deviceUrl, 'https://floppy.example/oauth/device');
+});
+
+test('auth config errors do not display an HTML error page as field text', async () => {
+  const storage = createStorage();
+  const { fetchImpl } = createFetch([
+    {
+      match: url => url.endsWith('/accounts/auth-config/'),
+      respond: () => response({ status: 404, body: '<!DOCTYPE html><html><title>Page not found</title></html>' }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await assert.rejects(
+    () => auth.fetchAuthConfig({ serverUrl: 'https://floppy.example' }),
+    error => error.message === 'The server does not expose this endpoint.' && !error.message.includes('<html>'),
+  );
+});
+
+test('auth config discovery requests pass through their cancellation signal', async () => {
+  const storage = createStorage();
+  const controller = new AbortController();
+  const { fetchImpl, calls } = createFetch([
+    {
+      match: url => url.endsWith('/accounts/auth-config/'),
+      respond: () => response({ body: { registrationEnabled: true } }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await auth.fetchAuthConfig({ serverUrl: 'http://192.168.1.20:8000', signal: controller.signal });
+
+  assert.equal(calls[0].options.signal, controller.signal);
+});
+
+function browserAdapter(csrf = 'cookie-csrf') {
+  return { serverUrl: () => 'https://floppy.test/base', readCsrfToken: () => csrf };
+}
+
+test('browser restore adopts a live same-origin session without storing anything', async () => {
+  const storage = createStorage();
+  const { fetchImpl, calls } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: { media_types: {} } }) },
+    {
+      match: url => url.endsWith('/settings/account'),
+      respond: () => response({ body: { ok: true, user: { username: 'nova', isSuperuser: true, isDemo: false } } }),
+    },
+  ]);
+  const transport = createAuthTransport({ storage, fetchImpl, browser: browserAdapter() });
+  const state = await transport.restore();
+  assert.equal(state.status, 'authenticated');
+  assert.equal(state.serverUrl, 'https://floppy.test/base');
+  assert.equal(state.user.isSuperuser, true);
+  assert.equal(calls[0].options.credentials, 'same-origin');
+  assert.equal(calls[0].options.headers.Cookie, undefined);
+  assert.equal(storage.values.size, 0);
+  assert.equal(transport.getSession().authType, 'session');
+});
+
+test('browser restore with no session stays signed out and does not report expiry', async () => {
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ status: 401, body: { detail: 'Authentication credentials were not provided.' } }) },
+  ]);
+  const transport = createAuthTransport({ storage: createStorage(), fetchImpl, browser: browserAdapter() });
+  const state = await transport.restore();
+  assert.equal(state.status, 'signed_out');
+  assert.equal(state.error, null);
+  const unreachable = createAuthTransport({
+    storage: createStorage(),
+    fetchImpl: async () => { throw new Error('offline'); },
+    browser: browserAdapter(),
+  });
+  assert.equal((await unreachable.restore()).error, AUTH_ERROR_CODES.SERVER_UNREACHABLE);
+});
+
+test('browser writes send the cookie CSRF token and rely on the cookie jar', async () => {
+  let csrf = 'first';
+  const { fetchImpl, calls } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/') || url.endsWith('/settings/account'), respond: () => response({ body: { ok: true } }) },
+    { match: url => url.endsWith('/api/v1/lists/'), respond: () => response({ body: { ok: true } }) },
+  ]);
+  const transport = createAuthTransport({
+    storage: createStorage(),
+    fetchImpl,
+    browser: { serverUrl: () => 'https://floppy.test', readCsrfToken: () => csrf },
+  });
+  await transport.restore();
+  csrf = 'second';
+  await transport.request('/api/v1/lists/', { method: 'POST', body: { name: 'x' } });
+  await transport.request('/api/v1/lists/');
+  const write = calls[calls.length - 2].options;
+  assert.equal(write.headers['X-CSRFToken'], 'second');
+  assert.equal(write.headers.Cookie, undefined);
+  assert.equal(write.headers.Origin, undefined);
+  assert.equal(write.credentials, 'same-origin');
+  assert.equal(calls[calls.length - 1].options.headers['X-CSRFToken'], undefined);
+});
+
+test('browser sign-in posts the login form, follows the redirect and verifies the session', async () => {
+  let loggedIn = false;
+  const { fetchImpl, calls } = createFetch([
+    { match: (url, o) => url.endsWith('/accounts/login/') && (o.method || 'GET') === 'GET', respond: () => response({ body: '<form></form>' }) },
+    {
+      match: (url, o) => url.endsWith('/accounts/login/') && o.method === 'POST',
+      respond: (url, o) => {
+        loggedIn = /password=right/.test(o.body);
+        return response({ status: 200, body: '<html></html>' });
+      },
+    },
+    {
+      match: url => url.endsWith('/api/v1/user/sidebar/'),
+      respond: () => (loggedIn ? response({ body: {} }) : response({ status: 401, body: { detail: 'no' } })),
+    },
+    { match: url => url.endsWith('/settings/account'), respond: () => response({ body: { user: { username: 'nova', isSuperuser: false } } }) },
+  ]);
+  const storage = createStorage();
+  const transport = createAuthTransport({ storage, fetchImpl, browser: browserAdapter() });
+  await assert.rejects(
+    transport.signIn({ serverUrl: 'ignored.example', username: 'nova', password: 'wrong' }),
+    error => error.code === AUTH_ERROR_CODES.INVALID_CREDENTIALS,
+  );
+  assert.equal(transport.getState().status, 'signed_out');
+  const state = await transport.signIn({ serverUrl: 'ignored.example', username: 'nova', password: 'right' });
+  assert.equal(state.status, 'authenticated');
+  assert.equal(state.serverUrl, 'https://floppy.test/base');
+  const post = calls.find(call => call.options.method === 'POST');
+  assert.equal(post.url, 'https://floppy.test/base/accounts/login/');
+  assert.equal(post.options.headers['X-CSRFToken'], 'cookie-csrf');
+  assert.equal(post.options.credentials, 'same-origin');
+  assert.equal(post.options.redirect, undefined);
+  assert.equal(storage.values.size, 0);
+});
+
+test('browser sign-out keeps the session when the server logout fails', async () => {
+  let fail = true;
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/') || url.endsWith('/settings/account'), respond: () => response({ body: { ok: true } }) },
+    { match: url => url.endsWith('/accounts/logout/'), respond: () => (fail ? response({ status: 500 }) : response({ status: 200, body: '<html></html>' })) },
+  ]);
+  const transport = createAuthTransport({ storage: createStorage(), fetchImpl, browser: browserAdapter() });
+  await transport.restore();
+  await assert.rejects(transport.signOut(), error => error.code === AUTH_ERROR_CODES.SERVER);
+  assert.equal(transport.getState().status, 'authenticated');
+  fail = false;
+  assert.equal((await transport.signOut()).status, 'signed_out');
+  assert.equal(transport.getSession(), null);
+});
+
+test('native session sign-in learns superuser from the account payload', async () => {
+  const routes = [
+    ...sessionRoutes(),
+    { match: url => url.endsWith('/settings/account'), respond: () => response({ body: { user: { username: 'nova', isSuperuser: true } } }) },
+  ];
+  const { fetchImpl } = createFetch(routes);
+  const transport = createAuthTransport({ storage: createStorage(), fetchImpl });
+  const state = await transport.signIn({ serverUrl: 'https://floppy.test', username: 'nova', password: 'pw' });
+  assert.equal(state.user.isSuperuser, true);
+});
+
+test('device sign-in on a server without the first-party client registers, polls through pending and slow_down, and stores a refreshable token', async () => {
+  let polls = 0;
+  const { fetchImpl, calls } = createFetch([
+    { match: url => url.endsWith('/oauth/register'), respond: () => response({ status: 201, body: { client_id: 'c1' } }) },
+    {
+      match: url => url.endsWith('/oauth/device/authorization'),
+      respond: (url, o) => (JSON.parse(o.body).client_id === FIRST_PARTY_CLIENT_ID ? response({ status: 400, body: { error: 'invalid_client' } }) : response({ body: {
+        device_code: 'dev', user_code: 'ABCD-1234', interval: 1, expires_in: 600,
+        verification_uri: 'https://floppy.test/oauth/device',
+        verification_uri_complete: 'https://floppy.test/oauth/device?user_code=ABCD-1234',
+      } })),
+    },
+    {
+      match: url => url.endsWith('/oauth/token'),
+      respond: (url, o) => {
+        const body = JSON.parse(o.body);
+        if (body.grant_type === 'refresh_token') return response({ body: { access_token: 'tok-2', refresh_token: 'ref-2' } });
+        polls += 1;
+        if (polls === 1) return response({ status: 400, body: { error: 'authorization_pending' } });
+        if (polls === 2) return response({ status: 400, body: { error: 'slow_down' } });
+        return response({ body: { access_token: 'tok-1', refresh_token: 'ref-1' } });
+      },
+    },
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: (url, o) => (o.headers.Authorization === 'Bearer tok-1' || o.headers.Authorization === 'Bearer tok-2' ? response({ body: {} }) : response({ status: 401, body: { detail: 'expired' } })) },
+  ]);
+  const storage = createStorage();
+  const transport = createAuthTransport({ storage, fetchImpl });
+  const grant = await transport.startDeviceSignIn({ serverUrl: 'https://floppy.test', scope: 'user:read' });
+  assert.equal(grant.userCode, 'ABCD-1234');
+  assert.equal(JSON.parse(calls[0].options.body).client_id, FIRST_PARTY_CLIENT_ID);
+  assert.equal(calls[1].url, 'https://floppy.test/oauth/register');
+  assert.equal(JSON.parse(calls[2].options.body).scope, 'user:read');
+  const waits = [];
+  const state = await transport.pollDeviceSignIn({ ...grant, sleep: async ms => { waits.push(ms); } });
+  assert.deepEqual(waits, [1000, 1000, 6000]);
+  assert.equal(state.status, 'authenticated');
+  assert.equal(state.authType, 'token');
+  const stored = JSON.parse(storage.values.get('floppy.auth.session.v1'));
+  assert.equal(stored.refreshToken, 'ref-1');
+  assert.equal(stored.clientId, 'c1');
+  assert.equal(stored.fullAccess, undefined);
+  assert.equal(JSON.stringify(transport.getState()).includes('tok-1'), false);
+});
+
+test('first-party device sign-in skips registration and keeps full account access', async () => {
+  const denied = { detail: 'You do not have permission to perform this action.' };
+  let refreshScope = `user:read ${FULL_ACCOUNT_SCOPE}`;
+  const { fetchImpl, calls } = createFetch([
+    {
+      match: url => url.endsWith('/oauth/device/authorization'),
+      respond: () => response({ body: {
+        device_code: 'dev', user_code: 'ABCD-1234', interval: 1, expires_in: 600,
+        verification_uri: 'https://floppy.test/oauth/device',
+        verification_uri_complete: 'https://floppy.test/oauth/device?user_code=ABCD-1234',
+      } }),
+    },
+    {
+      match: url => url.endsWith('/oauth/token'),
+      respond: (url, o) => (JSON.parse(o.body).grant_type === 'refresh_token'
+        ? response({ body: { access_token: 'tok-2', refresh_token: 'ref-2', scope: refreshScope } })
+        : response({ body: { access_token: 'tok-1', refresh_token: 'ref-1', scope: `user:read ${FULL_ACCOUNT_SCOPE}` } })),
+    },
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: {} }) },
+    { match: url => url.endsWith('/api/v1/user/token/'), respond: (url, o) => (o.headers.Authorization === 'Bearer tok-1' ? response({ status: 401, body: { detail: 'Token expired' } }) : response({ body: { token: 'x' } })) },
+    { match: url => url.endsWith('/api/v1/admin/users/'), respond: () => response({ status: 403, body: { detail: 'Superuser access is required.' } }) },
+    { match: url => url.endsWith('/api/v1/providers/'), respond: () => response({ status: 403, body: denied }) },
+  ]);
+  const storage = createStorage();
+  const transport = createAuthTransport({ storage, fetchImpl });
+  const grant = await transport.startDeviceSignIn({ serverUrl: 'https://floppy.test' });
+  assert.equal(grant.clientId, FIRST_PARTY_CLIENT_ID);
+  assert.equal(calls.some(call => call.url.endsWith('/oauth/register')), false);
+  await transport.pollDeviceSignIn({ ...grant, sleep: async () => {} });
+  assert.equal(JSON.parse(storage.values.get('floppy.auth.session.v1')).fullAccess, true);
+
+  // Real refusals keep their own reason instead of the password dead end.
+  await assert.rejects(() => transport.request('/api/v1/admin/users/'), error => error.message === 'Superuser access is required.');
+  await assert.rejects(() => transport.request('/api/v1/providers/'), error => {
+    assert.notEqual(error.message, PASSWORD_SIGN_IN_REQUIRED);
+    return error.code === AUTH_ERROR_CODES.FORBIDDEN;
+  });
+
+  // A refresh that comes back without the marker (the server turned the
+  // feature off) returns the session to the scoped explanation.
+  refreshScope = 'user:read';
+  assert.deepEqual(await transport.request('/api/v1/user/token/'), { token: 'x' });
+  assert.equal(JSON.parse(storage.values.get('floppy.auth.session.v1')).fullAccess, false);
+  await assert.rejects(() => transport.request('/api/v1/providers/'), error => error.message === PASSWORD_SIGN_IN_REQUIRED);
+});
+
+test('a registered client never records full access, whatever scope it is sent', async () => {
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/oauth/token'), respond: () => response({ body: { access_token: 't', refresh_token: 'r', scope: FULL_ACCOUNT_SCOPE } }) },
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: {} }) },
+  ]);
+  const storage = createStorage();
+  const transport = createAuthTransport({ storage, fetchImpl });
+  await transport.pollDeviceSignIn({ serverUrl: 'https://floppy.test', clientId: 'flp_oauth_other', deviceCode: 'd', sleep: async () => {} });
+  assert.equal(JSON.parse(storage.values.get('floppy.auth.session.v1')).fullAccess, undefined);
+});
+
+test('device sign-in surfaces denial and expiry', async () => {
+  const deny = createFetch([
+    { match: url => url.endsWith('/oauth/token'), respond: () => response({ status: 400, body: { error: 'access_denied' } }) },
+  ]);
+  const transport = createAuthTransport({ storage: createStorage(), fetchImpl: deny.fetchImpl });
+  await assert.rejects(
+    transport.pollDeviceSignIn({ serverUrl: 'https://floppy.test', clientId: 'c', deviceCode: 'd', sleep: async () => {} }),
+    error => error.code === AUTH_ERROR_CODES.FORBIDDEN,
+  );
+  const expire = createFetch([
+    { match: url => url.endsWith('/oauth/token'), respond: () => response({ status: 400, body: { error: 'expired_token' } }) },
+  ]);
+  const second = createAuthTransport({ storage: createStorage(), fetchImpl: expire.fetchImpl });
+  await assert.rejects(
+    second.pollDeviceSignIn({ serverUrl: 'https://floppy.test', clientId: 'c', deviceCode: 'd', sleep: async () => {} }),
+    error => error.code === AUTH_ERROR_CODES.EXPIRED,
+  );
+});
+
+test('an expired access token is refreshed once with the rotated refresh token', async () => {
+  const storage = createStorage();
+  storage.values.set('floppy.auth.session.v1', JSON.stringify({
+    version: 1, serverUrl: 'https://floppy.test', authType: 'token', token: 'old', refreshToken: 'ref-old', clientId: 'c1', user: null,
+  }));
+  let refreshes = 0;
+  const { fetchImpl } = createFetch([
+    {
+      match: url => url.endsWith('/oauth/token'),
+      respond: () => {
+        refreshes += 1;
+        return response({ body: { access_token: 'new', refresh_token: 'ref-new' } });
+      },
+    },
+    { match: url => url.endsWith('/api/v1/home/'), respond: (url, o) => (o.headers.Authorization === 'Bearer new' ? response({ body: { ok: 1 } }) : response({ status: 401, body: { detail: 'Token expired' } })) },
+  ]);
+  const transport = createAuthTransport({ storage, fetchImpl });
+  await transport.restore();
+  assert.deepEqual(await transport.request('/api/v1/home/'), { ok: 1 });
+  assert.equal(refreshes, 1);
+  assert.equal(JSON.parse(storage.values.get('floppy.auth.session.v1')).refreshToken, 'ref-new');
+});
+
+test('a scope refusal on an app token explains how to reach the screen', async () => {
+  const denied = { detail: 'You do not have permission to perform this action.' };
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: { media_types: {} } }) },
+    { match: url => url.endsWith('/api/v1/providers/'), respond: () => response({ status: 403, body: denied }) },
+    { match: url => url.endsWith('/api/v1/lists/7/'), respond: () => response({ status: 403, body: { detail: 'This list is read-only.' } }) },
+  ]);
+  const auth = createAuthTransport({ storage: createStorage(), fetchImpl });
+  await auth.signInWithToken({ serverUrl: 'https://floppy.example', token: 'secret-token' });
+
+  await assert.rejects(() => auth.request('/api/v1/providers/'), error => {
+    assert.equal(error.code, AUTH_ERROR_CODES.FORBIDDEN);
+    assert.equal(error.message, PASSWORD_SIGN_IN_REQUIRED);
+    return true;
+  });
+  await assert.rejects(() => auth.request('/api/v1/lists/7/'), error => error.message === 'This list is read-only.');
+  assert.equal(auth.getState().status, 'authenticated');
 });

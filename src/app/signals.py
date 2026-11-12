@@ -8,6 +8,7 @@ from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
@@ -24,6 +25,7 @@ from django_celery_results.models import TaskResult
 from app import credits as credit_helpers
 from app import history_cache, statistics_cache
 from app.discover import tab_cache as discover_tab_cache
+from app.history_cache_utils import HISTORY_LOGGING_STYLES
 from app.history_entry_builders import flat_anime_episode_watches
 from app.models import (
     TV,
@@ -36,6 +38,7 @@ from app.models import (
     CollectionEntry,
     Comic,
     ComicIssue,
+    DeletedEntry,
     DeletedMedia,
     DiscoverFeedback,
     DiscoverFeedbackType,
@@ -52,12 +55,15 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     PodcastShowTracker,
     Season,
     Sources,
     Status,
+    Video,
     VideoPlay,
 )
+from app.services import podcast_plays
 from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
@@ -77,6 +83,16 @@ def fence_overwrite_tracking_writes(sender, instance, **kwargs):
         and instance._meta.model_name in TRACKING_MODELS
     ):
         guard_instances([instance])
+
+
+@receiver(post_save)
+def refresh_entry_source_suggestions(sender, instance, **kwargs):
+    """Offer a newly typed source in the tracking modal straight away."""
+    if kwargs.get("raw") or not getattr(instance, "entry_source", ""):
+        return
+    from app import entry_sources
+
+    entry_sources.note_saved_source(instance)
 
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
@@ -522,7 +538,7 @@ def _invalidate_history_for_media_change(
         return
 
     invalidate_kwargs = {"force": True} if force else {}
-    history_cache.invalidate_history_days(
+    rebuild_styles = history_cache.invalidate_history_days(
         user_id,
         day_keys=normalized_day_keys,
         logging_styles=logging_styles,
@@ -533,7 +549,7 @@ def _invalidate_history_for_media_change(
     if not prioritized:
         return
 
-    for logging_style in logging_styles or ("sessions", "repeats"):
+    for logging_style in rebuild_styles:
         history_cache.schedule_history_refresh(
             user_id,
             logging_style,
@@ -560,6 +576,11 @@ def _clear_media_runtime_caches(user_id: int, changed_media_type: str) -> None:
         MediaTypes.TV.value,
     ):
         clear_time_left_cache_for_user(user_id)
+
+
+def _history_specs(day_keys):
+    """Invalidate ``day_keys`` in both logging styles (only the user's is rebuilt)."""
+    return [(day_keys, HISTORY_LOGGING_STYLES)]
 
 
 def _handle_media_cache_change(
@@ -739,6 +760,38 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     )
 
 
+@receiver(post_delete, sender=TV)
+@receiver(post_delete, sender=Season)
+@receiver(post_delete, sender=Anime)
+@receiver(post_delete, sender=Movie)
+@receiver(post_delete, sender=Manga)
+@receiver(post_delete, sender=Book)
+@receiver(post_delete, sender=Comic)
+@receiver(post_delete, sender=ComicIssue)
+@receiver(post_delete, sender=Game)
+@receiver(post_delete, sender=BoardGame)
+@receiver(post_delete, sender=Music)
+@receiver(post_delete, sender=Podcast)
+@receiver(post_delete, sender=Video)
+def record_deleted_entry(sender, instance, **kwargs):
+    """Log the deletion for the library change feed (unlike the importer tombstone)."""
+    if kwargs.get("raw") or _ACCOUNT_BEING_DELETED.get():
+        return
+    try:
+        user_id = instance.user_id
+        item = instance.item
+    except ObjectDoesNotExist:  # the owner or item is going away with it
+        return
+    DeletedEntry.objects.update_or_create(
+        user_id=user_id,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
+        season_number=item.season_number,
+        defaults={"deleted_at": timezone.now()},
+    )
+
+
 @receiver(post_save, sender=TV)
 @receiver(post_save, sender=Anime)
 @receiver(post_save, sender=Movie)
@@ -812,7 +865,7 @@ def flush_media_change_side_effects(
     ]
     history_specs = []
     if normalized_history_day_keys:
-        history_specs.append((normalized_history_day_keys, ("sessions", "repeats")))
+        history_specs.extend(_history_specs(normalized_history_day_keys))
 
     _handle_media_cache_change(
         owner.id,
@@ -894,7 +947,7 @@ def _invalidate_episode_history_changes(changes, runtime_user_ids=()):
             user_id,
             MediaTypes.EPISODE.value,
             reason="episode_change",
-            history_specs=[(day_keys, ("sessions", "repeats"))],
+            history_specs=_history_specs(day_keys),
             statistics_day_values=day_keys,
             force_history_days=True,
             clear_runtime_caches=False,
@@ -1110,7 +1163,7 @@ def refresh_history_cache_on_movie_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.MOVIE.value,
         reason="movie_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=_history_specs([day_key] if day_key else []),
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1207,7 +1260,7 @@ def refresh_history_cache_on_music_change(sender, instance, **kwargs):
             user_id,
             MediaTypes.MUSIC.value,
             reason="music_change",
-            history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+            history_specs=_history_specs([day_key] if day_key else []),
             statistics_day_values=[day_key] if day_key else [],
             history_dates_may_have_moved=history_dates_may_have_moved,
         )
@@ -1229,7 +1282,7 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         return
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
-    history_specs = [([day_key] if day_key else [], ("sessions", "repeats"))]
+    history_specs = _history_specs([day_key] if day_key else [])
     update_fields = kwargs.get("update_fields")
     if not day_key and (
         kwargs.get("created")
@@ -1247,6 +1300,61 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    )
+
+
+@receiver(post_save, sender=Podcast)
+def keep_podcast_plays_in_step(sender, instance, created, **kwargs):
+    """Make a direct save of a podcast tracker move or create its play.
+
+    The web form, importers and webhooks write the tracker. A play is a
+    listen, so the tracker's dates and status are carried onto the play that
+    describes it. Writes made by the play service itself are skipped.
+    """
+    if kwargs.get("raw") or podcast_plays.in_service_write():
+        return
+    previous_end_date = None if created else instance.tracker.previous("end_date")
+    podcast_plays.apply_tracker_edit(instance, previous_end_date)
+
+
+@receiver(pre_save, sender=PodcastPlay)
+def remember_podcast_play_end_date(sender, instance, **kwargs):
+    """Keep the persisted end date so a moved play also refreshes its old day."""
+    if kwargs.get("raw") or not instance.pk:
+        return
+    instance._previous_end_date = (
+        sender.objects.filter(pk=instance.pk).values_list("end_date", flat=True).first()
+    )
+
+
+@receiver([post_save, post_delete], sender=PodcastPlay)
+def refresh_history_cache_on_podcast_play_change(sender, instance, **kwargs):
+    """Refresh the History and Statistics days a podcast listen lands on.
+
+    The tracker's own save only covers its newest play, so a change to an
+    older play needs its days refreshed here.
+    """
+    if kwargs.get("raw"):
+        return
+    user_id = getattr(instance.podcast, "user_id", None)
+    day_keys = {
+        history_cache.history_day_key(value)
+        for value in (
+            instance.end_date,
+            instance.__dict__.pop("_previous_end_date", None),
+        )
+        if value
+    }
+    day_keys.discard(None)
+    if not day_keys:
+        return
+    ordered = sorted(day_keys)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.PODCAST.value,
+        reason="podcast_play_change",
+        history_specs=_history_specs(ordered),
+        statistics_day_values=ordered,
     )
 
 
@@ -1268,7 +1376,7 @@ def refresh_history_cache_on_book_listening_session_change(
         user_id,
         MediaTypes.BOOK.value,
         reason="book_listening_session_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=_history_specs([day_key] if day_key else []),
         statistics_day_values=[day_key] if day_key else [],
     )
 
@@ -1283,7 +1391,7 @@ def refresh_history_cache_on_video_play_change(sender, instance, **kwargs):
         instance.video.user_id,
         MediaTypes.VIDEO.value,
         reason="video_play_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=_history_specs([day_key] if day_key else []),
         statistics_day_values=[day_key] if day_key else [],
     )
 
@@ -1392,7 +1500,7 @@ def refresh_statistics_cache_on_anime_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.ANIME.value,
         reason="anime_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=history_dates_may_have_moved,
     )
@@ -1440,7 +1548,7 @@ def refresh_statistics_cache_on_manga_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.MANGA.value,
         reason="manga_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1467,7 +1575,7 @@ def refresh_statistics_cache_on_book_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.BOOK.value,
         reason="book_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1489,7 +1597,7 @@ def refresh_statistics_cache_on_comic_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.COMIC.value,
         reason="comic_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )

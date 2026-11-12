@@ -2,21 +2,22 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, floating }) {
   const body = scroll
-    ? <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-    : <View style={styles.content}>{children}</View>;
+    ? <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+    : <View style={[styles.content, contentStyle]}>{children}</View>;
   return <View style={styles.screen}>
-    {chrome ? <View style={styles.header}>
+    {chrome && (title || subtitle || onBack) ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>
-        <Text style={styles.backText}>Back</Text>
+        <Text style={[styles.backText, { color: palette.accent }]}>Back</Text>
       </Pressable> : null}
-      <View style={styles.heading}>
-        <Text role="heading" aria-level={1} style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-      </View>
+      {title || subtitle ? <View style={styles.heading}>
+        {title ? <Text role="heading" aria-level={1} style={[styles.title, { color: palette.text }]}>{title}</Text> : null}
+        {subtitle ? <Text style={[styles.subtitle, { color: palette.textMuted }]}>{subtitle}</Text> : null}
+      </View> : null}
     </View> : null}
     {body}
+    {floating || null}
   </View>;
 }
 
@@ -36,8 +37,8 @@ const styles = StyleSheet.create({
 
 export function Section({ title, copy, children }) {
   return <View style={styles.section}>
-    <Text style={styles.sectionTitle}>{title}</Text>
-    {copy ? <Text style={styles.sectionCopy}>{copy}</Text> : null}
+    <Text style={[styles.sectionTitle, { color: palette.text }]}>{title}</Text>
+    {copy ? <Text style={[styles.sectionCopy, { color: palette.textMuted }]}>{copy}</Text> : null}
     {children}
   </View>;
 }

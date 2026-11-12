@@ -14,10 +14,11 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 import app.providers.tmdb
-from app import live_playback
+from app import checkin, checkin_session, live_playback
 from app.helpers import build_provider_ids
 from app.models import (
     Item,
@@ -34,8 +35,10 @@ from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import has_full_account_access
 
 from .authentication import APIKeyAuthentication, BearerAuthentication
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -736,9 +739,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=True,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -840,9 +842,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=False,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -850,10 +851,21 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # A position is bucket-agnostic, but the same provider media can have
+        # an Item row per library bucket and a check-in may have saved against
+        # any of them, so clear every one or the delete can succeed and leave
+        # the position behind (#1873).
+        same_media = Item.objects.filter(
+            source=item.source,
+            media_id=item.media_id,
+            media_type=item.media_type,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+        )
         with state_transaction(request.user.pk):
             PlaybackProgress.objects.filter(
                 user=request.user,
-                item=item,
+                item__in=same_media,
             ).delete()
         return Response(status=HTTP.NO_CONTENT)
 
@@ -973,3 +985,151 @@ class NowPlayingView(drf_views.APIView):
         if payload is None:
             return Response({"active": False}, status=HTTP.OK)
         return Response(payload, status=HTTP.OK)
+
+
+class FirstPartyCredential(BasePermission):
+    """A browser session or the Floppy app's own full-access Bearer token.
+
+    Playback controls are user actions, not a capability for integration
+    tokens: scoped tokens and the legacy account key are refused.
+    """
+
+    def has_permission(self, request, view):
+        """Allow a session login or a first-party full-account token."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if isinstance(request.successful_authenticator, SessionAuthentication):
+            return True
+        return has_full_account_access(request.auth)
+
+
+class HomePlaybackCardsView(drf_views.APIView):
+    """Home playback cards and their native check-in controls."""
+
+    # A session (CSRF enforced by SessionAuthentication) or the built-in
+    # app's Bearer device token; see FirstPartyCredential.
+    authentication_classes = (BearerAuthentication, SessionAuthentication)
+    permission_classes = (IsAuthenticated, FirstPartyCredential)
+
+    @extend_schema(
+        description="Return the signed-in user's active Home playback cards.",
+        responses={200: {"type": "object", "properties": {
+            "cards": {"type": "array", "items": {"type": "object"}},
+        }}},
+    )
+    def get(self, request):
+        """Project all active slots without returning check-in tokens."""
+        cards = []
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            card = live_playback.build_home_playback_card(request.user, slot=slot)
+            if not state or not card:
+                continue
+            source = state.get("source") or Sources.TMDB.value
+            media_type = state.get("media_type")
+            media_id = state.get("media_id")
+            identity = {
+                "source": source,
+                "media_type": media_type,
+                "media_id": str(media_id),
+            }
+            cards.append({
+                "id": f"{source}-{media_type}-{media_id}",
+                **identity,
+                "title": card["title"],
+                "subtitle": card["subtitle"],
+                "episode_code": card["episode_code"],
+                "episode_title": card["episode_title"],
+                "image": card["image"],
+                "status": card["status"],
+                "stale_after_seconds": (
+                    live_playback.PLAYBACK_PAUSE_STALE_SECONDS
+                    if card["status"] in (
+                        live_playback.PLAYBACK_STATUS_PAUSED,
+                        live_playback.PLAYBACK_STATUS_STOPPED,
+                    )
+                    else live_playback.PLAYBACK_HARD_STALE_SECONDS
+                ),
+                "url": card["details_url"],
+                "progress_percent": card["progress_percent"],
+                "offset_seconds": card["offset_seconds"],
+                "duration_seconds": card["duration_seconds"],
+                "updated_at": datetime.fromtimestamp(
+                    card["updated_at_ts"], tz=UTC,
+                ).isoformat(),
+                "actions": (
+                    ["pause", "finish"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "pause"
+                    else ["stop", "cancel"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "stop"
+                    else []
+                ),
+            })
+        return Response({"cards": cards}, status=HTTP.OK)
+
+    @extend_schema(
+        description=(
+            "Stop or cancel a current Home check-in. The server resolves the "
+            "check-in from the supplied card identity; no check-in token is exposed."
+        ),
+        request={
+            "application/json": {
+                "type": "object",
+                "required": ["source", "media_type", "media_id", "action"],
+                "properties": {
+                    "source": {"type": "string"},
+                    "media_type": {"type": "string"},
+                    "media_id": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["pause", "finish", "stop", "cancel"],
+                    },
+                },
+            },
+        },
+        responses={204: None, 400: _DETAIL_SCHEMA, 502: _DETAIL_SCHEMA},
+    )
+    def post(self, request):
+        """Run a current card action after resolving its server-owned control."""
+        source = request.data.get("source")
+        media_type = request.data.get("media_type")
+        media_id = str(request.data.get("media_id", ""))
+        action = request.data.get("action")
+        if not all((source, media_type, media_id)) or action not in (
+            "pause", "finish", "stop", "cancel",
+        ):
+            return Response({"detail": "Invalid playback action."}, status=HTTP.BAD_REQUEST)
+
+        control = None
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            if not state or (
+                (state.get("source") or Sources.TMDB.value) != source
+                or state.get("media_type") != media_type
+                or str(state.get("media_id")) != media_id
+            ):
+                continue
+            control = checkin.card_control(request.user.id, state)
+            break
+        if control is None:
+            return Response({"detail": "This check-in is no longer active."}, status=HTTP.BAD_REQUEST)
+
+        try:
+            if action == "stop" and control["action"] == "stop":
+                checkin_session.stop(request.user, source, media_type, media_id)
+            elif action == "cancel" and control["action"] == "stop":
+                checkin_session.cancel(request.user, source, media_type, media_id)
+            elif action == "pause" and control["action"] == "pause":
+                checkin.pause(request.user, media_type, media_id)
+            elif action == "finish" and control["action"] == "pause":
+                checkin.finish(request.user, media_type, media_id)
+            else:
+                return Response({"detail": "Unsupported check-in action."}, status=HTTP.BAD_REQUEST)
+        except checkin.CheckInError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
+        except Exception:
+            logger.exception("Native playback action failed")
+            return Response({"detail": "Playback action failed."}, status=HTTP.BAD_GATEWAY)
+        return Response(status=HTTP.NO_CONTENT)

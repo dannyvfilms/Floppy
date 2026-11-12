@@ -697,6 +697,34 @@ class MediaEpisodeTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         check_consumption_structure(self, response.json())
 
+    def test_episode_lookup_failure_returns_generic_detail(self):
+        """A failed entry lookup answers with the fixed detail on each method."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        season_item = self.items_by_type[MediaTypes.SEASON.value][0]
+        episode_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        args = (
+            MediaTypes.TV.value,
+            tv_item.source,
+            tv_item.media_id,
+            season_item.season_number,
+            episode_item.episode_number,
+            self.episode_medias[0].id,
+        )
+        for method, payload in (("get", None), ("patch", {"notes": "x"}), ("delete", None)):
+            with self.subTest(method=method), patch(
+                "api.views.BasicMedia.objects.filter_media",
+                side_effect=RuntimeError("secret /srv/private/path"),
+            ):
+                response = self.call_api(
+                    method,
+                    "api_media_episode_consumption_entry_detail",
+                    args=args,
+                    payload=payload,
+                    headers=self.auth_headers,
+                )
+                self.assertEqual(response.status_code, 500)
+                self.assertEqual(response.json(), {"detail": "Internal Server Error"})
+
     def test_episode_consumption_entry_detail_delete_removes_history_entry(self):
         """Episode history entry-detail DELETE should remove an existing row."""
         tv_item = self.items_by_type[MediaTypes.TV.value][0]

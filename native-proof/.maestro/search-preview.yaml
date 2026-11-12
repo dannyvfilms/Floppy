@@ -1,0 +1,9 @@
+# Opens the no-auth search preview in a native-preview build and captures it.
+# Same flow runs on iOS Simulator and Android Emulator; screenshots land in
+# the working directory (or the Maestro/EAS run artifacts).
+appId: app.floppy.nativeproof
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Search preview: all"
+- takeScreenshot: search-preview-all

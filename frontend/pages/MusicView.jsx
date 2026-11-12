@@ -20,6 +20,7 @@ import { MusicRelationCard } from '../ui/MusicRelationCard';
 import { ProgressBar } from '../ui/ProgressBar';
 import { RatingChip } from '../ui/RatingChip';
 import { RatingStars } from '../ui/RatingStars';
+import { actionIcons } from '../ui/actionIcons';
 
 const palette = {
   background: '#18181b',
@@ -345,17 +346,17 @@ function MusicRatingPicker({ value, label, scaleMax, palette: colors, onSelect }
 
 function trackActions() {
   return actionGroup('Track actions', [
-    { kind: 'action', key: 'listen', title: 'Add listen', glyph: '▶', tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Track notes', glyph: '✎', tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', glyph: '◷', tone: 'amber' },
+    { kind: 'action', key: 'listen', title: 'Add listen', icon: actionIcons.listAdd, tone: 'indigo' },
+    { kind: 'action', key: 'notes', title: 'Track notes', icon: actionIcons.edit, tone: 'surface' },
+    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
   ]);
 }
 
 function episodeActions() {
   return actionGroup('Episode actions', [
-    { kind: 'action', key: 'play', title: 'Add play', glyph: '▶', tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Episode notes', glyph: '✎', tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', glyph: '◷', tone: 'amber' },
+    { kind: 'action', key: 'play', title: 'Add play', icon: actionIcons.listAdd, tone: 'indigo' },
+    { kind: 'action', key: 'notes', title: 'Episode notes', icon: actionIcons.edit, tone: 'surface' },
+    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
   ]);
 }
 

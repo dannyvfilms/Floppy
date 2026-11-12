@@ -191,6 +191,7 @@ def _attach_react_card(ctx):
         "labels": {
             "altTitle": str(_("Show alternative title")),
             "nextEpisode": str(_("Jump to next episode")),
+            "nextEpisodeCompact": str(_("Next")),
             "noStatus": str(_("No Status")),
         },
     }

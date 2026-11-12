@@ -29,7 +29,7 @@ Two things this section is careful about:
       </h3>
       <p class="text-xs text-[var(--color-warning-text)] opacity-80 mb-3">
         Both sides changed while they were out of contact. Sync is paused for
-        these items only — everything else keeps flowing.
+        these items only. Everything else keeps flowing.
       </p>
       <ul class="space-y-2">
         {% for conflict in sync_conflicts %}
@@ -165,7 +165,7 @@ Two things this section is careful about:
                 {% if capability.unavailable %}
                   <span class="text-[var(--color-warning-text)]">Unavailable</span>
                   <span class="text-[var(--color-text-muted)]">{{ capability.label }}</span>
-                  <span class="text-[var(--color-text-muted)]">— not verified for this provider yet</span>
+                  <span class="text-[var(--color-text-muted)]">(not verified for this provider yet)</span>
                 {% elif capability.approved %}
                   <span style="color: var(--color-status-clean)">On</span>
                   <span class="text-[var(--color-text-secondary)]">{{ capability.label }}</span>

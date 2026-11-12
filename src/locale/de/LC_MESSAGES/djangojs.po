@@ -641,56 +641,56 @@ msgid "Colorful"
 msgstr "Bunt"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:7
-msgid "System default — Aug 12, 2025 / 12 Aug 2025"
-msgstr "Systemstandard — 12. Aug. 2025"
+msgid "System default: Aug 12, 2025 / 12 Aug 2025"
+msgstr "Systemstandard: 12. Aug. 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:8
-msgid "ISO 8601 — 2025-08-12"
-msgstr "ISO 8601 — 2025-08-12"
+msgid "ISO 8601: 2025-08-12"
+msgstr "ISO 8601: 2025-08-12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:9
-msgid "Month D, YYYY — Aug 12, 2025"
-msgstr "Monat T, JJJJ — Aug 12, 2025"
+msgid "Month D, YYYY: Aug 12, 2025"
+msgstr "Monat T, JJJJ: Aug 12, 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:10
-msgid "D Mon YYYY — 12 Aug 2025"
-msgstr "T Mon JJJJ — 12 Aug 2025"
+msgid "D Mon YYYY: 12 Aug 2025"
+msgstr "T Mon JJJJ: 12 Aug 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:11
-msgid "M/D/YYYY — 08/12/2025"
-msgstr "M/T/JJJJ — 08/12/2025"
+msgid "M/D/YYYY: 08/12/2025"
+msgstr "M/T/JJJJ: 08/12/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:12
-msgid "D/M/YYYY — 12/08/2025"
-msgstr "T/M/JJJJ — 12/08/2025"
+msgid "D/M/YYYY: 12/08/2025"
+msgstr "T/M/JJJJ: 12/08/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:13
-msgid "DD.MM.YYYY — 12.08.2025"
-msgstr "TT.MM.JJJJ — 12.08.2025"
+msgid "DD.MM.YYYY: 12.08.2025"
+msgstr "TT.MM.JJJJ: 12.08.2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:14
-msgid "YYYY/MM/DD — 2025/08/12"
-msgstr "JJJJ/MM/TT — 2025/08/12"
+msgid "YYYY/MM/DD: 2025/08/12"
+msgstr "JJJJ/MM/TT: 2025/08/12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:15
-msgid "System default — 6:45 PM / 18:45"
-msgstr "Systemstandard — 18:45"
+msgid "System default: 6:45 PM / 18:45"
+msgstr "Systemstandard: 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:16
-msgid "12-hour (h:mm AM/PM) — 6:45 PM"
-msgstr "12 Stunden (h:mm AM/PM) — 6:45 PM"
+msgid "12-hour (h:mm AM/PM): 6:45 PM"
+msgstr "12 Stunden (h:mm AM/PM): 6:45 PM"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:17
-msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
-msgstr "12 Stunden, führende Null (hh:mm AM/PM) — 06:45 PM"
+msgid "12-hour, leading zero (hh:mm AM/PM): 06:45 PM"
+msgstr "12 Stunden, führende Null (hh:mm AM/PM): 06:45 PM"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:18
-msgid "24-hour (HH:mm) — 18:45"
-msgstr "24 Stunden (HH:mm) — 18:45"
+msgid "24-hour (HH:mm): 18:45"
+msgstr "24 Stunden (HH:mm): 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:19
-msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
-msgstr "24 Stunden mit Sekunden (HH:mm:ss) — 18:45:00"
+msgid "24-hour with seconds (HH:mm:ss): 18:45:00"
+msgstr "24 Stunden mit Sekunden (HH:mm:ss): 18:45:00"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:20
 msgid "Comfortable (2 columns)"
@@ -766,14 +766,12 @@ msgid "Both"
 msgstr "Beide"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:38
-msgid "Sessions — new entry per play; exact history"
-msgstr "Sitzungen — neuer Eintrag je Spielsitzung; genauer Verlauf"
+msgid "Sessions: new entry per play; exact history"
+msgstr "Sitzungen: neuer Eintrag je Spielsitzung; genauer Verlauf"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:39
-msgid "Repeats — update one entry; spreads time across range"
-msgstr ""
-"Wiederholungen — einen Eintrag aktualisieren; Zeit über den Zeitraum "
-"verteilen"
+msgid "Repeats: update one entry; spreads time across range"
+msgstr "Wiederholungen: einen Eintrag aktualisieren; Zeit über den Zeitraum verteilen"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:40
 msgid "Pages/Issues/Chapters"

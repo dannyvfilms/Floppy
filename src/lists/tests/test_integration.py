@@ -107,6 +107,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.context = self.browser.new_context()
         self.page = self.context.new_page()
+
+    def login(self):
+        """Sign in after test fixtures are ready for the live server."""
         self.page.goto(f"{self.live_server_url}/")
         self.page.get_by_placeholder("Enter your username").fill(
             self.credentials["username"],
@@ -128,10 +131,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         lists modal flow, not the overlay's hit-testing, so address the button
         directly and keep the assertions below meaningful.
         """
-        # The shared React card replaces the server overlay once it mounts.
-        expect(
-            self.page.locator('[data-media-card-root][data-react-mounted="true"]').first,
-        ).to_be_attached()
+        # Search-result cards are owned by the search-results island rather
+        # than each having a standalone media-card mount. Wait for the action
+        # overlay itself, which is the user-visible interaction under test.
+        expect(self.page.locator(".media-card-overlay").first).to_be_attached()
         button = (
             self.page.locator(".media-card-overlay")
             .first.locator(".relative > button:nth-child(2)")
@@ -152,16 +155,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(locator).not_to_have_class(re.compile(r"\bhtmx-(swapping|settling)\b"))
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Run a global search through the shared React search action.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The universal search control replaces the legacy form on mount. Use
+        its accessible submit button rather than requiring an old form node.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator("[data-global-search-root]")
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     @classmethod
     def tearDownClass(cls):
@@ -177,8 +178,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        self.login()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
@@ -187,6 +191,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def _open_lists_from_sidebar(self):
         """Navigate through Explore unless Lists is already visible."""
+        # The server fallback shows Lists until the sidebar mounts, which may file it under Explore.
+        self.page.locator('[data-sidebar-root][data-react-mounted="true"]').first.wait_for(state="attached")
         link = self.page.get_by_role("link", name="Lists", exact=True)
         if not link.is_visible():
             self.page.get_by_role("button", name="Explore").click()
@@ -194,6 +200,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_flow(self):
         """Test the flow of adding an item to a list and editing the list."""
+        self.login()
         # Create list
         self._open_lists_from_sidebar()
         self.page.get_by_role("button", name="New List").click()
@@ -204,8 +211,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
 
         # Add item to list
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists")
@@ -219,8 +228,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
         self.page.get_by_role("button", name="Options for test", exact=True).click()
-        self.page.get_by_role("button", name="Settings", exact=True).click()
-        expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
+        # The sidebar also has a Settings button; the list menu is local.
+        self.page.locator("#lists-grid").get_by_role("button", name="Settings", exact=True).click()
+        # The edit form is an HTMX dialog rather than a child of the grid.
+        expect(self.page.get_by_role("heading", name="Edit List", exact=True)).to_be_visible()
         # The id embeds the list's primary key, which depends on which tests ran
         # before in the same database; find the field by what it holds instead.
         name_field = self.page.locator('input[name="name"][value="test"]')
@@ -237,22 +248,18 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             title="Perfect Blue",
             image=PERFECT_BLUE_SEARCH_RESULT["image"],
         )
-
         viewports = (
             {"width": 1280, "height": 800},
             {"width": 390, "height": 844},
         )
-        # The live server shares the test's one in-memory SQLite connection, so
-        # every write happens before any page opens; a write from this thread
-        # while a page is requesting raised "database table is locked".
         custom_lists = []
         for index in range(len(viewports)):
             custom_list = CustomList.objects.create(
-                name=f"count-test-{index}",
-                owner=self.user,
+                name=f"count-test-{index}", owner=self.user,
             )
             CustomListItem.objects.create(custom_list=custom_list, item=item)
             custom_lists.append(custom_list)
+        self.login()
 
         for index, viewport in enumerate(viewports):
             custom_list = custom_lists[index]
@@ -351,6 +358,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         custom_list = CustomList.objects.create(name="Select test", owner=self.user)
         CustomListItem.objects.create(custom_list=custom_list, item=item)
+        self.login()
         list_url = (
             f"{self.live_server_url}"
             f"{reverse('list_detail', args=[custom_list.public_reference])}"
@@ -364,5 +372,5 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         # The checkbox sits inside the card's link; a click on it used to be
         # cancelled, so it never ticked (the rest of the card still worked).
         expect(checkbox).to_be_checked()
-        expect(self.page.locator(".ui-bulk-count span")).to_have_text("1 item selected")
+        expect(self.page.get_by_text("1 item selected")).to_be_visible()
         self.assertEqual(self.page.url, list_url)

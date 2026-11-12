@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
 import { FormError, FormStatus } from './MediaCardFormControls';
 import { MediaCard } from './MediaCard';

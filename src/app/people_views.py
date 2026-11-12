@@ -79,7 +79,7 @@ def attach_card_media(user, entries, source):
             }
 
 
-def _people_credit_contract(entry, source):
+def _people_credit_contract(entry, source, user):
     """Shape one filmography entry for the shared native credit card."""
     from django.urls import reverse
     from django.utils.text import slugify
@@ -108,6 +108,24 @@ def _people_credit_contract(entry, source):
         or entry.get("department")
         or ""
     )
+    from app.card_surfaces import card_context
+    from app.icon_specs import file_icon
+
+    card_ctx = card_context(
+        {"user": user},
+        "credit",
+        {"item": entry.get("card_item"), "media": entry.get("media"),
+         "title": title, "card_media_type": media_type, "credit": entry},
+    )
+    card = card_ctx["react_props"]["model"]
+    card["hoverMetadata"] = card_ctx["card_display"] != "always"
+    status_icons = {
+        "Completed": "completed", "In progress": "in-progress", "Paused": "paused",
+        "Planning": "planning", "Dropped": "dropped",
+    }
+    chip = card.get("statusChip") or {}
+    if chip.get("kind") == "status" and chip.get("status") in status_icons:
+        chip["icon"] = file_icon(f"states/{status_icons[chip['status']]}")
     return {
         "id": f"{media_type}:{media_id}",
         "title": title,
@@ -122,6 +140,31 @@ def _people_credit_contract(entry, source):
         "watched": bool(entry.get("is_watched")),
         "watchedRuntimeLabel": entry.get("watched_person_runtime_display") or "",
         "voteAverage": entry.get("vote_average"),
+        "card": card,
+    }
+
+
+def _people_filters_contract(context):
+    """Return the filmography toolbar state and options (what the web toolbar shows)."""
+    filter_data = context.get("filter_data") or {}
+    return {
+        "sort": context.get("current_sort"),
+        "direction": context.get("current_direction"),
+        "department": context.get("current_department") or "",
+        "year": context.get("current_year") or "",
+        "genre": context.get("current_genre") or "",
+        "rating": context.get("current_rating") or "all",
+        "collection": context.get("current_collection") or "all",
+        "sortChoices": [
+            {"value": str(value), "label": str(label)}
+            for value, label in context.get("sort_choices") or []
+        ],
+        "departments": [str(value) for value in filter_data.get("departments") or []],
+        "years": [
+            {"value": str(year["value"]), "label": str(year["label"])}
+            for year in filter_data.get("years") or []
+        ],
+        "genres": [str(value) for value in filter_data.get("genres") or []],
     }
 
 
@@ -143,12 +186,13 @@ def _people_person_contract(context):
         "source": context.get("source"),
         "personId": str(person.get("person_id") or ""),
         "sourceUrl": context.get("source_url") or "",
+        "filters": _people_filters_contract(context),
         "watched": [
-            _people_credit_contract(entry, context.get("source"))
+            _people_credit_contract(entry, context.get("source"), context["user"])
             for entry in context.get("watched_filmography") or []
         ],
         "filmography": [
-            _people_credit_contract(entry, context.get("source"))
+            _people_credit_contract(entry, context.get("source"), context["user"])
             for entry in context.get("filmography") or []
         ],
     }
@@ -169,7 +213,7 @@ def _people_studio_contract(context):
         "studioId": str(getattr(studio, "source_studio_id", "") or ""),
         "sourceUrl": context.get("studio_source_url") or "",
         "titles": [
-            _people_credit_contract(entry, context.get("source"))
+            _people_credit_contract(entry, context.get("source"), context["user"])
             for entry in context.get("credited_titles") or []
         ],
     }

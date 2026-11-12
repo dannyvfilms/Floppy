@@ -67,9 +67,9 @@ function Adapter({ props }) {
   const palette = usePalette();
   const [busy, setBusy] = useState(null);
 
-  function post(control) {
+  function post(control, key) {
     if (!control?.url || !window.htmx) return;
-    setBusy(control.action);
+    setBusy(key);
     window.htmx.ajax('POST', control.url, {
       target: '#active-playback-container',
       swap: 'innerHTML',
@@ -79,7 +79,7 @@ function Adapter({ props }) {
         checkin_token: control.token,
       },
     });
-    setTimeout(() => setBusy(current => current === control.action ? null : current), 8000);
+    setTimeout(() => setBusy(current => current === key ? null : current), 8000);
   }
 
   return <PlaybackCard
@@ -87,8 +87,9 @@ function Adapter({ props }) {
     labels={props.labels}
     palette={palette}
     onOpenDetails={url => window.location.assign(url)}
-    onStop={props.control?.stop ? () => post(props.control.stop) : undefined}
-    onCancel={props.control?.cancel ? () => post(props.control.cancel) : undefined}
+    onPause={props.control?.pause ? () => post(props.control.pause, 'pause') : undefined}
+    onStop={props.control?.stop ? () => post(props.control.stop, 'stop') : undefined}
+    onCancel={props.control?.cancel ? () => post(props.control.cancel, 'cancel') : undefined}
     busyAction={busy} />;
 }
 

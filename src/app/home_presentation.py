@@ -96,6 +96,7 @@ def row_presentation(row, user, request=None):
         "mixedMedia": bool(row.get("mixed_media")),
         "videoLandscape": bool(row.get("video_landscape")),
         "pollForCovers": bool(row.get("poll_for_covers")),
+        "oppositeArtwork": row.get("opposite_artwork") or [],
     }
 
 
@@ -130,6 +131,7 @@ def home_labels():
     return {
         "altTitle": str(_("Show alternative title")),
         "nextEpisode": str(_("Jump to next episode")),
+        "nextEpisodeCompact": str(_("Next")),
         "noStatus": str(_("No Status")),
         "scrollLeft": str(_("Scroll left")),
         "scrollRight": str(_("Scroll right")),

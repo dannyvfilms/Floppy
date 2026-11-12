@@ -133,8 +133,46 @@ fi
 # a specific container instance when HOSTNAME/HOST_CONTAINERNAME diverge.
 echo "[entrypoint] Floppy runtime: version=${VERSION:-unknown} commit=${COMMIT_SHA:-unknown} hostname=${HOSTNAME:-unknown} container_name=${HOST_CONTAINERNAME:-floppy}" >&2
 
+# Hold the public port with a fast 503 while the database is prepared. The
+# snapshot and migrations below can take minutes on a release that migrates, and
+# Nginx does not exist until they finish, so a proxy in front would otherwise
+# time out (Cloudflare 522) instead of getting an answer it can retry. Only the
+# packaged launcher supplies the port; a direct entrypoint run skips this.
+STARTING_SERVER_PID=
+start_starting_server() {
+    if [ -n "$RUNTIME_SERVER_PORT" ]; then
+        python -m config.startup_server "$RUNTIME_SERVER_PORT" &
+        STARTING_SERVER_PID=$!
+    fi
+}
+# Release the port for the recovery page or Nginx. Waits so the socket is closed
+# before the next listener binds.
+stop_starting_server() {
+    if [ -n "$STARTING_SERVER_PID" ]; then
+        kill "$STARTING_SERVER_PID" 2>/dev/null || :
+        wait "$STARTING_SERVER_PID" 2>/dev/null || :
+        STARTING_SERVER_PID=
+    fi
+}
+start_starting_server
+
 SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
+    SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        ''|*[!0-9]*)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be a positive whole number of seconds; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        *[1-9]*) ;;
+        *)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be greater than zero; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
     DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
     DB_PARENT=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).parent)' "$DB_FILE")
@@ -146,12 +184,32 @@ if [ -z "$DB_HOST" ]; then
         exit 1
     fi
 
+    run_sqlite_admission() {
+        admission_attempt=1
+        while :; do
+            echo "[entrypoint] Checking SQLite startup admission for ${DB_FILE} (${SQLITE_ADMISSION_TIMEOUT}s deadline; attempt ${admission_attempt}/2)" >&2
+            integrity_status=0
+            timeout -k 5 "$SQLITE_ADMISSION_TIMEOUT" python manage.py sqlite_startup &
+            integrity_pid=$!
+            wait "$integrity_pid" || integrity_status=$?
+            case "$integrity_status" in
+                124|143)
+                    if [ "$admission_attempt" -eq 1 ]; then
+                        echo "[entrypoint] SQLite admission timed out after ${SQLITE_ADMISSION_TIMEOUT}s (exit ${integrity_status}); retrying once." >&2
+                        admission_attempt=2
+                        continue
+                    fi
+                    ;;
+            esac
+            return "$integrity_status"
+        done
+    }
+
     # Admit ordinary restarts using bounded schema/history/incident reads.
     # Pending migrations require explicit snapshot-based preparation. Repairs
     # remain an offline, incident-scoped maintenance action.
     if [ -f "$DB_FILE" ]; then
         while :; do
-            echo "[entrypoint] Checking SQLite startup admission for ${DB_FILE} (30s deadline)" >&2
             integrity_status=0
             integrity_pid=
             # Admission reads only schema/history and incident sidecars. Full
@@ -164,9 +222,7 @@ if [ -z "$DB_HOST" ]; then
                 wait "$integrity_pid" || integrity_status=$?
             fi
             if [ "$integrity_status" -eq 0 ]; then
-                timeout -k 5 30 python manage.py sqlite_startup &
-                integrity_pid=$!
-                wait "$integrity_pid" || integrity_status=$?
+                run_sqlite_admission || integrity_status=$?
             fi
             if [ "$integrity_status" -eq 11 ]; then
                 # Migrations pending and no snapshot: take one now (services are
@@ -181,9 +237,7 @@ if [ -z "$DB_HOST" ]; then
                     integrity_pid=$!
                     wait "$integrity_pid" || integrity_status=$?
                     if [ "$integrity_status" -eq 0 ]; then
-                        timeout -k 5 30 python manage.py sqlite_startup &
-                        integrity_pid=$!
-                        wait "$integrity_pid" || integrity_status=$?
+                        run_sqlite_admission || integrity_status=$?
                     fi
                 fi
             fi
@@ -196,8 +250,8 @@ if [ -z "$DB_HOST" ]; then
                 break
             fi
             case "$integrity_status" in
-                124)
-                    echo "[entrypoint] SQLite admission exceeded 30s; inspect storage/locks. Startup is paused before migrations and services." >&2
+                124|143)
+                    echo "[entrypoint] SQLite admission exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts (last exit ${integrity_status}); inspect storage/locks. Startup is paused before migrations and services." >&2
                     ;;
                 *)
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
@@ -217,6 +271,7 @@ if [ -z "$DB_HOST" ]; then
             # Show the recovery page. It writes a copy beside the database, then
             # serves it. If a choice is submitted, the server exits cleanly so
             # the loop can apply the decision before migrations run.
+            stop_starting_server
             if [ -n "$RUNTIME_SERVER_PORT" ]; then
                 python -m config.sqlite_recovery_server "$DB_FILE" "$RUNTIME_SERVER_PORT" &
             else
@@ -324,7 +379,12 @@ if [ -z "$DB_HOST" ]; then
         echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
         exit 1
     fi
-    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" "$DB_FILE.verification.lock"; do
+    # The sidecars are published by the root-run startup verification and
+    # migration permit steps above, so they are root-owned (and recreated on
+    # every boot) unless repaired here (#1901).
+    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" "$DB_FILE.verification.lock" \
+        "$DB_FILE.verification.json" "$DB_FILE.migration-ready.json" \
+        "$DB_FILE.integrity.status.json" "$DB_FILE.integrity.verified.json"; do
         if { [ -e "$path" ] || [ -L "$path" ]; } && \
            ! timeout 600 chown -h abc:abc -- "$path"; then
             echo "[entrypoint] Cannot set ownership for SQLite file ${path} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
@@ -451,6 +511,7 @@ if [ -d "$LOG_DIR_PATH" ] && [ -w "$LOG_DIR_PATH" ]; then
 fi
 export FLOPPY_SUPERVISORD_LOG
 
+stop_starting_server
 echo "[entrypoint] Starting services" >&2
 SUPERVISOR_CONFIG=/etc/supervisord.conf
 if [ "$RUNNING_AS_ROOT" = false ]; then

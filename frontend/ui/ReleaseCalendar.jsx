@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { Badge } from './Badge';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -137,12 +139,17 @@ export function ReleaseCalendar({
   initialFilters,
   regionUnset = false,
   regionNotice = '',
+  showRegionNotice = false,
+  onOpenPreferences,
   preferencesUrl = '',
   navigation = {},
+  view: initialView = 'grid',
+  viewIcons = {},
   menu,
   labels,
   palette,
   onNavigate,
+  onViewChange,
   onOpenRelease,
   onFiltersChange,
   onMenuAction,
@@ -205,7 +212,7 @@ export function ReleaseCalendar({
     const value = Number(selectedDay);
     return daysInMonth.includes(value) ? value : daysInMonth[0] || 1;
   });
-  const [view] = useState('grid');
+  const [view, setView] = useState(initialView === 'list' ? 'list' : 'grid');
   const [agendaOpen, setAgendaOpen] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -373,7 +380,19 @@ export function ReleaseCalendar({
     }
     if (today) {
       setActiveDay(today.day);
+      setView('grid');
     }
+  }
+
+  function changeView(nextView) {
+    if (nextView === view) {
+      return;
+    }
+    if (onViewChange) {
+      onViewChange(nextView);
+      return;
+    }
+    setView(nextView);
   }
 
   function openRelease(release) {
@@ -454,6 +473,15 @@ export function ReleaseCalendar({
       );
   }
 
+  const todayMonthLabel = today
+    ? new Date(today.year, today.month - 1, 1).toLocaleString(undefined, { month: 'short' }).toUpperCase()
+    : '';
+
+  const listDays = Object.keys(visibleByDay)
+    .map(Number)
+    .filter((day) => (visibleByDay[String(day)] || []).length > 0)
+    .sort((left, right) => left - right);
+
   const tagTypes = mediaTypes
     .filter((item) => item.value !== 'season')
     .map((item) => ({ ...item, group: groupFor(item.value) }))
@@ -462,27 +490,56 @@ export function ReleaseCalendar({
       right.shortLabel || right.label,
     ));
 
-  return <View style={styles.root}>
+  return <View style={[styles.root, view === 'list' && styles.rootList]}>
+    {showRegionNotice && regionUnset && regionNotice ? <View style={styles.regionNotice}>
+      <Text style={styles.regionNoticeText}>{regionNotice}</Text>
+      {onOpenPreferences ? <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={copy.preferences || 'Preferences'}
+        onPress={onOpenPreferences}
+        style={styles.regionNoticeLink}>
+        <Text style={styles.regionNoticeLinkText}>{copy.preferences || 'Preferences'}</Text>
+      </Pressable> : null}
+    </View> : null}
     <View style={styles.toolbar}>
-      <View style={styles.monthNavigation}>
-        <Pressable
+      <View style={styles.toolbarLeading}>
+        <View style={styles.monthNavigation}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy.previousMonth}
+            onPress={() => navigate(navigation.previous)}
+            style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
+            <Text style={styles.navText}>‹</Text>
+          </Pressable>
+          <Text style={styles.monthTitle}>{monthName} {year}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={copy.nextMonth}
+            onPress={() => navigate(navigation.next)}
+            style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
+            <Text style={styles.navText}>›</Text>
+          </Pressable>
+        </View>
+
+        {today && !compact ? <Pressable
           accessibilityRole="button"
-          accessibilityLabel={copy.previousMonth}
-          onPress={() => navigate(navigation.previous)}
-          style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
-          <Text style={styles.navText}>‹</Text>
-        </Pressable>
-        <Text style={styles.monthTitle}>{monthName} {year}</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={copy.nextMonth}
-          onPress={() => navigate(navigation.next)}
-          style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
-          <Text style={styles.navText}>›</Text>
-        </Pressable>
+          accessibilityLabel={menuCopy.today}
+          onPress={goToToday}
+          style={({ pressed }) => [styles.todayChip, pressed && styles.pressed]}>
+          <Text style={styles.todayDay}>{today.day}</Text>
+          <Text style={styles.todayMonth}>{todayMonthLabel}</Text>
+        </Pressable> : null}
       </View>
 
       <View style={styles.toolbarActions}>
+        {today && compact ? <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={menuCopy.today}
+          onPress={goToToday}
+          style={({ pressed }) => [styles.todayChip, pressed && styles.pressed]}>
+          <Text style={styles.todayDay}>{today.day}</Text>
+          <Text style={styles.todayMonth}>{todayMonthLabel}</Text>
+        </Pressable> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${copy.filters}: ${filterSummary()}`}
@@ -497,12 +554,65 @@ export function ReleaseCalendar({
           accessibilityState={{ expanded: menuOpen }}
           onPress={() => setMenuOpen(true)}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-          <Text style={styles.menuGlyph}>⚙</Text>
+          <Icon spec={actionIcons.settings} size={20} color={colors.textSecondary} />
         </Pressable>
+        <View style={styles.viewToggle} accessibilityRole="tablist">
+          {['grid', 'list'].map((item) => <Pressable
+            key={item}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: view === item }}
+            accessibilityLabel={item === 'grid' ? copy.viewMonth : copy.viewList}
+            onPress={() => changeView(item)}
+            style={({ pressed }) => [
+              styles.viewButton,
+              view === item && styles.viewButtonSelected,
+              pressed && styles.pressed,
+            ]}>
+            {viewIcons[item]
+              ? <Icon spec={viewIcons[item]} size={16} color={view === item ? colors.accentText : colors.textSecondary}>
+                {item === 'grid' ? copy.viewMonth : copy.viewList}
+              </Icon>
+              : <Text style={[styles.viewTabText, view === item && styles.viewTabTextSelected]}>
+                {item === 'grid' ? copy.viewMonth : copy.viewList}
+              </Text>}
+          </Pressable>)}
+        </View>
       </View>
     </View>
 
-    <View ref={layoutRef} style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}
+    {view === 'list' ? <View style={styles.listStack}>
+      {listDays.map((day) => {
+        const dayReleases = [...(visibleByDay[String(day)] || [])].sort(compareReleases);
+        const isToday = Boolean(
+          today &&
+          day === today.day &&
+          month === today.month &&
+          year === today.year,
+        );
+        return <View key={day} style={styles.listDayCard}>
+          <View style={[styles.listDayHeader, isToday && styles.listDayHeaderToday]}>
+            <Text style={styles.listDayTitle}>
+              {dayLabels[String(day)]}, {monthName} {day}
+            </Text>
+            {isToday ? <Badge label={copy.today} size="sm" tone="indigo" palette={badgePalette} /> : null}
+          </View>
+          <View style={styles.listDayBody}>
+            {dayReleases.map((release) => <ReleaseRow
+              key={release.id}
+              release={release}
+              copy={copy}
+              colors={colors}
+              styles={styles}
+              badgePalette={badgePalette}
+              showMedia
+              onPress={() => openRelease(release)} />)}
+          </View>
+        </View>;
+      })}
+      {listDays.length === 0 ? <View style={styles.emptyCard}>
+        <Text style={styles.emptyText}>{copy.noFilteredReleases}</Text>
+      </View> : null}
+    </View> : <View ref={layoutRef} style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}
       onLayout={event => setLayoutWidth(event.nativeEvent.layout.width)}>
       <View style={styles.monthCard}>
         <View style={styles.weekHeaderRow}>
@@ -559,13 +669,13 @@ export function ReleaseCalendar({
               {selectedReleases.length} {selectedReleases.length === 1 ? copy.release : copy.releases}
             </Text>
           </View>
-          <Pressable
+          <ModalCloseButton
             accessibilityRole="button"
             accessibilityLabel={copy.closeDay}
             onPress={() => setAgendaOpen(false)}
             style={({ pressed }) => [styles.agendaClose, pressed && styles.pressed]}>
             <Text style={styles.agendaCloseText}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
 
         <ScrollView
@@ -604,7 +714,7 @@ export function ReleaseCalendar({
           </View>)}
         </View>
       </View> : null}
-    </View>
+    </View>}
 
     <Modal
       visible={filterOpen}
@@ -620,13 +730,13 @@ export function ReleaseCalendar({
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{copy.filters}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={copy.close}
               onPress={() => setFilterOpen(false)}
               style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}>
               <Text style={styles.sheetCloseText}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent}>
             <FilterSection title={copy.mediaTypes} styles={styles}>
@@ -691,13 +801,13 @@ export function ReleaseCalendar({
         <View style={styles.menuSheet} accessibilityViewIsModal>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{menuCopy.menu}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={copy.close}
               onPress={() => setMenuOpen(false)}
               style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}>
               <Text style={styles.sheetCloseText}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <View style={styles.menuBody}>
             <MenuRow label={menuCopy.today} onPress={() => menuAction('today')} styles={styles} />
@@ -835,14 +945,17 @@ function ReleaseRow({
       <Text numberOfLines={1} style={styles.artworkPlaceholderText}>{release.title}</Text>
     </View>}
     <View style={styles.releaseBody}>
-      <Text numberOfLines={1} style={styles.releaseTitle}>{release.title}</Text>
-      {release.cardLines.length ? <Text numberOfLines={1} style={styles.releaseLines}>
+      <Text numberOfLines={1} style={styles.releaseTitle}>{showMedia && release.listTitle ? release.listTitle : release.title}</Text>
+      {release.cardLines.length && !showMedia ? <Text numberOfLines={1} style={styles.releaseLines}>
         {release.cardLines.join(' · ')}
       </Text> : null}
       <View style={styles.releaseMeta}>
-        {showMedia ? <Badge label={release.mediaLabel} size="xs" tone="outline" palette={badgePalette} /> : null}
-        <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>
-          {release.subtitle || copy.noDayReleases}
+        {showMedia ? <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>{release.mediaLabel}</Text> : null}
+        {showMedia && release.cardLines.length ? <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>
+          {release.cardLines.join(' · ')}
+        </Text> : null}
+        <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: showMedia ? colors.link : colors.textMuted }]}>
+          {(showMedia && release.listSubtitle) || release.subtitle || copy.noDayReleases}
         </Text>
       </View>
     </View>
@@ -852,12 +965,15 @@ function ReleaseRow({
 function createStyles(colors, compact) {
   return StyleSheet.create({
     root: { gap: 16 },
+    // List view sits in the same padded surface card as the release calendar.
+    rootList: { backgroundColor: colors.surface, borderRadius: 8, padding: 24 },
+    toolbarLeading: { flexDirection: 'row', alignItems: 'center', gap: 16 },
     toolbar: {
-      flexDirection: 'row',
+      flexDirection: compact ? 'column' : 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
+      justifyContent: compact ? 'center' : 'space-between',
+      gap: compact ? 16 : 8,
     },
     monthNavigation: {
       flexDirection: 'row',
@@ -868,8 +984,8 @@ function createStyles(colors, compact) {
       padding: 4,
     },
     navButton: {
-      minWidth: compact ? 28 : 32,
-      minHeight: compact ? 28 : 36,
+      minWidth: 36,
+      minHeight: 36,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 6,
@@ -877,17 +993,18 @@ function createStyles(colors, compact) {
     navText: { color: colors.textSecondary, fontSize: 22, lineHeight: 24 },
     monthTitle: {
       color: colors.text,
-      fontSize: compact ? 14 : 18,
-      lineHeight: compact ? 20 : 24,
+      fontSize: 18,
+      lineHeight: 28,
       fontWeight: '600',
       textAlign: 'center',
-      minWidth: compact ? 0 : 160,
-      paddingHorizontal: compact ? 4 : 16,
+      minWidth: 160,
+      paddingHorizontal: 16,
     },
     toolbarActions: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
+      justifyContent: compact ? 'center' : 'flex-end',
       gap: 8,
     },
     toolbarButton: {
@@ -913,6 +1030,40 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surfaceStrong,
     },
     menuGlyph: { color: colors.textSecondary, fontSize: 16 },
+    todayChip: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 8,
+      backgroundColor: colors.surfaceStrong,
+    },
+    todayDay: { color: colors.text, fontSize: 20, lineHeight: 20, fontWeight: '700' },
+    todayMonth: {
+      color: colors.textSecondary,
+      fontSize: 9,
+      lineHeight: 9,
+      marginTop: 2,
+      letterSpacing: 0.4,
+    },
+    viewToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+      padding: 4,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceStrong,
+    },
+    viewButton: {
+      minWidth: 32,
+      minHeight: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      borderRadius: 6,
+    },
+    // The release calendar fixed the selected view to indigo-600.
+    viewButtonSelected: { backgroundColor: '#4f46e5' },
     pressed: { opacity: 0.72 },
     regionNotice: {
       flexDirection: 'row',
@@ -1129,10 +1280,12 @@ function createStyles(colors, compact) {
       flexWrap: 'wrap',
     },
     releaseSubtitle: { flexShrink: 1, fontSize: 11 },
-    listStack: { gap: 12 },
+    listStack: { gap: 24 },
+    // Day cards match the release list: muted card, gray-600 header (indigo-600
+    // for today), roomy body.
     listDayCard: {
       backgroundColor: colors.surfaceMuted,
-      borderRadius: 10,
+      borderRadius: 8,
       overflow: 'hidden',
     },
     listDayHeader: {
@@ -1140,13 +1293,13 @@ function createStyles(colors, compact) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      backgroundColor: colors.surfaceStrong,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: '#4a5565',
     },
-    listDayHeaderToday: { backgroundColor: colors.accentStrong },
-    listDayTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-    listDayBody: { padding: 10, gap: 6, backgroundColor: colors.surface },
+    listDayHeaderToday: { backgroundColor: '#4f46e5' },
+    listDayTitle: { color: '#f3f4f6', fontSize: 16, lineHeight: 24, fontWeight: '500' },
+    listDayBody: { padding: 16, gap: 12 },
     overlay: {
       flex: 1,
       justifyContent: compact ? 'flex-end' : 'center',
@@ -1161,8 +1314,8 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: compact ? 16 : 12,
+      borderTopRightRadius: compact ? 16 : 12,
       borderBottomLeftRadius: compact ? 0 : 12,
       borderBottomRightRadius: compact ? 0 : 12,
       overflow: 'hidden',
@@ -1173,8 +1326,8 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: compact ? 16 : 12,
+      borderTopRightRadius: compact ? 16 : 12,
       borderBottomLeftRadius: compact ? 0 : 12,
       borderBottomRightRadius: compact ? 0 : 12,
       overflow: 'hidden',

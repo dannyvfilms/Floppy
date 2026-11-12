@@ -1,19 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { Modal } from './Modal';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
 } from 'react-native';
+import { DROPDOWN } from './dropdownMetrics';
 import { Reveal } from './Reveal';
 
 // The signed-in sidebar as shared React Native presentation. The browser
 // adapter supplies links, storage, drag and transport; this file only lays out
-// the logo, media-type groups, pinned lists, onboarding slot and bottom actions.
+// the logo, media-type groups, pinned lists and bottom actions.
 
 const defaultPalette = {
   text: '#fafafa',
@@ -30,6 +31,9 @@ const defaultPalette = {
   overlay: 'rgba(0, 0, 0, 0.5)',
   focusStyle: {},
   radius: 6,
+  navRowHeight: 36,
+  navFontSize: 14,
+  navIconSize: 20,
 };
 
 const defaultLabels = {
@@ -61,6 +65,20 @@ const controlGlyphs = {
   close: '\u00d7',
 };
 
+// Saved views run full width like the main links. Their bullet sits in the icon
+// column, so the text lines up with the media type labels above it.
+const LINK_PADDING = 16;
+const LINK_GAP = 12;
+const BULLET_SIZE = 5;
+
+function Bullet({ palette, color }) {
+  return <View style={{ width: palette.navIconSize, height: palette.navIconSize,
+    alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: BULLET_SIZE, height: BULLET_SIZE, borderRadius: BULLET_SIZE / 2,
+      backgroundColor: color }} />
+  </View>;
+}
+
 const format = (template, name) => template.replace('%(name)s', name);
 
 function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
@@ -76,16 +94,63 @@ function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
   </Text>;
 }
 
-function MenuModal({ open, onClose, children, palette, labels }) {
-  return <Modal transparent visible={open} animationType="fade" onRequestClose={onClose}>
-    <View style={styles.modalRoot}>
+// Where a dropdown sits under its trigger: right edges aligned, flipped above
+// when it would run off the bottom. `anchor` is the trigger's window rectangle.
+const POPOVER_GAP = 4;
+const POPOVER_EDGE = 8;
+const POPOVER_HEIGHT_ESTIMATE = 112;
+
+function popoverPlacement(anchor, windowWidth, windowHeight) {
+  const right = Math.max(POPOVER_EDGE, windowWidth - (anchor.x + anchor.width));
+  const below = anchor.y + anchor.height + POPOVER_GAP;
+  return below + POPOVER_HEIGHT_ESTIMATE > windowHeight - POPOVER_EDGE
+    ? { right, bottom: windowHeight - anchor.y + POPOVER_GAP }
+    : { right, top: below };
+}
+
+// The row's options open as a dropdown under their button, like the preference
+// dropdowns: no scrim, and a tap outside closes it. Without a measured button
+// (no window position available) it falls back to a centred, dimmed menu.
+// Props the platform adapter adds to the menu layer (the web marker for sidebar.css).
+const MenuLayerContext = createContext(null);
+
+function MenuModal({ open, onClose, children, palette, labels, anchor }) {
+  const { width, height } = useWindowDimensions();
+  const dropdown = Boolean(anchor);
+  // The web adapter marks this layer so sidebar.css can lift it above the phone drawer.
+  const webMarker = useContext(MenuLayerContext);
+  return <Modal transparent visible={open} animationType={dropdown ? 'none' : 'fade'} onRequestClose={onClose}>
+    <View {...webMarker} style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
-        onPress={onClose} style={[StyleSheet.absoluteFill, { backgroundColor: palette.overlay }]} />
-      <View accessibilityViewIsModal style={[styles.menu, {
-        backgroundColor: palette.surfaceStrong, borderColor: palette.border,
-      }]}>{children}</View>
+        onPress={onClose}
+        style={[StyleSheet.absoluteFill, dropdown ? null : { backgroundColor: palette.overlay }]} />
+      <View accessibilityViewIsModal style={[styles.menu,
+        dropdown && [styles.popover, popoverPlacement(anchor, width, height)], {
+          backgroundColor: dropdown ? palette.surface : palette.surfaceStrong,
+          borderColor: palette.border,
+        }]}>{children}</View>
     </View>
   </Modal>;
+}
+
+// The ellipsis button of a row. It reports its window rectangle so the menu can open under it.
+function EllipsisButton({ label, expanded, onOpen, palette, icons, renderIcon }) {
+  const ref = useRef(null);
+  const press = () => {
+    const node = ref.current;
+    if (node && typeof node.measureInWindow === 'function') {
+      node.measureInWindow((x, y, width, height) => onOpen({ x, y, width, height }));
+    } else {
+      onOpen(null);
+    }
+  };
+  return <Pressable ref={ref} accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ expanded: Boolean(expanded) }} onPress={press}
+    style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+      pressed && { backgroundColor: palette.hoverDim }]}>
+    <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
+      size={16} color={palette.textMuted} />
+  </Pressable>;
 }
 
 function MenuButton({ label, onPress, palette, danger = false, icon, glyph, renderIcon }) {
@@ -101,16 +166,12 @@ function MenuButton({ label, onPress, palette, danger = false, icon, glyph, rend
 
 function PinMenu({ pinKey, pins, palette, labels, icons, renderIcon }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState(null);
   const pinned = pins.isPinned(pinKey);
   return <View style={styles.action}>
-    <Pressable accessibilityRole="button" accessibilityLabel={labels.navOptions}
-      accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}
-      style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-        pressed && { backgroundColor: palette.hoverDim }]}>
-      <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-        size={16} color={palette.textMuted} />
-    </Pressable>
-    <MenuModal open={open} onClose={() => setOpen(false)} palette={palette} labels={labels}>
+    <EllipsisButton label={labels.navOptions} expanded={open} palette={palette} icons={icons}
+      renderIcon={renderIcon} onOpen={rect => { setAnchor(rect); setOpen(value => !value); }} />
+    <MenuModal open={open} onClose={() => setOpen(false)} anchor={anchor} palette={palette} labels={labels}>
       <MenuButton label={pinned ? labels.unpin : labels.pin} palette={palette}
         onPress={() => { pins.toggle(pinKey); setOpen(false); }} />
     </MenuModal>
@@ -131,7 +192,8 @@ function HoverRow({ active, palette, rowActions = 'always', children, actions, s
     onBlur: () => setFocused(false),
   } : {};
   return <View {...rest} {...hoverProps}
-    style={[styles.row, style, { borderRadius: palette.radius },
+    style={[styles.row, style, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+        borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight, overflow: 'hidden' },
       hovered && !active && { backgroundColor: palette.hoverDim },
       active && { backgroundColor: palette.border }]}>
     {children}
@@ -147,13 +209,13 @@ function LinkRow({ item, palette, labels, renderIcon, onNavigate, rowActions, ac
     <Pressable {...link} accessibilityRole="link"
       accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
       onPress={webLink ? undefined : () => onNavigate?.(item)}
-      style={({ pressed, focused }) => [styles.link,
+      style={({ pressed, focused }) => [styles.link, { minHeight: palette.navRowHeight },
         pressed && !webLink && { backgroundColor: palette.hoverDim },
         focused && palette.focusStyle]}>
-      <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+      <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
         color={item.active ? palette.link : palette.textMuted} />
       <Text numberOfLines={1} style={[styles.linkText,
-        { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+        { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
     </Pressable>
   </HoverRow>;
 }
@@ -166,6 +228,7 @@ function SavedViewGroup({
   const [reordering, setReordering] = useState(false);
   const [views, setViews] = useState(item.views);
   const [menuFor, setMenuFor] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
   const list = useRef(null);
 
   const toggle = () => {
@@ -209,17 +272,18 @@ function SavedViewGroup({
       <Pressable {...(item.platformProps || {})} accessibilityRole="link"
         accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
         onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
-        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+        style={({ focused }) => [styles.link, { minHeight: palette.navRowHeight }, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
           color={item.active ? palette.link : palette.textMuted} />
         <Text numberOfLines={1} style={[styles.linkText,
-          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+          { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
       </Pressable>
     </HoverRow>
     {open ? <View ref={list} style={styles.savedViewList}>
       {views.map(view => <SavedViewRow key={view.id} view={view} reordering={reordering}
         palette={palette} labels={labels} rowActions={rowActions} icons={icons}
-        renderIcon={renderIcon} onNavigate={onNavigate} onMenu={() => setMenuFor(view.id)} />)}
+        renderIcon={renderIcon} onNavigate={onNavigate}
+        onMenu={rect => { setMenuAnchor(rect); setMenuFor(view.id); }} />)}
       {reordering ? <Pressable accessibilityRole="button" accessibilityLabel={labels.done}
         onPress={finish} style={({ pressed }) => [styles.doneButton,
           { borderRadius: palette.radius }, pressed && { backgroundColor: palette.hoverDim }]}>
@@ -228,7 +292,7 @@ function SavedViewGroup({
         <Text style={[styles.doneText, { color: palette.link }]}>{labels.done}</Text>
       </Pressable> : null}
     </View> : null}
-    <MenuModal open={Boolean(menuView)} onClose={() => setMenuFor(null)}
+    <MenuModal open={Boolean(menuView)} onClose={() => setMenuFor(null)} anchor={menuAnchor}
       palette={palette} labels={labels}>
       {menuView ? <React.Fragment>
         <MenuButton label={labels.reorder} palette={palette} icon={icons?.reorder}
@@ -243,15 +307,11 @@ function SavedViewGroup({
 }
 
 function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, renderIcon, onNavigate, onMenu }) {
-  const actions = reordering ? null : <Pressable accessibilityRole="button"
-    accessibilityLabel={format(labels.viewOptions, view.name)}
-    onPress={onMenu} style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-      pressed && { backgroundColor: palette.hoverDim }]}>
-    <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-      size={16} color={palette.textMuted} />
-  </Pressable>;
+  const actions = reordering ? null : <EllipsisButton label={format(labels.viewOptions, view.name)}
+    palette={palette} icons={icons} renderIcon={renderIcon} onOpen={onMenu} />;
   return <HoverRow testID={`saved-view-row-${view.id}`} active={view.current} palette={palette}
-    rowActions={rowActions} actions={actions} style={styles.savedViewRow}>
+    rowActions={rowActions} actions={actions}
+    style={[styles.savedViewRow, { minHeight: palette.navRowHeight }]}>
     {reordering ? <View testID="saved-view-handle" style={styles.dragHandle}>
       <IconSlot spec={icons?.drag} glyph={controlGlyphs.drag} renderIcon={renderIcon}
         size={16} color={palette.textMuted} />
@@ -262,8 +322,9 @@ function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, re
       disabled={reordering}
       onPress={view.platformProps?.href ? undefined : () => onNavigate?.(view)}
       style={({ focused }) => [styles.savedViewLink, focused && palette.focusStyle]}>
+      <Bullet palette={palette} color={view.current ? palette.link : palette.textMuted} />
       <Text numberOfLines={1} style={[styles.savedViewText,
-        { color: view.current ? palette.text : palette.textMuted }]}>{view.name}</Text>
+        { color: view.current ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{view.name}</Text>
     </Pressable>
   </HoverRow>;
 }
@@ -275,6 +336,7 @@ function ListsItem({
   const initial = Boolean(item.open);
   const [open, setOpen] = useState(initial);
   const [menuFor, setMenuFor] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
   const count = useRef(pins.pinnedLists.length);
   const current = pins.pinnedLists.some(entry => entry.url === model.currentUrl);
   const expanded = open || current;
@@ -309,33 +371,29 @@ function ListsItem({
       <Pressable {...(item.platformProps || {})} accessibilityRole="link"
         accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
         onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
-        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+        style={({ focused }) => [styles.link, { minHeight: palette.navRowHeight }, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
           color={item.active ? palette.link : palette.textMuted} />
         <Text numberOfLines={1} style={[styles.linkText,
-          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+          { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
       </Pressable>
     </HoverRow>
     {expanded ? <View style={styles.savedViewList}>
       {pins.pinnedLists.map(entry => <View key={entry.id}
-        style={[styles.savedViewRow, { backgroundColor: 'transparent' }]}>
+        style={[styles.savedViewRow, { backgroundColor: 'transparent', minHeight: palette.navRowHeight }]}>
         <Pressable {...(entry.platformProps || {})} accessibilityRole="link"
           accessibilityLabel={entry.name}
           onPress={entry.platformProps?.href ? undefined : () => onNavigate?.({ ...entry, href: entry.url })}
           style={styles.savedViewLink}>
+          <Bullet palette={palette} color={palette.textMuted} />
           <Text numberOfLines={1} style={[styles.savedViewText,
-            { color: palette.textMuted }]}>{entry.name}</Text>
+            { color: palette.textMuted, fontSize: palette.navFontSize }]}>{entry.name}</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={labels.listOptions}
-          onPress={() => setMenuFor(entry.id)}
-          style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-            pressed && { backgroundColor: palette.hoverDim }]}>
-          <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-            size={16} color={palette.textMuted} />
-        </Pressable>
+        <EllipsisButton label={labels.listOptions} palette={palette} icons={icons} renderIcon={renderIcon}
+          onOpen={rect => { setMenuAnchor(rect); setMenuFor(entry.id); }} />
       </View>)}
     </View> : null}
-    <MenuModal open={Boolean(menuEntry)} onClose={() => setMenuFor(null)}
+    <MenuModal open={Boolean(menuEntry)} onClose={() => setMenuFor(null)} anchor={menuAnchor}
       palette={palette} labels={labels}>
       {menuEntry ? <MenuButton label={labels.unpin} palette={palette}
         onPress={() => { setMenuFor(null); onUnpinList?.(menuEntry.id); }} /> : null}
@@ -347,12 +405,13 @@ function BottomLink({ item, palette, renderIcon, onNavigate }) {
   return <Pressable {...(item.platformProps || {})} accessibilityRole={item.platformProps?.href ? 'link' : 'button'}
     accessibilityLabel={item.label}
     onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-    style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
+    style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+        borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
       (pressed || hovered) && { backgroundColor: palette.hoverDim },
       focused && palette.focusStyle]}>
-    <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+    <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
       color={item.active ? palette.link : palette.textMuted} />
-    <Text style={[styles.linkText, { color: item.active ? palette.text : palette.textMuted }]}>
+    <Text style={[styles.linkText, { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>
       {item.label}
     </Text>
   </Pressable>;
@@ -370,7 +429,7 @@ export function Sidebar({
   onFinishReorder,
   enableSortable,
   onLogout,
-  onboarding,
+  menuLayerProps = null,
   rowActions = 'always',
   showLogo = true,
   labels: labelOverrides,
@@ -379,20 +438,20 @@ export function Sidebar({
 }) {
   const labels = { ...defaultLabels, ...labelOverrides };
   const palette = { ...defaultPalette, ...paletteOverrides };
-  const { width, height } = useWindowDimensions();
-  const compact = width < 1024;
   const [navOpen, setNavOpen] = useState(false);
-  const list = useRef(null);
+  const [rootHeight, setRootHeight] = useState(0);
+  const [bottomHeight, setBottomHeight] = useState(0);
+  const [exploreContentHeight, setExploreContentHeight] = useState(0);
   const hasUnpinned = model.pinKeys.some(key => !pins.isPinned(key));
   const unpinned = model.secondary.filter(item => !pins.isPinned(item.pinKey));
   const pinned = model.secondary.filter(item => pins.isPinned(item.pinKey));
-  const secondaryVisible = navOpen || pinned.length > 0;
+  const secondaryVisible = pinned.length > 0;
 
-  const toggleNav = () => {
-    const next = !navOpen;
-    setNavOpen(next);
-    if (next) setTimeout(() => list.current?.scrollToEnd?.({ animated: false }), 0);
-  };
+  useEffect(() => {
+    if (!hasUnpinned) setNavOpen(false);
+  }, [hasUnpinned]);
+
+  const toggleNav = () => setNavOpen(value => !value);
 
   const renderItem = item => {
     if (item.type === 'group') {
@@ -415,7 +474,11 @@ export function Sidebar({
 
   const logo = model.logo || {};
 
-  return <View style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
+  const overlayTop = showLogo ? 64 : 0;
+  const overlayHeight = Math.max(rootHeight - bottomHeight - overlayTop, 0);
+
+  return <MenuLayerContext.Provider value={menuLayerProps}><View onLayout={event => setRootHeight(event.nativeEvent.layout.height)}
+    style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
     {showLogo ? <View style={[styles.header, { borderBottomColor: palette.border }]}>
       {logo.src
         ? <Image accessible accessibilityLabel={logo.alt || labels.logo}
@@ -423,43 +486,69 @@ export function Sidebar({
           style={logo.mono ? styles.logoMono : styles.logo} />
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
-    <ScrollView ref={list} style={styles.primary} contentContainerStyle={styles.navContent}
-      onContentSizeChange={() => { if (navOpen) list.current?.scrollToEnd?.({ animated: false }); }}>
+    <ScrollView style={styles.primary}
+      aria-hidden={navOpen}
+      accessibilityElementsHidden={navOpen}
+      importantForAccessibility={navOpen ? 'no-hide-descendants' : 'auto'}
+      contentContainerStyle={[styles.navContent, {
+        paddingTop: palette.navContentPaddingTop ?? 16,
+        paddingLeft: palette.navContentPaddingLeft ?? 16,
+        paddingRight: palette.navContentPaddingRight ?? 16,
+      }]}>
       {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
-      {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
-        <Reveal open={navOpen}>
-          <View style={styles.navGroup}>{unpinned.map(renderItem)}</View>
-        </Reveal>
+      <View style={[secondaryVisible && styles.secondary, { borderTopColor: palette.border }]}>
         <View style={styles.navGroup}>{pinned.map(renderItem)}</View>
-      </View> : null}
+      </View>
     </ScrollView>
-    <View>{onboarding}</View>
-    <View style={[styles.bottom, { borderTopColor: palette.border }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
-        accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
-        onPress={hasUnpinned ? toggleNav : undefined}
-        style={({ pressed, hovered, focused }) => [styles.explore, { borderRadius: palette.radius },
-          !hasUnpinned && styles.exploreReserved,
-          (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
-          focused && hasUnpinned && palette.focusStyle]}>
-        <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
-          size={20} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
-        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.explore}</Text>
-      </Pressable>
-      {compact ? <BottomLink item={model.bottom.appearance} palette={palette}
-        renderIcon={renderIcon} onNavigate={onNavigate} /> : null}
-      <BottomLink item={model.bottom.settings} palette={palette}
-        renderIcon={renderIcon} onNavigate={onNavigate} />
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
-        style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
-          (pressed || hovered) && { backgroundColor: palette.hoverDim },
-          focused && palette.focusStyle]}>
-        <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
-          renderIcon={renderIcon} size={20} color={palette.textMuted} />
-        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.logout}</Text>
-      </Pressable>
+    <View pointerEvents="box-none" aria-hidden={!navOpen}
+      accessibilityElementsHidden={!navOpen}
+      importantForAccessibility={navOpen ? 'auto' : 'no-hide-descendants'} style={[styles.exploreViewport, {
+      top: overlayTop,
+      bottom: bottomHeight,
+    }]}>
+      <Reveal open={navOpen}>
+        <View style={[styles.explorePanel, { height: Math.min(overlayHeight, exploreContentHeight || overlayHeight),
+          backgroundColor: palette.sidebar, borderTopColor: palette.border }]}>
+          <ScrollView style={styles.secondaryScroll} onContentSizeChange={(_width, height) => setExploreContentHeight(height)}
+            contentContainerStyle={[styles.navContent, {
+              paddingTop: palette.navContentPaddingTop ?? 16,
+              paddingLeft: palette.navContentPaddingLeft ?? 16,
+              paddingRight: palette.navContentPaddingRight ?? 16,
+            }]}>
+            <View style={styles.navGroup}>{unpinned.map(renderItem)}</View>
+          </ScrollView>
+        </View>
+      </Reveal>
     </View>
-  </View>;
+    <View onLayout={event => setBottomHeight(event.nativeEvent.layout.height)}>
+      <View style={[styles.bottom, { borderTopColor: palette.border }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+          aria-expanded={navOpen}
+          accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
+          onPress={hasUnpinned ? toggleNav : undefined}
+          style={({ pressed, hovered, focused }) => [styles.explore, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+          borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
+            !hasUnpinned && styles.exploreReserved,
+            (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
+            focused && hasUnpinned && palette.focusStyle]}>
+          <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
+            size={palette.navIconSize} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
+          <Text style={[styles.linkText, { color: palette.textMuted, fontSize: palette.navFontSize }]}>{labels.explore}</Text>
+        </Pressable>
+        <BottomLink item={model.bottom.settings} palette={palette}
+          renderIcon={renderIcon} onNavigate={onNavigate} />
+        <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
+          style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+          borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
+            (pressed || hovered) && { backgroundColor: palette.hoverDim },
+            focused && palette.focusStyle]}>
+          <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
+            renderIcon={renderIcon} size={palette.navIconSize} color={palette.textMuted} />
+          <Text style={[styles.linkText, { color: palette.textMuted, fontSize: palette.navFontSize }]}>{labels.logout}</Text>
+        </Pressable>
+      </View>
+    </View>
+  </View></MenuLayerContext.Provider>;
 }
 
 const styles = StyleSheet.create({
@@ -470,10 +559,13 @@ const styles = StyleSheet.create({
   logoMono: { width: 158, height: 36 },
   logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
   primary: { flex: 1, minHeight: 0 },
+  exploreViewport: { position: 'absolute', left: 0, right: 0,
+    justifyContent: 'flex-end', zIndex: 2 },
+  explorePanel: { width: '100%', borderTopWidth: 1 },
   navContent: { padding: 16, gap: 4 },
   navGroup: { gap: 4 },
   secondary: { borderTopWidth: 1, marginTop: 4, paddingTop: 4 },
-  secondaryScroll: { minHeight: 0 },
+  secondaryScroll: { flex: 1, minHeight: 0 },
   secondaryContent: { width: '100%' },
   row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'transparent' },
@@ -484,14 +576,14 @@ const styles = StyleSheet.create({
   linkText: { flexShrink: 1, fontSize: 14 },
   action: { flexShrink: 0, marginRight: 8 },
   iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  savedViewList: { marginTop: 4, marginLeft: 32, gap: 4 },
+  savedViewList: { marginTop: 4, gap: 4 },
   savedViewRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center',
-    paddingLeft: 12, paddingRight: 4 },
-  savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
+    paddingLeft: LINK_PADDING, paddingRight: 4 },
+  savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: LINK_GAP },
   savedViewText: { flexShrink: 1, fontSize: 14 },
   dragHandle: { width: 24, alignItems: 'center', justifyContent: 'center' },
   doneButton: { flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingLeft: 12, paddingRight: 4, paddingVertical: 6 },
+    paddingLeft: LINK_PADDING, paddingRight: 4, paddingVertical: 6 },
   doneText: { fontSize: 14 },
   bottom: { padding: 16, borderTopWidth: 1, gap: 8 },
   explore: { flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -500,8 +592,11 @@ const styles = StyleSheet.create({
   bottomLink: { flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  menu: { width: 208, borderRadius: 8, borderWidth: 1, paddingVertical: 4 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10 },
-  menuItemText: { fontSize: 14 },
+  menu: { width: DROPDOWN.width, borderRadius: DROPDOWN.radius, borderWidth: 1,
+    paddingVertical: DROPDOWN.paddingVertical },
+  popover: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: DROPDOWN.itemGap,
+    paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
+  menuItemText: { fontSize: DROPDOWN.fontSize },
 });

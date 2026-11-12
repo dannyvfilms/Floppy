@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.db import OperationalError
 from django.utils import timezone
 
+from app import db_retry
 from app.discover import cache_repo, tab_cache
 from app.discover.adapters import TMDB_ADAPTER
 from app.discover.artwork import (
@@ -1174,13 +1175,16 @@ def _build_and_cache_row(
     try:
         current_activity_version = tab_cache.get_activity_version(user.id, media_type)
         if current_activity_version == build_activity_version:
-            cache_repo.set_row_cache(
-                user.id,
-                media_type,
-                row_definition.key,
-                cache_payload,
-                ttl_seconds=_row_ttl_seconds(row_definition),
-            )
+            # On a page load this gives up at once if SQLite's writer is busy;
+            # the row is served anyway and the next refresh task saves it.
+            with db_retry.optional_save():
+                cache_repo.set_row_cache(
+                    user.id,
+                    media_type,
+                    row_definition.key,
+                    cache_payload,
+                    ttl_seconds=_row_ttl_seconds(row_definition),
+                )
         else:
             logger.info(
                 "discover_row_cache_skip_stale_build user_id=%s media_type=%s row_key=%s "

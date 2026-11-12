@@ -1,7 +1,7 @@
+import { Modal } from './Modal';
 import React from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -203,7 +203,7 @@ export function Shell({ open = false, onToggleMenu, onCloseMenu, links, onNaviga
 }
 
 const styles = StyleSheet.create({
-  shell: { width: '100%' },
+  shell: { width: '100%', position: 'relative', zIndex: 30 },
   root: { width: '100%' },
   bar: {
     width: '100%',

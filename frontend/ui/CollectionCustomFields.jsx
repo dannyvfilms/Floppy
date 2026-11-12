@@ -49,7 +49,7 @@ const DEFAULT_LABELS = {
   done: 'Done',
   yes: 'Yes',
   select: 'Select',
-  emptyOption: '—',
+  emptyOption: '-',
   required: 'This field is required.',
 };
 
@@ -197,7 +197,7 @@ function ManageField({ field, groupIndex, fieldIndex, fieldTypes, mediaTypes, pa
         {mediaTypes.map(option => {
           const selected = selectedTypes.includes(option.value);
           return <Pressable key={option.value} accessibilityRole="checkbox"
-            accessibilityLabel={option.label} accessibilityState={{ checked: selected }}
+            accessibilityLabel={option.label} accessibilityState={{ checked: selected }} aria-checked={selected}
             onPress={() => onChange(groupIndex, fieldIndex, {
               mediaTypes: selected
                 ? selectedTypes.filter(value => value !== option.value)

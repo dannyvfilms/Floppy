@@ -1,7 +1,10 @@
 import { AUTH_ERROR_CODES, AuthError } from './authTransportCore.js';
 
 const NATIVE_HEADERS = { Accept: 'application/json', 'X-Floppy-Client': 'native' };
-const ACCOUNT_PATH = '/settings/account/';
+const ACCOUNT_PATH = '/settings/account';
+// A bearer token cannot reach the session page; the API serves the same JSON
+// (full-access app tokens only, the server refuses scoped ones).
+const TOKEN_ACCOUNT_PATH = '/api/v1/user/account/';
 
 function requireAuth(auth) {
   return Boolean(auth && typeof auth.request === 'function');
@@ -12,7 +15,9 @@ export function createAccountTransport({ auth } = {}) {
     if (!requireAuth(auth)) {
       throw new AuthError('Sign in to your Floppy server first.', { code: AUTH_ERROR_CODES.SIGNED_OUT });
     }
-    return auth.request(ACCOUNT_PATH, { ...options, headers: { ...NATIVE_HEADERS, ...(options.headers || {}) } });
+    const state = typeof auth.getState === 'function' ? auth.getState() : null;
+    const path = state && state.authType === 'token' ? TOKEN_ACCOUNT_PATH : ACCOUNT_PATH;
+    return auth.request(path, { ...options, headers: { ...NATIVE_HEADERS, ...(options.headers || {}) } });
   }
 
   async function load() {

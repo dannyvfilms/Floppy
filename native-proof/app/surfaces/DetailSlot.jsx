@@ -1,15 +1,16 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Badge } from '../../../frontend/ui/Badge';
 import { palette, spacing } from '../theme';
 import { getActiveAuthSession } from '../data/authSession';
+import { detailEndpoint, detailGalleryEndpoint, identityFromDetailItem } from './detailIdentity.mjs';
 
 export const surface = {
   id: 'DETAIL',
-  status: 'ported',
-  title: 'Detail composition and metadata',
-  where: 'Film, show, game, book, music and podcast detail pages',
-  note: 'Hero artwork, title facts, synopsis, primary actions, configurable sections and public/read-only states use the shared DetailComposition through the shared DetailView section order. Rating, progress, children rows, tracking dialogs and the provider graph stay separate.',
+  status: 'partial',
+  title: 'Structured detail pages',
+  where: 'Film, show, anime, game, book, comic, podcast, video and music detail pages',
+  note: 'Expo uses the shared native detail composition with provider-backed data, permission-aware tracking state and media-specific sections. Browser pages remain server-owned. Runtime and accessibility evidence is tracked per platform.',
 };
 
 const labels = {
@@ -36,99 +37,320 @@ const detailPalette = {
   placeholder: palette.surfaceStrong,
 };
 
-const genres = ['Science fiction', 'Drama', 'Mystery'];
-const providers = ['Northline', 'Cinder+', 'Rent or buy'];
-
-const synopsis = 'After the relay at Halcyon Station goes dark, Mira Chen returns to the outer ring to find the crew she left behind. The signal she follows is not a distress call but a recording of her own voice, dated six years in the future. As the station’s orbit decays, the crew must decide whether to trust the message or the woman who delivered it.';
-
-function GenreBadges() {
-  return <View style={styles.badgeRow}>
-    {genres.map(genre => <Badge key={genre} label={genre} tone="outline"
-      palette={{ outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 } }} />)}
-  </View>;
+function asList(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
 }
 
-function ProviderList() {
-  return <View style={styles.providerList}>
-    {providers.map(provider => <Text key={provider} style={styles.provider}>{provider}</Text>)}
-  </View>;
+function toDisplay(value) {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (value && typeof value === 'object') {
+    if (value.value != null && value.label) return `${value.label}: ${value.value}`;
+    return value.name || value.title || value.label || value.provider_name || value.person || value.character || '';
+  }
+  return '';
 }
 
-// Production-shaped detail model for the native proof. The shared DetailView
-// owns section order, labels and states; this factory only supplies values.
-function createDetailModel() {
+function section(id, title, values) {
+  const items = asList(values).map(toDisplay).filter(Boolean);
+  if (!items.length) return null;
   return {
-    title: 'The Quiet Orbit',
-    altTitle: 'La órbita silenciosa',
-    subtitle: 'Season 2',
-    publicView: false,
-    readOnly: false,
-    artwork: {
-      src: 'https://picsum.photos/seed/floppy-orbit-detail/400/600',
-      alt: 'The Quiet Orbit',
-      aspect: 'poster',
-    },
-    facts: [
-      { label: 'Year', value: '2024' },
-      { label: 'Runtime', value: '52m' },
-      { label: 'Episodes', value: '10' },
-      { label: 'Status', value: 'Returning series' },
-    ],
-    synopsis: { text: synopsis, previewLines: 3 },
-    labels,
-    palette: detailPalette,
-    actions: {
-      primary: { label: 'Continue watching', tone: 'primary' },
-      items: [{ label: 'Add to library', tone: 'surface' }],
-    },
-    sections: [
-      { id: 'genres', title: 'Genres', body: <GenreBadges /> },
-      { id: 'providers', title: 'Where to watch', body: <ProviderList /> },
-    ],
+    id,
+    title,
+    body: <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+      {items.map((label, index) => <Badge key={`${label}-${index}`} label={label} tone="outline"
+        palette={{ outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 } }} />)}
+    </View>,
   };
 }
 
+function musicCard(record, href, kind) {
+  if (!record?.id || !(record.name || record.title)) return null;
+  const title = record.name || record.title;
+  const key = `${kind}-${record.id}`;
+  return {
+    key,
+    model: {
+      cardKey: key,
+      mediaType: kind,
+      shape: 'square',
+      href,
+      image: { src: record.image || record.cover || record.artwork || null, fallback: '', source: 'primary' },
+      title,
+      altTitle: null,
+      statusChip: null,
+      cornerChips: [],
+      titleLinks: [],
+      progressBar: null,
+      lines: record.release_date ? [{ join: 'plain', parts: [{ text: String(record.release_date).slice(0, 4) }]}] : [],
+      rating: null,
+      ratingEditable: false,
+      actions: null,
+      identity: null,
+    },
+  };
+}
 
-function identityFromItem(item) {
-  if (item?.identity?.mediaId) {
-    return {
-      mediaType: item.identity.mediaType,
-      source: item.identity.source,
-      mediaId: item.identity.mediaId,
-    };
+function detailFromProviderPayload(payload, item, identity) {
+  const publicView = Boolean(identity?.publicView || payload?.public_view || payload?.read_only);
+  const sections = (payload?.sections || []).map(value => section(value.id, value.title, value.items)).filter(Boolean);
+  const providerItems = Object.values(payload?.providers || {}).flatMap(value => asList(value));
+  const providerSection = section('providers', 'Where to watch', providerItems);
+  if (providerSection) sections.push(providerSection);
+  const formatSection = section('book-formats', 'Formats', payload?.book_formats);
+  if (formatSection) sections.push(formatSection);
+  const gameLengthItems = [
+    ...asList(payload?.game_lengths?.cards),
+    ...asList(payload?.game_lengths?.single_player_rows),
+  ];
+  const gameLengthSection = section('game-lengths', 'Game lengths', gameLengthItems);
+  if (gameLengthSection) sections.push(gameLengthSection);
+  if (payload?.youtube_watch) {
+    const watched = payload.youtube_watch;
+    const youtubeSection = section('youtube-watch', 'Watched on YouTube', [
+      watched.seconds ? `~${watched.hours_label}` : 'Started',
+      `${watched.videos || 0} tagged videos`,
+      'Estimated from video progress; does not affect playtime.',
+    ]);
+    if (youtubeSection) sections.push(youtubeSection);
   }
-  const match = String(item?.href || '').match(/^\/details\/([^/]+)\/([^/]+)\/([^/]+)/);
-  return match ? { source: match[1], mediaType: match[2], mediaId: match[3] } : null;
+  const activity = payload?.activity_subtitle;
+  const activitySection = section('activity', 'Your activity', [
+    activity?.primary_text,
+    activity?.date_start ? `Started ${activity.date_start}` : '',
+    activity?.date_end ? `Last activity ${activity.date_end}` : '',
+    activity?.duration_text,
+  ]);
+  if (activitySection) sections.push(activitySection);
+  const collectionItems = (payload?.collections || []).map(record => [
+    record.media_type,
+    record.resolution,
+    record.hdr,
+    record.is_3d ? '3D' : '',
+    record.audio_codec,
+    record.audio_channels,
+    record.bitrate ? `${record.bitrate} kbps` : '',
+    record.purchase_location,
+  ].filter(Boolean).join(' · ')).filter(Boolean);
+  const collectionSection = section('collection', 'Collection', collectionItems);
+  if (collectionSection) sections.push(collectionSection);
+  const historyItems = (payload?.history || []).map(entry => [
+    entry.date ? String(entry.date).slice(0, 10) : '',
+    entry.status,
+    entry.progress != null ? `Progress ${entry.progress}` : '',
+    entry.score != null ? `Score ${entry.score}` : '',
+  ].filter(Boolean).join(' · ')).filter(Boolean);
+  const historySection = section('history', 'Recent history', historyItems);
+  if (historySection) sections.push(historySection);
+  if (payload?.tracking?.notes) sections.push({
+    id: 'notes',
+    title: 'Your notes',
+    body: <Text style={{ color: palette.textSecondary }}>{payload.tracking.notes}</Text>,
+  });
+  const facts = [...(payload?.facts || [])];
+  if (payload?.tracking?.status) facts.push({ label: 'Status', value: String(payload.tracking.status) });
+  if (payload?.tracking?.score != null) facts.push({ label: 'Your score', value: String(payload.tracking.score) });
+  if (payload?.tracking?.progress != null) {
+    const max = payload.tracking.max_progress;
+    facts.push({ label: 'Progress', value: max ? `${payload.tracking.progress} / ${max}` : String(payload.tracking.progress) });
+  }
+  const capabilities = payload?.capabilities || {};
+  const canTrack = capabilities.can_track;
+  const canUpdate = capabilities.can_update;
+  const request = getActiveAuthSession()?.request;
+  const key = payload?.identity || identity;
+  const keyMediaType = key?.mediaType || key?.media_type;
+  const keyMediaId = key?.mediaId || key?.media_id;
+  const routeMediaType = key?.parent_media_type || keyMediaType;
+  const detailParams = new URLSearchParams();
+  if (identity.episodePage != null) detailParams.set('episode_page', String(identity.episodePage));
+  if (key?.season_number != null || key?.seasonNumber != null) {
+    detailParams.set('detail_type', keyMediaType);
+    detailParams.set('season_number', String(key.season_number ?? key.seasonNumber));
+  }
+  if (key?.episode_number != null || key?.episodeNumber != null) {
+    detailParams.set('detail_type', keyMediaType);
+    detailParams.set('episode_number', String(key.episode_number ?? key.episodeNumber));
+  }
+  const detailQuery = detailParams.size ? `?${detailParams.toString()}` : '';
+  const actionPath = keyMediaType && routeMediaType && key?.source && keyMediaId
+    ? `/api/v1/media/${encodeURIComponent(routeMediaType)}/${encodeURIComponent(key.source)}/${encodeURIComponent(keyMediaId)}/${detailQuery}`
+    : null;
+  const seasonNumber = key?.season_number ?? key?.seasonNumber;
+  const episodeNumber = key?.episode_number ?? key?.episodeNumber;
+  const episodeWatchPath = keyMediaType === 'episode' && routeMediaType === 'tv'
+    ? `/api/v1/media/tv/${encodeURIComponent(key.source)}/${encodeURIComponent(keyMediaId)}/${encodeURIComponent(seasonNumber)}/episodes/${encodeURIComponent(episodeNumber)}/watch/`
+    : null;
+  const updatePath = keyMediaType === 'season' && seasonNumber != null
+    ? `/api/v1/media/${encodeURIComponent(routeMediaType)}/${encodeURIComponent(key.source)}/${encodeURIComponent(keyMediaId)}/${encodeURIComponent(seasonNumber)}/`
+    : actionPath;
+
+  return {
+    identity: key,
+    title: payload?.title || item?.title || '',
+    altTitle: payload?.alt_title || '',
+    subtitle: payload?.subtitle || '',
+    seasonLabel: keyMediaType === 'season' ? (payload?.season_title || `Season ${seasonNumber}`) : '',
+    seasonOptions: payload?.season_options || [],
+    parentIdentity: keyMediaType === 'season' ? { mediaType: routeMediaType, source: key.source, mediaId: keyMediaId } : null,
+    activityText: [payload?.activity_subtitle?.primary_text,
+      payload?.activity_subtitle?.date_start, payload?.activity_subtitle?.date_end].filter(Boolean).join(' · '),
+    mobileMeta: [String(payload?.media_details?.first_air_date || '').slice(0, 4), payload?.media_details?.runtime].filter(Boolean).join(' · '),
+    publicView,
+    readOnly: Boolean(payload?.read_only),
+    viewerRating: payload?.tracking && !publicView ? {
+      value: payload.tracking.score,
+      scaleMax: 10,
+      editable: Boolean(capabilities.can_update),
+    } : null,
+    artwork: {
+      src: payload?.artwork?.src || item?.image?.src || item?.image || '',
+      aspect: payload?.artwork?.aspect || 'poster',
+      backdrop: payload?.artwork?.backdrop || '',
+      logo: payload?.artwork?.logo || '',
+      gallery: payload?.artwork?.gallery || null,
+      gallerySupported: Boolean(payload?.artwork?.gallery_supported),
+    },
+    facts,
+    synopsis: { text: payload?.synopsis || '', previewLines: 4 },
+    labels,
+    palette: detailPalette,
+    sections,
+    scoreChips: [
+      ...(payload?.score_chips || []).map(chip => ({ ...chip, value: chip.value ?? chip.rating ?? chip.score ?? chip.tier })),
+      ...(payload?.tag_sections || []).flatMap(group => (group.entries || []).map(entry => ({
+        ...entry,
+        label: group.title_label || group.title,
+        text: entry.label,
+      }))),
+    ],
+    relatedSections: payload?.related_sections || [],
+    people: {
+      cast: (payload?.people?.cast || []).map(person => ({
+        ...(person && typeof person === 'object' ? person : { name: String(person || '') }),
+        name: person.name || person.person || person.actor || person.title || '',
+        role: person.role || person.character || person.job || '',
+        image: person.image || person.image_url || person.profile_path || '',
+      })),
+      crew: (payload?.people?.crew || []).map(person => ({
+        ...(person && typeof person === 'object' ? person : { name: String(person || '') }),
+        name: person.name || person.person || person.title || '',
+        role: person.role || person.job || '',
+        image: person.image || person.image_url || person.profile_path || '',
+      })),
+    },
+    children: payload?.children ? {
+      kind: payload.children.kind,
+      seasons: payload.children.seasons || [],
+      episodes: payload.children.kind === 'episode' ? payload.children.episodes || [] : [],
+      issues: payload.children.kind === 'issue' ? payload.children.episodes || [] : [],
+      nextPage: payload.children.next_page,
+      nextLabel: payload.children.next_label,
+    } : null,
+    details: payload?.media_details || {},
+    providers: payload?.providers || [],
+    linkSections: payload?.link_sections || [],
+    gameLengths: payload?.game_lengths || null,
+    bookFormats: payload?.book_formats || [],
+    providerGroups: payload?.providers || {},
+    actions: canTrack && actionPath && request ? {
+      primary: {
+        label: 'Add to library',
+        tone: 'primary',
+        onPress: async () => request(`/api/v1/media/${encodeURIComponent(keyMediaType)}/`, {
+          method: 'POST',
+          json: {
+            source: key.source,
+            media_id: keyMediaId,
+            status: 'Planning',
+            ...(key.season_number != null ? { season_number: key.season_number } : {}),
+          },
+        }),
+      },
+    } : canUpdate && actionPath && request ? {
+      items: [{
+        label: keyMediaType === 'episode'
+          ? payload?.tracking?.status === 'Completed' ? 'Mark unwatched' : 'Mark watched'
+          : payload?.tracking?.status === 'Completed' ? 'Mark in progress' : 'Mark completed',
+        tone: 'surface',
+        onPress: async () => keyMediaType === 'episode' && episodeWatchPath
+          ? request(episodeWatchPath, { method: payload?.tracking?.status === 'Completed' ? 'DELETE' : 'POST' })
+          : request(updatePath, {
+            method: 'PATCH',
+            json: { status: payload?.tracking?.status === 'Completed' ? 'In progress' : 'Completed' },
+          }),
+      }],
+    } : null,
+  };
 }
 
-function factList(fields) {
-  const facts = [];
-  const year = String(fields.release_datetime || '').slice(0, 4);
-  if (year) facts.push({ label: 'Year', value: year });
-  if (fields.runtime_minutes) facts.push({ label: 'Runtime', value: `${fields.runtime_minutes}m` });
-  if (fields.status) facts.push({ label: 'Status', value: fields.status });
-  if (fields.format) facts.push({ label: 'Format', value: fields.format });
-  return facts;
+function fromMusicPayload(payload, item, kind, publicView = false) {
+  const tracker = publicView ? null : payload.tracker || null;
+  const name = payload.name || payload.title || item?.title || '';
+  const fields = [
+    payload.artist_name ? { label: 'Artist', value: payload.artist_name } : null,
+    payload.release_date ? { label: 'Release date', value: payload.release_date } : null,
+    payload.release_type ? { label: 'Format', value: payload.release_type } : null,
+    tracker?.status ? { label: 'Status', value: tracker.status } : null,
+    tracker?.score != null ? { label: 'Your score', value: tracker.score } : null,
+  ].filter(Boolean);
+  const albums = asList(payload.albums);
+  const tracks = asList(payload.tracks);
+  const sections = [
+    section('genres', 'Genres', payload.genres),
+  ].filter(Boolean);
+  const artistId = payload.artist_id || payload.artist?.id || payload.id;
+  const albumId = payload.album_id || payload.id;
+  const relatedSections = [];
+  if (kind === 'artist' && albums.length) {
+    relatedSections.push({
+      id: 'albums',
+      label: 'Albums',
+      items: albums.map(album => musicCard(album,
+        `/details/music/artist/${encodeURIComponent(artistId)}/artist/album/${encodeURIComponent(album.id)}/album/`,
+        'music')).filter(Boolean),
+    });
+  }
+  if (kind === 'album' && tracks.length) {
+    relatedSections.push({
+      id: 'tracks',
+      label: 'Tracks',
+      items: tracks.map(track => musicCard(track,
+        `/details/music/artist/${encodeURIComponent(artistId)}/artist/album/${encodeURIComponent(albumId)}/album/track/${encodeURIComponent(track.id)}/track/`,
+        'music')).filter(Boolean),
+    });
+  }
+  const request = getActiveAuthSession()?.request;
+  const collectionPath = kind === 'artist'
+    ? '/api/v1/music/artists/'
+    : kind === 'show' ? '/api/v1/podcasts/shows/' : '/api/v1/music/albums/';
+  const actionId = kind === 'artist' ? 'artist_id' : kind === 'show' ? 'show_id' : 'album_id';
+  return {
+    title: name,
+    subtitle: payload.artist_name || '',
+    artwork: { src: payload.image || '', aspect: kind === 'artist' ? 'square' : 'poster' },
+    facts: fields,
+    synopsis: { text: payload.description || '', previewLines: 4 },
+    publicView,
+    readOnly: publicView || !request,
+    labels,
+    palette: detailPalette,
+    sections,
+    relatedSections,
+    actions: !publicView && !tracker && request && kind !== 'track' ? {
+      primary: { label: `Track ${kind}`, tone: 'primary', onPress: () => request(collectionPath, { method: 'POST', json: { [actionId]: payload.id } }) },
+    } : null,
+  };
 }
 
-function genreNames(fields) {
-  if (Array.isArray(fields.genres)) return fields.genres.filter(Boolean);
-  return fields.genres ? [String(fields.genres)] : [];
-}
-
-// A card-only model is still real data from the row the viewer tapped; it is
-// what the detail page shows while metadata loads or when the item is untracked.
 export function createDetailModelForItem(item) {
   return {
-    title: item?.title || 'Detail',
+    title: item?.title || 'Detail unavailable',
+    altTitle: '',
     subtitle: '',
     publicView: false,
-    readOnly: false,
-    artwork: {
-      src: item?.image?.src || '',
-      alt: item?.title || 'Detail',
-      aspect: 'poster',
-    },
+    readOnly: true,
+    artwork: { src: item?.image?.src || item?.image || '', aspect: 'poster' },
     facts: [],
     synopsis: null,
     labels,
@@ -138,53 +360,83 @@ export function createDetailModelForItem(item) {
   };
 }
 
-export async function loadDetailModel(item) {
-  const identity = identityFromItem(item);
-  const auth = getActiveAuthSession();
-  if (!identity || typeof auth?.request !== 'function') return createDetailModelForItem(item);
-  const payload = await auth.request(
-    `/api/v1/media/${encodeURIComponent(identity.mediaType)}/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.mediaId)}/metadata/`,
-  );
-  const fields = payload?.fields || {};
-  const genres = genreNames(fields);
-  const studios = Array.isArray(fields.studios) ? fields.studios.filter(Boolean) : [];
-  return {
-    title: fields.title || item?.title || 'Detail',
-    subtitle: fields.original_title && fields.original_title !== fields.title ? fields.original_title : '',
-    publicView: false,
-    readOnly: false,
-    artwork: {
-      src: fields.image || item?.image?.src || '',
-      alt: fields.title || item?.title || 'Detail',
-      aspect: 'poster',
-    },
-    facts: factList(fields),
-    synopsis: fields.synopsis ? { text: fields.synopsis, previewLines: 3 } : null,
-    labels,
-    palette: detailPalette,
-    actions: null,
-    sections: [
-      genres.length ? {
-        id: 'genres',
-        title: 'Genres',
-        body: <View style={styles.badgeRow}>
-          {genres.map(genre => <Badge key={genre} label={genre} tone="outline"
-            palette={{ outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 } }} />)}
-        </View>,
-      } : null,
-      studios.length ? {
-        id: 'providers',
-        title: 'Studios',
-        body: <View style={styles.providerList}>
-          {studios.map(studio => <Text key={studio} style={styles.provider}>{studio}</Text>)}
-        </View>,
-      } : null,
-    ].filter(Boolean),
-  };
-}
+export async function loadDetailModel(item, options = {}) {
+  const identity = identityFromDetailItem(item);
+  if (!identity) throw new Error('Open a detail from a media item or a Floppy detail link.');
+  const request = options.request || getActiveAuthSession()?.request;
+  if (typeof request !== 'function') throw new Error('Connect to your Floppy server to load this detail.');
 
-const styles = StyleSheet.create({
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  providerList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  provider: { color: palette.textSecondary, fontSize: 13, fontWeight: '500' },
-});
+  if (identity.musicKind) {
+    if (identity.musicKind === 'artist') {
+      const response = await request(`/api/v1/music/artists/${encodeURIComponent(identity.musicId)}/`);
+      return fromMusicPayload(response, item, 'artist', identity.publicView);
+    }
+    if (identity.musicKind === 'album') {
+      const response = await request(`/api/v1/music/albums/${encodeURIComponent(identity.musicId)}/`);
+      const tracks = await request(`/api/v1/music/albums/${encodeURIComponent(identity.musicId)}/tracks/`);
+      return fromMusicPayload({ ...response, artist_id: identity.artistId, tracks: tracks.results || tracks }, item, 'album', identity.publicView);
+    }
+    const albumId = identity.albumId;
+    if (!albumId) throw new Error('The track link does not include its album.');
+    const album = await request(`/api/v1/music/albums/${encodeURIComponent(albumId)}/`);
+    const tracks = await request(`/api/v1/music/albums/${encodeURIComponent(albumId)}/tracks/`);
+    const track = asList(tracks.results || tracks).find(value => String(value.id) === String(identity.musicId));
+    if (!track) throw new Error('This track is no longer available in its album.');
+    return fromMusicPayload({ ...track, artist_id: identity.artistId, album_id: albumId, artist_name: album.artist_name, release_date: album.release_date }, item, 'track', identity.publicView);
+  }
+
+  if (identity.podcastId) {
+    const response = await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.podcastId)}/`);
+    const episodes = await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.podcastId)}/episodes/?limit=30&offset=0`);
+    return {
+      ...fromMusicPayload({ ...response, name: response.title }, item, 'show', identity.publicView),
+      synopsis: { text: response.description || '', previewLines: 4 },
+      children: {
+        kind: 'episode',
+        seasons: [],
+        episodes: asList(episodes.results || episodes).map((episode, index) => ({
+          key: `podcast-episode-${episode.id || index}`,
+          number: episode.episode_number || index + 1,
+          identity: null,
+          title: episode.title || episode.name || '',
+          overview: episode.description || '',
+          image: { src: episode.image || response.image || '', fallback: '' },
+          dateLabel: episode.published || episode.release_date || '',
+          runtime: episode.duration || '',
+          actions: [],
+        })),
+      },
+    };
+  }
+
+  const requestIdentity = {
+    ...identity,
+    publicView: Boolean(identity.publicView || options.publicView),
+    episodePage: options.episodePage,
+  };
+  try {
+    const response = await request(detailEndpoint(requestIdentity));
+    if (response?.artwork?.gallery_supported) {
+      try {
+        const gallery = await request(detailGalleryEndpoint(requestIdentity));
+        response.artwork.gallery = gallery?.gallery || response.artwork.gallery;
+        response.artwork.backdrop = response.artwork.backdrop
+          || gallery?.gallery?.hero?.url
+          || gallery?.gallery?.overview?.url
+          || '';
+        response.artwork.logo = response.artwork.logo
+          || gallery?.gallery?.overview?.logo_url
+          || gallery?.gallery?.hero?.logo_url
+          || '';
+      } catch {
+        // The detail data remains useful if a provider gallery is unavailable.
+      }
+    }
+    return detailFromProviderPayload(response, item, requestIdentity);
+  } catch (error) {
+    if (error?.status === 404 && !/media not found/i.test(error?.message || '')) {
+      throw new Error('This Floppy server needs an update to provide full detail pages.');
+    }
+    throw error;
+  }
+}

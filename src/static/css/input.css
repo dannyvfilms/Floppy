@@ -688,12 +688,8 @@ main > .container:has(img[data-artwork-ready="true"]),
    * still hovered (see issue #1205). The poster is a leaf node with no
    * modal markup inside it, so it can't cause that.
    */
-  :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1));
-  }
-
   html.plex :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1)) scale(1.018);
+    transform: scale(1.018);
   }
 
   html.oled :where(.media-card, .search-result-card, .search-result-card-square):hover {
@@ -2581,7 +2577,9 @@ html.light .theme-toggle-icon-moon {
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header * {
+  /* The overlay is click-through so the carousel arrows beneath it work. Only
+     its controls take clicks; wide wrappers such as the logo slot must not. */
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex]) {
     pointer-events: auto;
   }
 
@@ -3325,6 +3323,20 @@ html.light .theme-toggle-icon-moon {
 
 .media-card .media-status-chip {
   z-index: 6;
+}
+
+.media-card-next-episode-compact {
+  display: none;
+}
+
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  body[data-mobile-grid="compact"] .media-card-next-episode-full {
+    display: none;
+  }
+
+  body[data-mobile-grid="compact"] .media-card-next-episode-compact {
+    display: inline;
+  }
 }
 
 [data-quick-season-mobile="false"] .media-card-progress {

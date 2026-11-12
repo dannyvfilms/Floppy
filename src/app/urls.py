@@ -5,6 +5,7 @@ from app import (
     converters,
     cover_views,
     episode_order_views,
+    history_views,
     media_details_views,
     progress_views,
     views,
@@ -80,6 +81,11 @@ urlpatterns = [
         "search/suggestions",
         views.search_suggestions,
         name="search_suggestions",
+    ),
+    path(
+        "search/results",
+        views.search_results_json,
+        name="search_results_json",
     ),
     path(
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
@@ -282,7 +288,7 @@ urlpatterns = [
     ),
     path(
         "media/history/<str:media_type>/<int:history_id>/delete/",
-        views.delete_history_record,
+        history_views.delete_history_record,
         name="delete_history_record",
     ),
     path("create", views.create_entry, name="create_entry"),

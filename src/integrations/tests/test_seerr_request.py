@@ -76,7 +76,7 @@ class SummarizeTests(SimpleTestCase):
 
 
 class SeerrClientTests(SimpleTestCase):
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_tv_request_sends_seasons_and_user(self, mock_request):
         mock_request.return_value = _response(201)
         seerr_api.SeerrClient("http://seerr:5055/", "key").request(
@@ -90,7 +90,7 @@ class SeerrClientTests(SimpleTestCase):
             {"mediaType": "tv", "mediaId": 1399, "seasons": [2, 3], "userId": 7},
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_movie_request_has_no_seasons(self, mock_request):
         mock_request.return_value = _response(201)
         seerr_api.SeerrClient("http://seerr", "key").request("movie", 603, 7)
@@ -99,19 +99,19 @@ class SeerrClientTests(SimpleTestCase):
             {"mediaType": "movie", "mediaId": 603, "userId": 7},
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_tv_request_defaults_to_all_seasons(self, mock_request):
         mock_request.return_value = _response(201)
         seerr_api.SeerrClient("http://seerr", "key").request("tv", 1399, 7)
         self.assertEqual(mock_request.call_args.kwargs["json"]["seasons"], "all")
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_refusal_surfaces_seerr_message(self, mock_request):
         mock_request.return_value = _response(403, {"message": "Quota exceeded"})
         with self.assertRaisesMessage(seerr_api.SeerrError, "(403) Quota exceeded"):
             seerr_api.SeerrClient("http://seerr", "key").media("movie", 603)
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_unreachable_raises_seerr_error(self, mock_request):
         mock_request.side_effect = requests.ConnectionError("http://seerr/?t=secret")
         with self.assertRaises(seerr_api.SeerrError) as caught:
@@ -121,7 +121,7 @@ class SeerrClientTests(SimpleTestCase):
             str(caught.exception), "Could not reach Seerr (ConnectionError)"
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.safe_fetch._send_pinned_self_hosted")
     def test_metadata_address_is_refused_by_self_hosted_policy(self, mock_request):
         with self.assertRaises(seerr_api.SeerrError) as caught:
             seerr_api.SeerrClient("http://169.254.169.254", "key").media("movie", 603)
@@ -130,7 +130,7 @@ class SeerrClientTests(SimpleTestCase):
 
 
 class FindUserTests(SimpleTestCase):
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_exact_login_match_wins_over_substring_hits(self, mock_request):
         mock_request.return_value = _response(200, USERS_PAYLOAD)
         client = seerr_api.SeerrClient("http://seerr", "key")
@@ -141,7 +141,7 @@ class FindUserTests(SimpleTestCase):
             mock_request.call_args.kwargs["params"], {"q": "bob_jf", "take": 50}
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_unknown_or_ambiguous_name_raises(self, mock_request):
         mock_request.return_value = _response(200, USERS_PAYLOAD)
         client = seerr_api.SeerrClient("http://seerr", "key")
@@ -160,7 +160,7 @@ class SeerrRequestViewTests(TestCase):
         self.user.save()
         self.client.force_login(self.user)
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_get_renders_state(self, mock_request):
         mock_request.return_value = _response(200, TV_PAYLOAD)
         response = self.client.get(reverse("seerr_request", args=["tv", 1399]))
@@ -168,7 +168,7 @@ class SeerrRequestViewTests(TestCase):
         self.assertEqual(response.context["summary"]["seasons"][2]["number"], 3)
         self.assertContains(response, "http://seerr:5055/tv/1399")
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_post_requests_season_then_refreshes(self, mock_request):
         mock_request.side_effect = [_response(201), _response(200, TV_PAYLOAD)]
         response = self.client.post(
@@ -181,7 +181,7 @@ class SeerrRequestViewTests(TestCase):
             {"mediaType": "tv", "mediaId": 1399, "seasons": [3], "userId": 7},
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_error_is_shown_not_raised(self, mock_request):
         mock_request.side_effect = requests.ConnectionError("refused")
         response = self.client.get(reverse("seerr_request", args=["movie", 603]))
@@ -222,7 +222,7 @@ class SeerrSettingsTests(TestCase):
         self.client.post(self.url, data)
         self.user.refresh_from_db()
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_resolves_username_and_encrypts_key(self, mock_request):
         mock_request.return_value = _response(200, USERS_PAYLOAD)
         self._post(
@@ -236,7 +236,7 @@ class SeerrSettingsTests(TestCase):
             mock_request.call_args.kwargs["headers"], {"X-Api-Key": "secret"}
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_blank_key_keeps_stored_one_for_resolution(self, mock_request):
         self.user.seerr_url = "http://seerr:5055"
         self.user.seerr_api_key = encrypt("secret")
@@ -249,7 +249,7 @@ class SeerrSettingsTests(TestCase):
             mock_request.call_args.kwargs["headers"], {"X-Api-Key": "secret"}
         )
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_unchanged_settings_do_not_call_seerr(self, mock_request):
         self.user.seerr_url = "http://seerr:5055"
         self.user.seerr_api_key = encrypt("secret")
@@ -263,7 +263,7 @@ class SeerrSettingsTests(TestCase):
         self.assertTrue(self.user.jellyseerr_enabled)
         self.assertEqual(self.user.seerr_user_id, 7)
 
-    @patch("integrations.seerr_api.requests.request")
+    @patch("integrations.seerr_api.send_to_self_hosted_pinned")
     def test_unknown_user_or_bad_key_saves_nothing(self, mock_request):
         for response in (
             _response(200, USERS_PAYLOAD),

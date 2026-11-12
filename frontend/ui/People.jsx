@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +12,8 @@ import {
 import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 // Shared person, studio, credit, gallery and medium-extra presentation. Values
 // arrive already shaped by the server or feature adapter; these components
@@ -142,6 +144,7 @@ export function PersonHero({
   biographyLines = 5,
   headingLevel = 2,
   actionPalette,
+  actionSize,
   showBiography = true,
 }) {
   const copy = mergeLabels(labels);
@@ -161,15 +164,15 @@ export function PersonHero({
       <Artwork uri={person.imageUrl} title={person.name} palette={colors} />
       {onViewHistory && canViewHistory ? <View style={[styles.heroAction, { backgroundColor: colors.surface }]}>
         <Button label={person.isAuthor ? copy.viewReads : copy.viewPlays} width="full"
-          onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
+          size={actionSize} onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
       </View> : null}
     </View>
     <View style={[styles.heroBody, wide && styles.heroBodyWide]}>
       <Text role="heading" aria-level={headingLevel} style={[styles.heroTitle, { color: colors.text }]}>{person.name}</Text>
       {person.knownForDepartment || counts.length ? <View style={styles.chipRow}>
-        {person.knownForDepartment ? <Badge label={person.knownForDepartment} tone="indigo"
+        {person.knownForDepartment ? <Badge label={person.knownForDepartment} tone="indigo" size="md"
           palette={badgePalette(colors)} /> : null}
-        {counts.map((count, index) => <Badge key={`${count.label}-${index}`} label={count.label}
+        {counts.map((count, index) => <Badge key={`${count.label}-${index}`} label={count.label} size="md"
           palette={badgePalette(colors)} />)}
       </View> : null}
       {showBiography ? <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -235,9 +238,9 @@ export function StudioHero({
       <Text role="heading" aria-level={headingLevel} style={[styles.heroTitle, { color: colors.text }]}>{studio.name}</Text>
       {counts.length ? <View style={styles.chipRow}>
         {counts.map((count, index) => index === 0
-          ? <Badge key={`${count.label}-${index}`} label={count.label} tone="indigo"
+          ? <Badge key={`${count.label}-${index}`} label={count.label} tone="indigo" size="md"
             palette={badgePalette(colors)} />
-          : <Badge key={`${count.label}-${index}`} label={count.label}
+          : <Badge key={`${count.label}-${index}`} label={count.label} size="md"
             palette={badgePalette(colors)} />)}
       </View> : null}
       {showBiography ? <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -266,7 +269,15 @@ export function PersonCard({ person = {}, labels, palette, onOpen, web = false }
   const shade = web ? {
     backgroundImage: 'linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)',
   } : null;
-  const metaVisible = !web || hovered;
+  // The server sends the lines the user's card settings enable, each marked
+  // dormant (visible at rest) or hover-only. Without them, fall back to the
+  // role at rest and any extra lines on hover.
+  const metaLines = person.cardLines
+    ? person.cardLines.map(line => ({ text: line.text, visible: !!(line.dormant || person.subtitleAlways) }))
+    : [
+      ...(subtitle ? [{ text: subtitle, visible: false }] : []),
+      ...(person.lines || []).map(text => ({ text, visible: false })),
+    ];
   const body = <>
     <Artwork uri={person.imageUrl} fallback={person.imageFallback} title={name} palette={colors}>
       {person.episodeCount ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
@@ -280,10 +291,11 @@ export function PersonCard({ person = {}, labels, palette, onOpen, web = false }
       <View style={styles.cardTitleRow}>
         <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
       </View>
-      {subtitle || person.lines?.length ? <View style={[styles.cardMetaWrap, metaVisible ? styles.cardMetaVisible : styles.cardMetaHidden]}>
-        {subtitle ? <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{subtitle}</Text> : null}
-        {person.lines?.map((line, index) => <Text key={index} numberOfLines={2}
-          style={[styles.cardCopy, { color: colors.textMuted }]}>{line}</Text>)}
+      {metaLines.length ? <View style={styles.cardMetaStack}>
+        {metaLines.map((line, index) => <View key={index}
+          style={[styles.cardMetaWrap, (!web || hovered || line.visible) ? styles.cardMetaVisible : styles.cardMetaHidden]}>
+          <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{line.text}</Text>
+        </View>)}
       </View> : null}
     </View>
   </>;
@@ -414,10 +426,10 @@ export function LightboxDialog({
     <View style={[styles.lightbox, { backgroundColor: 'rgba(0, 0, 0, 0.94)' }]}>
       <View style={styles.lightboxTop}>
         <Text style={[styles.lightboxCount, { color: colors.chipText }]}>{bounded + 1} / {items.length}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={copy.close} onPress={onClose}
+        <ModalCloseButton accessibilityRole="button" accessibilityLabel={copy.close} onPress={onClose}
           style={[styles.roundButton, { backgroundColor: colors.chipBackground }]}>
-          <Text style={[styles.roundGlyph, { color: colors.chipText }]}>✕</Text>
-        </Pressable>
+          <Icon spec={actionIcons.x} size={18} color={colors.chipText} />
+        </ModalCloseButton>
       </View>
       <View style={styles.lightboxBody}>
         <Image source={{ uri: isVideo ? current.posterUrl : current.url }} resizeMode="contain" style={styles.fill} />
@@ -543,18 +555,18 @@ const styles = StyleSheet.create({
   heroMediaWide: { width: 250, flexShrink: 0 },
   heroBody: { gap: 12, minWidth: 0 },
   heroBodyWide: { flex: 1 },
-  heroTitle: { fontSize: 28, fontWeight: '700', lineHeight: 34 },
+  heroTitle: { fontSize: 30, fontWeight: '700', lineHeight: 36 },
   heroAction: { padding: 12, borderRadius: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
   card: { padding: 14, borderRadius: 10, gap: 8 },
-  sourceCard: { padding: 12, borderRadius: 10, gap: 2 },
+  sourceCard: { padding: 12, borderRadius: 8, gap: 4 },
   biography: { fontSize: 14, lineHeight: 21 },
   inlineAction: { alignSelf: 'flex-start', paddingVertical: 2 },
   inlineActionText: { fontSize: 13, fontWeight: '600' },
   factGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   fact: { flexGrow: 1, flexBasis: 140, minWidth: 0, padding: 12, borderRadius: 10, gap: 2 },
-  factLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' },
-  factValue: { fontSize: 13, lineHeight: 18 },
+  factLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
+  factValue: { fontSize: 14, lineHeight: 20 },
   artwork: { width: '100%', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   artworkRounded: { borderRadius: 10 },
   artworkPlaceholder: { fontSize: 12, textAlign: 'center', paddingHorizontal: 12 },
@@ -566,7 +578,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   cardCopy: { fontSize: 12, lineHeight: 16 },
   cardMeta: { fontSize: 11, lineHeight: 15 },
-  cardMetaWrap: { overflow: 'hidden' },
+  cardMetaStack: {},
+cardMetaWrap: { overflow: 'hidden' },
   cardMetaVisible: { maxHeight: 40, marginTop: 4, opacity: 1 },
   cardMetaHidden: { maxHeight: 0, marginTop: 0, opacity: 0 },
   cornerChip: { position: 'absolute', top: 8, right: 8, zIndex: 2, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },

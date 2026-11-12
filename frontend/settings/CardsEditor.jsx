@@ -160,6 +160,7 @@ export function CardsEditor({
   catalog = [],
   saved = {},
   initialSaved,
+  initialTouchActions = false,
   active,
   touchActions = false,
   onChange,
@@ -169,6 +170,7 @@ export function CardsEditor({
   palette = {},
   buttonPalette = {},
   disabled = false,
+  renderPreview,
 }) {
   const copy = { ...defaultLabels, ...labels };
   const colors = { ...defaultPalette, ...palette };
@@ -180,8 +182,8 @@ export function CardsEditor({
   const [localError, setLocalError] = useState('');
   const values = { saved, touchActions: Boolean(touchActions) };
   const serialized = useMemo(() => JSON.stringify(values), [saved, touchActions]);
-  const baseline = { saved: initialSaved || saved, touchActions: Boolean(touchActions) };
-  const dirty = useMemo(() => !sameValues(values, baseline), [saved, touchActions]);
+  const baseline = { saved: initialSaved || saved, touchActions: Boolean(initialTouchActions) };
+  const dirty = useMemo(() => !sameValues(values, baseline), [saved, touchActions, initialSaved, initialTouchActions]);
   const current = catalog.find(entry => entry.id === currentType) || catalog[0];
   const profile = useMemo(() => normalizeProfile(saved[currentType] || initialSaved?.[currentType] || { lines: [] }), [saved, initialSaved, currentType]);
 
@@ -518,7 +520,7 @@ export function CardsEditor({
 
       <View style={[styles.preview, { borderColor: colors.border, backgroundColor: colors.background }]}>
         <Text style={[styles.label, { color: colors.textMuted }]}>{copy.preview}</Text>
-        <View style={[styles.previewCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+        {renderPreview ? renderPreview({ type: currentType, saved }) : <View style={[styles.previewCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
           <View style={[styles.previewPoster, { backgroundColor: colors.surfaceStrong }]}>
             <Text style={[styles.previewPosterText, { color: colors.textMuted }]}>Floppy</Text>
           </View>
@@ -531,7 +533,7 @@ export function CardsEditor({
           {profile.lines.map((line, index) => <Text key={`preview-${index}`} style={[styles.previewLine, { color: line.display === 'dormant' ? colors.textSecondary : colors.textMuted }]}>
             {line.display === 'dormant' ? '' : '⋯ '}{line.fields.map(fieldLabel).join(' · ')}
           </Text>)}
-        </View>
+        </View>}
       </View>
 
       <View style={styles.optionGrid}>
@@ -716,6 +718,8 @@ export function CardsEditor({
       </View>
     </View>
 
+    {copy.footnote ? <Text style={[styles.footnote, { color: colors.textMuted }]}>{copy.footnote}</Text> : null}
+
     <FormSaveBar
       dirty={dirty}
       saving={saving}
@@ -741,6 +745,7 @@ const styles = StyleSheet.create({
   toolbarField: { flexGrow: 1, flexBasis: 180, minWidth: 0 },
   optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   optionCell: { flexGrow: 1, flexBasis: 150, minWidth: 0 },
+  footnote: { fontSize: 12, lineHeight: 17 },
   preview: { gap: 8, borderWidth: 1, borderRadius: 10, padding: 12 },
   previewCard: { alignSelf: 'center', width: 160, gap: 5, borderWidth: 1, borderRadius: 10, padding: 8 },
   previewPoster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },

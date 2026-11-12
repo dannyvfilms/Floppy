@@ -76,6 +76,22 @@ SELF_RESCHEDULING_IMPORT_SOURCES = ("lastfm", "koito")
 STREMIO_IMPORT_SOFT_TIME_LIMIT = 20 * 60
 STREMIO_IMPORT_TIME_LIMIT = 30 * 60
 
+# A WeTrakr export resolves most shows through TMDB one lookup at a time, so a
+# full library outlives the global limit. It is a one-off, user-started import.
+WETRAKR_IMPORT_SOFT_TIME_LIMIT = 90 * 60
+WETRAKR_IMPORT_TIME_LIMIT = 120 * 60
+
+# ImportRun.source -> hard limit, for sources that outlive the global one.
+SOURCE_TIME_LIMITS = {
+    "stremio": STREMIO_IMPORT_TIME_LIMIT,
+    "wetrakr": WETRAKR_IMPORT_TIME_LIMIT,
+}
+
+
+def abandoned_after_seconds(source, global_limit):
+    """Seconds after which a RUNNING run of ``source`` cannot still be alive."""
+    return max(global_limit, SOURCE_TIME_LIMITS.get(source, 0)) + 300
+
 
 def close_abandoned_import_runs():
     """Mark import runs FAILED once their task can no longer be running.
@@ -92,13 +108,21 @@ def close_abandoned_import_runs():
     time_limit = settings.CELERY_TASK_TIME_LIMIT
     if not time_limit:
         return 0
-    time_limit = max(time_limit, STREMIO_IMPORT_TIME_LIMIT)
     now = timezone.now()
+    # Sources with their own, longer limits are judged against those.
+    stale = Q(
+        started_at__lt=now - timedelta(seconds=abandoned_after_seconds("", time_limit)),
+    ) & ~Q(source__in=SOURCE_TIME_LIMITS)
+    for source in SOURCE_TIME_LIMITS:
+        stale |= Q(
+            source=source,
+            started_at__lt=now
+            - timedelta(seconds=abandoned_after_seconds(source, time_limit)),
+        )
     closed = (
-        ImportRun.objects.filter(
-            status=ImportRun.Status.RUNNING,
-            started_at__lt=now - timedelta(seconds=time_limit + 300),
-        ).filter(Q(lease_expires_at__isnull=True) | Q(lease_expires_at__lte=now))
+        ImportRun.objects.filter(status=ImportRun.Status.RUNNING)
+        .filter(stale)
+        .filter(Q(lease_expires_at__isnull=True) | Q(lease_expires_at__lte=now))
         .exclude(source__in=SELF_RESCHEDULING_IMPORT_SOURCES)
         .update(status=ImportRun.Status.FAILED, finished_at=now)
     )

@@ -1,8 +1,10 @@
+import { Modal, ModalCloseButton } from './Modal';
+import { Icon, SearchIcon } from './Icon';
+import { actionIcons } from './actionIcons';
 import React, { useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
-import { FilterBar } from './FilterBar';
 import { MediaCard } from './MediaCard';
 
 const DEFAULT_PALETTE = {
@@ -18,6 +20,7 @@ const DEFAULT_PALETTE = {
   accentStrong: '#4f46e5',
   accentContrast: '#ffffff',
   danger: '#ef4444',
+  success: '#4ade80',
   radius: 10,
   radiusSmall: 6,
   overlay: 'rgba(9, 9, 11, 0.72)',
@@ -30,7 +33,7 @@ const DEFAULT_LABELS = {
   status: 'Completeness',
   sort: 'Sort',
   view: 'View',
-  allTypes: 'All types',
+  allTypes: 'All Types',
   allStatuses: 'Any completeness',
   any: 'Any',
   clear: 'Clear',
@@ -62,7 +65,19 @@ const DEFAULT_LABELS = {
   resolutionFilter: 'Resolution',
   ratingAny: 'Any',
   ratingRated: 'Rated',
-  ratingUnrated: 'Not rated',
+  ratingUnrated: 'Not Rated',
+  all: 'All',
+  active: 'Active',
+  back: 'Back',
+  anyFormat: 'Any Format',
+  anyResolution: 'Any Resolution',
+  anyHdr: 'Any HDR',
+  anyLocation: 'Any Location',
+  anyRating: 'Any Rating',
+  partiallyCollected: 'Partially Collected',
+  fullyCollected: 'Fully Collected',
+  ascending: 'Ascending',
+  descending: 'Descending',
 };
 
 function mergePalette(palette) {
@@ -152,41 +167,40 @@ function cardModel(item) {
   };
 }
 
-function FilterMenu({ menu, labels, palette, onChoose, onClose }) {
-  if (!menu) return null;
-  const colors = palette;
+function SheetFrame({ title, labels, palette, onBack, onClose, children }) {
   return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-    <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
+    <View style={[styles.overlay, { backgroundColor: palette.overlay }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.close}
         style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={styles.sheetHeader}>
-          <Text style={[styles.sheetTitle, { color: colors.text }]}>{menu.title}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={labels.close} onPress={onClose}
+      <View style={[styles.sheet, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <View style={[styles.sheetHeader, { borderColor: palette.border }]}>
+          {onBack ? <Pressable accessibilityRole="button" accessibilityLabel={labels.back} onPress={onBack}
+            style={styles.close}><Icon spec={actionIcons.chevronLeft} color={palette.textMuted} size={16} /></Pressable> : null}
+          <Text accessibilityRole="header" style={[styles.sheetTitle, { color: palette.textSecondary }]}>{title}</Text>
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel={labels.close} onPress={onClose}
             style={styles.close}>
-            <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-          </Pressable>
+            <Icon spec={actionIcons.x} color={palette.textMuted} size={16}><Text style={[styles.closeText, { color: palette.textMuted }]}>×</Text></Icon>
+          </ModalCloseButton>
         </View>
-        <ScrollView style={styles.menuList} contentContainerStyle={styles.menuContent}>
-          {[{ value: '', label: labels.any }, ...(menu.options || [])].map(option => {
-            const selected = String(menu.value || '') === String(option.value || '');
-            return <Pressable key={`${menu.key}-${option.value || 'any'}`}
-              accessibilityRole="radio" accessibilityLabel={option.label}
-              accessibilityState={{ checked: selected }}
-              onPress={() => onChoose(menu.key, option.value)}
-              style={({ pressed }) => [styles.menuRow, {
-                backgroundColor: selected ? colors.accent : pressed ? colors.surfaceStrong : 'transparent',
-              }]}>
-              <Text style={[styles.menuText, { color: selected ? colors.accentContrast : colors.textSecondary }]}>
-                {option.label}
-              </Text>
-              {selected ? <Text style={[styles.check, { color: colors.accentContrast }]}>✓</Text> : null}
-            </Pressable>;
-          })}
-        </ScrollView>
+        <ScrollView style={styles.menuList} contentContainerStyle={styles.menuContent}>{children}</ScrollView>
       </View>
     </View>
   </Modal>;
+}
+
+function MenuRow({ label, value, selected, chevron, checkbox, disabled, palette, onPress }) {
+  return <Pressable accessibilityRole={chevron ? 'button' : checkbox ? 'checkbox' : 'radio'} accessibilityLabel={label}
+    aria-checked={chevron ? undefined : !!selected} disabled={disabled}
+    accessibilityState={chevron ? undefined : { checked: !!selected, disabled: !!disabled }}
+    onPress={onPress}
+    style={({ pressed }) => [styles.menuRow, { backgroundColor: pressed ? palette.surfaceStrong : 'transparent', opacity: disabled ? 0.4 : 1 }]}>
+    <Text numberOfLines={1} style={[styles.menuText, { color: palette.textSecondary }]}>{label}</Text>
+    {value ? <Text numberOfLines={1} style={[styles.menuValue, { color: palette.textMuted }]}>{value}</Text> : null}
+    {chevron ? <Icon spec={actionIcons.chevronRight} color={palette.textMuted} size={14} /> : null}
+    {selected ? <Icon spec={actionIcons.checkmark} color={palette.success} size={16}>
+      <Text style={[styles.check, { color: palette.success }]}>✓</Text>
+    </Icon> : null}
+  </Pressable>;
 }
 
 const DEFAULT_TABLE_COLUMNS = ['title', 'type', 'format', 'resolution', 'collected'];
@@ -196,16 +210,18 @@ function tableColumnLabel(column, labels) {
 }
 
 function tableCellValue(item, column, labels) {
-  if (column === 'type') return item.mediaTypeLabel || item.mediaType || '—';
-  if (column === 'format') return item.format || '—';
-  if (column === 'resolution') return item.resolution || '—';
-  if (column === 'collected') return item.collectedAt || '—';
-  if (column === 'hdr') return item.hdr || '—';
-  if (column === 'location') return item.purchaseLocation || '—';
-  return item[column] == null ? '—' : String(item[column]);
+  if (column === 'type') return item.mediaTypeLabel || item.mediaType || '-';
+  if (column === 'format') return item.format || '-';
+  if (column === 'resolution') return item.resolution || '-';
+  if (column === 'collected') return item.collectedAtLabel || item.collectedAt || '-';
+  if (column === 'hdr') return item.hdr || '-';
+  if (column === 'location') return item.purchaseLocation || '-';
+  return item[column] == null ? '-' : String(item[column]);
 }
 
-function TableView({ items, labels, palette, columns, onOpenCopy }) {
+// A host that opens detail pages opens it from the row, like the web table;
+// the copy dialog stays behind the card action.
+function TableView({ items, labels, palette, columns, onOpenCopy, onOpenItem }) {
   const visibleColumns = columns?.length ? columns : DEFAULT_TABLE_COLUMNS;
   return <View style={[styles.table, { borderColor: palette.border, backgroundColor: palette.surface }]}>
     <View style={[styles.tableHeader, { borderColor: palette.border }]}>
@@ -217,8 +233,8 @@ function TableView({ items, labels, palette, columns, onOpenCopy }) {
     {items.map(item => {
       const image = item.card?.image || item.image || {};
       return <Pressable key={item.id} accessibilityRole="button"
-        accessibilityLabel={`${item.title} ${labels.editCopies}`}
-        onPress={() => onOpenCopy?.(item)}
+        accessibilityLabel={onOpenItem ? item.title : `${item.title} ${labels.editCopies}`}
+        onPress={() => (onOpenItem ? onOpenItem(item) : onOpenCopy?.(item))}
         style={({ pressed }) => [styles.tableRow, {
           borderColor: palette.border,
           backgroundColor: pressed ? palette.surfaceStrong : 'transparent',
@@ -251,20 +267,36 @@ function TableView({ items, labels, palette, columns, onOpenCopy }) {
   </View>;
 }
 
-function GridView({ items, labels, palette, onOpenCopy, renderCard }) {
-  return <View style={styles.grid}>
-    {items.map(item => <View key={item.id} style={styles.gridItem}>
+// A host that opens detail pages (onOpenItem) keeps the copy dialog behind a
+// card action; otherwise a card tap opens the copy dialog.
+function cardHandlers(item, labels, onOpenCopy, onOpenItem) {
+  if (!onOpenItem) return { onOpen: () => onOpenCopy?.(item) };
+  return {
+    onOpen: () => onOpenItem(item),
+    onAction: () => onOpenCopy?.(item),
+    actions: {
+      title: labels.open || 'Open',
+      ordering: null,
+      clickable: true,
+      items: [{ kind: 'action', key: 'copies', title: labels.editCopies || 'Open copies', icon: actionIcons.edit, tone: 'indigo' }],
+    },
+  };
+}
+
+function GridView({ items, labels, palette, onOpenCopy, onOpenItem, renderCard }) {
+  return <View style={styles.grid} testID="collection-grid">
+    {items.map(item => <View key={item.id} style={styles.gridItem} testID="collection-grid-item">
       {renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
         ...palette,
         card: palette.surface,
         link: '#818cf8',
         star: '#facc15',
-      }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
+      }} labels={labels} {...cardHandlers(item, labels, onOpenCopy, onOpenItem)} />}
     </View>)}
   </View>;
 }
 
-function RowView({ items, groups, labels, palette, onOpenCopy, onLoadMoreGroup, renderCard }) {
+function RowView({ items, groups, labels, palette, onOpenCopy, onOpenItem, onLoadMoreGroup, renderCard }) {
   const resolvedGroups = useMemo(() => {
     if (groups?.length) return groups;
     const byType = new Map();
@@ -305,7 +337,7 @@ function RowView({ items, groups, labels, palette, onOpenCopy, onLoadMoreGroup, 
               card: palette.surface,
               link: '#818cf8',
               star: '#facc15',
-            }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
+            }} labels={labels} {...cardHandlers(item, labels, onOpenCopy, onOpenItem)} />}
           </View>)}
         </ScrollView>
       </View>;
@@ -328,6 +360,7 @@ export function CollectionBrowser({
   tableColumns,
   onFilterChange,
   onOpenCopy,
+  onOpenItem,
   onLoadMore,
   onLoadMoreGroup,
   renderCard,
@@ -335,97 +368,112 @@ export function CollectionBrowser({
   const labels = mergeLabels(suppliedLabels);
   const palette = mergePalette(suppliedPalette);
   const [menu, setMenu] = useState(null);
+  const [searching, setSearching] = useState(false);
   const activeCount = filterCount(filters);
   const view = filters.view || 'grid';
+  const grouped = options.groupByMediaType && filters.groupByMediaType && view === 'grid' && (!filters.type || filters.type === 'all');
 
-  const barFilters = {
-    mediaTypes: filters.type && filters.type !== 'all' ? [filters.type] : [],
-    statuses: filters.completeness && filters.completeness !== 'all' ? [filters.completeness] : [],
-    sort: filters.sort || 'collected_at',
-    direction: filters.direction || 'desc',
-    view,
-    ranges: {},
-  };
-  const barOptions = {
-    mediaTypes: options.mediaTypes || [],
-    statuses: [
-      { value: 'partial', label: labels.partial },
-      { value: 'full', label: labels.full },
-    ],
-    sorts: options.sorts || [],
-    views: [
-      { value: 'grid', label: labels.grid },
-      { value: 'rows', label: labels.rows },
-      { value: 'table', label: labels.table },
-    ],
-    savedViews: [],
-    ranges: [],
-  };
-
-  const secondary = [
-    options.formats?.length ? { key: 'format', title: labels.formatFilter, value: filters.format, options: options.formats } : null,
-    options.resolutions?.length ? { key: 'resolution', title: labels.resolutionFilter, value: filters.resolution, options: options.resolutions } : null,
-    options.hdrs?.length ? { key: 'hdr', title: labels.hdr, value: filters.hdr, options: options.hdrs } : null,
-    options.locations?.length ? { key: 'location', title: labels.location, value: filters.location, options: options.locations } : null,
+  const filterEntries = [
+    { key: 'type', title: labels.type, value: filters.type, any: labels.allTypes, options: options.mediaTypes || [] },
+    options.formats?.length ? { key: 'format', title: labels.formatFilter, value: filters.format, any: labels.anyFormat, options: options.formats } : null,
+    options.resolutions?.length ? { key: 'resolution', title: labels.resolutionFilter, value: filters.resolution, any: labels.anyResolution, options: options.resolutions } : null,
+    options.hdrs?.length ? { key: 'hdr', title: labels.hdr, value: filters.hdr, any: labels.anyHdr, options: options.hdrs } : null,
+    options.customFilter ? {
+      key: 'custom',
+      title: options.customFilter.label || labels.customField,
+      value: filters.customValue,
+      any: labels.any,
+      options: options.customFilter.choices || [],
+    } : null,
+    options.locations?.length ? { key: 'location', title: labels.location, value: filters.location, any: labels.anyLocation, options: options.locations } : null,
     {
       key: 'rating',
       title: labels.rating,
       value: filters.rating,
+      any: labels.anyRating,
       options: [
         { value: 'rated', label: labels.ratingRated },
         { value: 'not_rated', label: labels.ratingUnrated },
       ],
     },
-    options.customFilter ? {
-      key: 'custom',
-      title: options.customFilter.label || labels.customField,
-      value: filters.customValue,
-      options: options.customFilter.choices || [],
+    options.showCompleteness ? {
+      key: 'completeness',
+      title: labels.completeness,
+      value: filters.completeness,
+      any: labels.any,
+      options: [
+        { value: 'partial', label: labels.partiallyCollected },
+        { value: 'full', label: labels.fullyCollected },
+      ],
     } : null,
   ].filter(Boolean);
 
-  function handleFilterIntent(intent) {
-    if (intent.type === 'clear') {
-      onFilterChange?.({ type: 'reset' });
-      return;
-    }
-    if (intent.type === 'toggle' && intent.key === 'mediaTypes') {
-      onFilterChange?.({ type: 'type', value: filters.type === intent.value ? 'all' : intent.value });
-      return;
-    }
-    if (intent.type === 'toggle' && intent.key === 'statuses') {
-      onFilterChange?.({
-        type: 'completeness',
-        value: filters.completeness === intent.value ? 'all' : intent.value,
-      });
-      return;
-    }
-    if (intent.type === 'set' && intent.key === 'mediaTypes') {
-      onFilterChange?.({ type: 'type', value: intent.value });
-      return;
-    }
-    if (intent.type === 'set' && intent.key === 'statuses') {
-      onFilterChange?.({ type: 'completeness', value: intent.value });
-      return;
-    }
-    if (intent.type === 'set') {
-      onFilterChange?.(intent);
-    }
+  function entryLabel(entry) {
+    const selected = entry.value && entry.value !== 'all'
+      ? entry.options.find(option => String(option.value) === String(entry.value))?.label || entry.value
+      : null;
+    return selected || (entry.key === 'type' ? labels.allTypes : labels.any);
   }
 
-  function chooseSecondary(key, value) {
+  function chooseEntry(entry, value) {
     setMenu(null);
-    if (key === 'custom') {
-      onFilterChange?.({ type: 'set', key: 'customFilter', value: options.customFilter?.id || '' });
+    if (entry.key === 'type') onFilterChange?.({ type: 'type', value: value || 'all' });
+    else if (entry.key === 'completeness') onFilterChange?.({ type: 'completeness', value: value || 'all' });
+    else if (entry.key === 'custom') {
+      onFilterChange?.({ type: 'set', key: 'customFilter', value: value ? options.customFilter?.id || '' : '' });
       onFilterChange?.({ type: 'set', key: 'customValue', value });
-      return;
-    }
-    onFilterChange?.({ type: 'set', key, value: value || 'all' });
+    } else onFilterChange?.({ type: 'set', key: entry.key, value: value || 'all' });
   }
+
+  function chooseSort(value) {
+    setMenu(null);
+    if (value === (filters.sort || 'collected_at')) {
+      onFilterChange?.({ type: 'set', key: 'direction', value: (filters.direction || 'desc') === 'asc' ? 'desc' : 'asc' });
+    } else onFilterChange?.({ type: 'set', key: 'sort', value });
+  }
+
+  const sortLabel = (options.sorts || []).find(sort => sort.value === (filters.sort || 'collected_at'))?.label || labels.sort;
+  const activeEntry = menu && menu.kind === 'entry' ? filterEntries.find(entry => entry.key === menu.key) : null;
+  const toolbarButton = (pressed, active) => [styles.toolButton, {
+    backgroundColor: active ? palette.accentStrong : pressed ? palette.surfaceStrong : 'transparent',
+  }];
 
   return <View style={styles.root}>
-    {chrome ? <View style={[styles.searchRow, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Text style={[styles.searchGlyph, { color: palette.textMuted }]}>⌕</Text>
+    {chrome ? <View style={styles.toolbar}>
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.search}
+        accessibilityState={{ expanded: searching }}
+        onPress={() => setSearching(current => !current)}
+        style={({ pressed }) => toolbarButton(pressed, false)}>
+        <SearchIcon color={palette.textSecondary} size={20} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.filters}
+        onPress={() => setMenu({ kind: 'filters' })}
+        style={({ pressed }) => toolbarButton(pressed, false)}>
+        <Icon spec={actionIcons.funnel} color={palette.textSecondary} size={16} />
+        <Text style={[styles.toolText, { color: palette.textSecondary }]}>
+          {labels.filters}{activeCount ? ` (${activeCount})` : ''}
+        </Text>
+        <Icon spec={actionIcons.chevronDown} color={palette.textMuted} size={14} />
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${labels.sort}: ${sortLabel}`}
+        onPress={() => setMenu({ kind: 'sort' })}
+        style={({ pressed }) => [...toolbarButton(pressed, false), styles.sortButton]}>
+        <Text numberOfLines={1} style={[styles.toolText, { color: palette.textSecondary }]}>{sortLabel}</Text>
+        <Icon spec={actionIcons.chevronDown} color={palette.textMuted} size={14} />
+      </Pressable>
+      <View style={[styles.viewToggle, { borderColor: palette.border }]}>
+        {[['grid', labels.grid, actionIcons.fourSquare], ['table', labels.table, actionIcons.table]].map(([value, label, spec]) =>
+          <Pressable key={value} accessibilityRole="button" accessibilityLabel={label}
+            accessibilityState={{ selected: view === value }}
+            onPress={() => onFilterChange?.({ type: 'set', key: 'view', value })}
+            style={[styles.viewButton, { backgroundColor: view === value ? palette.accentStrong : palette.surfaceStrong }]}>
+            <Icon spec={spec} color={view === value ? palette.accentContrast : palette.textSecondary} size={18} />
+          </Pressable>)}
+      </View>
+    </View> : null}
+
+    {chrome && (searching || filters.query) ? <View style={[styles.searchRow, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+      <SearchIcon color={palette.textMuted} size={20} />
       <TextInput
         accessibilityLabel={labels.search}
         value={filters.query || ''}
@@ -440,78 +488,43 @@ export function CollectionBrowser({
       </Pressable> : null}
     </View> : null}
 
-    {chrome ? <FilterBar filters={barFilters} options={barOptions} labels={{
-      filters: labels.filters,
-      allTypes: labels.allTypes,
-      mediaType: labels.type,
-      status: labels.status,
-      allStatuses: labels.allStatuses,
-      sort: labels.sort,
-      view: labels.view,
-      clear: labels.clear,
-      clearAll: labels.clearAll,
-      items: labels.results,
-      ascending: 'ascending',
-      descending: 'descending',
-      updating: 'Updating results',
-    }} palette={{
-      ...palette,
-      surfaceHover: palette.surfaceMuted,
-      accentText: palette.accentContrast,
-      disabled: palette.textMuted,
-    }} busy={busy} resultCount={typeof resultCount === 'number' ? resultCount : items.length}
-      onChange={handleFilterIntent} /> : null}
-
-    {chrome && secondary.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}>
-      {secondary.map(entry => {
-        const selected = entry.value && entry.value !== 'all'
-          ? (entry.options.find(option => String(option.value) === String(entry.value))?.label || entry.value)
-          : null;
-        return <Pressable key={entry.key} accessibilityRole="button"
-          accessibilityLabel={`${entry.title}: ${selected || labels.any}`}
-          onPress={() => setMenu({
-            key: entry.key,
-            title: entry.title,
-            value: entry.key === 'custom' ? filters.customValue : entry.value,
-            options: entry.options,
-          })}
-          style={({ pressed }) => [styles.filterChip, {
-            backgroundColor: selected ? `${palette.accent}33` : palette.surface,
-            borderColor: selected ? palette.accent : palette.border,
-            opacity: pressed ? 0.75 : 1,
-          }]}>
-          <Text style={[styles.filterChipText, { color: selected ? palette.text : palette.textSecondary }]}>
-            {entry.title}{selected ? ` · ${selected}` : ''}
-          </Text>
-        </Pressable>;
-      })}
-      {activeCount ? <Pressable accessibilityRole="button" accessibilityLabel={labels.clearAll}
-        onPress={() => onFilterChange?.({ type: 'reset' })}
-        style={({ pressed }) => [styles.filterChip, {
-          backgroundColor: 'transparent', borderColor: palette.border, opacity: pressed ? 0.6 : 1,
-        }]}>
-        <Text style={[styles.filterChipText, { color: palette.accent }]}>{labels.clear}</Text>
-      </Pressable> : null}
-    </ScrollView> : null}
-
     {items.length === 0 && !groups?.length ? <View style={[styles.empty, { borderColor: palette.border, backgroundColor: palette.surface }]}>
       <Text style={[styles.emptyTitle, { color: palette.text }]}>{labels.empty}</Text>
       <Text style={[styles.emptyHint, { color: palette.textMuted }]}>{labels.emptyHint}</Text>
     </View> : view === 'table'
-      ? <TableView items={items} labels={labels} palette={palette} columns={tableColumns} onOpenCopy={onOpenCopy} />
-      : view === 'rows'
+      ? <TableView items={items} labels={labels} palette={palette} columns={tableColumns} onOpenCopy={onOpenCopy} onOpenItem={onOpenItem} />
+      : view === 'rows' || grouped
         ? <RowView items={items} groups={groups} labels={labels} palette={palette}
-          onOpenCopy={onOpenCopy} onLoadMoreGroup={onLoadMoreGroup} renderCard={renderCard} />
-        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />}
+          onOpenCopy={onOpenCopy} onOpenItem={onOpenItem} onLoadMoreGroup={onLoadMoreGroup} renderCard={renderCard} />
+        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} onOpenItem={onOpenItem} renderCard={renderCard} />}
 
     {!groups?.length && (hasMore || loadingMore) ? <View style={styles.loadMore} testID="collection-load-more">
       <Button label={labels.loadMore} tone="surface" palette={palette}
         busy={loadingMore} disabled={loadingMore} onPress={onLoadMore} />
     </View> : null}
 
-    <FilterMenu menu={menu} labels={labels} palette={palette}
-      onChoose={chooseSecondary} onClose={() => setMenu(null)} />
+    {menu?.kind === 'filters' ? <SheetFrame title={labels.filters} labels={labels} palette={palette} onClose={() => setMenu(null)}>
+      <MenuRow label={labels.all} value={activeCount ? '' : labels.active} selected={!activeCount} palette={palette}
+        onPress={() => { setMenu(null); onFilterChange?.({ type: 'reset' }); }} />
+      {filterEntries.map(entry => <MenuRow key={entry.key} label={entry.title} value={entryLabel(entry)} chevron
+        palette={palette} onPress={() => setMenu({ kind: 'entry', key: entry.key })} />)}
+    </SheetFrame> : null}
+    {activeEntry ? <SheetFrame title={activeEntry.title} labels={labels} palette={palette}
+      onBack={() => setMenu({ kind: 'filters' })} onClose={() => setMenu(null)}>
+      {[{ value: '', label: activeEntry.any }, ...activeEntry.options].map(option => <MenuRow key={option.value || 'any'}
+        label={option.label} palette={palette}
+        selected={String(activeEntry.value && activeEntry.value !== 'all' ? activeEntry.value : '') === String(option.value || '')}
+        onPress={() => chooseEntry(activeEntry, option.value)} />)}
+    </SheetFrame> : null}
+    {menu?.kind === 'sort' ? <SheetFrame title={labels.sort} labels={labels} palette={palette} onClose={() => setMenu(null)}>
+      {(options.sorts || []).map(sort => <MenuRow key={sort.value} label={sort.label} palette={palette}
+        value={sort.value === (filters.sort || 'collected_at') ? ((filters.direction || 'desc') === 'asc' ? labels.ascending : labels.descending) : ''}
+        selected={sort.value === (filters.sort || 'collected_at')}
+        onPress={() => chooseSort(sort.value)} />)}
+      {options.groupByMediaType ? <MenuRow label="Group by media type" checkbox
+        selected={!!filters.groupByMediaType} disabled={view === 'table' || (filters.type && filters.type !== 'all')}
+        palette={palette} onPress={() => { setMenu(null); onFilterChange?.({ type: 'set', key: 'groupByMediaType', value: !filters.groupByMediaType }); }} /> : null}
+    </SheetFrame> : null}
   </View>;
 }
 
@@ -521,9 +534,12 @@ const styles = StyleSheet.create({
   searchGlyph: { fontSize: 20 },
   searchInput: { flex: 1, fontSize: 14, paddingVertical: 8 },
   searchClear: { fontSize: 22, paddingHorizontal: 4 },
-  chipRow: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  filterChip: { borderWidth: 1, borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 7 },
-  filterChipText: { fontSize: 12, fontWeight: '600' },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  toolButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 10, borderRadius: 8 },
+  sortButton: { flexShrink: 1, minWidth: 0 },
+  toolText: { fontSize: 14, flexShrink: 1 },
+  viewToggle: { flexDirection: 'row', marginLeft: 'auto', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  viewButton: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   gridItem: { width: 164 },
   rows: { gap: 18 },
@@ -550,13 +566,14 @@ const styles = StyleSheet.create({
   loadMore: { alignItems: 'center', paddingVertical: 14 },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
   sheet: { width: '100%', maxWidth: 380, maxHeight: '70%', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },
-  sheetTitle: { fontSize: 15, fontWeight: '700' },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1 },
+  sheetTitle: { flex: 1, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' },
   close: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   closeText: { fontSize: 22 },
   menuList: { maxHeight: 360 },
   menuContent: { paddingBottom: 8 },
   menuRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11 },
-  menuText: { fontSize: 13 },
+  menuText: { fontSize: 14, flex: 1 },
+  menuValue: { fontSize: 12, maxWidth: 140 },
   check: { fontSize: 14, fontWeight: '700' },
 });

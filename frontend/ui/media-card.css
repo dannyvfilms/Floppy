@@ -6,3 +6,23 @@
 .media-card-slot {
   display: contents;
 }
+
+/* The Collection grid sizes like the release .media-grid: three columns on a
+   phone, then as many 180px-minimum columns as fit. The shared grid is a flex
+   wrap of fixed 164px tiles, which gave an extra column and narrower cards. */
+div[data-testid="collection-grid"] {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 30rem) {
+  div[data-testid="collection-grid"] {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+div[data-testid="collection-grid"] > div[data-testid="collection-grid-item"] {
+  width: auto;
+  min-width: 0;
+}

@@ -28,7 +28,61 @@ Solve architectural incompatibilities; do not bypass checks or reclassify compon
 If reasonable solutions encounter an external blocker, report evidence and attempts;
 the affected work remains incomplete. Record actual platform verification separately.
 
+## Cross-platform by default
+
+Web, iOS and Android are all first-class. Unless the task names one platform, a UI
+change lands on every applicable surface in the same PR. Never ship web-only or
+native-only by accident; a deliberate carve-out is stated in the PR with its reason.
+"Implemented on all platforms" and "verified on all platforms" are separate claims.
+
+Parity is the default for behaviour, performance and bug fixes, not only for UI. Web
+and native apps operate at parity unless the user asks for a device-specific
+carve-out or a real platform limit forces one. When a problem is found or fixed on
+one platform (a slow flip, a failing request, late artwork, a layout bug), ask the
+same question of the other before calling it done: does it have the same problem,
+and does the same improvement apply? Then apply it, or measure and report why it does
+not. A platform-tuned fix (for example native-only image windowing) must name the
+other platform's status in the summary: same change applied, different change
+applied, or no change needed with evidence. Do not leave the other platform unmeasured
+and silent. Shared components and server changes are the default route to parity.
+
+Every device-specific carve-out gets a short comment at the code that makes it, saying
+why the platforms differ (for example "native mounts only nearby cards; web already
+lazy-loads images"). A reader who is asked or challenged later should find the reason
+next to the code, not only in a PR. Also list the carve-out in the register entry.
+
+- Before editing, trace which component each surface (web adapter, `native-proof/`,
+  and any platform-specific file) actually imports. Do not assume a shared component is
+  active everywhere. `npm run check:page-parity` shows the registry state.
+- Platform-specific appearance is fine. Platform-specific feature loss is not, unless
+  asked for or forced by a real platform limit. No WebViews or web-only fallbacks just to
+  pass a check.
+- Run `scripts/env_capabilities.sh` once per session (add `--bootstrap` on a fresh
+  cloud checkout) to learn what can run here. Do not re-probe; do not install toolchains,
+  boot paid hosted runtimes or change account settings without asking.
+- Capture before and after for every visible change with the strongest evidence the
+  environment offers (`docs/agents/pr_screenshots.md`, `scripts/review_screenshots.py`).
+  Extend those; do not build a second system. Open the images and look at them. On a
+  Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
+  frames (`scripts/native_shots.sh <label>`).
+- The v26.10.29 web release is the visual baseline for React and React Native components.
+  Treat a layout or visual change from it as a regression unless a redesign is documented.
+- Report one evidence level per platform (web, iOS, Android), never a combined pass:
+  1. **Runtime**: the real Expo app ran on a simulator, emulator, device or hosted
+     runtime and screenshots were inspected. On a Mac, if Xcode or an Android SDK is
+     installed, start the simulator rather than treating it as unavailable.
+  2. **Expo Web + logic**: real shared components rendered in Chromium, plus tests of
+     native-only layout and state logic. Native appearance is unverified. A web
+     screenshot is never evidence of iOS or Android rendering.
+  3. **Structural**: builds, platform routing and tests pass; no rendering evidence.
+  4. **Unverified**: say what blocked it and the remaining risk.
+- Reviewers (human, Codex, `/code-review`) treat a UI diff that touches only one
+  surface as a finding unless the PR names the carve-out, and treat a missing evidence
+  level for an applicable platform as a gap to report, not to assume.
+
 ## Operating Principles
+
+When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
 
 Keep it simple. Simple is better than complex.
 Make the smallest maintainable change that solves the actual request.
@@ -337,8 +391,11 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
+- `docs/agents/native_cloud_runtimes.md`: how to get real iOS and Android screenshots: locally with Expo Go, the booted simulators and `scripts/native_shots.sh` (tested), or hosted via a contributor's own Expo account (opt-in; nothing runs in CI).
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
+- `docs/architecture/log-levels.md`: what each log level means, the start/progress/finish lines every long-running process must write so a hang is visible, and what the Settings > Advanced downloads include.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/podcast-plays.md`: what a podcast listen is (`PodcastPlay`), the one service that writes it, how a direct tracker save is carried onto its play, and the API lifecycle.
 - `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
@@ -392,12 +449,18 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   architecture registry. Run the architecture, build and relevant regression checks.
   Report browser, iOS and Android evidence independently; builds do not establish
   runtime verification. An unresolved external blocker leaves the task incomplete.
+- Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
 - Provider pages use the shared provider model and page components; see
   `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
   use its behavior as a migration source, not a universal dependency. See
   `docs/ui/react-components.md` and `docs/ui/settings-cards.md` for current consumers.
 
 ## Frontend Tooling
+- React UI bundles are committed. After changes to `frontend/`, the UI build
+  script, or npm dependencies, run `npm ci --ignore-scripts`,
+  `npm run build:ui` and `npm run check:ui`. Commit the regenerated
+  `src/static/ui/` files with the source. Never hand-edit hashed bundles or
+  claim completion if the verification fails.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.
@@ -413,6 +476,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 
 Notes:
 - **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
+- **Saved test database:** a local real-migration run replays migrations once, then restores the saved result from `.floppy/` until any migration, the lockfile, settings or the runner changes. The run prints one `[test-db]` line saying which happened. `FLOPPY_TEST_DB_TEMPLATE=0` forces a replay. CI builds the file once per run and its shards restore it; the upgrade, PostgreSQL, image and coverage jobs still replay. See `docs/architecture/test-suite-cost.md`.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a
