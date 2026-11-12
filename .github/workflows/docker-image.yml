@@ -43,6 +43,12 @@ jobs:
     uses: ./.github/workflows/app-tests.yml
     # Backend/migration/lint gates plus the built-image smoke remain blocking.
     # Full Playwright coverage stays in the required pull-request test workflow.
+    # On a pull request merge into latest, the called workflow may skip the
+    # test shards when the pull request's green run tested this exact tree
+    # (scripts/reuse_pr_tests.py). Its "test (3.12)" job accepts that one case
+    # and nothing else, so "quality succeeded" still means tests passed on this
+    # tree. Migration checks, OAuth on PostgreSQL, both upgrade replays and
+    # release lint always run on the pushed commit.
     with:
       release_quality_gates: true
     permissions:

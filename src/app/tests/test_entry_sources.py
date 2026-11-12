@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
@@ -36,6 +37,7 @@ class EntrySourceSuggestionsTests(TestCase):
     """The Source field offers values the user has recorded before."""
 
     def setUp(self):
+        cache.clear()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username="a", password="x")
         self.other = user_model.objects.create_user(username="b", password="x")
@@ -47,6 +49,25 @@ class EntrySourceSuggestionsTests(TestCase):
             status=Status.COMPLETED.value,
             entry_source=source,
         )
+
+    def test_second_read_is_served_from_the_cache(self):
+        self.game("1", "plex")
+        self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+        with self.assertNumQueries(0):
+            self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+
+    def test_a_known_source_keeps_the_cache(self):
+        self.game("1", "plex")
+        entry_source_suggestions(self.user)
+        self.game("2", "Plex")
+        with self.assertNumQueries(0):
+            self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+
+    def test_a_new_source_is_offered_on_the_next_read(self):
+        self.game("1", "plex")
+        entry_source_suggestions(self.user)
+        self.game("2", "Theatre")
+        self.assertEqual(entry_source_suggestions(self.user), ["plex", "Theatre"])
 
     def test_empty_when_nothing_recorded(self):
         self.game("1", "")
