@@ -634,20 +634,125 @@ evidence is only ever a `pull_request` run.
 Coverage is unaffected: `coverage.yml` runs its own shards on every push to
 `latest`, whether or not the publish gate reused a result.
 
+## Reusing the migrated test database
+
+The migration floor is paid once per set of migration inputs, not once per
+command or per CI job. `scripts/test.sh` sets `FLOPPY_TEST_DB_TEMPLATE=1` for
+local runs, and `app-tests.yml` sets it for the test shards and the browser
+job. The
+first run replays every migration as before and then saves the result to
+`.floppy/testdb-<key>-<contents>.sqlite3`. Later runs copy that file into the
+in-memory test database and let Django run `migrate` on it, which finds nothing
+to apply. The runner prints one `[test-db]` line saying which happened.
+
+Measured on a Mac, `scripts/test.sh app.tests.test_query_counts`:
+
+| | database setup | whole command |
+| --- | --- | --- |
+| replay (first run, or any input changed) | 124 s | 141 s |
+| restore | 0.7 s | 16 s |
+
+This is not the models-only schema of `FLOPPY_TEST_FAST_DB=1`. The saved file is
+the output of a real replay, so `RunPython` rows are in it and tests that are
+skipped under the fast schema still run.
+
+### Why a restored database is the replayed one
+
+It was measured before anything was built on it:
+
+* Two independent replays produce the same schema (`sqlite_master`, in creation
+  order), the same `PRAGMA` values and the same rows in every table that has
+  rows (`django_migrations`, `django_content_type`, `auth_permission`,
+  `sqlite_sequence`). The only difference is the 593 `applied` timestamps in
+  `django_migrations`, which differ between any two test runs anyway.
+* A replayed database saved to disk, restored, run through `migrate` and saved
+  again is the same file byte for byte. SQLite's backup API copies pages, so
+  the layout, the autoincrement counters and therefore the ids tests receive
+  are unchanged.
+* Each test still gets the isolation it had: the restore happens once, before
+  Django's setup, and everything after it (per-test transactions, flushes,
+  worker clones) is Django's unchanged code working on that database.
+
+### What stops a stale database being used
+
+A stale template would mean tests passing against an old schema, so reuse does
+not rest on the key alone (`src/config/test_db_template.py`):
+
+1. **The key** hashes every file under `src/*/migrations/`, `uv.lock`, the
+   settings and runner modules, the SQLite backend, every first-party module
+   that registers a `pre_migrate` or `post_migrate` receiver, and the Python
+   and SQLite versions. Any change is a miss, and a miss is a real replay.
+2. **`migrate` still runs** on a restored database. If it plans to apply
+   anything, the key was wrong: the file is deleted and the run fails before a
+   single test.
+3. **The contents are checked.** The file name carries a hash of the schema and
+   every row. A truncated or edited file is deleted and replaced by a replay.
+   If the database no longer matches that hash after `migrate`, the run fails.
+
+`FLOPPY_TEST_DB_TEMPLATE=0` turns reuse off. It never applies to PostgreSQL,
+`--keepdb`, `FLOPPY_TEST_FAST_DB=1` or `--affected-record`.
+
+### In CI
+
+`app-tests.yml` has one job, "Migrated test database", in front of the shards:
+
+1. It computes the runner's own key (`python src/config/test_db_template.py`)
+   and asks `actions/cache` for a file saved under it.
+2. It runs `config.tests.test_test_db_template`, which holds one
+   database-backed test. On a cache miss that replays every migration and
+   saves the result. On a hit it restores the file, and `migrate` must find
+   nothing to apply.
+3. It uploads the file as a run artifact. The shards and the browser job
+   download it into `.floppy/` and restore it under the same three guards.
+
+The job never decides whether the gate passes. If it fails, or the artifact is
+missing or does not match a shard's own key, that shard prints a warning and
+replays migrations as before. It also runs when the shards reuse a pull
+request's result, so the cache on `latest` stays warm for the next pull
+request. A pull request that touches a migration gets a new key and a real
+replay in that run.
+
+The file holds an empty schema, permission and content-type rows and migration
+bookkeeping. No account, secret or user data exists when it is saved.
+
+Rollback: set the `TEST_DB_TEMPLATE` repository variable to `false`. Every job
+then replays, with no commit needed. If a run ever reports a saved database that
+"does not match this checkout", delete that cache entry; the key design has a
+gap and it should be reported.
+
+### Where migrations are still really replayed
+
+| boundary | replay |
+| --- | --- |
+| any key input changes (a migration added, edited or renamed; the lockfile; settings; the runner) | full replay in that run |
+| "Migrated test database" job | once per run when the key is new; otherwise a restore plus a `migrate` that must apply nothing |
+| CI test shards and browser job | only when the saved database is missing, damaged or keyed differently |
+| `Migration checks` (hygiene `--strict`, missing-migration check) | every run |
+| `OAuth (PostgreSQL)` | every run, on PostgreSQL |
+| `coverage.yml` shards | every run (reuse is not set there) |
+| `Upgrade (sqlite)` and `Upgrade (postgres)` | every run, with retained user data |
+| image smoke | every run, cold boot of a real database |
+| `migration-order.yml` | graph load on every migration PR |
+| `scripts/test_postgres.sh` | every run |
+
 ## How to run tests quickly now
 
 ```bash
 # Iterating on non-migration code — the fast path.
 FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
-# The real gate: real migrations, real graph.
+# The real gate: real migrations, real graph. Replays once, then restores the
+# saved result until a migration input changes.
 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
+
+# Force a replay.
+FLOPPY_TEST_DB_TEMPLATE=0 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
 # Whole fast suite.
 SECRET=test-only scripts/test.sh
 
-# Tests the current diff can reach. Still pays the migration floor
-# unless FLOPPY_TEST_FAST_DB=1 is set. Uses the coverage map when present.
+# Tests the current diff can reach. Pays the migration floor only when a
+# migration input changed. Uses the coverage map when present.
 SECRET=test-only scripts/test.sh --affected
 
 # Record the map. Same suite CI runs on latest: slow included, network

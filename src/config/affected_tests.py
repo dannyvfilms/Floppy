@@ -42,6 +42,7 @@ ESCAPE_HATCH = frozenset(
         "src/config/test_settings.py",
         "src/config/__init__.py",
         "src/config/test_runner.py",
+        "src/config/test_db_template.py",
         "src/config/affected_tests.py",
     }
 )
