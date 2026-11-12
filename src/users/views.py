@@ -1124,7 +1124,7 @@ def sidebar(request):
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             # Mixed Home rows depend on which media types are enabled.
-            cache_utils.clear_home_row_cache_for_user(request.user.id)
+            cache_utils.clear_library_view_caches(request.user.id, cache_utils.HOME_SETTING)
             messages.success(request, "Settings updated successfully.")
         else:
             messages.info(request, "No changes to save.")
