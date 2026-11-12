@@ -245,15 +245,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser remains the server-rendered visual reference. Expo-only hero, chip, child-action and section changes compiled through Expo web export; no browser-versus-Expo comparison or browser interaction pass was run."
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded the current Expo bundle against the local server. Breaking Bad show metadata, backdrop and logo rendered; a side-by-side comparison with the web season page showed remaining differences in crop, spacing, actions and sections. Season interactions and accessibility remain unverified."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo web export compiled the updated view. Android runtime, interactions and TalkBack have not been verified."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     },
@@ -265,15 +265,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared related sections and Steam DLC links over the server fallback; build and targeted Django tests only, no browser pass."
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled and placed on the native Detail screen; not exercised on a simulator or device."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled and placed on the native Detail screen; not exercised on a simulator or device."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     },
@@ -390,15 +390,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Expo export and the web bundles compile; the browser detail card uses ProgressCard.web.jsx and this universal implementation was not exercised in a browser."
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared progress card on Detail; no expand, cancel-rewatch or TalkBack interaction."
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     },
@@ -2944,16 +2944,16 @@
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page of the same seeded items (a TMDB film and show, a season, an episode, an anime, a comic and a book): the action bar, score row, sections, seasons, people and related slots render in the shared view. Order and hero treatment still differ from the web page; see the component register."
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded a Breaking Bad show detail from the local server. The web reference was a season page on another instance; this was not a same-record interaction or accessibility verification."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo web export compiled the shared view; Android runtime and TalkBack verification are outstanding."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     },
@@ -3543,16 +3543,16 @@
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page: track action bar (check-in started and cancelled, edit dialog saved), quick buttons (tags, notes, lists, more), provider score chip, collection block with its add dialog, notes block (one note saved and cleared), season poster grid, comic issue cards and anime episode cards."
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     },
@@ -3593,6 +3593,71 @@
         "android": {
           "status": "unverified",
           "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/ui/DetailBackdrop.jsx": {
+      "components": [
+        "DetailBackdrop"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/ProviderLogo.jsx": {
+      "components": [
+        "ProviderLogo"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/DetailSecondary.jsx": {
+      "components": [
+        "DetailSecondary",
+        "DetailMetadata",
+        "DetailWatchProviders",
+        "DetailStudios",
+        "DetailPromotedFacts",
+        "DetailMediumExtras"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     }
@@ -3881,6 +3946,48 @@
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; not run on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/detailHeroLayout.js": {
+      "components": [
+        "detailHeroLayout",
+        "detailArtworkCrop"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/detailSecondaryModel.js": {
+      "components": [
+        "detailSecondaryModel",
+        "detailSecondaryOrder"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     }
@@ -4997,6 +5104,94 @@
         "android": {
           "status": "unverified",
           "evidence": "Retains RN Modal and inline close controls; runtime unverified."
+        }
+      }
+    },
+    "frontend/ui/DetailBackdrop.native.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailBackdrop"
+      ],
+      "purpose": "Render sharp artwork and a blurred backdrop with the crop anchored to the inner content strip, allowing native search and rail bleed.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/DetailBackdrop.web.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailBackdrop"
+      ],
+      "purpose": "Render sharp artwork and a blurred backdrop with the crop anchored to the inner content strip, allowing native search and rail bleed.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/ProviderLogo.native.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "ProviderLogo"
+      ],
+      "purpose": "Render provider logos including native SVG sources without browser APIs in shared presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/ProviderLogo.web.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "ProviderLogo"
+      ],
+      "purpose": "Render provider logos including native SVG sources without browser APIs in shared presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
     }

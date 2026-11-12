@@ -15,7 +15,7 @@ import { Shell } from '../../../frontend/ui/Shell';
 import { Sidebar } from '../../../frontend/ui/Sidebar';
 import { renderNativeIcon } from '../iconRenderer';
 import SearchSlot from './SearchSlot';
-import { getShellPageType, subscribeShellPageType } from './shellContext';
+import { getShellPageType, subscribeShellPageType, ShellLayoutContext } from './shellContext';
 import NativeShell from './NativeShell';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { palette, radius } from '../theme';
@@ -130,6 +130,7 @@ function absoluteLogo(model, serverUrl) {
 
 export default function ShellSlot({
   standalone = false,
+  overlaySearch = false,
   active = 'home',
   activeHref = '/',
   canGoBack = false,
@@ -156,6 +157,8 @@ export default function ShellSlot({
   // The web remembers the last searched type for pages with no type of their own.
   const [lastSubmittedType, setLastSubmittedType] = useState(null);
   const [pinned, setPinned] = useState([]);
+  const [detailViewport, setDetailViewport] = useState({ width: 0, height: 0 });
+  const [detailHeaderHeight, setDetailHeaderHeight] = useState(64);
   const hinge = useHinge();
   const railEdge = useVerticalBarEdgeIOS();
   const insets = useSafeAreaInsets();
@@ -299,14 +302,14 @@ export default function ShellSlot({
   if (wizardOpen || standalone) return content;
 
   if (Platform.OS === 'ios') {
-    return <NativeShell open={open} onToggle={() => setOpen(value => !value)}
+    return <NativeShell open={open} onToggle={() => setOpen(value => !value)} overlaySearch={overlaySearch}
       sidebar={sidebar} search={search} labels={labels} palette={shellPalette}
       canGoBack={canGoBack} onBack={() => { setOpen(false); onBack?.(); }}>
       {content}
     </NativeShell>;
   }
 
-  return <><Shell
+  const shell = <Shell
     open={open}
     onToggleMenu={() => setOpen(value => !value)}
     onCloseMenu={() => setOpen(false)}
@@ -320,7 +323,16 @@ export default function ShellSlot({
     palette={shellPalette}
   >
     {sidebar}
-  </Shell>{content}</>;
+  </Shell>;
+  if (!overlaySearch) return <>{shell}{content}</>;
+  // Android also lets detail artwork continue under search; other pages keep the reviewed shell.
+  return <View style={{ flex: 1 }} onLayout={event => setDetailViewport(event.nativeEvent.layout)}>
+    <ShellLayoutContext.Provider value={{ ...detailViewport, insets, headerHeight: detailHeaderHeight }}>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30 }}
+        onLayout={event => setDetailHeaderHeight(event.nativeEvent.layout.height)}>{shell}</View>
+      {content}
+    </ShellLayoutContext.Provider>
+  </View>;
 }
 
 const styles = StyleSheet.create({

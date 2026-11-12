@@ -6,7 +6,11 @@ from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.apps import apps
+from django.db.models import Case, F, Max, Min, Q, When
+from django.db.models.functions import Coalesce, Greatest
 from django.templatetags.static import static
+from django.urls import reverse
+from django.utils.translation import gettext, ngettext
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
@@ -36,9 +40,21 @@ from app.providers import manual, services, tmdb
 from app.services import metadata_resolution, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import _build_detail_tag_sections
-from app.templatetags.app_tags import media_url
+from app.templatetags.app_tags import (
+    country_code,
+    detail_promoted_facts,
+    iso_date_format,
+    media_url,
+    safe_count,
+    slug,
+    translate_detail_value,
+    translate_language_code,
+)
 from integrations import seerr_api
 from integrations.imports import helpers as import_helpers
+from users.appearance import resolved_detail_layouts
+from users.templatetags.ui_tags import _people_cast_props
+from users.templatetags.user_tags import detail_layout_family, user_date_format
 
 from .authentication import HasScope
 from .contract_serializers import DetailErrorSerializer
@@ -80,6 +96,62 @@ def _nonempty_list(value):
     return [value] if value not in (None, "", [], {}) else []
 
 
+def _tracking_entries(viewer, item, *, public_view, can_write, media_type):
+    """Return bounded actual consumptions, separate from the audit change log."""
+    if public_view or viewer is None or item is None:
+        return [], 0
+    queryset = app_models.BasicMedia.objects.filter_media_prefetch(
+        viewer, item.media_id, item.media_type, item.source,
+        season_number=item.season_number, episode_number=item.episode_number,
+        library_media_type=media_type, annotate_progress=False,
+    ).filter(item=item)
+    count = queryset.count()
+    start_field, end_field = "start_date", "end_date"
+    if item.media_type == "season":
+        queryset = queryset.annotate(detail_entry_start=Min("episodes__end_date"), detail_entry_end=Max("episodes__end_date"))
+        start_field, end_field = "detail_entry_start", "detail_entry_end"
+    elif queryset.model == app_models.TV:
+        queryset = queryset.annotate(
+            detail_main_start=Min("seasons__episodes__end_date", filter=~Q(seasons__item__season_number=0)),
+            detail_any_start=Min("seasons__episodes__end_date"),
+            detail_entry_end=Max("seasons__episodes__end_date"),
+        ).annotate(detail_entry_start=Coalesce(
+            "detail_main_start", "detail_any_start",
+            Case(When(status=app_models.Status.IN_PROGRESS.value, then=F("created_at"))),
+        ))
+        start_field, end_field = "detail_entry_start", "detail_entry_end"
+    # Match helpers.entry_activity_key while limiting rows before materialization.
+    entries = list(queryset.annotate(
+        detail_activity=Greatest(Coalesce(end_field, start_field, "created_at"), Coalesce(start_field, end_field, "created_at")),
+        detail_start=Coalesce(start_field, "created_at"),
+    ).order_by("-detail_activity", "-detail_start", "-created_at", "-pk")[:50])
+    app_models.BasicMedia.objects.annotate_max_progress(entries, item.media_type)
+    return [{
+        "id": entry.pk,
+        "identity": {
+            "mediaType": media_type, "detailType": item.media_type,
+            "source": item.source, "mediaId": str(item.media_id),
+            "seasonNumber": item.season_number, "episodeNumber": item.episode_number,
+            "instanceId": entry.pk,
+        },
+        "media_type": item.media_type,
+        "status": entry.status,
+        "score": _primitive(entry.score),
+        "display_score": _primitive(viewer.scale_score_for_display(entry.score)) if viewer.ratings_enabled else None,
+        "scale_max": viewer.rating_scale_max,
+        "progress": entry.progress,
+        "formatted_progress": entry.formatted_progress,
+        "progress_unit": getattr(entry, "progress_unit", ""),
+        "progress_is_percentage": getattr(entry, "progress_is_percentage", False),
+        "max_progress": getattr(entry, "max_progress", None),
+        "completed_episode_count": entry.completed_episode_count if item.media_type in {"tv", "season"} else None,
+        "reading_time": getattr(entry, "reading_time", None),
+        "start_date": _primitive(entry.start_date), "end_date": _primitive(entry.end_date),
+        "notes": entry.notes,
+        "can_edit": can_write,
+    } for entry in entries], count
+
+
 def _primitive(value):
     """Convert builder output to JSON-safe values without leaking model objects."""
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -95,7 +167,169 @@ def _primitive(value):
     return str(value)
 
 
-def _media_card(entry, *, public_view):
+def _secondary_detail(metadata, item, source, media_type, route_media_type, viewer, book_formats):
+    """Project the web detail sidebar without rendering HTML or doing writes."""
+    authors = []
+    if media_type in {"book", "comic", "manga"}:
+        if item is not None:
+            authors = [
+                {
+                    "source": credit.person.source,
+                    "person_id": credit.person.source_person_id,
+                    "name": credit.person.name,
+                }
+                for credit in item.person_credits.filter(
+                    role_type=app_models.CreditRoleType.AUTHOR.value,
+                ).select_related("person").order_by("sort_order", "person__name")
+            ]
+        if not authors:
+            authors = [
+                {"source": source, "person_id": str(author.get("person_id") or author.get("id")), "name": author["name"].strip()}
+                for author in _nonempty_list(metadata.get("authors_full"))
+                if isinstance(author, dict) and (author.get("person_id") or author.get("id")) is not None and (author.get("name") or "").strip()
+            ]
+    for author in authors:
+        author["href"] = reverse("person_detail", kwargs={
+            "source": author["source"], "person_id": author["person_id"], "name": slug(author["name"]),
+        })
+
+    studios = []
+    if item is not None:
+        studios = [
+            {
+                "source": credit.studio.source,
+                "studio_id": credit.studio.source_studio_id,
+                "name": credit.studio.name,
+                "logo": credit.studio.logo,
+            }
+            for credit in item.studio_credits.select_related("studio").order_by("sort_order", "studio__name")
+        ]
+    if not studios:
+        studios = [
+            {"source": source, "studio_id": str(studio.get("studio_id") or studio.get("id")), "name": studio["name"].strip(), "logo": studio.get("logo") or ""}
+            for studio in _nonempty_list(metadata.get("studios_full"))
+            if isinstance(studio, dict) and (studio.get("studio_id") or studio.get("id")) is not None and (studio.get("name") or "").strip()
+        ]
+    for studio in studios:
+        studio["href"] = reverse("studio_detail", kwargs={
+            "source": studio["source"], "studio_id": studio["studio_id"], "name": slug(studio["name"]),
+        })
+
+    region = getattr(viewer, "watch_provider_region", None)
+    watch_providers = None
+    if media_type in {"movie", "tv", "anime", "season"} and region not in (None, "", "UNSET"):
+        payload = metadata.get("providers")
+        if payload is None and item is not None:
+            payload = item.watch_providers or None
+        mapped_id = None
+        mapped_type = route_media_type
+        try:
+            if route_media_type == "anime" and source == "mal" and not payload:
+                identity = metadata_resolution.resolve_mal_tmdb_identity(metadata.get("media_id"))
+                if identity is not None:
+                    mapped_id, mapped_type = identity.media_id, identity.media_type
+            elif item is not None and route_media_type in {"tv", "anime"} and (not payload or source == "tvdb"):
+                mapped_id = metadata_resolution.resolve_provider_media_id(
+                    item, app_models.Sources.TMDB.value, route_media_type=route_media_type,
+                    # Detail reads do not persist a newly resolved provider link.
+                    persist_links=False,
+                )
+            if mapped_id:
+                mapped = services.get_media_metadata(
+                    mapped_type, mapped_id, app_models.Sources.TMDB.value,
+                    language=metadata_resolution.metadata_language_default(viewer, item),
+                    user=viewer,
+                )
+                payload = mapped.get("providers") or payload
+        except (services.ProviderAPIError, TypeError, ValueError):
+            logger.warning("Unable to enrich detail watch providers for %s/%s", source, metadata.get("media_id"))
+        if payload is not None or media_type == "season":
+            watch_providers = tmdb.filter_providers(payload, region)
+        pinned = tmdb.pinned_provider_matches(item, viewer.pinned_watch_providers)
+        if pinned:
+            merged = {provider["provider_id"]: provider for provider in watch_providers or []}
+            for provider in pinned:
+                merged.setdefault(provider["provider_id"], provider)
+            watch_providers = sorted(merged.values(), key=lambda provider: provider.get("display_priority", 999))
+
+    details = metadata.get("details") or {}
+    if not isinstance(details, dict):
+        details = {}
+    display_details = {}
+    for key, value in details.items():
+        if key in {"first_air_date", "last_air_date"}:
+            display = user_date_format(value, viewer) if viewer else value
+            if key == "first_air_date" and details.get("last_air_date"):
+                end = details["last_air_date"]
+                display = f"{display} \u2013 {user_date_format(end, viewer) if viewer else end}"
+        elif key in {"total_runtime", "runtime"} and details.get("episodes"):
+            count = details["episodes"]
+            display = str(value if value is not None else gettext("Unknown")) + " · " + ngettext("%(count)s episode", "%(count)s episodes", safe_count(count)) % {"count": count}
+        elif key in {"start_date", "end_date", "publish_date", "release_date", "last_updated"}:
+            display = iso_date_format(value, viewer)
+        elif key == "language":
+            display = translate_language_code(value)
+        elif key in {"season", "broadcast", "source", "players"}:
+            display = translate_detail_value(value)
+        elif key == "format" and media_type == "anime":
+            display = gettext("Anime")
+        elif key in {"format", "status", "country", "countries", "production_countries", "origin_country", "languages"}:
+            display = [gettext(str(entry)) if entry else gettext("Unknown") for entry in value] if isinstance(value, list) else gettext(str(value)) if value else gettext("Unknown")
+        else:
+            display = value
+        display_details[key] = _primitive(display)
+    promotion = detail_promoted_facts(media_type, details)
+    for field in promotion["fields"]:
+        key, value = field["key"], field["value"]
+        if key == "locale":
+            languages = ", ".join(translate_detail_value(entry) for entry in _nonempty_list(value.get("languages")))
+            countries = ", ".join(translate_detail_value(country_code(entry)) for entry in _nonempty_list(value.get("country")))
+            display = f"{languages} ({countries})" if languages and countries else languages or countries
+        elif key == "air_dates":
+            display = " \u2013 ".join(str(user_date_format(entry, viewer) if viewer else entry) for entry in value if entry)
+        elif key == "release_date":
+            display = iso_date_format(value, viewer)
+        elif key == "episodes":
+            display = ngettext("%(count)s episode", "%(count)s episodes", safe_count(value)) % {"count": value}
+        elif key == "total_runtime" and media_type == "tv" and details.get("episodes"):
+            count = details["episodes"]
+            display = str(value) + " · " + ngettext("%(count)s episode", "%(count)s episodes", safe_count(count)) % {"count": count}
+        elif isinstance(value, list):
+            display = ", ".join(str(entry) for entry in value)
+        else:
+            display = display_details.get(key, value)
+        field["display_value"] = _primitive(display)
+    return {
+        "details": _primitive(details),
+        "display_details": display_details,
+        "labels": {
+            "unknown": gettext("Unknown"),
+            "airDates": gettext("AIR DATES"),
+            "runtime": gettext("RUNTIME"),
+            "anime": gettext("Anime"),
+            "format": gettext("Format"),
+            "author": gettext("AUTHOR"),
+            "authors": gettext("AUTHORs"),
+            "details": gettext("Details"),
+            "noDetails": gettext("No details available"),
+            "streaming": gettext("STREAMING"),
+            "noWatchProviders": gettext("No watch providers"),
+        },
+        "authors_linked": authors,
+        "studios_linked": studios,
+        "author_detail_keys": ["author", "authors", "people"],
+        "studio_detail_keys": ["studios", "companies"],
+        "book_formats_replaces": "format" if book_formats else "",
+        "promotion": {
+            "fields": _primitive(promotion["fields"]),
+            "suppressed_keys": sorted(promotion["suppressed_keys"]),
+        },
+        "watch_providers": _primitive(watch_providers),
+        "watch_provider_region": region,
+    }
+
+
+def _media_card(entry, *, public_view, viewer=None, can_write=False):
     """Build the shared MediaCard model used by related/recommendation rails."""
     raw = entry.get("item") if isinstance(entry, dict) and "item" in entry else entry
     tracked = entry.get("media") if isinstance(entry, dict) else None
@@ -114,6 +348,8 @@ def _media_card(entry, *, public_view):
         href = ""
     status = getattr(tracked, "status", None)
     score = getattr(tracked, "score", None)
+    ratings_enabled = bool(viewer and viewer.ratings_enabled and not public_view)
+    display_score = viewer.scale_score_for_display(score) if ratings_enabled else None
     progress = getattr(tracked, "progress", None)
     max_progress = getattr(tracked, "max_progress", None)
     release_date = raw.get("release_date") or raw.get("release_datetime") or ""
@@ -137,10 +373,10 @@ def _media_card(entry, *, public_view):
             "titleLinks": [],
             "progressBar": None,
             "lines": [{"join": "plain", "parts": [{"text": year}]}] if year else [],
-            "rating": {"label": str(score), "value": score, "scaleMax": 10, "rateLabel": "Rate"}
-            if score is not None and not public_view
+            "rating": {"label": str(display_score), "value": _primitive(display_score), "scaleMax": viewer.rating_scale_max, "rateLabel": "Rate"}
+            if display_score is not None
             else None,
-            "ratingEditable": bool(tracked and not public_view),
+            "ratingEditable": bool(tracked and ratings_enabled and can_write),
             "actions": None,
             "readOnly": public_view,
             "trackedProgress": progress,
@@ -149,7 +385,7 @@ def _media_card(entry, *, public_view):
     }
 
 
-def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_view, can_write):
+def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_view, can_write, viewer=None):
     """Normalize provider season/episode data for the shared detail child cards."""
     if not isinstance(raw, dict):
         return None
@@ -183,6 +419,7 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
     score = raw.get("score")
     if score is None and plays:
         score = getattr(plays[0], "score", None)
+    can_rate = bool(editable_episode and viewer and viewer.ratings_enabled)
     return {
         "key": f"{media_type}-{source}-{identity['mediaId']}-{number}",
         "number": number,
@@ -197,8 +434,9 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
         "statusLabel": getattr(tracking, "status", None) if not public_view else None,
         "dropped": getattr(tracking, "status", None) == app_models.Status.DROPPED.value if not public_view else False,
         "percent": percent,
-        "score": _primitive(score) if editable_episode else None,
-        "canRate": editable_episode,
+        "score": _primitive(viewer.scale_score_for_display(score)) if can_rate else None,
+        "scaleMax": viewer.rating_scale_max if viewer and not public_view else 10,
+        "canRate": can_rate,
         "actions": ([{"key": "unwatch", "label": "Mark unwatched", "tone": "surface"}]
                     if editable_episode and watched else
                     [{"key": "watch", "label": "Mark watched", "tone": "primary"}]
@@ -382,6 +620,29 @@ class DetailPageView(drf_views.APIView):
             except Exception:
                 logger.exception("Unable to enrich detail cards for %s/%s", source, media_id)
 
+        # The PWA fills missing TV runtimes from the same local season index,
+        # then adds the bounded model's total runtime before formatting details.
+        if detail_type in {"movie", "tv", "anime"} and item is not None:
+            from app.media_details_views import _get_tv_runtime_display_fallback
+
+            detail_values = metadata.setdefault("details", {})
+            if isinstance(detail_values, dict):
+                if media_type == "tv" and not detail_values.get("runtime"):
+                    fallback_runtime = _get_tv_runtime_display_fallback(item, metadata)
+                    if fallback_runtime:
+                        detail_values["runtime"] = fallback_runtime
+                runtime_media = tracked or apps.get_model("app", media_type)(item=item)
+                app_models.BasicMedia.objects.annotate_max_progress([runtime_media], media_type)
+                total_runtime = runtime_media.formatted_total_runtime
+                if total_runtime and total_runtime != "--":
+                    ordered = {}
+                    for key, value in detail_values.items():
+                        ordered[key] = value
+                        if key == "runtime":
+                            ordered["total_runtime"] = total_runtime
+                    ordered.setdefault("total_runtime", total_runtime)
+                    metadata["details"] = ordered
+
         title_fields = app_models.Item.title_fields_from_metadata(
             metadata,
             fallback_title=item.title if item else "",
@@ -422,6 +683,8 @@ class DetailPageView(drf_views.APIView):
             score_chips.insert(0, {"label": "Your score", "value": _primitive(tracked.score), "kind": "viewer"})
 
         related_sections = []
+        token = request.auth
+        can_write = not hasattr(token, "has_scope") or token.has_scope("watchlist:write")
         related = metadata.get("related") or {}
         section_labels = {
             "recommendations": "Recommendations",
@@ -439,18 +702,18 @@ class DetailPageView(drf_views.APIView):
             for key, entries in related.items():
                 if key == "seasons":
                     continue
-                cards = [card for entry in _nonempty_list(entries) if (card := _media_card(entry, public_view=public_view))]
+                cards = [card for entry in _nonempty_list(entries) if (card := _media_card(entry, public_view=public_view, viewer=viewer, can_write=can_write))]
                 if cards:
                     related_sections.append({"id": key, "label": section_labels.get(key, key.replace("_", " ").title()), "items": cards})
 
-        people = {
-            "cast": _primitive(metadata.get("cast") or []),
-            "crew": _primitive(metadata.get("crew") or []),
-        }
         person_rows = _build_detail_person_rows(metadata, item=item)
-        if item is not None and item.media_type == app_models.MediaTypes.GAME.value and not people["cast"] and not people["crew"]:
-            people["cast"] = _primitive(person_rows.get("cast_row", {}).get("items", []))
-            people["crew"] = _primitive(person_rows.get("crew_row", {}).get("items", []))
+        people = {
+            kind: _people_cast_props(
+                {"user": None if public_view else viewer},
+                person_rows.get(f"{kind}_row", {}), source, "",
+            )["items"]
+            for kind in ("cast", "crew")
+        }
 
         raw_episodes = _normalize_detail_episode_actions(metadata.get("episodes") or [])
         requested_page = request.query_params.get("episode_page", 1)
@@ -459,14 +722,12 @@ class DetailPageView(drf_views.APIView):
         except (TypeError, ValueError):
             episode_page = 1
         episode_rows, episode_load_more = _paginate_detail_episodes(request, raw_episodes)
-        token = request.auth
-        can_write = not hasattr(token, "has_scope") or token.has_scope("watchlist:write")
         children_kind = "issue" if media_type == app_models.MediaTypes.COMIC.value else "episode"
         child_media_type = "issue" if children_kind == "issue" else "episode"
         children = {
             "kind": children_kind,
-            "seasons": [row for value in _nonempty_list(related.get("seasons")) if (row := _child_row(value, media_type="season", parent_media_type=media_type, source=source, media_id=media_id, public_view=public_view, can_write=can_write))],
-            "episodes": [row for value in episode_rows if (row := _child_row(value, media_type=child_media_type, parent_media_type=media_type, source=source, media_id=media_id, public_view=public_view, can_write=can_write))],
+            "seasons": [row for value in _nonempty_list(related.get("seasons")) if (row := _child_row(value, media_type="season", parent_media_type=media_type, source=source, media_id=media_id, public_view=public_view, can_write=can_write, viewer=viewer))],
+            "episodes": [row for value in episode_rows if (row := _child_row(value, media_type=child_media_type, parent_media_type=media_type, source=source, media_id=media_id, public_view=public_view, can_write=can_write, viewer=viewer))],
             "next_page": episode_page + 1 if episode_load_more else None,
             "next_label": episode_load_more.get("label") if episode_load_more else None,
         }
@@ -561,7 +822,17 @@ class DetailPageView(drf_views.APIView):
                 }
                 for entry in tracked.history.all().order_by("-history_date")[:8]
             ]
+        tracking_entries, tracking_entries_count = _tracking_entries(
+            viewer, item, public_view=public_view, can_write=can_write, media_type=media_type,
+        )
         is_authenticated = bool(viewer)
+        layout_family = {
+            "episode": "episode",
+            "comicissue": "comic_issue",
+        }.get(detail_type) or detail_layout_family(detail_type)
+        detail_layouts = resolved_detail_layouts(
+            viewer.detail_page_layouts if viewer is not None and not public_view else {},
+        )
         return Response({
             "identity": {
                 "media_type": detail_type,
@@ -591,6 +862,14 @@ class DetailPageView(drf_views.APIView):
             },
             "synopsis": metadata.get("synopsis") or "",
             "facts": facts,
+            "layout": {
+                "family": layout_family,
+                "zones": detail_layouts.get(layout_family, {}),
+            },
+            "secondary": _secondary_detail(
+                metadata, item, source, detail_type, media_type,
+                None if public_view else viewer, book_formats,
+            ),
             "sections": sections,
             "score_chips": _primitive(score_chips),
             "tag_sections": _primitive(tag_sections),
@@ -606,7 +885,16 @@ class DetailPageView(drf_views.APIView):
             "media_details": _primitive(details),
             "activity_subtitle": _primitive(activity_subtitle),
             "collections": _primitive(collections),
+            "viewer_rating": {
+                "enabled": bool(viewer and not public_view and viewer.ratings_enabled),
+                "scale_max": viewer.rating_scale_max if viewer and not public_view else 10,
+                "value": _primitive(viewer.scale_score_for_display(tracked.score))
+                if tracked is not None and viewer and not public_view else None,
+            },
             "tracking": tracking,
+            "tracking_entries": tracking_entries,
+            "tracking_entries_count": tracking_entries_count,
+            "tracking_entries_has_more": tracking_entries_count > len(tracking_entries),
             "history": history,
             "read_only": public_view or not is_authenticated,
             "public_view": public_view or not is_authenticated,
@@ -1201,6 +1489,8 @@ class MediaAnimeEpisodesView(drf_views.APIView):
         visible_content = resolved_detail_layouts(request.user.detail_page_layouts).get("series", {}).get("content", [])
         related = display_metadata.get("related") or {} if "related" in visible_content else {}
         tracked = BasicMedia.objects.filter_media(request.user, media_id, media_type, source).exists()
+        token = request.auth
+        can_write = not hasattr(token, "has_scope") or token.has_scope("watchlist:write")
         return Response({"pagination": {"total": total}, "load_more": load_more,
                          "related": related, "results": [
             {
@@ -1219,8 +1509,10 @@ class MediaAnimeEpisodesView(drf_views.APIView):
                 "watched": bool(row.get("history") or row.get("watched_by_progress")),
                 "collected": bool(row.get("collection_entry")),
                 "can_list": bool(row.get("item")),
-                "can_rate": bool(request.user.ratings_enabled and (tracked or row.get("rating_season_id"))),
+                "can_rate": bool(can_write and request.user.ratings_enabled and (tracked or row.get("rating_season_id"))),
                 "score": next((entry.score for entry in row.get("history") or [] if getattr(entry, "score", None) is not None), row.get("unwatched_score")),
+                "display_score": _primitive(request.user.scale_score_for_display(next((entry.score for entry in row.get("history") or [] if getattr(entry, "score", None) is not None), row.get("unwatched_score")))) if request.user.ratings_enabled else None,
+                "scale_max": request.user.rating_scale_max,
             }
             for row in rows
         ]})

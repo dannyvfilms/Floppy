@@ -445,6 +445,30 @@ Status: `Legacy`
 
 ## DETAIL
 
+Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
+`DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
+sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
+`DetailRelated` for people, recommendations and related grids. `DetailScoreRow`
+places the viewer rating beside provider scores; `ProgressCard` has an opt-in
+detail presentation. Native metadata adapters preserve server formatting and
+viewer rating preferences. `DetailBackdrop` and its layout logic anchor sharp
+artwork and clearlogos to the inner content strip. Intentional native carve-out:
+artwork extends underneath the search bar and into the side rail; the PWA keeps
+its search divider. Search overlay and overflow are enabled only for Details.
+`ProviderLogo` renders native SVG sources in its native adapter. Shared components
+remain props-only; permissions, requests and dialogs stay in feature adapters.
+PWA secondary templates remain server-owned; ownership is partial/coexisting.
+Retire those consumers only after shared web mounting preserves all section
+preferences, responsive states and interactions. Genre/link modal contents remain
+deferred. Current revision evidence: web — unverified comparison; iOS — pending
+simulator comparison; Android — pending emulator comparison. Builds and logic tests
+do not establish native appearance or complete page parity.
+
+- `frontend/ui/DetailBackdrop.jsx`, `frontend/ui/DetailBackdrop.native.jsx`, `frontend/ui/DetailBackdrop.web.jsx`, `frontend/ui/detailHeroLayout.js` (inner-area hero geometry and platform image gradients).
+- `frontend/ui/ProviderLogo.jsx`, `frontend/ui/ProviderLogo.native.jsx`, `frontend/ui/ProviderLogo.web.jsx` (provider logo presentation).
+- `frontend/ui/DetailSecondary.jsx`, `frontend/ui/detailSecondaryModel.js` (ordered metadata and secondary-section composition).
+- `scripts/detailHeroLayout.test.mjs`, `scripts/detailSecondaryModel.test.mjs` (geometry and safe projection regression checks).
+
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
 - Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.

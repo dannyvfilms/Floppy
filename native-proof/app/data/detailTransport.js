@@ -51,9 +51,16 @@ export async function loadIssues(identity, offset = 0, limit = 20) {
   return issuesFromPayload(payload, identity);
 }
 
-export async function loadSeasonEpisodes(identity, seasonNumber) {
-  const payload = await call(seasonEpisodesPath(identity, seasonNumber));
-  return episodesFromPayload(payload, identity, seasonNumber);
+export async function loadSeasonEpisodes(identity, seasonNumber, { offset = 0, withPage = false } = {}) {
+  const query = new URLSearchParams();
+  if (withPage) { query.set('limit', '20'); query.set('offset', String(offset)); }
+  if (identity.libraryMediaType === 'anime' || identity.mediaType === 'anime') query.set('library_media_type', 'anime');
+  const payload = await call(`${seasonEpisodesPath(identity, seasonNumber)}${query.size ? `?${query}` : ''}`);
+  const rows = episodesFromPayload(payload, identity, seasonNumber);
+  if (!withPage) return rows;
+  const total = Number(payload?.pagination?.total) || rows.length;
+  const nextOffset = offset + rows.length;
+  return { rows, total, loadMore: nextOffset < total ? { offset: nextOffset, label: `${Math.min(20, total - nextOffset)} more episodes` } : null };
 }
 
 export async function loadAnimeEpisodes(identity, queryString = '') {
