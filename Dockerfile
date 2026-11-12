@@ -103,7 +103,7 @@ WORKDIR /floppy
 # silently creates an empty database.
 RUN ln -s /floppy /yamtrack
 
-RUN apk add --no-cache --upgrade nginx shadow zlib \
+RUN apk add --no-cache --upgrade krb5-libs nginx shadow zlib\
     # Dependency installation happens in builder; do not ship a second,
     # unused installer (or ensurepip's bundled copy) from the Python base.
     && python -m pip uninstall --yes pip \
