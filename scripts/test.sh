@@ -27,6 +27,9 @@
 #                                         coverage, written to
 #                                         .floppy/affected.coverage.
 #
+# Real-migration runs reuse a saved migrated database when no migration input
+# changed; FLOPPY_TEST_DB_TEMPLATE=0 forces a replay.
+#
 # Extra manage.py test flags (e.g. -v 2, --failfast) pass through after the mode.
 set -euo pipefail
 
@@ -60,6 +63,19 @@ if [ "${FLOPPY_TEST_FAST_DB:-}" = "1" ]; then
   echo "[test.sh] FLOPPY_TEST_FAST_DB=1: schema built from models, migrations NOT replayed." >&2
 fi
 
+# Reuse the migrated SQLite test database while every migration input is
+# unchanged (src/config/test_db_template.py). The runner prints one "[test-db]"
+# line saying whether it replayed or restored. On by default locally. In CI
+# only the jobs that set it use it (app-tests.yml); everything else replays.
+# FLOPPY_TEST_DB_TEMPLATE=0 turns it off anywhere.
+if [ -z "${FLOPPY_TEST_DB_TEMPLATE:-}" ]; then
+  if [ -n "${CI:-}" ]; then
+    export FLOPPY_TEST_DB_TEMPLATE=0
+  else
+    export FLOPPY_TEST_DB_TEMPLATE=1
+  fi
+fi
+
 case "${1:-}" in
   --full)
     shift
@@ -82,7 +98,8 @@ case "${1:-}" in
     # A failing test still executed lines. Keep the map, then propagate the
     # suite's exit status.
     set +e
-    env COVERAGE_CORE=ctrace "${RUNNER[@]}" -m coverage run \
+    # Record against a real replay, so the map never depends on a saved database.
+    env COVERAGE_CORE=ctrace FLOPPY_TEST_DB_TEMPLATE=0 "${RUNNER[@]}" -m coverage run \
       src/manage.py test "${APPS[@]}" --parallel "$@" --exclude-tag network
     status=$?
     set -e

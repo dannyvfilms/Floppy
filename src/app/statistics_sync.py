@@ -97,7 +97,9 @@ def coalesce_import_changes(user_id: int):
         yield users[user_id]
         return
     fields = ("generation", "last_marked_at", "full_sweep_requested_at")
-    previous = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
+    previous = (
+        StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
+    )
     mark_aggregate(user_id, reason="media_import_started", full_sweep=True)
     marker = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
     changes = {"marked": False, "unchanged": False, "scoped": False}
@@ -129,7 +131,8 @@ def _bulk_import_active(user_id: int) -> bool:
     from integrations.models import ImportRun
     from integrations.tasks._import_helpers import (
         SELF_RESCHEDULING_IMPORT_SOURCES,
-        STREMIO_IMPORT_TIME_LIMIT,
+        SOURCE_TIME_LIMITS,
+        abandoned_after_seconds,
     )
 
     runs = ImportRun.objects.filter(status=ImportRun.Status.RUNNING).exclude(
@@ -141,12 +144,20 @@ def _bulk_import_active(user_id: int) -> bool:
     # Statistics deferred forever. With no task limit, RUNNING is authoritative.
     time_limit = settings.CELERY_TASK_TIME_LIMIT
     if time_limit:
-        cutoff = timezone.now() - timedelta(
-            seconds=max(time_limit, STREMIO_IMPORT_TIME_LIMIT) + 300
+        now = timezone.now()
+        alive = Q(
+            started_at__gte=now
+            - timedelta(seconds=abandoned_after_seconds("", time_limit)),
         )
+        for source in SOURCE_TIME_LIMITS:
+            alive |= Q(
+                source=source,
+                started_at__gte=now
+                - timedelta(seconds=abandoned_after_seconds(source, time_limit)),
+            )
         # A resumed durable run keeps its original provenance/start timestamp,
         # while its fresh lease proves there is still a live writer.
-        runs = runs.filter(Q(started_at__gte=cutoff) | Q(lease_expires_at__gt=timezone.now()))
+        runs = runs.filter(alive | Q(lease_expires_at__gt=now))
     return runs.exists()
 
 
@@ -412,9 +423,7 @@ def ensure_sync(user_id: int, *, urgent: bool = False, scheduled=False) -> bool:
         # keeps the interactive lane. Everything a playback merely marked is
         # bulk work on the background lane.
         queue = INTERACTIVE_QUEUE if urgent else BACKGROUND_QUEUE
-        statistics_sync_task.apply_async(
-            args=[user_id], priority=priority, queue=queue
-        )
+        statistics_sync_task.apply_async(args=[user_id], priority=priority, queue=queue)
     except Exception as exc:  # pragma: no cover - broker unavailable
         cache.delete(_gate_key(user_id))
         if scheduled:
@@ -1045,6 +1054,20 @@ def _clear_dirty(user_id: int, days, dirty_tokens) -> None:
         StatisticsDirtyDay.objects.filter(query, user_id=user_id).delete()
 
 
+_NOT_A_PHASE = ("days_ms",)
+
+
+def _phase_summary(timings: dict) -> str:
+    """Wall milliseconds per aggregate phase, as ``phase:ms`` pairs."""
+    return ",".join(
+        f"{key[:-3]}:{value:.0f}"
+        for key, value in timings.items()
+        if key.endswith("_ms")
+        and not key.endswith("_cpu_ms")
+        and key not in _NOT_A_PHASE
+    )
+
+
 def _aggregate_range(
     user,
     range_name: str,
@@ -1052,6 +1075,7 @@ def _aggregate_range(
     deadline=None,
     lease_token: str | None = None,
     timings: dict | None = None,
+    pass_memo: dict | None = None,
 ) -> dict:
     from app.statistics_aggregator import _aggregate_statistics_from_days
     from app.statistics_highlights import normalize_highlight_images
@@ -1059,20 +1083,31 @@ def _aggregate_range(
 
     timings = {} if timings is None else timings
     start_date, end_date = _get_predefined_range_dates(range_name)
+    resolve_started = time.monotonic()
     day_list = _resolve_day_list(user, start_date, end_date)
+    timings["resolve_days_ms"] = (time.monotonic() - resolve_started) * 1000
     # A bounded range walks every calendar day, and a day never built (most
     # are empty) would otherwise be built one at a time inside the aggregate,
-    # ~13 queries each. Build them first with one prefetch per slice.
-    missing = sorted(_missing_days(user.id, day_list), reverse=True)
-    timings["missing_days"] = len(missing)
-    if missing:
+    # ~13 queries each. The aggregate reports the days its own read did not
+    # find, a batch at a time, and they are built here with one prefetch per
+    # slice. Checking beforehand instead decoded every day payload twice.
+    timings["missing_days"] = 0
+    timings["days_ms"] = 0.0
+
+    def build_missing(days):
+        timings["missing_days"] += len(days)
         build_started = time.monotonic()
         try:
-            credit_hints += _build_days(
-                user, missing, deadline, {}, lease_token=lease_token
+            return _build_days(
+                user,
+                sorted(days, reverse=True),
+                deadline,
+                {},
+                lease_token=lease_token,
             )
         finally:
-            timings["days_ms"] = (time.monotonic() - build_started) * 1000
+            timings["days_ms"] += (time.monotonic() - build_started) * 1000
+
     data = _aggregate_statistics_from_days(
         user,
         day_list,
@@ -1080,9 +1115,14 @@ def _aggregate_range(
         end_date,
         build_missing=True,
         credit_backfill_hints=credit_hints,
+        timings=timings,
+        pass_memo=pass_memo,
+        build_days=build_missing,
     )
     # Cache-only: artwork the cache lacks is fetched by the background worker.
+    images_started = time.monotonic()
     normalize_highlight_images(data)
+    timings["images_ms"] = (time.monotonic() - images_started) * 1000
     return data
 
 
@@ -1139,10 +1179,7 @@ def run_sync(
         state = StatisticsSyncState.objects.get(user_id=user_id)
         generation = state.generation
         day_epoch = cache.get(_day_epoch_key(user_id))
-        full = (
-            state.full_sweep_requested_at is not None
-            or day_epoch is None
-        )
+        full = state.full_sweep_requested_at is not None or day_epoch is None
 
         if state.full_sweep_requested_at is not None:
             sweep_epoch = state.full_sweep_requested_at.isoformat()
@@ -1236,9 +1273,9 @@ def run_sync(
                             batch_size=500,
                         )
                     dirty_tokens = dict(
-                        StatisticsDirtyDay.objects.filter(
-                            user_id=user_id
-                        ).values_list("day", "token")
+                        StatisticsDirtyDay.objects.filter(user_id=user_id).values_list(
+                            "day", "token"
+                        )
                     )
                 cache.set(stale_scan_key, 1, timeout=86400)
         # Dirty days first, newest first: repeatedly warming Today must not
@@ -1284,6 +1321,10 @@ def run_sync(
             for snapshot in snapshots.values()
         )
 
+        # Lookups the ranges of this pass share. In memory for this pass
+        # only: never cached, never published.
+        pass_memo: dict = {}
+
         def needs_rebuild(range_name):
             snapshot = snapshots.get(range_name)
             return (
@@ -1309,6 +1350,7 @@ def run_sync(
                 deadline,
                 lease_token=lease_token,
                 timings=range_timings,
+                pass_memo=pass_memo,
             )
             publish_snapshot(
                 user_id, range_name, data, generation, lease_token=lease_token
@@ -1324,13 +1366,15 @@ def run_sync(
             )
             logger.info(
                 "stats_range_summary user_id=%s range=%s generation=%s elapsed_ms=%.2f "
-                "missing_days=%s days_ms=%.2f",
+                "missing_days=%s days_ms=%.2f days_decoded=%s phases_ms=%s",
                 user_id,
                 range_name,
                 generation,
                 range_seconds * 1000,
                 range_timings.get("missing_days", 0),
                 range_timings.get("days_ms", 0.0),
+                range_timings.get("days_decoded", 0),
+                _phase_summary(range_timings),
             )
 
         # Cleared only once the pass completes: a continuation must still see
@@ -1388,7 +1432,9 @@ def run_sync(
             if not is_lock_error(exc):
                 raise
             # The lease lapses on its own, after which the reconciler can claim.
-            logger.warning("stats_sync_release_locked user_id=%s error=%s", user_id, exc)
+            logger.warning(
+                "stats_sync_release_locked user_id=%s error=%s", user_id, exc
+            )
 
     if status == "locked":
         # Queueing a follow-up now would just meet the same lock.

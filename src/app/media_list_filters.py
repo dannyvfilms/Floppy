@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, replace
 
 from django.apps import apps
@@ -10,6 +11,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import helpers
+from app.library_query.alphabet import normalize_initial
 from app.models import (
     BasicMedia,
     CollectionEntry,
@@ -90,6 +92,7 @@ class MediaListFilterError(ValueError):
         """Store the invalid query parameter alongside the message."""
         super().__init__(message)
         self.parameter = parameter
+        self.message = message
 
 
 @dataclass(frozen=True)
@@ -99,8 +102,11 @@ class MediaListFilters:
     statuses: tuple[str, ...] = ()
     include_no_status: bool = False
     search: str = ""
-    # Web-only view state; not parsed from API requests or saved as smart rules.
+    # View state (the A to Z rail): parsed from the query, never saved as a smart rule.
     initial: str = ""
+    separate_entries: bool = False
+    group_by: str = "item"
+    group: str = ""
     rating: str = "all"
     rating_min: str = ""
     rating_max: str = ""
@@ -138,6 +144,8 @@ class MediaListFilters:
     pinned_providers: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     tag_mode: str = "or"
+    # API-only: ISO 8601 moment (as isoformat); keep entries changed at or after it.
+    updated_since: str = ""
     sort: str = ""
     direction: str = ""
     exclude: tuple[str, ...] = ()
@@ -261,6 +269,30 @@ class _Params:
         if self.strict:
             raise MediaListFilterError(name, message)
         return fallback
+
+
+_OFFSET_SPACE = re.compile(r"(?<=\d) (?=\d{2}:?\d{2}$)")
+
+
+def parse_since(params: _Params, name: str) -> str:
+    """Read query parameter ``name`` as an aware datetime, returned as isoformat.
+
+    An unescaped ``+`` in a query string arrives as a space, so a UTC offset
+    written ``+01:00`` is restored before parsing.
+    """
+    raw = params.text(name)
+    if not raw:
+        return ""
+    try:
+        return helpers.parse_completion_datetime(
+            _OFFSET_SPACE.sub("+", raw),
+        ).isoformat()
+    except (ValueError, TypeError):
+        return params.invalid(
+            name,
+            f"{name} must be an ISO 8601 date or datetime",
+            "",
+        )
 
 
 def _parse_status_values(params: _Params) -> tuple[tuple[str, ...], bool]:
@@ -413,6 +445,10 @@ def parse_media_list_filters(request, *, strict: bool = True) -> MediaListFilter
         statuses=statuses,
         include_no_status=include_no_status,
         search=params.text("search"),
+        initial=normalize_initial(params.text("initial")),
+        separate_entries=_parse_choice(params, "separate_entries", {"0", "1"}, "0") == "1",
+        group_by=_parse_choice(params, "group_by", {"item", "series", "franchise"}, "item"),
+        group=params.text("group"),
         rating=_parse_choice(params, "rating", {"all", "rated", "not_rated"}, "all"),
         rating_min=_parse_rating_bound(params, "rating_min"),
         rating_max=_parse_rating_bound(params, "rating_max"),
@@ -466,6 +502,7 @@ def parse_media_list_filters(request, *, strict: bool = True) -> MediaListFilter
         sort=sort,
         direction=direction,
         exclude=params.values("exclude"),
+        updated_since=parse_since(params, "updated_since"),
     )
 
 
@@ -995,6 +1032,14 @@ def get_media_list_entries(user, media_type, filters: MediaListFilters, *, limit
     query = from_media_list_filters(filters, media_list_media_types(filters, media_type))
     executor = LibraryQueryExecutor(user, query)
     offset = offset or 0
+    if filters.separate_entries:
+        from app.media_list_entry_grouping import preference_field
+
+        if not preference_field(media_type):
+            parameter = "separate_entries"
+            message = "This media type does not support separate entries"
+            raise MediaListFilterError(parameter, message)
+        return executor.entry_page(offset, limit)
     if limit is None:
         total = executor.count()
         page = executor.page(offset, max(total - offset, 0), total=total)

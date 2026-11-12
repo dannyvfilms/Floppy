@@ -371,3 +371,44 @@ class TraktListsWithoutClientSecretTests(TestCase):
         kwargs = handle_callback.call_args.kwargs
         self.assertEqual(kwargs["code_verifier"], verifier)
         self.assertEqual(kwargs["client_secret"], "")
+
+
+class TraktListEntryItemLookupTests(TestCase):
+    """A list member whose TMDB id exists in two library buckets must still resolve (#1873)."""
+
+    def _entry(self):
+        return {"type": "movie", "movie": {"title": "Dup", "ids": {"tmdb": 777}}}
+
+    @patch("lists.imports.trakt._get_metadata", return_value={"title": "Dup", "image": "x"})
+    def test_two_buckets_resolve_to_default_bucket(self, _metadata):
+        from app.models import Item, Sources
+
+        anime_bucket = Item.objects.create(
+            media_id="777",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Dup",
+            image="x",
+        )
+        default_bucket = Item.objects.create(
+            media_id="777",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Dup",
+            image="x",
+        )
+
+        item = trakt._build_item_from_entry(self._entry())
+
+        self.assertEqual(item.pk, default_bucket.pk)
+        self.assertNotEqual(item.pk, anime_bucket.pk)
+
+    @patch("lists.imports.trakt._get_metadata", return_value={"title": "Dup", "image": "x"})
+    def test_missing_item_is_created(self, _metadata):
+        from app.models import Item
+
+        item = trakt._build_item_from_entry(self._entry())
+
+        self.assertEqual(Item.objects.filter(media_id="777").count(), 1)
+        self.assertEqual(item.media_id, "777")

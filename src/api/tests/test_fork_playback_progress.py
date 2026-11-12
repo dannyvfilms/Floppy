@@ -244,6 +244,20 @@ class PlaybackProgressClearTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
 
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed lookup answers with the fixed detail on write and clear."""
+        body = {"media_type": "movie", "ids": {"tmdb": "701"}}
+        for method, payload in (("put", {**body, "position_seconds": 5}), ("delete", body)):
+            with self.subTest(method=method), patch(
+                "api.fork_views_playback.resolve_video_item",
+                side_effect=RuntimeError("secret /srv/private/path"),
+            ):
+                response = self.call_api(
+                    method, "api_playback_progress", payload=payload, headers=self.auth_headers,
+                )
+                self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+                self.assertEqual(response.json(), {"detail": "Could not resolve media."})
+
     def test_null_position_clears_position(self):
         """PUT with position_seconds null is equivalent to DELETE."""
         response = self.call_api(
@@ -259,6 +273,34 @@ class PlaybackProgressClearTests(FloppyApiTestCase):
 
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
+
+    def test_delete_clears_position_saved_on_another_bucket_item(self):
+        """A position saved against a same-media Item in another bucket is cleared too (#1873)."""
+        movie = self.items_by_type[MediaTypes.MOVIE.value][0]
+        other_bucket = Item.objects.create(
+            media_id=movie.media_id,
+            source=movie.source,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title=movie.title,
+            image=movie.image,
+        )
+        other_progress = PlaybackProgress.objects.create(
+            user=self.user1,
+            item=other_bucket,
+            position_seconds=300,
+        )
+
+        response = self.call_api(
+            "delete",
+            "api_playback_progress",
+            payload={"media_type": "movie", "ids": {"tmdb": "701"}},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
+        self.assertFalse(PlaybackProgress.objects.filter(id=other_progress.id).exists())
 
     def test_delete_does_not_touch_other_users(self):
         """Clearing only affects the requesting user's row."""
@@ -1252,6 +1294,18 @@ class HomePlaybackCardsTests(FloppyApiTestCase):
             }),
             content_type="application/json",
             HTTP_X_API_KEY=self.user1.token,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_scoped_bearer_token_cannot_access_native_home_cards(self):
+        from integrations.models import IntegrationToken
+
+        _token, raw = IntegrationToken.generate(
+            user=self.user1, name="all", scopes=["*"],
+        )
+        response = self.client.get(
+            "/api/v1/playback/home-cards/",
+            HTTP_AUTHORIZATION=f"Bearer {raw}",
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
 

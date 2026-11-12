@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../ui/Badge';
 import { ListCard } from '../ui/ListCard';
@@ -27,6 +27,7 @@ export function ListsPageView({
   renderListTools,
   onOpenList,
   onListAction,
+  hideCardMetadata = false,
   state = 'ready',
   empty,
   error,
@@ -38,6 +39,9 @@ export function ListsPageView({
   style,
   testID,
 }) {
+  // A list card fills the row on a phone and stops growing on wide screens.
+  const [blockWidth, setBlockWidth] = useState(0);
+  const cardWidth = blockWidth ? Math.min(blockWidth, 480) : 240;
   const chipPalette = {
     ...palette,
     tagActive: { color: '#ffffff', backgroundColor: palette.accentStrong || palette.accent || '#4f46e5' },
@@ -73,10 +77,13 @@ export function ListsPageView({
       onRetry={onRetry}
       onEmptyAction={onEmptyAction} />
     {state === 'ready' ? (content || (lists.length ? <View style={styles.grid}>
-      {lists.map(list => <View key={list.id} style={styles.cardBlock}>
+      {lists.map(list => <View key={list.id} style={styles.cardBlock}
+        onLayout={event => setBlockWidth(Math.floor(event.nativeEvent.layout.width))}>
         <ListCard
           list={list}
           palette={palette}
+          width={cardWidth}
+          hideMetadata={hideCardMetadata}
           onOpen={() => onOpenList?.(list)}
           onAction={action => onListAction?.(action, list)} />
         {renderListTools ? renderListTools(list) : null}
@@ -91,5 +98,5 @@ const styles = StyleSheet.create({
   root: { gap: 16, minWidth: 0 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  cardBlock: { gap: 8, flexGrow: 1, flexShrink: 0, flexBasis: 280, maxWidth: 360 },
+  cardBlock: { gap: 8, flexGrow: 1, flexShrink: 0, flexBasis: 280, maxWidth: 480 },
 });

@@ -202,10 +202,41 @@ function QuickTrack({ row, onSave, onDelete, onClose }) {
     onClose={onClose} />;
 }
 
-export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrackDelete }) {
-  const [columns, setColumns] = useState(() => COLUMNS.map(column => ({ ...column })));
-  const [sort, setSort] = useState('title');
-  const [direction, setDirection] = useState('asc');
+// Apply the viewer's saved columns (server `columns` config: the hideable
+// columns in their order with a visible flag) to the columns the rows can show.
+function applyColumnConfig(config) {
+  if (!config || !config.length) return COLUMNS.map(column => ({ ...column }));
+  const byKey = new Map(COLUMNS.map(column => [column.key, column]));
+  const ordered = [];
+  const visibility = new Map();
+  for (const entry of config) {
+    if (byKey.has(entry.key) && !byKey.get(entry.key).fixed && !visibility.has(entry.key)) {
+      ordered.push(entry.key);
+      visibility.set(entry.key, entry.visible !== false);
+    }
+  }
+  return [
+    ...COLUMNS.filter(column => column.fixed).map(column => ({ ...column })),
+    // Columns the server does not store keep their place ahead of the stored ones.
+    ...COLUMNS.filter(column => !column.fixed && !visibility.has(column.key)).map(column => ({ ...column })),
+    ...ordered.map(key => ({ ...byKey.get(key), visible: visibility.get(key) })),
+  ];
+}
+
+export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrackDelete,
+  selecting = false, selectedRows = [], onToggleSelect, querySort, queryDirection, onQuerySort,
+  columnConfig, onColumnsSave }) {
+  const [columns, setColumns] = useState(() => applyColumnConfig(columnConfig));
+  const [applied, setApplied] = useState(columnConfig);
+  if (applied !== columnConfig) {
+    // The viewer's saved columns arrive after the page loads.
+    setApplied(columnConfig);
+    setColumns(applyColumnConfig(columnConfig));
+  }
+  const [localSort, setLocalSort] = useState('title');
+  const [localDirection, setLocalDirection] = useState('asc');
+  const sort = querySort || localSort;
+  const direction = queryDirection || localDirection;
   const [overrides, setOverrides] = useState({});
   const [tracking, setTracking] = useState('');
 
@@ -216,13 +247,26 @@ export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrac
     const nextOrder = [...fixedOrder, ...order.filter(key => byKey.has(key) && !fixedOrder.includes(key))];
     setColumns(nextOrder.map(key => byKey.get(key)).filter(Boolean)
       .map(column => ({ ...column, visible: column.fixed ? true : !hiddenSet.has(column.key) })));
+    // The column choice is stored per user, the same data the web column menu writes.
+    const stored = new Set((columnConfig || []).map(entry => entry.key));
+    if (onColumnsSave && stored.size) {
+      onColumnsSave({
+        order: nextOrder.filter(key => stored.has(key)),
+        hidden: hidden.filter(key => stored.has(key)),
+      });
+    }
   }
 
   function sortBy(key) {
     const ascendingByDefault = new Set(['author', 'popularity', 'runtime', 'start_date', 'title',
       'next_episode_air_date', 'time_left', 'time_to_beat', 'platform']);
-    setDirection(sort === key ? (direction === 'asc' ? 'desc' : 'asc') : (ascendingByDefault.has(key) ? 'asc' : 'desc'));
-    setSort(key);
+    const nextDirection = sort === key ? (direction === 'asc' ? 'desc' : 'asc')
+      : ascendingByDefault.has(key) ? 'asc' : 'desc';
+    if (onQuerySort) onQuerySort(key, nextDirection);
+    else {
+      setLocalDirection(nextDirection);
+      setLocalSort(key);
+    }
   }
 
   function openDetail(row) {
@@ -314,6 +358,9 @@ export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrac
       onSort={sortBy}
       onOpen={openDetail}
       onOpenLink={follow}
+      selectMode={selecting}
+      selectedIds={selectedRows}
+      onToggleItem={onToggleSelect}
       palette={TABLE_PALETTE}
       caption="Library table" />
     <MediaCardActionHost

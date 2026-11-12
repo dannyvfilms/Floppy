@@ -3,9 +3,11 @@
 import json
 import os
 import re
+from unittest import skipUnless
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings, tag
@@ -87,8 +89,16 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
 
     def open_cards(self, tab="import"):
         """Wait for the single owner of the entire AniList provider region."""
-        self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
-        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
+        response = self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
+        try:
+            expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
+        except AssertionError as error:
+            error.add_note(
+                f"HTTP status: {response.status if response else None}; URL: {self.page.url}; "
+                f"provider hosts: {self.page.locator('[data-provider-root]').count()}; "
+                f"page errors: {self.errors[-5:]}; failed requests: {self.failed_requests[-5:]}"
+            )
+            raise
 
     def select_trigger(self, label):
         """SelectField exposes the field label and current value as a button."""
@@ -100,6 +110,18 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Exercise the native SelectField dialog and accessible radio choices."""
         self.select_trigger(label).click()
         self.page.get_by_role("radio", name=option, exact=True).click()
+
+    @skipUnless("debug_toolbar" in settings.INSTALLED_APPS, "debug toolbar is disabled")
+    @override_settings(DEBUG=True, INTERNAL_IPS=["127.0.0.1"])
+    def test_debug_toolbar_initializes_when_present(self):
+        """A permitted debug toolbar initializes without breaking boosted navigation."""
+        self.open_cards()
+        expect(self.page.locator("#djDebug")).to_have_count(1)
+        self.page.get_by_role("navigation", name="Provider sections").get_by_role(
+            "tab", name="Connection", exact=True,
+        ).click()
+        expect(self.page.locator("#djDebug")).to_have_count(1)
+        self.assertEqual(self.errors, [])
 
     def test_shared_dropdown_menu_keyboard_dismissal_and_connection_status(self):
         """Universal select sheets filter the directory and remain usable on phones."""
@@ -333,6 +355,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(frequency).to_contain_text("One Time Import")
         self.page.get_by_role("button", name="Import frequency help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("automatic imports are unavailable")
+        self.page.get_by_role("tooltip").get_by_role("button", name="Close").click()
         expect(self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")).to_have_attribute("href", "https://clz.com/")
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url):
             self.choose_option("Override mode", "Overwrite Existing")
@@ -361,12 +384,21 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
+        self.page.get_by_role("tooltip").get_by_role("button", name="Close").click()
         self.choose_option("Wishlist items", "Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
+        picker = self.page.get_by_role("button", name="Select CLZ Export")
+        self.assertTrue(
+            picker.count(),
+            f"CLZ file picker missing. Mounted root: {self.page.locator('[data-file-import-root]').inner_text()[:700]!r}; "
+            f"page errors: {self.errors!r}",
+        )
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
+            with self.page.expect_file_chooser() as chooser:
+                picker.click()
+            chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
         self.page.wait_for_url("**/settings/providers/clz?tab=import")
         mock_stage.assert_called_once()
         kwargs = mock_queue.call_args.kwargs
@@ -381,7 +413,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_upload_fallback_receives_react_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-import-preferences-root][data-react-mounted="true"]')).to_be_visible()
         self.choose_option("Wishlist items", "Planning")
@@ -398,21 +430,29 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_react_upload_receives_fallback_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/ImportPreferences-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountImportPreferences-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
         self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Fallback preferences")
         self.page.get_by_label("Override mode").select_option("overwrite")
+        picker = self.page.get_by_role("button", name="Select CLZ Export")
+        self.assertTrue(
+            picker.count(),
+            f"CLZ file picker missing. Mounted root: {self.page.locator('[data-file-import-root]').inner_text()[:700]!r}; "
+            f"page errors: {self.errors!r}",
+        )
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
+            with self.page.expect_file_chooser() as chooser:
+                picker.click()
+            chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
         mock_stage.assert_called_once()
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_tag"], "Fallback preferences")
         self.assertEqual(mock_queue.call_args.kwargs["mode"], "overwrite")
 
     def test_clz_file_import_fallback_without_bundle(self):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.get_by_label("Import as")).to_be_visible()
         expect(self.page.locator('input[name="clz_export"]')).to_be_visible()
@@ -511,7 +551,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"] > div > div').first.get_by_role("button", name="Open Steam")).to_be_visible()
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
@@ -581,7 +621,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         expect(self.page.get_by_label("Public username", exact=True)).to_have_value("retained-on-back")
-        self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=connection', {target:'body', swap:'innerHTML'})")
+        # Dispatch the navigation without returning an HTMX promise to
+        # Playwright: a body replacement can detach its fulfillment handler.
+        self.page.evaluate("() => { void htmx.ajax('GET', '/settings/providers/anilist?tab=connection', {target:'body', swap:'innerHTML'}); }")
         expect(self.page.get_by_role("heading", name="Instance credentials")).to_be_visible()
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
@@ -617,7 +659,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.wait_for_load_state("networkidle")
         self.assertFalse(self.page.evaluate("""performance.getEntriesByType('resource')
           .some(entry => /\\/ui\\/mount-/.test(entry.name))"""))
-        self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=import', {target:'body', swap:'innerHTML'})")
+        # An HTMX body replacement can orphan the thenable returned by ajax.
+        # Fire the request without awaiting a promise tied to the detached DOM.
+        self.page.evaluate("() => { void htmx.ajax('GET', '/settings/providers/anilist?tab=import', {target:'body', swap:'innerHTML'}); }")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
 
@@ -695,7 +739,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         cron = CrontabSchedule.objects.create(minute="0", hour="3")
         PeriodicTask.objects.create(name="browser-remove", task="Import from AniList", crontab=cron,
                                    kwargs=json.dumps({"user_id": self.user.pk, "mode": "new"}))
-        self.page.get_by_text("Show traceback", exact=True).click()
+        # The dialog has both header dismiss and footer Close actions.
+        # Choose the footer to avoid a strict-mode selector ambiguity.
+        self.page.get_by_role("dialog").get_by_role("button", name="Close", exact=True).last.click()
         self.page.get_by_role("button", name="Remove schedule", exact=True).wait_for(state="visible")
         self.page.get_by_role("button", name="Remove schedule", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
@@ -831,7 +877,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
             self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
             self.assertTrue(feature_list.locator('[data-testid="feature-row"]').evaluate_all("""rows => rows.every(row => {
-              const icon = row.querySelector('[data-testid="status-icon"]'), text = row.querySelector('div');
+              const icon = row.querySelector('[data-testid="status-icon"]'), text = row.querySelector('[data-testid="feature-copy"]');
               return icon.getBoundingClientRect().right <= text.getBoundingClientRect().left &&
                 getComputedStyle(row).borderTopWidth === '0px';
             })"""))
@@ -867,7 +913,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(link.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
         expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
         gap = self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True).evaluate("""element => {
-          const field = element.parentElement.querySelector('form label');
+          const field = element.parentElement.querySelector('[id$="-label"]');
           return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
         }""")
         self.assertGreaterEqual(gap, 10)
@@ -932,6 +978,37 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(self.user.import_mode, "overwrite")
         self.assertEqual(self.errors, [])
 
+    def test_sidebar_controller_registers_after_alpine_started(self):
+        """A late-loaded sidebar script still registers its Alpine controller."""
+        self.block_renderer = True
+        self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab=overview")
+        script_order = self.page.evaluate("""() => [...document.head.querySelectorAll('script[src]')]
+          .filter(script => script.src.includes('savedViews.js') || script.src.includes('alpinejs-3.14.9'))
+          .map(script => ({src: script.src, defer: script.defer}))""")
+        self.assertEqual(len(script_order), 2)
+        self.assertIn("savedViews.js", script_order[0]["src"])
+        self.assertIn("alpinejs-3.14.9", script_order[1]["src"])
+        self.assertTrue(all(script["defer"] for script in script_order))
+        sidebar_html = self.page.locator("aside[x-data^='sidebarNavigation']").evaluate(
+            "element => element.outerHTML"
+        )
+        page = self.context.new_page()
+        self.addCleanup(page.close)
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.set_content('<div x-data="{isMobileMenuOpen: false, ready: true}"><span x-text="ready"></span></div>')
+        page.add_script_tag(url=f"{self.live_server_url}/static/js/libraries/alpinejs-3.14.9.min.js")
+        expect(page.locator("span")).to_have_text("true")
+        page.add_script_tag(url=f"{self.live_server_url}/static/js/savedViews.js")
+        page.evaluate("""html => {
+          document.querySelector('[x-data]').insertAdjacentHTML('beforeend', html);
+        }""", sidebar_html)
+        button = page.locator("aside").get_by_role("button", name="Explore", exact=True)
+        expect(button).to_have_attribute("aria-expanded", "false")
+        button.click()
+        expect(button).to_have_attribute("aria-expanded", "true")
+        self.assertEqual(errors, [])
+
     def test_overview_chips_stay_inside_clickable_cards_at_narrow_breakpoints(self):
         """Contain badges inside narrow grid cards and make the whole card a link."""
         for width in (390, 768, 1024, 1100, 1200, 1280, 1440):
@@ -968,7 +1045,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.emulate_media(color_scheme="dark")
         self.open_cards("overview")
         card = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True)
-        expect(card.locator("p")).to_have_count(1)
+        expect(card.locator('[data-testid="settings-card-heading"] + *')).to_have_count(1)
         expect(card).to_have_attribute("title", "Public username imports do not require provider credentials.")
         self.page.mouse.move(0, 0)
         card.evaluate("""card => {

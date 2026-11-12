@@ -7,3 +7,13 @@
 [data-sidebar-root] :focus:not(:focus-visible) {
   outline: none !important;
 }
+
+/*
+ * Web-only carve-out: on a phone the sidebar drawer is the server's <aside> at z-index
+ * 10000, above React Native Web's modal layer (9999), so a row's options dropdown would open
+ * underneath the menu it belongs to. Lift the modal layer that holds one above the drawer.
+ * Native stacks its modals above everything, so it needs nothing.
+ */
+body > div:has([data-menu-dropdown]) > div {
+  z-index: 10001 !important;
+}

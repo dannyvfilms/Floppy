@@ -57,5 +57,9 @@ export function mountCredentials(host, credentials) {
       values: { source: credentials.slug },
     })}
     onOpenLink={url => { if (url) window.open(url, '_blank', 'noopener'); }}
+    linkPropsForUrl={url => url ? {
+      href: url,
+      hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' },
+    } : {}}
   />);
 }

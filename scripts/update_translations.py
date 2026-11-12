@@ -122,6 +122,13 @@ def write_inline_sources(source_root, destination):
             )
 
 
+JS_IGNORED_PATHS = (
+    "static/js/libraries/*",
+    "static/ui/*",
+    "static/native-proof/*",
+)
+
+
 def update_catalogs(source_root, locales):
     """Run both native Django extraction domains and always remove generated JS."""
     generated = source_root / "inline_translation_extraction"
@@ -132,8 +139,13 @@ def update_catalogs(source_root, locales):
         locale_args = [argument for locale in locales for argument in ("-l", locale)]
         for domain in ("django", "djangojs"):
             # Bundled libraries own their UI/locales; gettext-like identifiers
-            # inside minified third-party code are not Floppy messages.
-            ignores = ["--ignore=static/js/libraries/*"] if domain == "djangojs" else []
+            # inside minified third-party code are not Floppy messages. The
+            # generated UI bundles and the Expo export are build output, not sources.
+            ignores = (
+                [f"--ignore={path}" for path in JS_IGNORED_PATHS]
+                if domain == "djangojs"
+                else []
+            )
             subprocess.run(  # noqa: S603 -- fixed local command, argument list, no shell
                 [
                     sys.executable,

@@ -132,4 +132,27 @@ and `dark` themes. Presets and custom palettes are changed only from Appearance;
 otherwise a single click would silently replace the user's selected design.
 
 `PATCH /api/v1/user/preferences/` follows the same rule and ignores any field
-the body omits. It does not currently accept `theme`.
+the body omits. It accepts `theme`, validated against the model choices; presets
+and the custom palette are saved through `PUT /api/v1/user/appearance/`, which
+validates the whole payload before saving any part.
+
+## The native app
+
+`native-proof/app/themeState.js` resolves the same states (system, light, dark,
+the presets from `html.<preset>`, custom) into native colour tokens and
+`app/theme.js` exposes them as the `palette` getters. `ThemeRoot` applies the
+user's theme: CSS variables on the web, dynamic colours on iOS for system, light
+and dark, and a remount elsewhere. Only `system` follows the operating system.
+
+Surface borders, dim backgrounds and panels use separate `surfaceBorder`,
+`surfaceDim` and `panel` tokens, matching the corresponding web theme variables.
+A custom theme resolves its validated opacity into the surface and panel colours;
+its radius is available through the native radius getters and settings palettes.
+Styles created once at module load retain their initial radius and still need
+conversion to render-time tokens. Native backdrop blur remains unsupported by the
+installed React Native primitives: their filter blur also blurs children, so it
+cannot reproduce the web backdrop effect. Device verification remains separate.
+A custom panel colour changes `panel` without replacing `surfaceStrong`. Settings
+fields can use the fixed `fieldBorder` token where the web uses a fixed grey
+border. Appearance swatches use parsed SVG shapes and gradients so the same
+colours render through the shared icon boundary.

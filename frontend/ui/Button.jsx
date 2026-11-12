@@ -14,7 +14,7 @@ export function Button({
   label,
   children,
   tone = 'primary',
-  size = 'sm',
+  size: requestedSize,
   width = 'auto',
   disabled = false,
   busy = false,
@@ -24,6 +24,7 @@ export function Button({
   icon,
 }) {
   const content = children ?? label;
+  const size = requestedSize ?? palette.size ?? 'sm';
   const colors = palette[tone] || defaultTones[tone] || defaultTones.primary;
   const text = typeof content === 'string' ? content : null;
   const large = size === 'lg';

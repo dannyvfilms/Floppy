@@ -734,7 +734,7 @@ class SessionHistoryModalTests(TestCase):
         self.assertEqual(stats["Activity entries"], "2")
         self.assertEqual(stats["Tracked time"], "0min")
         self.assertEqual(stats["Average per active day"], "0min")
-        self.assertEqual(stats["Average gap"], "—")
+        self.assertEqual(stats["Average gap"], "-")
         self.assertEqual(stats["Longest streak"], "1 day")
         self.assertEqual(
             stats["Most active weekday"],
@@ -871,6 +871,75 @@ class DeleteHistoryRecordViewTests(TestCase):
         self.assertFalse(
             Movie.objects.filter(id=self.movie.id).exists(),
         )
+
+    def test_delete_failure_returns_the_written_message(self):
+        """A deletion that fails answers with the service's own text."""
+        from app.fork_services_history import HistoryDeletionError
+
+        with patch(
+            "app.history_views.fork_services_history.delete_history_record_core",
+            side_effect=HistoryDeletionError("Deletion failed"),
+        ):
+            response = self.client.delete(
+                reverse(
+                    "delete_history_record",
+                    kwargs={"media_type": "movie", "history_id": self.history_id},
+                ),
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.content.decode(), "Deletion failed")
+
+    def test_delete_history_oob_uses_the_row_id(self):
+        """The out-of-band fragments carry the loaded row's id, not the query text."""
+        artist = Artist.objects.create(name="OOB Artist")
+        album = Album.objects.create(title="OOB Album", artist=artist)
+        music = Music.objects.create(
+            item=Item.objects.create(
+                media_id="oob-track",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MUSIC.value,
+                title="OOB Track",
+            ),
+            user=self.user,
+            album=album,
+            artist=artist,
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        podcast = Podcast.objects.create(
+            item=Item.objects.create(
+                media_id="oob-episode",
+                source=Sources.POCKETCASTS.value,
+                media_type=MediaTypes.PODCAST.value,
+                title="OOB Episode",
+            ),
+            user=self.user,
+            show=PodcastShow.objects.create(podcast_uuid="oob-show", title="Show"),
+            status=Status.IN_PROGRESS.value,
+            progress=10,
+        )
+        cases = (
+            ("music", "music_id", music.id, ("track-history", "modal-listen-count")),
+            ("podcast", "podcast_id", podcast.id, ("modal-listen-count",)),
+        )
+        for media_type, parameter, row_id, prefixes in cases:
+            url = reverse(
+                "delete_history_record",
+                kwargs={"media_type": media_type, "history_id": 1},
+            )
+            with patch(
+                "app.history_views.fork_services_history.delete_history_record_core",
+            ):
+                # int() accepts the padded form; the response must not echo it.
+                response = self.client.delete(f"{url}?{parameter}=0{row_id}")
+                missing = self.client.delete(f"{url}?{parameter}=999999")
+            with self.subTest(media_type=media_type):
+                self.assertEqual(response.status_code, 200)
+                body = response.content.decode()
+                for prefix in prefixes:
+                    self.assertIn(f'id="{prefix}-{row_id}"', body)
+                self.assertNotIn(f"-0{row_id}", body)
+                self.assertEqual(missing.content.decode(), "")
 
     def test_delete_nonexistent_history_record(self):
         """Deleting a missing history record should return 404."""

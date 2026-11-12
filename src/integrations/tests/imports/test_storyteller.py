@@ -495,3 +495,31 @@ class StorytellerImporterTests(TestCase):
             account.refresh_from_db()
             self.assertFalse(account.connection_broken)
             self.assertTrue(account.last_error_message)
+
+
+class StorytellerPollViewTests(TestCase):
+    """The device-login poll never returns a client error's text."""
+
+    def test_poll_failure_stays_pending_without_detail(self):
+        from django.urls import reverse
+
+        from integrations import pending_auth, views
+
+        user = get_user_model().objects.create_user(username="poller", password="pass")
+        self.client.force_login(user)
+        pending_auth.put(
+            views.STORYTELLER_PENDING_SESSION_KEY,
+            user.pk,
+            {"server_url": "https://storyteller.example.com", "device_code": "dev"},
+        )
+        error = requests.ConnectionError("https://storyteller.example.com/api/token")
+        with (
+            patch(
+                "integrations.views.StorytellerClient.poll_device_token",
+                side_effect=error,
+            ),
+            self.assertLogs("integrations.views", level="WARNING") as logs,
+        ):
+            response = self.client.get(reverse("storyteller_poll"))
+        self.assertEqual(response.json(), {"status": "pending"})
+        self.assertNotIn("storyteller.example.com", "".join(logs.output))

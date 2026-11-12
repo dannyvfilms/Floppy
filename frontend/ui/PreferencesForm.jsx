@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 import { Button } from './Button';
 import { FormSaveBar } from './FormSaveBar';
 import { SelectField } from './SelectField';
@@ -76,22 +78,28 @@ function AutoPauseField({ field, rules, disabled, error, palette, buttonPalette,
     return libraryOptions.find(option => option.value === value)?.label || labels.allLibraries;
   }
   return <View style={styles.autoPause}>
-    <View style={styles.autoPauseHeading}>
-      <Text style={[styles.label, { color: colors.textMuted }]}>{field.label}</Text>
-      {field.help ? <Text style={[styles.help, { color: colors.textMuted }]}>{field.help}</Text> : null}
+    <View style={[styles.autoPauseHeading, colors.preferenceCards && { flexDirection: 'row', gap: 12, alignItems: 'flex-start' }]}>
+      <Text style={[styles.label, { color: colors.textMuted }, colors.preferenceCards && { fontSize: 14, lineHeight: 20, flex: 1 }]}>{field.label}</Text>
+      {field.help ? <Text style={[styles.help, { color: colors.textMuted }, colors.preferenceCards && { flex: 1, textAlign: 'right' }]}>{field.help}</Text> : null}
     </View>
-    <Button
+    {colors.preferenceCards ? <Pressable accessibilityRole="button" disabled={disabled} onPress={add}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 9,
+        borderWidth: 1, borderRadius: colors.radius, borderColor: colors.fieldBorder || colors.border, backgroundColor: colors.surface }}>
+      <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>{rules.length ? (field.addAnotherLabel || labels.addAnotherRule) : (field.addLabel || labels.addRule)}</Text>
+      <Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} />
+    </Pressable> : <Button
       label={rules.length ? (field.addAnotherLabel || labels.addAnotherRule) : (field.addLabel || labels.addRule)}
       tone="surface"
       disabled={disabled}
       onPress={add}
       palette={{ ...defaultButtonPalette, ...buttonPalette }}
-    />
+    />}
     {error ? <Text accessibilityRole="alert" style={[styles.help, { color: colors.danger }]}>{error}</Text> : null}
-    {rules.length === 0 ? <Text style={[styles.help, { color: colors.textMuted }]}>{field.emptyLabel || labels.noRules}</Text> : null}
-    {rules.map((rule, index) => <View key={`rule-${index}`} style={[styles.rule, { borderColor: colors.border, backgroundColor: colors.background }]}>
+    {rules.length === 0 && !colors.preferenceCards ? <Text style={[styles.help, { color: colors.textMuted }]}>{field.emptyLabel || labels.noRules}</Text> : null}
+    {rules.map((rule, index) => <View key={`rule-${index}`} style={[styles.rule, { borderColor: colors.border, backgroundColor: colors.background }, colors.preferenceCards && { borderWidth: 0, padding: 0, backgroundColor: 'transparent' }]}>
       <SelectField
         label={`${field.libraryLabel || labels.library} ${index + 1}`}
+        labelHidden={Boolean(colors.preferenceCards)} iconChevron={Boolean(colors.preferenceCards)}
         id={`${field.name}-library-${index}`}
         options={libraryOptions}
         value={rule.library}
@@ -131,6 +139,7 @@ function labelForRule(index, rule, options, labels) {
  * values, persistence and any server-side validation result.
  */
 export function PreferencesForm({
+  SaveBar = FormSaveBar,
   sections = [],
   values = {},
   initialValues = {},
@@ -144,6 +153,7 @@ export function PreferencesForm({
   csrf,
   fieldErrors = {},
   formError,
+  onSectionLink,
 }) {
   const copy = { ...defaultLabels, ...labels };
   const colors = { ...defaultPalette, ...palette };
@@ -183,6 +193,11 @@ export function PreferencesForm({
   function renderField(field) {
     const fieldDisabled = disabled || field.disabled;
     if (field.type === 'toggle') {
+      if (colors.preferenceCards) return <SelectField key={field.name}
+        label={field.label} help={field.help} value={String(Boolean(values[field.name]))}
+        options={[{ value: 'false', label: field.offLabel || 'Disabled' }, { value: 'true', label: field.onLabel || 'Enabled' }]}
+        disabled={fieldDisabled} palette={colors} iconChevron
+        onChange={event => onChange?.(field.name, event.target.value === 'true')} />;
       return <ToggleChip
         key={field.name}
         value={Boolean(values[field.name])}
@@ -215,23 +230,41 @@ export function PreferencesForm({
       label={field.label}
       help={field.help}
       options={field.options || []}
+      placeholder={field.placeholder}
       value={values[field.name]}
       disabled={fieldDisabled}
       error={errors[field.name]}
       palette={colors}
+      iconChevron={Boolean(colors.preferenceCards)}
       onChange={event => onChange?.(field.name, event.target.value)}
     />;
   }
 
   return <View style={styles.form}>
-    {sections.map(section => <View key={section.id} style={styles.section}>
-      <View style={styles.sectionHeading}>
+    {sections.map(section => <View key={section.id} style={[styles.section, colors.preferenceCards && { padding: 16, borderRadius: 8, backgroundColor: colors.surface, gap: 16 }]}>
+      <View style={[styles.sectionHeading, colors.preferenceCards && { flexDirection: 'row', gap: 12, marginTop: 2 }]}>
+        {section.icon && colors.preferenceCards ? <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6, overflow: 'hidden' }}>
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.accent, opacity: 0.12 }]} />
+          <Icon spec={section.icon} color={colors.link || colors.accent} size={20} />
+        </View> : null}
+        <View style={{ gap: 4, flex: 1 }}>
         <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: colors.text }]}>{section.title}</Text>
         {section.copy ? <Text style={[styles.help, { color: colors.textMuted }]}>{section.copy}</Text> : null}
+        </View>
       </View>
-      <View style={styles.fields}>{section.fields.map(renderField)}</View>
+      <View style={[styles.fields, colors.preferenceCards && { gap: 12 }]}>{section.fields.map(field => colors.preferenceCards
+        ? <React.Fragment key={field.name}>
+          <View style={{ padding: 12.8, borderRadius: 6, backgroundColor: colors.surfaceStrong }}>{renderField(field)}</View>
+          {section.footerAfter === field.name && section.footer && onSectionLink ? <Pressable accessibilityRole="link" onPress={() => onSectionLink(section.id)}>
+            <Text style={[styles.help, { color: colors.link }]}>{section.footer}</Text>
+          </Pressable> : null}
+        </React.Fragment>
+        : renderField(field))}</View>
+      {section.footer && !section.footerAfter && onSectionLink ? <Pressable accessibilityRole="link" onPress={() => onSectionLink(section.id)}>
+        <Text style={[styles.help, { color: colors.link }]}>{section.footer}</Text>
+      </Pressable> : null}
     </View>)}
-    <FormSaveBar
+    <SaveBar
       dirty={dirty}
       saving={saving}
       disabled={disabled}

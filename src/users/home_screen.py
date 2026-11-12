@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import random
 import secrets
+import time
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -3149,18 +3151,32 @@ def _row_items(user, row, executor, offset, limit, *, seed):
         return page.items, page.total
 
     updated = int(row.updated_at.timestamp()) if row.updated_at else 0
-    order_key = f"{cache_utils.HOME_ROW_CACHE_PREFIX}_order_{user.id}_{row.id}_{updated}_{seed}"
+
+    def order_key_for(direction):
+        return (
+            f"{cache_utils.HOME_ROW_CACHE_PREFIX}_order_{user.id}_{row.id}"
+            f"_{updated}_{direction}_{seed}"
+        )
+
+    saved_direction = resolve_home_row_direction(row.sort_by, row.direction)
+    order_key = order_key_for(saved_direction)
     ranked_ids = cache.get(order_key)
     if ranked_ids is None:
-        with boundary("home_rank"):
-            ranked_ids = executor.ranked_ids()
-        ttl = (
-            cache_utils.HOME_ROW_CACHE_TTL
-            if row.sort_by == HomeSortChoices.RANDOM
-            else cache_utils.HOME_ROW_ORDER_CACHE_TTL
-        )
-        cache.set(order_key, ranked_ids, ttl)
-        cache_utils.register_home_row_cache_key(user.id, order_key)
+        if row.sort_by == HomeSortChoices.RANDOM:
+            with boundary("home_rank"):
+                ranked_ids = executor.ranked_ids()
+            cache.set(order_key, ranked_ids, cache_utils.HOME_ROW_CACHE_TTL)
+            cache_utils.register_home_row_cache_key(user.id, order_key)
+        else:
+            # One scan serves both directions, so the first flip is as fast as later ones.
+            with boundary("home_rank"):
+                by_direction = executor.ranked_ids_both_directions()
+            for saved in (DirectionChoices.ASC, DirectionChoices.DESC):
+                key = order_key_for(saved)
+                engine = home_engine_direction(row.sort_by, saved)
+                cache.set(key, by_direction[engine], cache_utils.HOME_ROW_ORDER_CACHE_TTL)
+                cache_utils.register_home_row_cache_key(user.id, key)
+            ranked_ids = by_direction[executor.direction]
     window = ranked_ids[offset : offset + limit]
     by_id = Item.objects.defer(*HOME_CARD_UNREAD_ITEM_FIELDS).in_bulk(window)
     return [by_id[item_id] for item_id in window if item_id in by_id], len(ranked_ids)
@@ -3188,6 +3204,10 @@ def _row_entries(
             subtitle = f"{show_title} • {identity}" if show_title else identity
             if not item.image or item.image == settings.IMG_NONE:
                 item.image = season.item.image or getattr(show_item, "image", "") or settings.IMG_NONE
+        elif podcast_episodes and item.media_type == MediaTypes.PODCAST.value:
+            show_image = getattr(getattr(media, "show", None), "image", "")
+            if show_image and (not item.image or item.image == settings.IMG_NONE):
+                item.image = show_image
         entries.append(HomeRowEntry(
             item=item, media=media,
             use_podcast_show=bool(getattr(media, "use_podcast_show", False)) and not podcast_episodes,
@@ -3519,7 +3539,87 @@ def _build_row_section(
         if media_type in SQUARE_HOME_MEDIA_TYPES
         else "media-grid",
         "poll_for_covers": poll_for_covers,
+        "opposite_artwork": (
+            _opposite_direction_artwork(user, row, seed=seed) if batch_start == 0 else []
+        ),
     }
+
+
+OPPOSITE_ARTWORK_MEDIA_TYPES = frozenset({
+    MediaTypes.TV.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.GAME.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.BOARDGAME.value,
+})
+
+
+def _opposite_direction_artwork(user, row, limit: int = 8, *, seed: int = 0) -> list[str]:
+    """Return the first covers a direction flip would show, for the client to prefetch.
+
+    The first flip otherwise waits for covers it could not know about. Only
+    plain library shelves qualify; the opposite order is cheap because a
+    Python-ordered shelf caches both directions together.
+    """
+    if (
+        row.row_type != HomeScreenRowTypeChoices.LIBRARY_QUERY
+        or row.media_type not in OPPOSITE_ARTWORK_MEDIA_TYPES
+        or row.sort_by == HomeSortChoices.RANDOM
+    ):
+        return []
+    flipped = copy.copy(row)
+    current = resolve_home_row_direction(row.sort_by, row.direction)
+    flipped.direction = (
+        DirectionChoices.ASC if current == DirectionChoices.DESC else DirectionChoices.DESC
+    )
+    normalized = _normalized_filter_payload(row.filters or {}, row.media_type)
+    executor = _library_row_executor(user, flipped, normalized, seed=seed)
+    items, _total = _row_items(user, flipped, executor, 0, limit, seed=seed)
+    return [
+        item.image
+        for item in items
+        if item.image and item.image != settings.IMG_NONE and item.image.startswith("http")
+    ]
+
+
+_HOME_ROW_BUILD_LOCK_TTL = 30
+
+
+def cache_utils_key(user, row, items_limit: int = 14) -> str:
+    """Cache key of a row's built section (shared with tests that stage the build marker)."""
+    from app import cache_utils
+
+    return cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
+
+
+_HOME_ROW_WAIT_SECONDS = 4.0
+_HOME_ROW_WAIT_STEP = 0.05
+
+
+def _wait_for_row_in_flight(cache, cache_key):
+    """Return the row another request is building, once it lands in the cache.
+
+    A page loaded twice (two tabs, the installed app next to Safari, a retry)
+    asks for the same cold row at the same moment, and each request used to
+    build it. The first marks the row as building; later ones wait for its
+    result instead of repeating the work, and build it themselves if it does
+    not land in time, so a stalled builder never blocks a page. The marker is
+    advisory, not a lock: two requests that both see none still both build.
+    """
+    if cache.get(f"{cache_key}_building") is None:
+        return None
+    deadline = time.monotonic() + _HOME_ROW_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        time.sleep(_HOME_ROW_WAIT_STEP)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if cache.get(f"{cache_key}_building") is None:
+            return cache.get(cache_key)
+    return None
 
 
 def _cached_row_section(
@@ -3541,19 +3641,54 @@ def _cached_row_section(
 
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)
+    if cached is None and not refresh:
+        cached = _wait_for_row_in_flight(cache, cache_key)
     if cached is None:
-        with boundary("home_row"):
-            section = _build_row_section(user, row, media_type, items_limit)
-        cache.set(
-            cache_key,
-            section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
-            cache_utils.HOME_ROW_CACHE_TTL,
-        )
-        cache_utils.register_home_row_cache_key(user.id, cache_key)
+        lock_key = f"{cache_key}_building"
+        cache.set(lock_key, 1, _HOME_ROW_BUILD_LOCK_TTL)
+        try:
+            with boundary("home_row"):
+                section = _build_row_section(user, row, media_type, items_limit)
+            cache.set(
+                cache_key,
+                section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
+                cache_utils.HOME_ROW_CACHE_TTL,
+            )
+            cache_utils.register_home_row_cache_key(user.id, cache_key)
+            if section is not None and section.get("poll_for_covers"):
+                from app.home_artwork import record_cover_baseline
+
+                record_cover_baseline(user)
+        finally:
+            cache.delete(lock_key)
         return section
     if cached == _HOME_ROW_EMPTY_SENTINEL:
         return None
     return cached
+
+
+def _cached_released_ids(user, query) -> list[int]:
+    """Return the Up Next membership scan, cached like a shelf's id order.
+
+    The scan hydrates the whole in-progress library in Python (about 0.2 s per
+    thousand shows), and it ran on every section build, so the 60 s section
+    expiry re-paid it even while the shelf order itself was cached. It has the
+    same media-write invalidation as that order; the shorter lifetime bounds
+    how long a newly released episode can take to appear, since air dates move
+    without any user write.
+    """
+    from django.core.cache import cache
+
+    from app import cache_utils
+
+    key = f"{cache_utils.HOME_ROW_CACHE_PREFIX}_released_{user.id}"
+    released_ids = cache.get(key)
+    if released_ids is None:
+        with boundary("home_rank"):
+            released_ids = LibraryQueryExecutor(user, query).ranked_ids()
+        cache.set(key, released_ids, cache_utils.HOME_ROW_RELEASED_CACHE_TTL)
+        cache_utils.register_home_row_cache_key(user.id, key)
+    return released_ids
 
 
 def _episode_feed_row_window(user, row, offset, limit, seed):
@@ -3569,9 +3704,9 @@ def _episode_feed_row_window(user, row, offset, limit, seed):
     )
     # Keep ended shows only while they have released episodes left. Use the
     # library's progress policy, rather than calculating a second watch state.
-    released_ids = LibraryQueryExecutor(
+    released_ids = _cached_released_ids(
         user, query.with_sort(MediaSortChoices.TITLE, DirectionChoices.ASC),
-    ).ranked_ids()
+    )
     continuing = Item.objects.annotate(
         production_status=Lower(Replace(Trim("status"), Value("_"), Value(" "))),
     ).exclude(production_status__in=TERMINAL_PRODUCTION_STATUSES)

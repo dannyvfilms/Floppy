@@ -8,6 +8,12 @@ SCORED_AT_HELP = (
     "or when the rating predates this field."
 )
 
+UPDATED_AT_HELP = (
+    "When this entry last changed in any way (status, score, progress, dates, "
+    "notes, lists, tags, episodes watched). Use it with `updated_since` on the "
+    "media list to sync only what changed."
+)
+
 
 @extend_schema_field(
     {"oneOf": [{"type": "string"}, {"type": "integer"}]}
@@ -203,6 +209,10 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     parent_id = serializers.CharField(allow_null=True)
     tracked = serializers.BooleanField()
     created_at = serializers.DateTimeField(allow_null=True)
+    updated_at = serializers.DateTimeField(
+        allow_null=True,
+        help_text=UPDATED_AT_HELP,
+    )
     score = serializers.FloatField(allow_null=True)
     scored_at = serializers.DateTimeField(
         allow_null=True,

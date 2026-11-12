@@ -95,11 +95,15 @@ def startup_gate(db_path: str, connection) -> bool:
     _require_no_incident(db_path)
     database = Path(db_path).resolve()
     record = integrity._read_sidecar(integrity._verified_path(db_path), db_path)
-    if record and (record.get("device"), record.get("inode")) != tuple(
-        _signature(database)[:2]
-    ):
-        msg = "Database was replaced since verification; prepare it offline before startup."
-        raise StartupBlockedError(msg)
+    if record:
+        try:
+            same = integrity.same_verified_file(record, database, database.stat())
+        except OSError as error:
+            msg = f"Database could not be inspected: {error}"
+            raise StartupBlockedError(msg) from error
+        if not same:
+            msg = "Database was replaced since verification; prepare it offline before startup."
+            raise StartupBlockedError(msg)
     deadline = time.monotonic() + 5
     with closing(
         sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True, timeout=2)

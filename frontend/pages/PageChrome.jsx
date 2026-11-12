@@ -32,16 +32,18 @@ export function PageHeading({
   actions,
   palette,
   titleLevel = 1,
+  titleStyle,
+  countStyle,
 }) {
   const colors = mergePalette(palette);
   const countText = count == null ? '' : `${count}${countLabel ? ` ${countLabel}` : ''}`;
   return <View style={styles.heading}>
     <View style={styles.headingText}>
       <View style={styles.titleRow}>
-        <Text role="heading" aria-level={titleLevel} style={[styles.title, { color: colors.text }]}>
+        <Text role="heading" aria-level={titleLevel} style={[styles.title, { color: colors.text }, titleStyle]}>
           {title}
         </Text>
-        {countText ? <View style={[styles.count, { backgroundColor: colors.surface }]}>
+        {countText ? <View style={[styles.count, { backgroundColor: colors.surface }, countStyle]}>
           <Text style={[styles.countText, { color: colors.textSecondary }]}>{countText}</Text>
         </View> : null}
       </View>
@@ -125,10 +127,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  headingText: { flexShrink: 1, minWidth: 0, gap: 4 },
+  headingText: { flexShrink: 1, minWidth: 0, gap: 8 },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  title: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
-  subtitle: { fontSize: 14, lineHeight: 20 },
+  // 30px title over a 16px subtitle, as the release page headings were.
+  title: { fontSize: 30, lineHeight: 36, fontWeight: '700' },
+  subtitle: { fontSize: 16, lineHeight: 24 },
   count: { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 },
   countText: { fontSize: 13, fontWeight: '600' },
   headingActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },

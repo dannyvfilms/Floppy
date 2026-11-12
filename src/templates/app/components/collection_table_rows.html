@@ -44,8 +44,8 @@
       </a>
     </td>
     <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.item.media_type|media_type_readable }}</td>
-    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.media_type|default:"—" }}</td>
-    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.resolution|default:"—" }}</td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.media_type|default:"-" }}</td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.resolution|default:"-" }}</td>
     <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.collected_at|user_date_format:user }}</td>
   </tr>
 {% endfor %}

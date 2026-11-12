@@ -8,6 +8,7 @@ from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
@@ -36,6 +37,7 @@ from app.models import (
     CollectionEntry,
     Comic,
     ComicIssue,
+    DeletedEntry,
     DeletedMedia,
     DiscoverFeedback,
     DiscoverFeedbackType,
@@ -52,12 +54,15 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     PodcastShowTracker,
     Season,
     Sources,
     Status,
+    Video,
     VideoPlay,
 )
+from app.services import podcast_plays
 from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
@@ -77,6 +82,16 @@ def fence_overwrite_tracking_writes(sender, instance, **kwargs):
         and instance._meta.model_name in TRACKING_MODELS
     ):
         guard_instances([instance])
+
+
+@receiver(post_save)
+def refresh_entry_source_suggestions(sender, instance, **kwargs):
+    """Offer a newly typed source in the tracking modal straight away."""
+    if kwargs.get("raw") or not getattr(instance, "entry_source", ""):
+        return
+    from app import entry_sources
+
+    entry_sources.note_saved_source(instance)
 
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
@@ -739,6 +754,38 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     )
 
 
+@receiver(post_delete, sender=TV)
+@receiver(post_delete, sender=Season)
+@receiver(post_delete, sender=Anime)
+@receiver(post_delete, sender=Movie)
+@receiver(post_delete, sender=Manga)
+@receiver(post_delete, sender=Book)
+@receiver(post_delete, sender=Comic)
+@receiver(post_delete, sender=ComicIssue)
+@receiver(post_delete, sender=Game)
+@receiver(post_delete, sender=BoardGame)
+@receiver(post_delete, sender=Music)
+@receiver(post_delete, sender=Podcast)
+@receiver(post_delete, sender=Video)
+def record_deleted_entry(sender, instance, **kwargs):
+    """Log the deletion for the library change feed (unlike the importer tombstone)."""
+    if kwargs.get("raw") or _ACCOUNT_BEING_DELETED.get():
+        return
+    try:
+        user_id = instance.user_id
+        item = instance.item
+    except ObjectDoesNotExist:  # the owner or item is going away with it
+        return
+    DeletedEntry.objects.update_or_create(
+        user_id=user_id,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
+        season_number=item.season_number,
+        defaults={"deleted_at": timezone.now()},
+    )
+
+
 @receiver(post_save, sender=TV)
 @receiver(post_save, sender=Anime)
 @receiver(post_save, sender=Movie)
@@ -1247,6 +1294,61 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    )
+
+
+@receiver(post_save, sender=Podcast)
+def keep_podcast_plays_in_step(sender, instance, created, **kwargs):
+    """Make a direct save of a podcast tracker move or create its play.
+
+    The web form, importers and webhooks write the tracker. A play is a
+    listen, so the tracker's dates and status are carried onto the play that
+    describes it. Writes made by the play service itself are skipped.
+    """
+    if kwargs.get("raw") or podcast_plays.in_service_write():
+        return
+    previous_end_date = None if created else instance.tracker.previous("end_date")
+    podcast_plays.apply_tracker_edit(instance, previous_end_date)
+
+
+@receiver(pre_save, sender=PodcastPlay)
+def remember_podcast_play_end_date(sender, instance, **kwargs):
+    """Keep the persisted end date so a moved play also refreshes its old day."""
+    if kwargs.get("raw") or not instance.pk:
+        return
+    instance._previous_end_date = (
+        sender.objects.filter(pk=instance.pk).values_list("end_date", flat=True).first()
+    )
+
+
+@receiver([post_save, post_delete], sender=PodcastPlay)
+def refresh_history_cache_on_podcast_play_change(sender, instance, **kwargs):
+    """Refresh the History and Statistics days a podcast listen lands on.
+
+    The tracker's own save only covers its newest play, so a change to an
+    older play needs its days refreshed here.
+    """
+    if kwargs.get("raw"):
+        return
+    user_id = getattr(instance.podcast, "user_id", None)
+    day_keys = {
+        history_cache.history_day_key(value)
+        for value in (
+            instance.end_date,
+            instance.__dict__.pop("_previous_end_date", None),
+        )
+        if value
+    }
+    day_keys.discard(None)
+    if not day_keys:
+        return
+    ordered = sorted(day_keys)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.PODCAST.value,
+        reason="podcast_play_change",
+        history_specs=[(ordered, ("sessions", "repeats"))],
+        statistics_day_values=ordered,
     )
 
 

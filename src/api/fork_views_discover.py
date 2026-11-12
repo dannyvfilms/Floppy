@@ -4,6 +4,7 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 from types import SimpleNamespace
 
+from django.utils.translation import gettext
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
@@ -12,9 +13,12 @@ from rest_framework.response import Response
 
 from api.authentication import APIKeyAuthentication, BearerAuthentication
 from app.discover import tab_cache as discover_tab_cache
+from app.discover_presentation import MATCH_LABELS
 from app.discover_views import (
     _discover_hidden_entries,
+    _discover_media_options,
     _discover_response_rows,
+    _get_or_create_discover_item,
     _invalidate_discover_after_action,
     _resolve_discover_media_type_for_user,
 )
@@ -30,6 +34,7 @@ from app.models import (
     Sources,
 )
 from app.providers import services
+from app.templatetags.app_tags import image_url
 from users.home_screen import (
     HomeScreenValidationError,
     build_home_page_groups,
@@ -147,11 +152,72 @@ class DiscoverRowsView(DiscoverEnabledMixin, drf_views.APIView):
             show_more=show_more,
             discover_debug=False,
         )
+        status = discover_tab_cache.get_tab_status(
+            request.user.id,
+            media_type,
+            show_more=show_more,
+        ) if media_type != "hidden" else None
         return Response(
             {
                 "media_type": media_type,
                 "show_more": show_more,
-                "rows": [row.to_dict() for row in rows],
+                "loading": bool(status and status["is_refreshing"]),
+                "media_options": _discover_media_options(request.user),
+                "rows": [_discover_row_payload(row) for row in rows],
+            },
+            status=HTTP.OK,
+        )
+
+
+def _discover_row_payload(row):
+    """One row for clients: the cache payload plus the web's match wording."""
+    payload = row.to_dict()
+    label = MATCH_LABELS.get(row.key)
+    payload["match_label"] = str(gettext(label)) if label else ""
+    return payload
+
+
+# /api/v1/discover/status/
+class DiscoverStatusView(DiscoverEnabledMixin, drf_views.APIView):
+    """Rebuild status of a Discover tab (mirrors the web cache-status poll)."""
+
+    @extend_schema(
+        operation_id="getDiscoverStatus",
+        parameters=[
+            OpenApiParameter(
+                name="media_type",
+                type=str,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="show_more",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: dict, 404: DetailErrorSerializer},
+    )
+    def get(self, request):
+        """Report whether the tab is being rebuilt or has just been rebuilt."""
+        media_type = _resolve_discover_media_type_for_user(
+            request.user,
+            request.GET.get("media_type"),
+        )
+        show_more = request.GET.get("show_more") in {"1", "true", "True"}
+        status = discover_tab_cache.get_tab_status(
+            request.user.id,
+            media_type,
+            show_more=show_more,
+        )
+        return Response(
+            {
+                "media_type": media_type,
+                "show_more": show_more,
+                "exists": status["exists"],
+                "is_stale": status["is_stale"],
+                "is_refreshing": status["is_refreshing"],
+                "recently_built": status["recently_built"],
+                "built_at": status["built_at"],
             },
             status=HTTP.OK,
         )
@@ -321,6 +387,11 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
                         "item_id": entry.item_id,
                         "title": entry.item.title,
                         "media_type": entry.item.media_type,
+                        "source": entry.item.source,
+                        "media_id": str(entry.item.media_id),
+                        "image": (
+                            image_url(entry.item.image) if entry.item.image else None
+                        ),
                         "hidden_at": entry.updated_at,
                     }
                     for entry in entries
@@ -330,14 +401,40 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
         )
 
     def post(self, request):
-        """Hide or unhide an item (mirrors discover_toggle_hidden)."""
+        """Hide or unhide an item (mirrors discover_toggle_hidden).
+
+        Accepts either ``item_id`` (an item the caller already tracks) or a
+        provider identity (``source``, ``media_type``, ``media_id``) the way
+        the web dismiss action does: Discover candidates are often untracked,
+        so the item may not exist yet and is created from the identity plus
+        the optional ``title``/``image`` fallbacks without any provider call.
+        """
         action = request.data.get("action")
         if action not in ("hide", "unhide"):
             return Response(
                 {"detail": "action must be 'hide' or 'unhide'."},
                 status=HTTP.BAD_REQUEST,
             )
-        item = Item.objects.filter(id=request.data.get("item_id")).first()
+        item = None
+        if request.data.get("item_id") is not None:
+            item = Item.objects.filter(id=request.data.get("item_id")).first()
+        elif request.data.get("media_id"):
+            media_type = request.data.get("media_type")
+            if media_type not in MediaTypes.values:
+                return Response(
+                    {"detail": "media_type must be a supported media type."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            item = _get_or_create_discover_item(
+                media_type,
+                request.data.get("media_id"),
+                request.data.get("source"),
+                request.data.get("season_number"),
+                {
+                    "fallback_title": str(request.data.get("title") or "").strip(),
+                    "fallback_image": str(request.data.get("image") or "").strip(),
+                },
+            )
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
 
@@ -433,6 +530,9 @@ class HomeRowView(HomeBrowserSessionMixin, drf_views.APIView):
 
     def get(self, request, row_id):
         """Return one bounded Home row window."""
+        # The route captures digits as text; the row builders compare ids as
+        # integers, so a text id never matched a row on a continuation (#1873).
+        row_id = int(row_id)
         try:
             items_limit = max(1, min(int(request.GET.get("limit", 14)), 50))
             offset = max(int(request.GET.get("offset", "0")), 0)

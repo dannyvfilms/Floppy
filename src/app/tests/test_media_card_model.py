@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.card_surfaces import card_context
-from app.media_card_model import _corner_chips, card_model, card_shape
+from app.media_card_model import _corner_chips, _progress_bar, card_model, card_shape
 from app.models import Item, MediaTypes, Movie, Sources, Status
 
 
@@ -92,3 +92,26 @@ class MediaCardModelTest(TestCase):
         self.assertEqual(plan["target"], "#discover-row-trending")
         self.assertEqual(plan["swap"], "outerHTML")
         self.assertEqual(lists["modal"], "lists")
+
+    def test_status_chip_carries_its_color_class(self):
+        """The chip's icon keeps the status colour the release card gave it."""
+        ctx = card_context({"user": self.user}, "library", {"item": self.item, "media": self.movie})
+        chip = card_model(ctx)["statusChip"]
+        self.assertEqual(chip["kind"], "status")
+        self.assertTrue(chip["colorClass"].startswith("text-"))
+
+    def test_progress_bar_reports_whether_it_stays_visible_at_rest(self):
+        """A dormant display keeps the bar on the poster instead of only on hover."""
+        media = SimpleNamespace(
+            status=Status.IN_PROGRESS.value,
+            aggregated_status=None,
+            progress=5,
+            max_progress=10,
+            progress_percentage=50,
+        )
+        base = {"media": media, "card_show_progress": True}
+        shown = _progress_bar({**base, "card_progress_display": "dormant"}, MediaTypes.TV.value)
+        hover = _progress_bar({**base, "card_progress_display": "hover"}, MediaTypes.TV.value)
+        self.assertEqual(shown, {"percent": 50, "paused": False, "dormant": True})
+        self.assertFalse(hover["dormant"])
+        self.assertIsNone(_progress_bar({**base, "card_show_progress": False}, MediaTypes.TV.value))

@@ -340,3 +340,24 @@ class PlayerResourceGateTests(TestCase):
         self.assertNotIn("player", resources)
         self.assertNotIn("library", resources)
         self.assertIn("subtitles", resources)
+
+
+class CatalogSkipTests(TestCase):
+    """A malformed catalog extra answers with the parser's fixed text."""
+
+    def test_bad_skip_is_rejected_with_the_written_message(self):
+        user = User.objects.create_user(username="catalog", password="x")
+        url = reverse(
+            "stremio_addon_catalog",
+            kwargs={
+                "token": user.token,
+                "media_type": "movie",
+                "catalog_id": "floppy-watchlist-movies",
+                "extra": "skip=abc",
+            },
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(), {"error": "skip must be a non-negative integer"}
+        )

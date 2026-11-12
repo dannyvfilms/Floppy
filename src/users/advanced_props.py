@@ -29,11 +29,14 @@ def _advanced_labels() -> dict[str, object]:
             "title": _("Logs & Bug Reports"),
             "intro": _(
                 "Logs may contain private activity. Administrators can download "
-                "redacted logs and should review them before sharing."
+                "redacted logs and should review them before sharing. Everyone "
+                "can download a diagnostic report with only server details and "
+                "recent warnings and errors."
             ),
             "covers": _("Covers {when} onward."),
             "lastUnclean": _("Last unclean shutdown: {when}"),
             "download": _("Download Sanitized Logs"),
+            "downloadDiagnostics": _("Download Diagnostic Report"),
             "bugReport": _("File a Bug Report"),
         },
         "imageCache": {
@@ -79,8 +82,8 @@ def _advanced_labels() -> dict[str, object]:
             "intro": _(
                 "Floppy caches computed pages (History, Statistics, Discover) and "
                 "provider search results so they load fast. If one looks stale or "
-                "wrong, clearing it forces a rebuild from your actual data — "
-                "nothing about your library, watch history, ratings, or lists is "
+                "wrong, clearing it forces a rebuild from your actual data. "
+                "Nothing about your library, watch history, ratings, or lists is "
                 "touched by any of these."
             ),
             "clear": _("Clear"),
@@ -92,24 +95,24 @@ def _advanced_labels() -> dict[str, object]:
                     "key": "search",
                     "title": _("Search Cache"),
                     "description": _(
-                        "Provider search results — shared instance-wide"
+                        "Provider search results (shared instance-wide)"
                     ),
                 },
                 {
                     "key": "history",
                     "title": _("History Cache"),
-                    "description": _("Your cached History page — just you"),
+                    "description": _("Your cached History page (just you)"),
                 },
                 {
                     "key": "statistics",
                     "title": _("Statistics Cache"),
-                    "description": _("Your cached Statistics page — just you"),
+                    "description": _("Your cached Statistics page (just you)"),
                 },
                 {
                     "key": "discover",
                     "title": _("Discover Cache"),
                     "description": _(
-                        "Your recommendation rows & taste profile — just you"
+                        "Your recommendation rows & taste profile (just you)"
                     ),
                 },
             ],
@@ -117,7 +120,7 @@ def _advanced_labels() -> dict[str, object]:
                 "search": {
                     "title": _("Clear Search Cache?"),
                     "message": _(
-                        "This is the one shared cache here — clearing it affects "
+                        "This is the one shared cache here. Clearing it affects "
                         "every user on this Floppy instance, not just you."
                     ),
                     "warning": _(
@@ -131,7 +134,7 @@ def _advanced_labels() -> dict[str, object]:
                     "title": _("Clear History Cache?"),
                     "message": _(
                         "Only affects your own account. Your watch history itself "
-                        "is not touched — this only clears the cached, day-by-day "
+                        "is not touched. This only clears the cached, day-by-day "
                         "rendering of it."
                     ),
                     "warning": _(
@@ -144,11 +147,11 @@ def _advanced_labels() -> dict[str, object]:
                     "title": _("Clear Statistics Cache?"),
                     "message": _(
                         "Only affects your own account. No underlying data is "
-                        "touched — only the cached charts and totals."
+                        "touched, only the cached charts and totals."
                     ),
                     "warning": _(
                         "Statistics rebuild in the background rather than on your "
-                        "next page load — expect placeholder values for a bit "
+                        "next page load. Expect placeholder values for a bit "
                         "until that finishes."
                     ),
                     "confirmLabel": _("Clear Statistics Cache"),
@@ -315,6 +318,7 @@ def advanced_props(request, context: dict[str, object]) -> dict[str, object]:
 def _advanced_urls(is_superuser: bool) -> dict[str, object]:
     """Return only the action URLs the account can actually reach."""
     urls: dict[str, object] = {
+        "diagnostics": reverse("export_diagnostics"),
         "clearCaches": {
             "search": reverse("clear_search_cache"),
             "history": reverse("clear_history_cache"),

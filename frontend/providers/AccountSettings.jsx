@@ -91,6 +91,7 @@ export function AccountSettings({
   onConnect,
   onDisconnect,
   onFollowUp,
+  formContent,
   palette = {},
   buttonPalette = {},
 }) {
@@ -174,6 +175,7 @@ export function AccountSettings({
           onPress={() => disconnect(instance.id)} palette={buttons} />
       </View>)}
     </View> : <Text style={[styles.copy, { color: colors.textSecondary }]}>{message}</Text>}
+    {formContent || null}
     {showForm ? <View style={styles.fields}>
       {(model.fields || []).map(field => <FieldControl key={field.name} field={field}
         value={values[field.name]} onChange={value => change(field.name, value)} colors={colors} />)}

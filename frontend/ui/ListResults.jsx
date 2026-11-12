@@ -36,6 +36,10 @@ const defaultLabels = {
   noSelection: 'Pick items to use these actions.',
   updateStatus: 'Update Status',
   chooseStatus: 'Choose status',
+  chooseList: 'Choose a list',
+  chooseTag: 'Choose a tag',
+  noLists: 'You have no other lists to add to.',
+  noTags: 'You have not created any tags yet.',
   removeFromList: 'Remove from List',
   addToList: 'Add to List',
   addToCollection: 'Add to Collection',
@@ -116,20 +120,6 @@ function sortNote(item, sort) {
   }
 }
 
-function defaultLines(item) {
-  const parts = [];
-  if (item.mediaTypeLabel) {
-    parts.push({ text: item.mediaTypeLabel });
-  }
-  if (item.statusLabel) {
-    parts.push({ text: ` • ${item.statusLabel}`, muted: true });
-  }
-  if (item.progressLabel) {
-    parts.push({ text: ` • ${item.progressLabel}`, muted: true });
-  }
-  return parts.length ? [{ join: 'plain', parts }] : [];
-}
-
 function cardModel(item, sort, canEdit) {
   const rating = item.rating || (item.score != null
     ? { label: String(item.score), value: item.score, scaleMax: 10 }
@@ -148,7 +138,8 @@ function cardModel(item, sort, canEdit) {
     cornerChips: item.cardCornerChips || [],
     titleLinks: [],
     progressBar: item.progressBar || null,
-    lines: item.cardLines || defaultLines(item),
+    // The web's list card carries no subtitle lines.
+    lines: item.cardLines || [],
     rating,
     ratingEditable: canEdit && item.ratingEditable !== false,
     actions: canEdit ? item.cardActions || null : null,
@@ -232,17 +223,17 @@ function listTableRows(items) {
     id: item.id,
     title: item.title,
     cells: {
-      title: { kind: 'title', text: item.title || '—' },
-      mediaTypeLabel: { kind: 'text', text: item.mediaTypeLabel || '—' },
-      statusLabel: { kind: 'status', text: item.statusLabel || '—', muted: !item.statusLabel },
+      title: { kind: 'title', text: item.title || '-' },
+      mediaTypeLabel: { kind: 'text', text: item.mediaTypeLabel || '-' },
+      statusLabel: { kind: 'status', text: item.statusLabel || '-', muted: !item.statusLabel },
       score: {
         kind: 'score',
         rated: item.score != null,
         text: item.score != null ? String(item.score) : '',
       },
-      progressLabel: { kind: 'progress', text: item.progressLabel || '—' },
-      releaseLabel: { kind: 'text', text: item.releaseLabel || '—', muted: !item.releaseLabel },
-      addedLabel: { kind: 'text', text: item.addedLabel || '—', muted: !item.addedLabel },
+      progressLabel: { kind: 'progress', text: item.progressLabel || '-' },
+      releaseLabel: { kind: 'text', text: item.releaseLabel || '-', muted: !item.releaseLabel },
+      addedLabel: { kind: 'text', text: item.addedLabel || '-', muted: !item.addedLabel },
     },
   }));
 }
@@ -299,13 +290,15 @@ export function ListBulkBar({
   palette,
   labels,
   statuses = [],
+  lists = [],
+  tags = [],
   onClear,
   onAction,
   onRemove,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  const [statusOpen, setStatusOpen] = useState(false);
+  const [picker, setPicker] = useState(null);
   const actions = [
     { kind: 'status', label: copy.updateStatus, tone: 'primary' },
     { kind: 'list', label: copy.addToList, tone: 'surface' },
@@ -315,7 +308,11 @@ export function ListBulkBar({
   ];
   function choose(action) {
     if (action.kind === 'status' && statuses.length > 0) {
-      setStatusOpen(current => !current);
+      setPicker(current => (current === 'status' ? null : 'status'));
+      return;
+    }
+    if (action.kind === 'list' || action.kind === 'tag') {
+      setPicker(current => (current === action.kind ? null : action.kind));
       return;
     }
     onAction?.(action.kind);
@@ -343,14 +340,21 @@ export function ListBulkBar({
         disabled={count === 0}
         onPress={onRemove} /> : null}
     </View>
-    {statusOpen ? <View style={styles.bulkActions} accessible accessibilityLabel={copy.chooseStatus}>
-      {statuses.map(status => <Button key={status.value}
-        label={status.label}
+    {picker ? <View style={styles.bulkActions} accessible
+      accessibilityLabel={picker === 'status' ? copy.chooseStatus : picker === 'list' ? copy.chooseList : copy.chooseTag}>
+      {(picker === 'status' ? statuses : picker === 'list' ? lists : tags).map(option => <Button key={option.value}
+        label={option.label}
         tone="surface"
         onPress={() => {
-          setStatusOpen(false);
-          onAction?.('status', status.value);
+          setPicker(null);
+          onAction?.(picker, option.value);
         }} />)}
+      {picker === 'list' && lists.length === 0 ? <Text style={[styles.bulkHint, { color: colors.textMuted }]}>
+        {copy.noLists}
+      </Text> : null}
+      {picker === 'tag' && tags.length === 0 ? <Text style={[styles.bulkHint, { color: colors.textMuted }]}>
+        {copy.noTags}
+      </Text> : null}
     </View> : null}
   </View>;
 }
@@ -394,6 +398,7 @@ export function ListResults({
   palette,
   labels,
   canEdit = false,
+  showSelectToggle = true,
   canRecommend = false,
   isSmart = false,
   selectMode = false,
@@ -403,6 +408,8 @@ export function ListResults({
   onClearSelection,
   onBulkAction,
   bulkStatuses = [],
+  bulkLists = [],
+  bulkTags = [],
   onRemoveItems,
   bulkMessage,
   onOpenItem,
@@ -434,7 +441,7 @@ export function ListResults({
   };
   const mode = emptyMode || (hasSearch ? 'search' : 'empty');
   return <View style={styles.results}>
-    {canEdit ? <View style={styles.selectRow}>
+    {canEdit && showSelectToggle ? <View style={styles.selectRow}>
       <Button
         label={selectMode ? copy.cancelSelect : copy.selectItems}
         tone="surface"
@@ -445,6 +452,8 @@ export function ListResults({
       palette={colors}
       labels={copy}
       statuses={bulkStatuses}
+      lists={bulkLists}
+      tags={bulkTags}
       onClear={onClearSelection}
       onAction={onBulkAction}
       onRemove={onRemoveItems ? () => onRemoveItems(selectedIds) : undefined} /> : null}

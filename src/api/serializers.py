@@ -25,6 +25,7 @@ from app.models import (
     MoviePlay,
     Music,  # FORK: fork-only media type
     Podcast,  # FORK: fork-only media type
+    PodcastPlay,
     Season,
     Status,
 )
@@ -364,6 +365,7 @@ class CompleteMediaSerializer(serializers.Serializer):
                         "id": None,
                         "item": item,
                         "created_at": None,
+                        "updated_at": None,
                         "score": None,
             "scored_at": None,
                         "status": None,
@@ -549,6 +551,12 @@ class CompleteMediaSerializer(serializers.Serializer):
             "cast": media_metadata.get("cast") or [],
             "crew": media_metadata.get("crew") or [],
             "details": details,
+            # FORK: the linked studio list the web Studios card shows (details.studios is trimmed).
+            "studios": [
+                {"id": str(studio.get("studio_id") or studio.get("id") or ""), "name": name}
+                for studio in media_metadata.get("studios_full") or []
+                if (name := (studio.get("name") or "").strip())
+            ],
             "related": related,
             "item_id": ItemIdField().to_representation(temp_media),
             "parent_id": ParentIdField().to_representation(temp_media),
@@ -584,6 +592,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 else None,
                 "tracked": True,
                 "created_at": instance.created_at,
+                "updated_at": getattr(instance, "updated_at", None),
                 # FORK: episodes expose the same tracking details as other media.
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
@@ -793,6 +802,23 @@ class HistorySerializer(serializers.Serializer):
                 # its own event to the stored play after a restart.
                 "external_id": getattr(instance, "external_id", None),
             }
+        if isinstance(instance, PodcastPlay):
+            tracker = instance.podcast
+            return {
+                "consumption_id": instance.id,
+                "created": instance.created_at,
+                "score": float(tracker.score) if tracker.score is not None else None,
+                "scored_at": getattr(tracker, "scored_at", None),
+                "progress": instance.progress,
+                "played_up_to_seconds": instance.played_up_to_seconds,
+                "progressed_at": instance.end_date or instance.updated_at,
+                "status": get_media_status(instance.status),
+                "start_date": instance.start_date,
+                "end_date": instance.end_date,
+                "notes": tracker.notes,
+                "source": instance.entry_source,
+                "external_id": instance.external_id,
+            }
         status = StatusField().to_representation(instance)
 
         return {
@@ -876,6 +902,9 @@ class ListSerializer(serializers.Serializer):
                         homogeneous=False,
                     ),
                 }
+                list_added = self.context.get("list_added_by_item_id", {})
+                for entry in items["results"]:
+                    entry["list_date_added"] = list_added.get(entry.get("id"))
             else:
                 items = items_context
 
@@ -903,7 +932,26 @@ class ListSerializer(serializers.Serializer):
             "is_unlisted": instance.is_unlisted,
             "public_slug": instance.public_slug,
             "allow_recommendations": instance.allow_recommendations,
+            "is_smart": instance.is_smart,
+            "tags": list(instance.tags or []),
+            "include_notes": instance.include_notes,
         }
+
+        completed_counts = (self.context or {}).get("completed_counts")
+        if completed_counts is not None:
+            # Same figure the web lists page prints: titles completed / titles.
+            completed = completed_counts.get(instance.id, 0)
+            response["completed_count"] = completed
+            response["completion_percent"] = (
+                round(completed / item_count * 100) if item_count else None
+            )
+
+        breakdown = (self.context or {}).get("media_type_breakdown")
+        if breakdown is not None:
+            # The web's media-type breakdown popover (pie chart button).
+            response["media_type_breakdown"] = [
+                {**entry, "label": str(entry["label"])} for entry in breakdown
+            ]
 
         if include_items:
             response["items"] = items
@@ -911,8 +959,21 @@ class ListSerializer(serializers.Serializer):
         return response
 
 
+def _music_identity(instance):
+    """Return the artist, album and track ids of a music row, else nothing."""
+    if getattr(instance, "item", None) is None or instance.item.media_type != "music":
+        return {}
+    return {
+        "artist_id": getattr(instance, "artist_id", None),
+        "album_id": getattr(instance, "album_id", None),
+        "track_id": getattr(instance, "track_id", None),
+    }
+
+
 class MediaSerializer(serializers.ModelSerializer):
     """Serializer used for media items."""
+
+    entry_id = serializers.IntegerField(read_only=True, required=False, help_text="Tracker row identity when separate_entries=1.")
 
     # Declared so OpenAPI generation documents the real wire format (see
     # api.schema.StatusFieldExtension) instead of the model field's string-label
@@ -931,6 +992,7 @@ class MediaSerializer(serializers.ModelSerializer):
             "next_episode_by_item_id",
             {},
         )
+        tags_by_item_id = (self.context or {}).get("tags_by_item_id")
         if item is not None and item.id in next_episode_by_item_id:
             next_episode = next_episode_by_item_id[item.id]
         elif item is not None:
@@ -970,6 +1032,7 @@ class MediaSerializer(serializers.ModelSerializer):
             else None,
             "tracked": getattr(instance, "id", None) is not None,
             "created_at": instance.created_at,
+            "updated_at": getattr(instance, "updated_at", None),
             "score": float(instance.score)
             if hasattr(instance, "score") and instance.score is not None
             else None,
@@ -1002,6 +1065,15 @@ class MediaSerializer(serializers.ModelSerializer):
             "lists": lists,
             "next_episode": next_episode,
             "show": _serialize_show(show),
+            # FORK: lets a native client open the artist/album/track page of
+            # a music row without a second lookup.
+            **_music_identity(instance),
+            # FORK: the viewer's tag names, only where the list view batched them.
+            **(
+                {"tags": tags_by_item_id.get(item.id, [])}
+                if tags_by_item_id is not None and item is not None
+                else {}
+            ),
         }
 
 
@@ -1047,6 +1119,7 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "parent_id": ParentIdField().to_representation(instance),
             "tracked": False,
             "created_at": None,
+            "updated_at": None,
             "score": None,
             "scored_at": None,
             "status": None,

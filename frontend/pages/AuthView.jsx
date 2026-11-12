@@ -13,15 +13,15 @@ import { AuthEntrance } from '../auth/AuthEntrance';
 
 const authModes = {
   login: {
-    title: 'Sign in',
+    title: 'Sign In',
     copy: 'Credentials go straight to your Floppy server. This device keeps only the server session in secure storage.',
   },
   signup: {
-    title: 'Create account',
+    title: 'Create Account',
     copy: 'Create an account on this Floppy server. Your tracking data stays on the server.',
   },
   recovery: {
-    title: 'Recover password',
+    title: 'Recover Password',
     copy: 'Enter your username to start password recovery for this server.',
   },
 };
@@ -75,9 +75,11 @@ export function AccountSecurityView({
     <ProfileCard {...profile} palette={palette} buttonPalette={buttonPalette} />
     <AccountTypeCard {...accountType} palette={palette} buttonPalette={buttonPalette} />
     <PasswordCard {...password} palette={palette} buttonPalette={buttonPalette} />
-    <AuthenticatorCard {...authenticator} palette={palette} buttonPalette={buttonPalette} />
-    <RecoveryCodesCard {...recovery} palette={palette} buttonPalette={buttonPalette} />
-    <ConnectionsCard {...connections} palette={palette} buttonPalette={buttonPalette} />
+    <AuthenticatorCard {...authenticator} palette={palette} buttonPalette={buttonPalette}>
+      {palette.pageCards ? <RecoveryCodesCard {...recovery} embedded palette={palette} buttonPalette={buttonPalette} /> : null}
+    </AuthenticatorCard>
+    {!palette.pageCards ? <RecoveryCodesCard {...recovery} palette={palette} buttonPalette={buttonPalette} /> : null}
+    {connections.visible !== false ? <ConnectionsCard {...connections} palette={palette} buttonPalette={buttonPalette} /> : null}
     <DeleteAccountCard {...deletion} palette={palette} buttonPalette={buttonPalette} />
   </View>;
 }

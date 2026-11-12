@@ -15,6 +15,8 @@ already knew.
 
     paths ──── writable? a file and not a directory? space left?
       │
+    storage ── sqlite: is the database on a spinning disk?
+      │
     config ─── does Django accept these settings?
       │
     database ─ sqlite: storage and relationships   postgres: reachable
@@ -36,6 +38,7 @@ that would otherwise succeed.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from contextlib import suppress
@@ -299,6 +302,60 @@ def check_paths() -> CheckResult:
         summary=f"{data_dir} ({_human_bytes(free)} free)",
         facts=facts,
     )
+
+
+def _rotational(path: Path, sys_block: Path = Path("/sys/dev/block")) -> bool | None:
+    """Report whether ``path`` is on a spinning disk; None when it cannot be told.
+
+    Linux publishes the answer per block device. A partition has no queue of its
+    own, so its parent is read instead. Overlay, btrfs and network filesystems
+    have no entry, and neither does anything that is not Linux.
+    """
+    try:
+        device = path.stat().st_dev
+    except OSError:
+        return None
+    node = sys_block / f"{os.major(device)}:{os.minor(device)}"
+    for candidate in (node, node / ".."):
+        try:
+            text = (candidate / "queue" / "rotational").read_text().strip()
+        except OSError:
+            continue
+        return text == "1"
+    return None
+
+
+def check_storage() -> CheckResult:
+    """Warn when the SQLite file sits on a spinning disk.
+
+    Floppy starts and runs there, so this never fails a start. It is reported
+    because the symptom is otherwise invisible: every page is slow after an idle
+    spell, with nothing in the log but long database times. A cold page load is
+    thousands of scattered reads, at around a hundredth of a second each.
+    """
+    if not settings.USING_SQLITE_DATABASE:
+        return CheckResult(name="storage", status=SKIPPED, summary="not SQLite")
+    db_path = Path(settings.FLOPPY_DB_PATH)
+    rotational = _rotational(db_path)
+    facts = {"database_path": str(db_path), "rotational": rotational}
+    if rotational:
+        return CheckResult(
+            name="storage",
+            status=WARN,
+            summary=f"{db_path} is on a spinning disk",
+            cause=(
+                "pages load slowly whenever the database is not already in "
+                "memory, and saves hold the write lock for longer"
+            ),
+            fix=(
+                f"{HOST} move the database folder to an SSD and point "
+                + _where("the volume mapping", "FLOPPY_DATA_DIR")
+                + " at it"
+            ),
+            facts=facts,
+        )
+    summary = "disk type unknown" if rotational is None else "solid-state disk"
+    return CheckResult(name="storage", status=OK, summary=summary, facts=facts)
 
 
 def check_config() -> CheckResult:
@@ -986,7 +1043,7 @@ def run_checks(
     migration check can run at all.
     """
     database = None
-    results = [check_runtime(), check_paths(), check_config()]
+    results = [check_runtime(), check_paths(), check_storage(), check_config()]
     database = check_database(timeout_seconds=timeout_seconds)
     results.append(database)
     results.append(check_migrations(database_ok=not database.failed))

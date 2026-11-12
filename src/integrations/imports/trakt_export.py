@@ -13,7 +13,12 @@ import logging
 import re
 import zipfile
 
-from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
+from integrations.imports.helpers import (
+    TRAKT_EXPORT_MODES,
+    TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE,
+    MediaImportError,
+    MediaImportUnexpectedError,
+)
 from integrations.imports.trakt import TraktImporter
 
 logger = logging.getLogger(__name__)
@@ -196,6 +201,9 @@ class TraktExportImporter(TraktImporter):
 
 def importer(file, user, mode):
     """Import media and custom lists from a Trakt data export archive."""
+    if mode not in TRAKT_EXPORT_MODES:
+        raise MediaImportError(TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE)
+
     # Imported here to keep the integrations -> lists dependency at call time.
     from lists.imports.trakt import import_trakt_lists_from_export
 

@@ -12,6 +12,7 @@ from app.models import (
     Movie,
     Season,
     Sources,
+    Status,
 )
 
 from .base import FloppyApiTestCase
@@ -106,6 +107,25 @@ class ItemMetadataTests(FloppyApiTestCase):
 class MediaMetadataReadTests(FloppyApiTestCase):
     """GET /media/{type}/{source}/{id}/metadata returns a tracked item."""
 
+    def test_tv_runtime_reuses_stored_episode_total_without_provider_fetch(self):
+        """Both tracked and untracked detail reads use the web runtime property."""
+        item = Item.objects.create(source="tmdb", media_type="tv", media_id="runtime-metadata", title="Runtime show")
+        for number, minutes in ((1, 30), (2, 45)):
+            Item.objects.create(
+                source="tmdb", media_type="episode", media_id=item.media_id, title=f"Episode {number}",
+                season_number=1, episode_number=number, runtime_minutes=minutes,
+                release_datetime=datetime.datetime(2020, 1, number, tzinfo=datetime.UTC),
+            )
+        self.client.force_login(self.user1)
+        with patch("app.providers.services.get_media_metadata", side_effect=AssertionError("must not fetch")):
+            response = self.client.get(f"/api/v1/media/tv/tmdb/{item.media_id}/metadata/")
+            self.assertEqual(response.status_code, HTTP.OK, response.content)
+            self.assertEqual(response.json()["total_runtime"], "1h 15min")
+            TV.objects.create(user=self.user1, item=item, status="Planning")
+            response = self.client.get(f"/api/v1/media/tv/tmdb/{item.media_id}/metadata/")
+            self.assertEqual(response.status_code, HTTP.OK, response.content)
+            self.assertEqual(response.json()["total_runtime"], "1h 15min")
+
     def test_tracked_item_is_projected_by_identity(self):
         """The native detail page resolves the same item the card names."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]
@@ -119,8 +139,25 @@ class MediaMetadataReadTests(FloppyApiTestCase):
         self.assertEqual(body["identity"]["media_id"], item.media_id)
         self.assertEqual(body["fields"]["title"], item.title)
 
-    def test_untracked_item_is_not_found(self):
-        """Another user's item is not readable through this endpoint."""
+    def test_untracked_item_is_served(self):
+        """A catalog item outside the caller's library still projects metadata."""
+        Item.objects.create(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            media_id="untracked-metadata",
+            title="Untracked film",
+        )
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/{MediaTypes.MOVIE.value}/{Sources.TMDB.value}"
+            "/untracked-metadata/metadata/"
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertEqual(body["fields"]["title"], "Untracked film")
+
+    def test_unknown_item_is_not_found(self):
+        """An identity no catalog item carries is a 404."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]
         self.client.force_login(self.user1)
         response = self.client.get(
@@ -339,6 +376,46 @@ class EpisodeScoreTests(FloppyApiTestCase):
         episode.refresh_from_db()
         self.assertIsNone(episode.score)
 
+    def test_score_honours_library_bucket(self):
+        """A score aimed at the anime bucket must not land on the default season (#1873, B09)."""
+        show = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value, title="Bucket Show", image="",
+        )
+        season_item = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value, title="Bucket Show", image="",
+            season_number=1,
+        )
+        episode_item = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value, title="Bucket Show", image="",
+            season_number=1, episode_number=1,
+        )
+        tv = TV.objects.create(item=show, user=self.user1, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item, user=self.user1, related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode = Episode.objects.create(item=episode_item, related_season=season)
+
+        with patch(
+            "api.fork_views_metadata.resolve_or_create_season",
+            side_effect=RuntimeError("stop"),
+        ) as create_season:
+            response = self.call_api(
+                "patch",
+                "api_media_episode_score",
+                args=("tv", "tmdb", "3001", 1, 1),
+                params={"library_media_type": "anime"},
+                payload={"score": 9},
+                headers=self.auth_headers,
+            )
+
+        episode.refresh_from_db()
+        self.assertIsNone(episode.score, response.content)
+        self.assertEqual(create_season.call_args.args[4], "anime")
+
     def test_invalid_score_rejected(self):
         """Out-of-range and non-numeric scores return 400."""
         episode_number = self._episode_number()
@@ -381,6 +458,16 @@ class EpisodeScoreTests(FloppyApiTestCase):
             payload=payload,
             headers=self.auth_headers,
         )
+
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed episode lookup answers with the fixed detail only."""
+        with patch(
+            "api.fork_views_metadata.resolve_episode_coordinate_for_request",
+            side_effect=RuntimeError("secret /srv/private/path"),
+        ):
+            response = self._score_untracked({"score": 8})
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json(), {"detail": "Could not resolve episode."})
 
     def _rating_rows(self, media_id="424242"):
         return Episode.ratings.filter(related_season__item__media_id=media_id)

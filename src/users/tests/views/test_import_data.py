@@ -486,6 +486,35 @@ class ImportDataViewTests(TestCase):
         self.assertEqual(self.user.plex_account.plex_username, "updated-listener")
         mock_fetch_account.assert_called_once_with(self.plex_token)
 
+    def test_plex_status_hides_unexpected_error_text(self):
+        """An unexpected Plex failure is logged; the reply is fixed text."""
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token=self.plex_token,
+            plex_username="listener",
+        )
+        error = RuntimeError(f"https://plex.example/?X-Plex-Token={self.plex_token}")
+
+        with (
+            patch("users.views.plex.fetch_account", side_effect=error),
+            self.assertLogs("users.views", level="WARNING") as status_logs,
+        ):
+            status = self.client.get(reverse("import_data_plex_status"))
+        with (
+            patch("users.views.plex.list_sections", side_effect=error),
+            self.assertLogs("users.views", level="WARNING") as section_logs,
+        ):
+            sections = self.client.get(reverse("import_data_plex_sections"))
+
+        self.assertEqual(
+            status.json(),
+            {"state": "error", "error": "Could not verify the Plex account."},
+        )
+        self.assertEqual(sections.json()["error"], "Could not refresh Plex libraries.")
+        for text in (*status_logs.output, *section_logs.output):
+            self.assertNotIn(self.plex_token, text)
+            self.assertNotIn("plex.example", text)
+
     @patch("users.views.plex.fetch_account", side_effect=PlexAuthError("bad token"))
     def test_import_data_plex_status_returns_error_state_for_invalid_token(
         self,

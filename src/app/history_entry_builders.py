@@ -63,6 +63,11 @@ def _serialize_item(item):
         "original_title": getattr(item, "original_title", None),
         "localized_title": getattr(item, "localized_title", None),
     }
+    # Which library bucket the row belongs to (e.g. anime episodes grouped
+    # under TV), so consumers need no second lookup to route it (#1873).
+    library_media_type = getattr(item, "library_media_type", None)
+    if library_media_type:
+        data["library_media_type"] = library_media_type
     season_number = getattr(item, "season_number", None)
     if season_number is not None:
         data["season_number"] = season_number
@@ -368,6 +373,10 @@ def _build_movie_entry(movie):
         "instance_id": movie.id,
         "entry_key": str(movie.id),
         "entry_source": movie.entry_source,
+        # A grouped movie row stands for the Movie tracker, so instance_id is a
+        # tracker id. A single watch is addressed by its play id on the
+        # per-media history endpoints, never by this value (#1873).
+        "record_type": "movie_tracker",
     }
     _attach_entry_score(entry, movie)
     if genres:

@@ -62,6 +62,10 @@ Upgrade the SQLite library used by Python to a fixed release to restore WAL auto
 
 CI should not benchmark normal SQLite behavior on the rollback fallback. Controlled CI uses a fixed SQLite so concurrency and lock behavior are closer to a supported production runtime.
 
+## A read page does not wait for the writer
+
+SQLite has one writer, and Floppy takes the write lock when a transaction starts (`transaction_mode=IMMEDIATE`). A GET that issues any write, or opens `transaction.atomic()` even to read, queues behind an import or background job for up to the busy timeout. So a page load issues no write. `app.tests.test_read_pages_do_not_write` requests the read pages and API endpoints and fails on a write that is not in its allowlist; each allowlist entry carries its reason. Where a page has just computed something worth keeping (a Discover row or taste profile), it wraps the save in `app.db_retry.optional_save()`: on a GET or HEAD request the save waits 50 ms at most, once per request, and is otherwise skipped and left to the next refresh task. Tasks, commands and every non-GET request keep the full wait. `app.tests.test_page_loads_with_writer_busy` holds the lock and checks the page still answers. Both tests run in WAL; on the rollback fallback a committing writer can also block readers.
+
 ## Configuration validation
 
 Floppy accepts these crash-recoverable SQLite journal modes:

@@ -5,7 +5,7 @@ import { SettingsPage } from './SettingsView';
 
 export const settingsUsersCopy = {
   title: 'Users',
-  copy: 'Manage the accounts on this Floppy instance.',
+  copy: '',
 };
 
 // Superuser-only account management. The adapter supplies server rows, labels

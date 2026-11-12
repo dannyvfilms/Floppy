@@ -14,7 +14,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 import app.providers.tmdb
@@ -35,8 +35,10 @@ from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import has_full_account_access
 
 from .authentication import APIKeyAuthentication, BearerAuthentication
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -737,9 +739,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=True,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -841,9 +842,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=False,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -851,10 +851,21 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # A position is bucket-agnostic, but the same provider media can have
+        # an Item row per library bucket and a check-in may have saved against
+        # any of them, so clear every one or the delete can succeed and leave
+        # the position behind (#1873).
+        same_media = Item.objects.filter(
+            source=item.source,
+            media_id=item.media_id,
+            media_type=item.media_type,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+        )
         with state_transaction(request.user.pk):
             PlaybackProgress.objects.filter(
                 user=request.user,
-                item=item,
+                item__in=same_media,
             ).delete()
         return Response(status=HTTP.NO_CONTENT)
 
@@ -976,13 +987,29 @@ class NowPlayingView(drf_views.APIView):
         return Response(payload, status=HTTP.OK)
 
 
-class HomePlaybackCardsView(drf_views.APIView):
-    """Session-only Home playback cards and their native check-in controls."""
+class FirstPartyCredential(BasePermission):
+    """A browser session or the Floppy app's own full-access Bearer token.
 
-    # Playback controls are user actions, not a capability for integration
-    # tokens. SessionAuthentication also enforces CSRF on the action request.
-    authentication_classes = (SessionAuthentication,)
-    permission_classes = (IsAuthenticated,)
+    Playback controls are user actions, not a capability for integration
+    tokens: scoped tokens and the legacy account key are refused.
+    """
+
+    def has_permission(self, request, view):
+        """Allow a session login or a first-party full-account token."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if isinstance(request.successful_authenticator, SessionAuthentication):
+            return True
+        return has_full_account_access(request.auth)
+
+
+class HomePlaybackCardsView(drf_views.APIView):
+    """Home playback cards and their native check-in controls."""
+
+    # A session (CSRF enforced by SessionAuthentication) or the built-in
+    # app's Bearer device token; see FirstPartyCredential.
+    authentication_classes = (BearerAuthentication, SessionAuthentication)
+    permission_classes = (IsAuthenticated, FirstPartyCredential)
 
     @extend_schema(
         description="Return the signed-in user's active Home playback cards.",
@@ -1048,16 +1075,21 @@ class HomePlaybackCardsView(drf_views.APIView):
             "check-in from the supplied card identity; no check-in token is exposed."
         ),
         request={
-            "type": "object",
-            "required": ["source", "media_type", "media_id", "action"],
-            "properties": {
-                "source": {"type": "string"},
-                "media_type": {"type": "string"},
-                "media_id": {"type": "string"},
-                "action": {"type": "string", "enum": ["pause", "finish", "stop", "cancel"]},
+            "application/json": {
+                "type": "object",
+                "required": ["source", "media_type", "media_id", "action"],
+                "properties": {
+                    "source": {"type": "string"},
+                    "media_type": {"type": "string"},
+                    "media_id": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["pause", "finish", "stop", "cancel"],
+                    },
+                },
             },
         },
-        responses={204: None, 400: None},
+        responses={204: None, 400: _DETAIL_SCHEMA, 502: _DETAIL_SCHEMA},
     )
     def post(self, request):
         """Run a current card action after resolving its server-owned control."""

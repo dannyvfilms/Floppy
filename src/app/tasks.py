@@ -21,6 +21,7 @@ from app.models import (
     MetadataBackfillState,
     Sources,
 )
+from app.providers.services import ProviderNotConfiguredError
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 
@@ -247,6 +248,7 @@ from app.tasks_metadata_cache import (  # noqa: E402
     _exception_with_details,
     _fetch_item_metadata,
     _metadata_cache_keys_for_item,
+    provider_key_scope,
 )
 from app.tasks_music import (  # noqa: E402
     enrich_albums_task,
@@ -1168,12 +1170,13 @@ def backfill_item_metadata_task(
                 and item.media_type == MediaTypes.GAME.value
             ):
                 try:
-                    game_length_services.refresh_game_lengths(
-                        item,
-                        igdb_metadata=metadata,
-                        force=False,
-                        fetch_hltb=True,
-                    )
+                    with provider_key_scope(item):
+                        game_length_services.refresh_game_lengths(
+                            item,
+                            igdb_metadata=metadata,
+                            force=False,
+                            fetch_hltb=True,
+                        )
                     _record_backfill_success(
                         item,
                         MetadataBackfillField.GAME_LENGTHS,
@@ -1311,12 +1314,22 @@ def backfill_item_metadata_task(
             item.metadata_fetched_at = timezone.now()
             item.save(update_fields=["metadata_fetched_at"])
 
-            logger.exception(
-                "metadata_backfill_error item_id=%s media_type=%s error=%s",
-                item.id,
-                item.media_type,
-                exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
-            )
+            if isinstance(e, ProviderNotConfiguredError):
+                # Missing keys are a setup state, not a fault: one line, no
+                # traceback, instead of an error per game on every pass.
+                logger.info(
+                    "metadata_backfill_skipped item_id=%s media_type=%s reason=%s",
+                    item.id,
+                    item.media_type,
+                    exception_summary(e),
+                )
+            else:
+                logger.exception(
+                    "metadata_backfill_error item_id=%s media_type=%s error=%s",
+                    item.id,
+                    item.media_type,
+                    exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+                )
 
     remaining_metadata = _initial_metadata_items_queryset().count()
     remaining_release = count_release_backfill_items()

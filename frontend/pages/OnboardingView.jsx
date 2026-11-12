@@ -27,6 +27,9 @@ export function OnboardingView({
   loading = false,
   labels = {},
   children,
+  standalone,
+  heroSource,
+  progressArrowIcon,
 }) {
   const copy = { ...onboardingLabels, ...(labels || {}) };
   if (loading) {
@@ -34,12 +37,12 @@ export function OnboardingView({
       <Text accessibilityLiveRegion="polite" style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View>;
   }
-  return <View style={styles.page}>
+  return <View style={[styles.page, standalone && { width: '100%', maxWidth: 992, alignSelf: 'center' }]}>
     <OnboardingWizard steps={steps} activeStep={activeStep} completedSteps={completedSteps}
       title={title} explanation={explanation} status={status} blocked={blocked}
       blockedTitle={blockedTitle} blockedMessage={blockedMessage} notice={notice}
       saveLabel={saveLabel} onSaveAndFinish={onSaveAndFinish} palette={palette}
-      buttonPalette={buttonPalette}>
+      buttonPalette={buttonPalette} standalone={standalone} heroSource={heroSource} progressArrowIcon={progressArrowIcon}>
       {children}
     </OnboardingWizard>
     {footer}

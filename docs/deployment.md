@@ -556,9 +556,11 @@ networks:
     driver: bridge
 ```
 
-Remove any `network_mode:` line, then redeploy the stack. Alternatively, set
-`REDIS_URL` to an address the Floppy container can reach, such as the host's
-IP and Redis's published port.
+Remove any `network_mode: bridge` declaration from Floppy or its datastore
+services, then redeploy the stack. The optional `floppy-discovery` sidecar uses
+`network_mode: host` for mDNS multicast and remains separate from the app's
+bridge network. Alternatively, set `REDIS_URL` to an address the Floppy
+container can reach, such as the host's IP and Redis's published port.
 
 **Check:** `docker exec floppy python manage.py floppy_preflight` names the
 problem and reports `redis: ok` once Floppy can reach Redis.
@@ -637,6 +639,7 @@ up if you rely on the generated one.
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - Anime routing across scrobblers and importers - see the [grouped anime guide](grouped_anime.md)
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
+- `FLOPPY_APP_FULL_ACCESS` - defaults to `True`. People who sign in to the Floppy app with a social or OIDC account approve the app on a browser page and then manage their account and providers, and list or revoke tokens in the app. Account-token reads or regeneration, calendar/RSS subscription URLs, token-bearing webhook/addon guides, app-token or catalog-grant issuance, OAuth device approval, password/authenticator/recovery management and admin account credential mutations require a session (username and password sign-in), including when full access is enabled. Profile username changes, account deletion, token listing/revocation and ordinary provider configuration remain available. Set it to `False` to give the app scoped access only. Tokens already issued lose full access at once
 - `DEMO_ACCOUNT_ENABLED` - defaults to `False`. Set it to `True` to provision the built-in `demo` / `demodemo` account after migrations (shared-demo installs only). The setting gates provisioning; an account that already exists stays until you deactivate or delete it — `python manage.py floppy_preflight` warns when a known-password demo login is active
 - `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
 

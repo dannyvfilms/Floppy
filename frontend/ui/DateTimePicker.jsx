@@ -1,4 +1,5 @@
 import { Modal, ModalCloseButton } from './Modal';
+import { Icon } from './Icon';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -139,6 +140,32 @@ function Stepper({ label, value, onStep, palette, earlierLabel, laterLabel, styl
       </Pressable>
     </View>
   );
+}
+
+// Same shapes as templates/app/icons/calendar.svg.
+const CALENDAR_ICON = {
+  viewBox: '0 0 24 24',
+  root: { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  children: [
+    { tag: 'path', attrs: { d: 'M8 2v4' }, children: [] },
+    { tag: 'path', attrs: { d: 'M16 2v4' }, children: [] },
+    { tag: 'rect', attrs: { width: '18', height: '18', x: '3', y: '4', rx: '2' }, children: [] },
+    { tag: 'path', attrs: { d: 'M3 10h18' }, children: [] },
+  ],
+};
+
+// Drawn from plain views so the same control renders on web and native.
+function ChevronIcon({ color }) {
+  return <View accessible={false} style={{ width: 8, height: 8, marginTop: -3, borderColor: color,
+    borderRightWidth: 2, borderBottomWidth: 2, transform: [{ rotate: '45deg' }] }} />;
+}
+
+function CloseIcon({ color }) {
+  const bar = { position: 'absolute', width: 14, height: 2, borderRadius: 1, backgroundColor: color };
+  return <View accessible={false} style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={[bar, { transform: [{ rotate: '45deg' }] }]} />
+    <View style={[bar, { transform: [{ rotate: '-45deg' }] }]} />
+  </View>;
 }
 
 export function DateTimePicker({
@@ -316,6 +343,9 @@ export function DateTimePicker({
         {sheet && labels.mobileLabel ? (
           <Text style={[styles.fieldLabel, { color: palette.textMuted }]}>{labels.mobileLabel}</Text>
         ) : null}
+        {labels.mobileLabel ? null : <View style={styles.fieldIcon}>
+          <Icon spec={CALENDAR_ICON} color={palette.textMuted} size={16} />
+        </View>}
         {hasValue ? (
           <Pressable
             accessibilityRole="button"
@@ -359,7 +389,7 @@ export function DateTimePicker({
             { backgroundColor: pressed ? palette.surfaceMuted : 'transparent' },
           ]}
         >
-          <Text style={[styles.iconGlyph, { color: palette.textMuted }]}>v</Text>
+          <ChevronIcon color={palette.textMuted} />
         </Pressable>
         {hasValue ? (
           <Pressable
@@ -371,7 +401,7 @@ export function DateTimePicker({
               { backgroundColor: pressed ? palette.surfaceMuted : 'transparent' },
             ]}
           >
-            <Text style={[styles.iconGlyph, { color: palette.textMuted }]}>x</Text>
+            <CloseIcon color={palette.textMuted} />
           </Pressable>
         ) : null}
       </View>
@@ -418,7 +448,7 @@ export function DateTimePicker({
                     { backgroundColor: pressed ? palette.surfaceMuted : 'transparent' },
                   ]}
                 >
-                  <Text style={[styles.iconGlyph, { color: palette.textMuted }]}>x</Text>
+                  <CloseIcon color={palette.textMuted} />
                 </ModalCloseButton>
               </View>
             ) : null}
@@ -911,6 +941,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 6,
   },
+  fieldIcon: { paddingLeft: 10 },
   iconGlyph: { fontSize: 14, fontWeight: '600' },
   overlay: {
     flex: 1,

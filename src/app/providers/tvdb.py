@@ -1395,6 +1395,20 @@ def tv(media_id, *, routed_media_type=MediaTypes.TV.value, language=None):
     return data
 
 
+def _store_fetched_season_episode_count(media_id, season_number, season_metadata):
+    """Keep the stored season episode count in step with a payload just fetched."""
+    from app import metadata_utils
+
+    episodes = season_metadata.get("episodes")
+    if isinstance(episodes, list):
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TVDB.value,
+            len(episodes),
+            season_number=season_number,
+        )
+
+
 def tv_with_seasons(
     media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value, language=None
 ):
@@ -1447,6 +1461,11 @@ def tv_with_seasons(
                 cache_key,
                 season_metadata,
                 timeout=TVDB_METADATA_CACHE_TIMEOUT,
+            )
+            _store_fetched_season_episode_count(
+                media_id,
+                season_number,
+                season_metadata,
             )
         season_payloads[f"season/{season_number}"] = season_metadata
 

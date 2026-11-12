@@ -36,6 +36,16 @@ def as_file(records):
 class YouTubeTakeoutParsingTests(TestCase):
     """Pure parsing rules."""
 
+    @patch("integrations.imports.youtube_takeout.zipfile.ZipFile")
+    def test_large_zip_member_is_rejected_before_decompression(self, zip_file):
+        """A compressed export cannot allocate an unbounded history payload."""
+        archive = zip_file.return_value.__enter__.return_value
+        archive.namelist.return_value = ["watch-history.json"]
+        archive.getinfo.return_value.file_size = 100 * 1024 * 1024 + 1
+        with self.assertRaisesRegex(MediaImportError, "too large"):
+            youtube_takeout._history_from_zip(BytesIO())
+        archive.read.assert_not_called()
+
     def test_youtube_task_is_tracked_in_import_activity(self):
         from app.signals import _is_tracked_task
         from integrations import tasks

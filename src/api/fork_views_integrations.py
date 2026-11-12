@@ -3,15 +3,21 @@
 # OAuth-based connects (Trakt/Plex/SIMKL/AniList-private) stay web-only.
 # URL wiring lives in fork_urls.py.
 import logging
+from functools import partial
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse, QueryDict, StreamingHttpResponse
+from django.template.defaultfilters import timesince
+from django.urls import Resolver404, resolve, reverse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from app.log_safety import redact_secrets
 from app.redis_diagnosis import queue_failure_message
 from integrations import exports, tasks
 from integrations.imports import helpers as import_helpers
@@ -48,6 +54,7 @@ _FILE_IMPORTS = {
     "trakt-collection": ("import_trakt_collection_csv", "Trakt collection CSV"),
     "trakt-export": ("import_trakt_export", "Trakt data export zip"),
     "hltb": ("import_hltb", "HowLongToBeat CSV"),
+    "playnite": ("import_playnite", "Playnite CSV"),
     "grouvee": ("import_grouvee", "Grouvee export (JSON or zip)"),
     "imdb": ("import_imdb", "IMDB CSV"),
     "goodreads": ("import_goodreads", "Goodreads CSV"),
@@ -101,6 +108,15 @@ class ImportDispatchView(drf_views.APIView):
                 {
                     "detail": "Invalid mode.",
                     "choices": list(ImportModeChoices.values),
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
+        if service == "trakt-export" and mode not in import_helpers.TRAKT_EXPORT_MODES:
+            return Response(
+                {
+                    "detail": import_helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE,
+                    "choices": list(import_helpers.TRAKT_EXPORT_MODES),
                 },
                 status=HTTP.BAD_REQUEST,
             )
@@ -186,9 +202,18 @@ class ImportDispatchView(drf_views.APIView):
 class ImportActivityView(drf_views.APIView):
     """Recent import task history (mirrors the web import activity panel)."""
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         """Return the user's recent import task results and schedules."""
-        data = request.user.get_import_tasks()
+        from integrations.oauth_scope_info import has_full_account_access
+        from users import provider_ui
+        from users import views as user_views
+
+        try:
+            page = max(1, min(int(request.query_params.get("page", 1)), provider_ui.MAX_ACTIVITY_PAGES))
+        except (ValueError, TypeError):
+            page = 1
+        data = request.user.get_import_tasks(result_limit=provider_ui.ACTIVITY_PAGE_SIZE + 1, result_offset=(page - 1) * provider_ui.ACTIVITY_PAGE_SIZE)
         results = [
             {
                 "source": entry.get("source"),
@@ -197,7 +222,7 @@ class ImportActivityView(drf_views.APIView):
                 "summary": entry.get("summary"),
                 "errors": entry.get("errors"),
             }
-            for entry in data.get("results", [])
+            for entry in data.get("results", [])[:provider_ui.ACTIVITY_PAGE_SIZE]
         ]
         schedules = [
             {
@@ -210,10 +235,78 @@ class ImportActivityView(drf_views.APIView):
             }
             for entry in data.get("schedules", [])
         ]
-        return Response(
-            {"results": results, "schedules": schedules},
-            status=HTTP.OK,
+        payload = {"results": results, "schedules": schedules,
+                   "presentation": provider_ui.anilist_activity(request.user, page, all_sources=True, activity=data)}
+        # Tracker state has the same full-account boundary as provider pages;
+        # imports:read tokens retain their established import-only response.
+        if not hasattr(request.auth, "has_scope") or has_full_account_access(request.auth):
+            context = user_views.mal_export_context(request._request)
+            account = context.get("mal_account")
+            report = context["mal_sync_initial"]
+            if report:
+                report = {**report, **{key: [
+                    {**row, "reason": redact_secrets(str(row.get("reason") or ""))} for row in report.get(key, [])
+                ] for key in ("results", "mapping_issues")}}
+            services = []
+            for service in context["outbound_services"]:
+                state = context["tmdb_rating_sync" if service["slug"] == "tmdb" else "wetrakr_sync"]
+                services.append({
+                    "slug": service["slug"], "state": service["state"], "counts": state["counts"],
+                    "last_flushed_at": getattr(state.get("binding"), "last_flushed_at", None),
+                    "last_sent_label": str(timesince(state["binding"].last_flushed_at)) + " ago"
+                        if state.get("binding") and state["binding"].last_flushed_at else "",
+                    "recent": [{"id": row.pk, "title": str(row.item),
+                                "operation": row.get_operation_display(), "status": row.get_status_display(),
+                                "error": redact_secrets(row.last_error_message)} for row in state["recent"]],
+                })
+            payload["tracker_activity"] = {
+                "mal": {"connected": bool(account and account.is_connected),
+                        "sync_enabled": bool(account and account.sync_enabled),
+                        "report": report,
+                        "ignored": context["mal_ignored_mappings"], "manual": context["mal_manual_mappings"]},
+                "services": services,
+                "actions": {name: reverse(name) for name in (
+                    "mal_mapping_ignore", "mal_episode_mapping_save", "mal_episode_mapping_revert",
+                    "mal_full_sync_retry_failed", "mal_full_sync_preview", "mal_mapping_search", "mal_mapping_episodes",
+                )},
+            }
+        return Response(payload, status=HTTP.OK)
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    def post(self, request):
+        """Delegate only existing activity actions, with their ownership checks."""
+        from api.fork_views_providers import _call, _demo_blocked
+
+        body = request.data if isinstance(request.data, dict) else {}
+        path = str(body.get("path") or "")
+        if not path.startswith("/") or path.startswith("//") or "?" in path or "#" in path:
+            return Response({"detail": "Choose a valid activity action."}, status=HTTP.BAD_REQUEST)
+        try:
+            match = resolve(path)
+        except Resolver404:
+            return Response({"detail": "Choose a valid activity action."}, status=HTTP.BAD_REQUEST)
+        if match.url_name not in {
+            "delete_import_schedule", "cancel_pending_import", "cancel_import_run", "rollback_import_run",
+            "bulk_delete_by_import_source", "mal_mapping_ignore", "mal_episode_mapping_save",
+            "mal_episode_mapping_revert", "mal_full_sync_retry_failed",
+            "mal_mapping_search", "mal_mapping_episodes", "mal_full_sync_preview",
+        }:
+            return Response({"detail": "Choose a valid activity action."}, status=HTTP.BAD_REQUEST)
+        denied = _demo_blocked(request, match.url_name)
+        if denied:
+            return denied
+        if request.user.is_demo:
+            return Response({"detail": "This section is view-only for demo accounts."}, status=HTTP.FORBIDDEN)
+        values = body.get("values") if isinstance(body.get("values"), dict) else {}
+        read = match.url_name in {"mal_mapping_search", "mal_mapping_episodes"} or (
+            match.url_name == "mal_full_sync_preview" and values.get("token")
         )
+        if read:
+            query = QueryDict(mutable=True)
+            query.update(values)
+            request._request.GET = query
+        return _call(request, partial(match.func, **match.kwargs), *match.args, post=None if read else values,
+                     method="GET" if read else "POST")
 
 
 # /api/v1/export/csv/
