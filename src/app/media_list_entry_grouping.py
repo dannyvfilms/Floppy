@@ -155,6 +155,7 @@ def _install_media_list_policy() -> None:
         *,
         list_sql_filters=None,
         needs_watch_providers=False,
+        prefetch_graph=True,
     ):
         """Return media rows under the active entry-grouping policy."""
         if _ENTRY_GROUPING_MODE.get() is not True:
@@ -168,6 +169,7 @@ def _install_media_list_policy() -> None:
                 direction,
                 list_sql_filters=list_sql_filters,
                 needs_watch_providers=needs_watch_providers,
+                prefetch_graph=prefetch_graph,
             )
 
         return _get_separate_media_list(

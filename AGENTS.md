@@ -476,6 +476,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 
 Notes:
 - **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
+- **Saved test database:** a local real-migration run replays migrations once, then restores the saved result from `.floppy/` until any migration, the lockfile, settings or the runner changes. The run prints one `[test-db]` line saying which happened. `FLOPPY_TEST_DB_TEMPLATE=0` forces a replay. CI builds the file once per run and its shards restore it; the upgrade, PostgreSQL, image and coverage jobs still replay. See `docs/architecture/test-suite-cost.md`.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a

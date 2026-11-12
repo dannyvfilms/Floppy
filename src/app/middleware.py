@@ -18,7 +18,12 @@ from django.urls import reverse
 from django.utils import translation
 
 from app import db_diagnostics, request_timing, stall_watchdog
-from app.db_retry import is_contention_error, is_lock_error, is_retryable_error
+from app.db_retry import (
+    is_contention_error,
+    is_lock_error,
+    is_retryable_error,
+    read_request,
+)
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
 from app.interactive_requests import (
@@ -288,6 +293,9 @@ class DatabaseRetryMiddleware:
     def __call__(self, request):
         """Process the request with retry logic for database errors."""
         with db_diagnostics.bind_request(request):
+            if request.method in {"GET", "HEAD"}:
+                with read_request():
+                    return self._run(request)
             return self._run(request)
 
     def _run(self, request):

@@ -3,6 +3,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.db import OperationalError
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication, SessionAuthentication
@@ -10,6 +11,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
 from api.scopes import ANY_SCOPE, NEVER, SESSION_ONLY, resolve_required_scope
+from app.db_retry import brief_writer_wait, is_lock_error
 from integrations.models import IntegrationToken
 from integrations.oauth_scope_info import has_full_account_access
 from users.models import User
@@ -31,11 +33,20 @@ def _touch_last_used(token: IntegrationToken) -> None:
     if token.last_used_at and now - token.last_used_at < LAST_USED_WRITE_INTERVAL:
         return
     cutoff = now - LAST_USED_WRITE_INTERVAL
-    updated = (
-        IntegrationToken.objects.filter(pk=token.pk)
-        .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
-        .update(last_used_at=now)
-    )
+    # The timestamp is advisory, so it never holds a request behind SQLite's
+    # writer: if the writer is busy the touch is skipped and the next request
+    # tries again.
+    try:
+        with brief_writer_wait():
+            updated = (
+                IntegrationToken.objects.filter(pk=token.pk)
+                .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
+                .update(last_used_at=now)
+            )
+    except OperationalError as error:
+        if not is_lock_error(error):
+            raise
+        return
     if updated:
         token.last_used_at = now
 

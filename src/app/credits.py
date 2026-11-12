@@ -416,46 +416,43 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
     if has_people_payload:
         people_by_source_id = _upsert_people(person_source, cast_rows + crew_rows)
 
-        _replace_person_credits(
-            item,
-            (CreditRoleType.CAST.value, CreditRoleType.CREW.value),
-        )
+        role_types = (CreditRoleType.CAST.value, CreditRoleType.CREW.value)
         credits_to_create = []
+        for role_type, rows in zip(role_types, (cast_rows, crew_rows), strict=True):
+            for row in rows:
+                person = people_by_source_id.get(row["person_id"])
+                if not person:
+                    continue
+                credits_to_create.append(
+                    ItemPersonCredit(
+                        item=item,
+                        person=person,
+                        role_type=role_type,
+                        role=row["role"],
+                        department=row["department"],
+                        sort_order=row["sort_order"],
+                    ),
+                )
 
-        for row in cast_rows:
-            person = people_by_source_id.get(row["person_id"])
-            if not person:
-                continue
-            credits_to_create.append(
-                ItemPersonCredit(
-                    item=item,
-                    person=person,
-                    role_type=CreditRoleType.CAST.value,
-                    role=row["role"],
-                    department=row["department"],
-                    sort_order=row["sort_order"],
-                ),
-            )
-
-        for row in crew_rows:
-            person = people_by_source_id.get(row["person_id"])
-            if not person:
-                continue
-            credits_to_create.append(
-                ItemPersonCredit(
-                    item=item,
-                    person=person,
-                    role_type=CreditRoleType.CREW.value,
-                    role=row["role"],
-                    department=row["department"],
-                    sort_order=row["sort_order"],
-                ),
-            )
-
-        if credits_to_create:
-            ItemPersonCredit.objects.bulk_create(
-                credits_to_create, ignore_conflicts=True
-            )
+        # Saving a play syncs credits from metadata that is usually unchanged.
+        # Rewriting them anyway held SQLite's write lock for a delete and a
+        # re-insert of every row, so compare first and write only on a change.
+        wanted = {
+            (c.person_id, c.role_type, c.role, c.department, c.sort_order)
+            for c in credits_to_create
+        }
+        stored = set(
+            ItemPersonCredit.objects.filter(
+                item=item,
+                role_type__in=role_types,
+            ).values_list("person_id", "role_type", "role", "department", "sort_order"),
+        )
+        if wanted != stored:
+            _replace_person_credits(item, role_types)
+            if credits_to_create:
+                ItemPersonCredit.objects.bulk_create(
+                    credits_to_create, ignore_conflicts=True
+                )
 
     if has_studio_payload:
         studios_by_source_id = _bulk_upsert(
@@ -471,7 +468,6 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
             },
         )
 
-        ItemStudioCredit.objects.filter(item=item).delete()
         studio_links = []
         for row in studio_rows:
             studio = studios_by_source_id.get(row["studio_id"])
@@ -484,8 +480,20 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
                     sort_order=row["sort_order"],
                 ),
             )
-        if studio_links:
-            ItemStudioCredit.objects.bulk_create(studio_links, ignore_conflicts=True)
+        wanted_studios = {(link.studio_id, link.sort_order) for link in studio_links}
+        stored_studios = set(
+            ItemStudioCredit.objects.filter(item=item).values_list(
+                "studio_id",
+                "sort_order",
+            ),
+        )
+        if wanted_studios != stored_studios:
+            ItemStudioCredit.objects.filter(item=item).delete()
+            if studio_links:
+                ItemStudioCredit.objects.bulk_create(
+                    studio_links,
+                    ignore_conflicts=True,
+                )
 
 
 def _normalize_author_rows(rows):

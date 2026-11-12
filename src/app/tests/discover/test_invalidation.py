@@ -224,6 +224,9 @@ class DiscoverInvalidationSignalTests(TestCase):
         _mock_schedule_credits_backfill,
     ):
         mock_get_media_metadata.return_value = self._movie_metadata()
+        # Invalidation names the styles it rebuilds (the user's own); only
+        # those get the delayed priority refresh.
+        mock_invalidate_history_days.return_value = ("repeats",)
         discover_tab_cache.mark_active(self.user.id, MediaTypes.MOVIE.value)
         item = self._item(MediaTypes.MOVIE.value, "movie-priority")
         end_date = timezone.now() - timedelta(minutes=5)
@@ -246,28 +249,14 @@ class DiscoverInvalidationSignalTests(TestCase):
             reason="movie_change",
             refresh_index=False,
         )
-        self.assertEqual(mock_schedule_history_refresh.call_count, 2)
-        mock_schedule_history_refresh.assert_has_calls(
-            [
-                call(
-                    self.user.id,
-                    "sessions",
-                    debounce_seconds=15,
-                    countdown=15,
-                    warm_days=0,
-                    day_keys=[expected_day_key],
-                    allow_inline=False,
-                ),
-                call(
-                    self.user.id,
-                    "repeats",
-                    debounce_seconds=15,
-                    countdown=15,
-                    warm_days=0,
-                    day_keys=[expected_day_key],
-                    allow_inline=False,
-                ),
-            ],
+        mock_schedule_history_refresh.assert_called_once_with(
+            self.user.id,
+            "repeats",
+            debounce_seconds=15,
+            countdown=15,
+            warm_days=0,
+            day_keys=[expected_day_key],
+            allow_inline=False,
         )
         mock_invalidate_statistics_days.assert_called_once_with(
             self.user.id,

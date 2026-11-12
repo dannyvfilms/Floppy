@@ -970,6 +970,34 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     return episode_images
 
 
+def _store_fetched_episode_counts(media_id, tv_data, seasons):
+    """Keep stored episode counts in step with payloads just fetched.
+
+    `seasons` maps "season/<number>" to its payload. See
+    `metadata_utils.store_provider_episode_count`.
+    """
+    from app import metadata_utils
+
+    for season_key, season_data in seasons.items():
+        season_number = season_key.removeprefix("season/")
+        episodes = season_data.get("episodes")
+        if season_number.isdecimal() and isinstance(episodes, list):
+            metadata_utils.store_provider_episode_count(
+                media_id,
+                Sources.TMDB.value,
+                len(episodes),
+                season_number=int(season_number),
+            )
+    if tv_data:
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TMDB.value,
+            metadata_utils.extract_item_metadata_values(tv_data)[
+                "provider_episode_count"
+            ],
+        )
+
+
 def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *, missing_seasons=None):
     """Fetch uncached seasons from API and cache them."""
     url = f"{base_url}/tv/{media_id}"
@@ -1121,6 +1149,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *,
                 fetched_tv_data,
             )
 
+    _store_fetched_episode_counts(media_id, fetched_tv_data, result_data)
     return result_data, fetched_tv_data
 
 
