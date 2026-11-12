@@ -610,12 +610,18 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         *,
         list_sql_filters=None,
         needs_watch_providers=False,
+        prefetch_graph=True,
     ):
         """Get a media list by type with filtering and sorting.
 
         Pages are served by ``app.library_query``; this full-list form remains
         for the surfaces whose unit is not one item (separate-entry mode, TV's
         time-left grouping).
+
+        ``prefetch_graph=False`` returns the same rows in the same order with
+        only their item attached. It is for a caller that reads tracking
+        state from ``app.tv_show_facts`` instead of the season, episode and
+        event graph; any reader of that graph on such a row queries per row.
         """
         model = apps.get_model(app_label="app", model_name=media_type)
         direction = self.resolve_direction(sort_filter, direction)
@@ -690,7 +696,10 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         queryset = queryset.select_related("item").defer(
             *_media_list_deferred_item_fields(needs_watch_providers=needs_watch_providers),
         )
-        queryset = self._apply_prefetch_related(queryset, media_type, list_mode=True)
+        if prefetch_graph:
+            queryset = self._apply_prefetch_related(
+                queryset, media_type, list_mode=True
+            )
 
         requires_presort_aggregation = sort_filter in (
             "progress",
@@ -2581,7 +2590,37 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if not tv_list:
             return
 
-        media_keys = {(tv.item.media_id, tv.item.source) for tv in tv_list}
+        released_by_show = self.released_episode_breakdowns(
+            {(tv.item.media_id, tv.item.source) for tv in tv_list},
+            current_datetime,
+        )
+
+        for tv in tv_list:
+            breakdown = released_by_show.get((tv.item.media_id, tv.item.source), {})
+            tv.released_episode_breakdown = breakdown
+            dropped_season_numbers = (
+                {
+                    season.item.season_number
+                    for season in tv.seasons.all()
+                    if season.status == Status.DROPPED.value
+                    and season.item.season_number != 0
+                }
+                if breakdown and tv.pk is not None
+                else set()
+            )
+            tv.max_progress = self.released_max_progress(
+                tv.item,
+                breakdown,
+                dropped_season_numbers,
+            )
+
+    def released_episode_breakdowns(self, media_keys, current_datetime=None):
+        """Return ``{(media_id, source): {season_number: released_count}}``.
+
+        Two grouped queries for all the shows, whatever their number. Specials
+        (season 0) are not counted. A show with nothing released is absent.
+        """
+        current_datetime = current_datetime or timezone.now()
         media_ids = {media_id for media_id, _ in media_keys}
         media_sources = {source for _, source in media_keys}
 
@@ -2650,38 +2689,31 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 released_by_show[key].get(season_number, 0) + released_count
             )
 
-        for tv in tv_list:
-            key = (tv.item.media_id, tv.item.source)
-            breakdown = released_by_show.get(key, {})
-            tv.released_episode_breakdown = breakdown
-            if breakdown:
-                dropped_season_numbers = (
-                    {
-                        season.item.season_number
-                        for season in tv.seasons.all()
-                        if season.status == Status.DROPPED.value
-                        and season.item.season_number != 0
-                    }
-                    if tv.pk is not None
-                    else set()
-                )
-                effective_count = sum(
-                    count
-                    for season_num, count in breakdown.items()
-                    if season_num not in dropped_season_numbers
-                )
-                tv.max_progress = effective_count or None
-            else:
-                tv.max_progress = None
-                if tv.item.source == Sources.MANUAL.value:
-                    from app import custom_metadata
+        return released_by_show
 
-                    details = custom_metadata.build_manual_detail_payload(tv.item)
-                    tv.max_progress = custom_metadata.manual_max_progress(
-                        tv.item,
-                        details,
-                        fallback_max_progress=None,
-                    )
+    def released_max_progress(self, item, breakdown, dropped_season_numbers):
+        """Return a show's released episode count outside its dropped seasons.
+
+        ``None`` when nothing is released, except for a manual show, which
+        states its own episode count.
+        """
+        if breakdown:
+            effective_count = sum(
+                count
+                for season_num, count in breakdown.items()
+                if season_num not in dropped_season_numbers
+            )
+            return effective_count or None
+        if item.source == Sources.MANUAL.value:
+            from app import custom_metadata
+
+            details = custom_metadata.build_manual_detail_payload(item)
+            return custom_metadata.manual_max_progress(
+                item,
+                details,
+                fallback_max_progress=None,
+            )
+        return None
 
     def _annotate_season_metadata_max_progress(self, season_list, current_datetime):
         """Annotate seasons with the provider's episode count.

@@ -1,0 +1,149 @@
+name: Coverage
+
+# Records line coverage with one context per test on every push to latest:
+# the Codecov report and the affected-test map behind
+# `scripts/test.sh --affected`. It used to run inside the Docker publish gate,
+# where the tracer slowed every shard and nothing it produced decided whether
+# the image was safe. It now runs beside that gate. A red run here does not
+# block or unpublish an image; it is a red run on latest that needs a look.
+#
+# The suite is the one the publish gate traced before: slow tests included,
+# network and Playwright excluded. The shard list must match app-tests.yml.
+
+on:
+  push:
+    branches:
+      - latest
+  workflow_dispatch:
+
+# A burst of merges would queue one traced run per commit. Only the newest
+# commit's map is useful, so a newer push replaces the run in flight.
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shards:
+    name: coverage (${{ matrix.suite }})
+    timeout-minutes: 120
+    env:
+      SECRET: ci-tests-only-not-a-production-secret
+      FLOPPY_TEST_FAST_DB: "0"
+      FLOPPY_TEST_TIMEOUT: "6600"
+      FLOPPY_TEST_WATCHDOG: "6300"
+      FLOPPY_TEST_PARALLEL: "1"
+      TEST_APPS: ${{ matrix.apps }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - suite: app
+            apps: app
+          - suite: integrations
+            apps: integrations
+          - suite: other
+            apps: users lists events api config
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked --all-packages --all-extras
+          uv run --no-sync playwright install --with-deps chromium
+
+      - name: Fetch migration baseline
+        run: git fetch --no-tags https://github.com/FuzzyGrim/Yamtrack.git dev:refs/remotes/upstream/dev
+
+      - name: Run tests under coverage
+        env:
+          # sysmon on 3.12 keeps only the first test to run a line.
+          COVERAGE_CORE: ctrace
+        run: |
+          read -r -a apps <<< "$TEST_APPS"
+          timeout --kill-after=30s "$FLOPPY_TEST_TIMEOUT" \
+            uv run --no-sync coverage run src/manage.py test \
+            "${apps[@]}" \
+            --parallel --buffer --exclude-tag network --exclude-tag playwright \
+            --timing --durations 30
+
+      - name: Upload shard coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-${{ matrix.suite }}
+          path: .coverage.*
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
+  coverage:
+    needs: shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+      - name: Install coverage dependencies
+        run: uv sync --locked --only-group test
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      - name: Build Coverage Report
+        run: |
+          uv run --no-sync coverage combine
+          mkdir -p .floppy
+          cp .coverage .floppy/affected.coverage
+          uv run --no-sync coverage report
+          uv run --no-sync coverage xml
+
+      - name: Record what the map holds
+        run: |
+          {
+            echo "## Coverage data"
+            echo
+            echo "| Measure | Count |"
+            echo "| --- | --- |"
+            python3 -c 'import sqlite3; db = sqlite3.connect(".coverage"); count = lambda table: db.execute("select count(*) from " + table).fetchone()[0]; print("| Measured files |", count("file"), "|"); print("| Test contexts |", count("context"), "|")'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload affected map
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: affected-map
+          path: .floppy/affected.coverage
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

@@ -149,6 +149,22 @@ class TvProviderSwitchTests(TestCase):
             2,
         )
 
+    def test_move_reloads_the_calendar_of_the_target_show(self):
+        """Next episode and Check-in read release events the new seasons lack."""
+        show, _tv = self._tracked_show(Sources.TVDB.value, "81189", {"tmdb_id": "1396"})
+
+        with (
+            self._metadata_mock(Sources.TMDB.value, "1396", (1, 2)),
+            patch("events.tasks.reload_calendar.apply_async") as reload_calendar,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            target = switch_tv_provider(self.user, show)
+
+        reload_calendar.assert_called_once_with(
+            kwargs={"item_ids": [target.pk]},
+            countdown=3,
+        )
+
     def test_missing_episode_blocks_the_move_and_changes_nothing(self):
         show, tv = self._tracked_show(Sources.TMDB.value, "1396", {"tvdb_id": "81189"})
 
@@ -168,6 +184,51 @@ class TvProviderSwitchTests(TestCase):
             ).count(),
             2,
         )
+
+    def test_empty_season_the_destination_lacks_is_dropped_not_blocking(self):
+        show, tv = self._tracked_show(Sources.TMDB.value, "1396", {"tvdb_id": "81189"})
+        announced = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=2,
+            title="Season 2",
+        )
+        Season.objects.create(item=announced, user=self.user, related_tv=tv)
+
+        with self._metadata_mock(Sources.TVDB.value, "81189", (1, 2)):
+            preview = preview_tv_provider_switch(self.user, show)
+            self.assertEqual(preview.missing, [])
+            target = switch_tv_provider(self.user, show)
+
+        tv.refresh_from_db()
+        self.assertEqual(tv.item_id, target.pk)
+        self.assertEqual(
+            list(
+                Season.objects.filter(related_tv=tv).values_list(
+                    "item__source", "item__season_number"
+                )
+            ),
+            [(Sources.TVDB.value, 1)],
+        )
+        self.assertEqual(Episode.objects.filter(related_season__related_tv=tv).count(), 2)
+
+    def test_season_with_plays_the_destination_lacks_still_blocks(self):
+        show, _ = self._tracked_show(Sources.TMDB.value, "1396", {"tvdb_id": "81189"})
+
+        def side_effect(media_type, media_id, source, *args, **kwargs):
+            if media_type == "tv_with_seasons":
+                return {}
+            return _show_metadata(source, media_id, "Show (new)")
+
+        with patch(
+            "app.services.library_migration.services.get_media_metadata",
+            side_effect=side_effect,
+        ):
+            preview = preview_tv_provider_switch(self.user, show)
+
+        self.assertEqual(preview.missing, ["Season 1"])
+        self.assertIsNone(preview.plan)
 
     def test_other_users_keep_the_original_show(self):
         other = get_user_model().objects.create_user(username="other", password="pw")
