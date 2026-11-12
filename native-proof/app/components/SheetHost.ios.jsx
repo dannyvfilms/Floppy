@@ -3,7 +3,8 @@ import { BottomSheet } from '@expo/ui';
 import { RNHostView } from '@expo/ui/swift-ui';
 import { ignoreSafeArea } from '@expo/ui/swift-ui/modifiers';
 
-// A presented sheet may use the Duo's horizontal system rail area.
+// The iOS sheet header may place its close control in the Duo's system rail;
+// its body reapplies the app's safe-area insets separately.
 const horizontal = ignoreSafeArea({ regions: 'container', edges: 'horizontal' });
 export function SheetContainer({ modifiers = [], ...props }) {
   return <BottomSheet {...props} modifiers={[horizontal, ...modifiers]} />;

@@ -7,7 +7,7 @@ import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
 import { CollectionCopyDialog } from '../../../frontend/ui/CollectionCopies';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
-import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
@@ -185,6 +185,15 @@ function collectionAddressForIdentity(target) {
     season_number: target.seasonNumber,
     episode_number: target.episodeNumber,
   });
+}
+
+function MediaCardActionHost({ open, action, palette: colors, onClose, children }) {
+  return <AdaptivePresentationSheet isPresented={!!open} onDismiss={onClose} onClose={onClose}
+    title={action?.title} titleColor={colors?.text} containerColor={themePalette.sidebar}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      {children}
+    </ScrollView>
+  </AdaptivePresentationSheet>;
 }
 
 function NotesDialog({ open, note, busy, error, onSave, onClose }) {
@@ -747,12 +756,15 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     canPickCover && identity.source === 'hardcover' && identity.mediaType === 'book'
       ? { key: 'edition', label: 'Edition', icon: 'book', onPress: openKind('edition') } : null,
   ].filter(Boolean);
-  const sourceItem = tracking.sourceUrl ? {
+  const linkSections = model?.linkSections?.filter(section => section.entries?.some(entry => entry.url)) || [];
+  const links = linkSections.length ? linkSections : tracking.sourceUrl
+    ? [{ title: 'Source', entries: [{ label: tracking.sourceName || 'Source', url: tracking.sourceUrl }] }]
+    : [];
+  const sourceItem = links.length ? {
     key: 'source',
     label: 'Links',
     icon: 'link',
-    // Link-modal contents are deferred; retain the existing provider destination.
-    onPress: () => onOpenExternal?.(tracking.sourceUrl),
+    onPress: openKind('links'),
   } : null;
   const quickItems = [
     sourceItem,
@@ -957,8 +969,12 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   const childrenSlot = seasonsSlot || issuesSlot || episodesSlot;
 
   const overlays = <>
+    <AdaptivePresentationSheet isPresented={track.open} onDismiss={() => setTrack(EMPTY_TRACK)}
+      onClose={() => setTrack(EMPTY_TRACK)} title="Tracking" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
     <TrackDialog
       open={track.open}
+      embedded
       model={track.status === 'ready' ? track.model : null}
       values={track.values}
       status={track.status}
@@ -980,8 +996,14 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
         reload();
       }}
       onDiscoverToggle={(itemId, hidden) => setDiscoverHidden(itemId, hidden)} />
+    </View>
+    </AdaptivePresentationSheet>
+    <AdaptivePresentationSheet isPresented={dialog.kind === 'tags'} onDismiss={closeDialog}
+      onClose={closeDialog} title="Tags" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
     <TagAssignmentDialog
       open={dialog.kind === 'tags'}
+      embedded showClose={false}
       item={{ title }}
       tags={dialog.kind === 'tags' ? dialog.data || [] : []}
       palette={formPalette}
@@ -990,6 +1012,20 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       onToggle={toggleDialogTag}
       onCreate={createDialogTag}
       onClose={closeDialog} />
+    </View>
+    </AdaptivePresentationSheet>
+    <MediaCardActionHost open={dialog.kind === 'links'} action={{ title: 'Links' }} palette={formPalette} onClose={closeDialog}>
+      {links.map(section => <View key={section.title} style={{ marginBottom: 16 }}>
+        <Text style={{ color: formPalette.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>{section.title}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {section.entries.filter(entry => entry.url).map(entry => <Pressable key={entry.url} accessibilityRole="link"
+            onPress={() => { closeDialog(); onOpenExternal?.(entry.url); }}
+            style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.border, borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: formPalette.text }}>{entry.label}</Text>
+          </Pressable>)}
+        </View>
+      </View>)}
+    </MediaCardActionHost>
     <MediaCardActionHost open={dialog.kind === 'lists'} action={{ title: 'Lists' }} palette={formPalette} onClose={closeDialog}>
       {dialog.kind === 'lists' && dialog.data ? <ListsForm
         model={dialog.data.model}
