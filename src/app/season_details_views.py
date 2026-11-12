@@ -613,25 +613,10 @@ def season_details(
             )
 
         if episodes_to_update or release_datetime_updates:
-            # Invalidate time_left + media_list cache for all users
-            from app.cache_utils import (
-                clear_media_list_cache_for_user,
-                clear_time_left_cache_for_user,
-            )
+            # Every user tracking this show sees the new runtimes and air dates.
+            from app.cache_utils import EPISODE_DETAILS, clear_show_view_caches
 
-            # Get all users who track this show
-            tracking_users = (
-                BasicMedia.objects.filter(
-                    item__media_id=media_id,
-                    item__source=source,
-                    item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
-                )
-                .values_list("user_id", flat=True)
-                .distinct()
-            )
-            for user_id in tracking_users:
-                clear_time_left_cache_for_user(user_id)
-                clear_media_list_cache_for_user(user_id)
+            clear_show_view_caches(media_id, source, EPISODE_DETAILS)
 
         # bulk_create() above doesn't fire Item's post_save signal, so
         # explicitly (and only once for the whole season, not once per

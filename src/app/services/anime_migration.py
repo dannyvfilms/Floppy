@@ -13,7 +13,7 @@ from django.db.models import Q
 from django.utils import timezone
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
-from app import history_cache, providers, signals
+from app import cache_utils, history_cache, providers, signals
 from app.db_retry import run_retryable_db_operation
 from app.models import (
     TV,
@@ -583,7 +583,10 @@ def _reconcile_committed_migration(
     history_days: tuple[str, ...],
 ) -> None:
     """Run skipped cache and smart-list effects once after commit."""
-    signals._clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+    cache_utils.clear_library_view_caches(
+        user_id,
+        media_types=(MediaTypes.EPISODE.value,),
+    )
     signals._invalidate_episode_history_changes({user_id: list(history_days)})
     owner = get_user_model().objects.filter(pk=user_id).first()
     items = list(Item.objects.filter(pk__in=item_ids).order_by("id"))
