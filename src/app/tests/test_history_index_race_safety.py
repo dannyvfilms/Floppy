@@ -58,8 +58,12 @@ class HistoryIndexRaceSafetyTests(TestCase):
         coverage_patcher.start()
         self.addCleanup(coverage_patcher.stop)
 
-        self.user = get_user_model().objects.create_user(username="race-safety")
         self.logging_style = "sessions"
+        # The style under test is the one the user reads: only that style is
+        # rebuilt (and kept readable) after a write.
+        self.user = get_user_model().objects.create_user(
+            username="race-safety", game_logging_style=self.logging_style
+        )
         self._create_movie("race-movie-1", datetime.date(2026, 8, 20))
         cache.clear()
 
