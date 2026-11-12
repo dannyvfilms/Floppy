@@ -97,7 +97,7 @@ def _clear_item_titles(apps, alias, batch):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0222_playbackprogress_last_event_at"),
+        ("app", "0228_deletedentry"),
     ]
 
     operations = [

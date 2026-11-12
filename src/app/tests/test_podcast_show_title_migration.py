@@ -112,7 +112,7 @@ class PodcastShowTitleMigrationAliasTests(SimpleTestCase):
 
     def test_reads_and_writes_use_the_schema_editor_alias(self):
         migration = importlib.import_module(
-            "app.migrations.0223_podcast_show_url_derived_titles"
+            "app.migrations.0229_podcast_show_url_derived_titles"
         )
         derived = slugify(FEED.lower())
         show = SimpleNamespace(
