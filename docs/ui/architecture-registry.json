@@ -624,6 +624,15 @@
         }
       }
     },
+    "frontend/ui/DropdownMenu.jsx": {
+      "components": ["DropdownMenu"],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": { "status": "unverified", "evidence": "Shared sidebar menu presentation builds; browser runtime regression remains pending." },
+        "ios": { "status": "unverified", "evidence": "Physical Duo showed the Collection Format menu and the user selected a value. Sidebar and multi-select regression remain pending." },
+        "android": { "status": "unverified", "evidence": "Android runtime has not been exercised." }
+      }
+    },
     "frontend/ui/SelectField.jsx": {
       "components": [
         "SelectField"

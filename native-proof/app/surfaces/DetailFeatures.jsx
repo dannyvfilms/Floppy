@@ -1058,7 +1058,12 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       onClose={() => setProgress(current => ({ ...current, open: false }))}
       onOpenSeason={href => { setProgress(current => ({ ...current, open: false })); navigate?.('Detail', { href }); }}
       onOpenEpisode={href => { setProgress(current => ({ ...current, open: false })); navigate?.('Detail', { href }); }} /> : null}
+    <AdaptivePresentationSheet isPresented={copy.open}
+      onDismiss={() => setCopy(current => ({ ...current, open: false }))}
+      onClose={() => setCopy(current => ({ ...current, open: false }))}
+      title="Collection Entry" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <CollectionCopyDialog
+      embedded
       visible={copy.open}
       item={copy.open ? { title: copy.title, mediaType: copy.target?.mediaType } : null}
       fields={copyFieldsFor(copy.target?.mediaType)}
@@ -1074,6 +1079,7 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
         errors: { ...current.errors, [name]: '' },
       }))}
       onSave={saveCopy} />
+    </AdaptivePresentationSheet>
     <MediaCardActionHost open={dialog.kind === 'more'} action={{ title }} palette={palette} onClose={closeDialog}>
       {moreItems.map(item => <Pressable key={item.key} accessibilityRole="button"
         onPress={() => { closeDialog(); item.onPress(); }} style={styles.moreRow}>

@@ -1,4 +1,3 @@
-import { Modal } from './Modal';
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Image,
@@ -7,9 +6,9 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { DROPDOWN } from './dropdownMetrics';
+import { DropdownMenu } from './DropdownMenu';
 import { Reveal } from './Reveal';
 
 // The signed-in sidebar as shared React Native presentation. The browser
@@ -96,18 +95,6 @@ function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
 
 // Where a dropdown sits under its trigger: right edges aligned, flipped above
 // when it would run off the bottom. `anchor` is the trigger's window rectangle.
-const POPOVER_GAP = 4;
-const POPOVER_EDGE = 8;
-const POPOVER_HEIGHT_ESTIMATE = 112;
-
-function popoverPlacement(anchor, windowWidth, windowHeight) {
-  const right = Math.max(POPOVER_EDGE, windowWidth - (anchor.x + anchor.width));
-  const below = anchor.y + anchor.height + POPOVER_GAP;
-  return below + POPOVER_HEIGHT_ESTIMATE > windowHeight - POPOVER_EDGE
-    ? { right, bottom: windowHeight - anchor.y + POPOVER_GAP }
-    : { right, top: below };
-}
-
 // The row's options open as a dropdown under their button, like the preference
 // dropdowns: no scrim, and a tap outside closes it. Without a measured button
 // (no window position available) it falls back to a centred, dimmed menu.
@@ -115,22 +102,9 @@ function popoverPlacement(anchor, windowWidth, windowHeight) {
 const MenuLayerContext = createContext(null);
 
 function MenuModal({ open, onClose, children, palette, labels, anchor }) {
-  const { width, height } = useWindowDimensions();
-  const dropdown = Boolean(anchor);
-  // The web adapter marks this layer so sidebar.css can lift it above the phone drawer.
   const webMarker = useContext(MenuLayerContext);
-  return <Modal transparent visible={open} animationType={dropdown ? 'none' : 'fade'} onRequestClose={onClose}>
-    <View {...webMarker} style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
-        onPress={onClose}
-        style={[StyleSheet.absoluteFill, dropdown ? null : { backgroundColor: palette.overlay }]} />
-      <View accessibilityViewIsModal style={[styles.menu,
-        dropdown && [styles.popover, popoverPlacement(anchor, width, height)], {
-          backgroundColor: dropdown ? palette.surface : palette.surfaceStrong,
-          borderColor: palette.border,
-        }]}>{children}</View>
-    </View>
-  </Modal>;
+  return <DropdownMenu open={open} onClose={onClose} anchor={anchor} palette={palette}
+    closeLabel={labels.closeMenu} layerProps={webMarker}>{children}</DropdownMenu>;
 }
 
 // The ellipsis button of a row. It reports its window rectangle so the menu can open under it.
@@ -591,11 +565,6 @@ const styles = StyleSheet.create({
   exploreReserved: { opacity: 0, pointerEvents: 'none' },
   bottomLink: { flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
-  modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  menu: { width: DROPDOWN.width, borderRadius: DROPDOWN.radius, borderWidth: 1,
-    paddingVertical: DROPDOWN.paddingVertical },
-  popover: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 }, elevation: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: DROPDOWN.itemGap,
     paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
   menuItemText: { fontSize: DROPDOWN.fontSize },

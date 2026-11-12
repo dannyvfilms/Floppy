@@ -141,14 +141,14 @@ function CheckboxField({ label, value, onChange, palette, editable, help, yes = 
   </FormField>;
 }
 
-function MediumFields({ fields = [], values, errors, labels, palette, canMutate, onChange }) {
+function MediumFields({ fields = [], values, errors, labels, palette, canMutate, onChange, popover }) {
   return <View style={styles.fieldsGrid}>
     {fields.map(field => {
       if (field.type === 'select') {
         return <View key={field.name} style={styles.fieldCell}>
           <FormField label={field.label} required={field.required} error={errors[field.name]}
             palette={palette}>
-            <SelectField labelHidden filter label={field.label} value={values[field.name] ?? ''}
+            <SelectField labelHidden filter popover={popover} multiple={field.multiple} label={field.label} value={values[field.name] ?? ''}
               options={field.options || []} palette={palette} disabled={!canMutate}
               onChange={event => onChange?.(field.name, event.target.value)} />
           </FormField>
@@ -189,6 +189,7 @@ export function CollectionCopyEditor({
   palette: suppliedPalette,
   canMutate = false,
   onChange,
+  popover = false,
   children,
 }) {
   const labels = mergeLabels(suppliedLabels);
@@ -198,7 +199,7 @@ export function CollectionCopyEditor({
   </Text>;
   return <View style={styles.editor}>
     <MediumFields fields={fields} values={values} errors={errors} labels={labels}
-      palette={palette} canMutate={canMutate} onChange={onChange} />
+      palette={palette} canMutate={canMutate} onChange={onChange} popover={popover} />
     {children}
   </View>;
 }
@@ -241,6 +242,7 @@ export function CollectionSeasonCascade({
 
 export function CollectionCopyDialog({
   visible = false,
+  embedded = false,
   item,
   copies = [],
   fields = [],
@@ -268,12 +270,7 @@ export function CollectionCopyDialog({
   const palette = mergePalette(suppliedPalette);
   if (!item) return null;
   const completeness = item.completeness;
-  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <View style={[styles.overlay, { backgroundColor: palette.overlay }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.close}
-        style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={[styles.dialog, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        <FormHeader title={labels.title} closeLabel={labels.close} onClose={onClose} palette={palette} />
+  const content = <>
         <ScrollView style={styles.dialogScroll} contentContainerStyle={styles.dialogContent}
           keyboardShouldPersistTaps="handled">
           <View style={styles.itemHeader}>
@@ -301,7 +298,7 @@ export function CollectionCopyDialog({
             {editingId ? labels.editCopy : copies.length ? labels.addAnother : labels.addCopy}
           </Text>
           <CollectionCopyEditor fields={fields} values={values} errors={errors}
-            labels={labels} palette={palette} canMutate={canMutate} onChange={onChange} />
+            labels={labels} palette={palette} canMutate={canMutate} onChange={onChange} popover={embedded} />
           {canMutate ? <CollectionSeasonCascade scope={scope} seasons={seasons} selectedSeason={selectedSeason}
             labels={labels} palette={palette} canMutate={canMutate}
             onScopeChange={onScopeChange} onSeasonChange={onSeasonChange} /> : null}
@@ -317,6 +314,15 @@ export function CollectionCopyDialog({
           {canMutate ? <Button label={editingId ? labels.save : labels.addCopy}
             palette={palette} busy={busy} disabled={busy} onPress={onSave} /> : null}
         </View>
+  </>;
+  if (embedded) return <View style={styles.embedded}>{content}</View>;
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <View style={[styles.overlay, { backgroundColor: palette.overlay }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.close}
+        style={StyleSheet.absoluteFill} onPress={onClose} />
+      <View style={[styles.dialog, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        <FormHeader title={labels.title} closeLabel={labels.close} onClose={onClose} palette={palette} />
+        {content}
       </View>
     </View>
   </Modal>;
@@ -347,6 +353,7 @@ const styles = StyleSheet.create({
   cascadeNote: { fontSize: 12, lineHeight: 17 },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 620, maxHeight: '88%', borderWidth: 1, borderRadius: 14, padding: 16 },
+  embedded: { flex: 1, paddingHorizontal: 16 },
   dialogScroll: { flexGrow: 0 },
   dialogContent: { gap: 16, paddingBottom: 8 },
   itemHeader: { gap: 4 },
