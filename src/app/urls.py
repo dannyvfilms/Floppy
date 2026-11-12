@@ -5,6 +5,7 @@ from app import (
     converters,
     cover_views,
     episode_order_views,
+    history_views,
     media_details_views,
     progress_views,
     views,
@@ -80,6 +81,11 @@ urlpatterns = [
         "search/suggestions",
         views.search_suggestions,
         name="search_suggestions",
+    ),
+    path(
+        "search/results",
+        views.search_results_json,
+        name="search_results_json",
     ),
     path(
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
@@ -282,7 +288,7 @@ urlpatterns = [
     ),
     path(
         "media/history/<str:media_type>/<int:history_id>/delete/",
-        views.delete_history_record,
+        history_views.delete_history_record,
         name="delete_history_record",
     ),
     path("create", views.create_entry, name="create_entry"),
@@ -303,6 +309,11 @@ urlpatterns = [
         "statistics/compare-mode",
         views.update_statistics_compare_mode,
         name="update_statistics_compare_mode",
+    ),
+    path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
     ),
     path(
         "statistics/select-featured-person",
@@ -504,6 +515,26 @@ urlpatterns = [
         "podcast/show/<int:show_id>/episodes/",
         views.podcast_episodes_api,
         name="podcast_episodes_api",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/manage/",
+        views.podcast_episodes_manage,
+        name="podcast_episodes_manage",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/add/",
+        views.podcast_episode_add,
+        name="podcast_episode_add",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/edit/",
+        views.podcast_episode_edit,
+        name="podcast_episode_edit",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/delete/",
+        views.podcast_episode_delete,
+        name="podcast_episode_delete",
     ),
     path(
         "podcast/show/<int:show_id>/mark-all-played/",

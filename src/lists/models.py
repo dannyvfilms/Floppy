@@ -27,12 +27,31 @@ IGDB_CAROUSEL_FAILURE_TTL = 60 * 5
 MIN_ARTWORK_ASPECT_RATIO = 1.5
 MAX_ARTWORK_ASPECT_RATIO = 1.778
 
+LINK_VISIBLE_VISIBILITIES = ("public", "unlisted")
+
 
 class CustomListManager(models.Manager):
     """Manager for custom lists."""
 
     def get_user_lists(self, user, search=""):
-        """Return the custom lists that the user owns or collaborates on."""
+        """Return the custom lists the user owns, collaborates on, or views."""
+        queryset = self.filter(
+            Q(owner=user) | Q(collaborators=user) | Q(viewers=user),
+        )
+
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(description__icontains=search),
+            )
+
+        return (
+            queryset.select_related("owner")
+            .prefetch_related("collaborators", "viewers")
+            .distinct()
+        )
+
+    def get_editable_lists(self, user, search=""):
+        """Return the custom lists the user owns or can edit."""
         queryset = self.filter(Q(owner=user) | Q(collaborators=user))
 
         if search:
@@ -71,6 +90,25 @@ class CustomListManager(models.Manager):
     def get_user_lists_with_item(self, user, item):
         """Return user lists with item membership status."""
         return (
+            self.filter(
+                Q(owner=user) | Q(collaborators=user) | Q(viewers=user),
+            )
+            .annotate(
+                has_item=models.Exists(
+                    CustomListItem.objects.filter(
+                        custom_list_id=models.OuterRef("id"),
+                        item=item,
+                    ),
+                ),
+            )
+            .prefetch_related("collaborators", "viewers")
+            .distinct()
+            .order_by("name")
+        )
+
+    def get_editable_lists_with_item(self, user, item):
+        """Return editable user lists with item membership status."""
+        return (
             self.filter(Q(owner=user) | Q(collaborators=user))
             .annotate(
                 has_item=models.Exists(
@@ -86,26 +124,32 @@ class CustomListManager(models.Manager):
         )
 
     def get_by_reference(self, list_reference):
-        """Return a list by numeric ID or a public custom slug."""
+        """Return a list by numeric ID or a link-accessible custom slug."""
         reference = str(list_reference or "").strip()
         if not reference:
             return None
 
-        queryset = self.select_related("owner").prefetch_related("collaborators")
+        queryset = self.select_related("owner").prefetch_related(
+            "collaborators",
+            "viewers",
+        )
         if reference.isdigit():
             return queryset.filter(id=int(reference)).first()
-        return queryset.filter(public_slug=reference, visibility="public").first()
+        return queryset.filter(
+            public_slug=reference,
+            visibility__in=LINK_VISIBLE_VISIBILITIES,
+        ).first()
 
     def get_public_list(self, list_reference):
-        """Return a public list by numeric ID or custom slug."""
+        """Return a link-accessible list by numeric ID or custom slug."""
         reference = str(list_reference or "").strip()
         if not reference:
             return None
 
         queryset = (
-            self.filter(visibility="public")
+            self.filter(visibility__in=LINK_VISIBLE_VISIBILITIES)
             .select_related("owner")
-            .prefetch_related("collaborators")
+            .prefetch_related("collaborators", "viewers")
         )
         if reference.isdigit():
             return queryset.filter(id=int(reference)).first()
@@ -124,6 +168,7 @@ class CustomList(models.Model):
 
     VISIBILITY_CHOICES = [
         ("public", "Public"),
+        ("unlisted", "Unlisted"),
         ("private", "Private"),
     ]
 
@@ -139,6 +184,12 @@ class CustomList(models.Model):
         settings.AUTH_USER_MODEL,
         related_name="collaborated_lists",
         blank=True,
+    )
+    viewers = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="viewable_lists",
+        blank=True,
+        help_text="Users who can read this list without changing it.",
     )
     items = models.ManyToManyField(
         Item,
@@ -207,8 +258,15 @@ class CustomList(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        """Keep public-only settings disabled for private lists."""
-        if self.visibility != "public":
+        """Keep public-only and link-only settings consistent with visibility."""
+        if not self.is_public:
+            self.allow_recommendations = False
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = set(update_fields) | {
+                    "allow_recommendations",
+                }
+        if not self.is_viewable_by_link:
             self.include_notes = False
             update_fields = kwargs.get("update_fields")
             if update_fields is not None:
@@ -221,13 +279,17 @@ class CustomList(models.Model):
 
     def user_can_view(self, user):
         """Check if the user can view the list."""
-        # Public lists are viewable by anyone
-        if self.visibility == "public":
+        # Public and unlisted lists are viewable by anyone with the link.
+        if self.is_viewable_by_link:
             return True
         if not user or not user.is_authenticated:
             return False
-        # Private lists are only viewable by owner or collaborators
-        return self.owner == user or user in self.collaborators.all()
+        # Private lists are viewable by the owner, editors and viewers.
+        return (
+            self.owner == user
+            or user in self.collaborators.all()
+            or user in self.viewers.all()
+        )
 
     def user_can_edit(self, user):
         """Check if the user can edit the list."""
@@ -240,6 +302,18 @@ class CustomList(models.Model):
         if not user or not user.is_authenticated:
             return False
         return self.owner == user
+
+    def user_role(self, user):
+        """Return the user's role on this list, or an empty string."""
+        if not user or not user.is_authenticated:
+            return ""
+        if self.owner == user:
+            return "Owner"
+        if user in self.collaborators.all():
+            return "Collaborator"
+        if user in self.viewers.all():
+            return "Viewer"
+        return ""
 
     def get_list_item(self, list_item_id, *, include_item=False):
         """Return a list item by list-scoped id for this custom list."""
@@ -255,14 +329,22 @@ class CustomList(models.Model):
         media_type,
         season_number=None,
         episode_number=None,
+        library_media_type=None,
     ):
-        """Return a list item for this custom list matched by media identifiers."""
+        """Return a list item for this custom list matched by media identifiers.
+
+        Raises ``MultipleObjectsReturned`` when the same identity is in the list
+        under several library buckets and ``library_media_type`` does not pick
+        one.
+        """
         filters = {
             "custom_list": self,
             "item__media_id": media_id,
             "item__source": source,
             "item__media_type": media_type,
         }
+        if library_media_type:
+            filters["item__library_media_type"] = library_media_type
 
         if season_number is not None:
             filters["item__season_number"] = season_number
@@ -274,13 +356,23 @@ class CustomList(models.Model):
 
     @property
     def is_public(self):
-        """Return whether the list is public."""
+        """Return whether the list is publicly listed."""
         return self.visibility == "public"
+
+    @property
+    def is_unlisted(self):
+        """Return whether the list is reachable only by its link."""
+        return self.visibility == "unlisted"
+
+    @property
+    def is_viewable_by_link(self):
+        """Return whether anyone with the link can view the list."""
+        return self.visibility in LINK_VISIBLE_VISIBILITIES
 
     @property
     def public_reference(self):
         """Return the shareable list reference."""
-        if self.is_public and self.public_slug:
+        if self.is_viewable_by_link and self.public_slug:
             return self.public_slug
         return str(self.id)
 

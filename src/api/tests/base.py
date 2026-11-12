@@ -22,6 +22,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.signals import suppress_media_change_side_effects
 from events.models import Event
 from lists.models import CustomList, CustomListItem
 
@@ -30,6 +31,16 @@ class FloppyApiTestCase(APITestCase):
     """Shared setup and request helpers for API endpoint tests."""
 
     def setUp(self):
+        """Create the seeded library without triggering change side effects.
+
+        Every media row in the fixture would otherwise invalidate empty
+        Discover, history and statistics caches. A test that exercises those
+        contracts still writes through the API, where the signals run.
+        """
+        with suppress_media_change_side_effects():
+            self._create_fixtures()
+
+    def _create_fixtures(self):
         """Create auth fixtures and patch noisy side effects."""
         self.user1 = get_user_model().objects.create_user(
             username="api-test-user1",

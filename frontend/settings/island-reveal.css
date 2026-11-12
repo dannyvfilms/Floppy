@@ -1,0 +1,32 @@
+/* React-owned islands own the final layout. Never paint a stale server
+   fallback first (the calendar list, an old provider body, a card shell, …):
+   keep the fallback's layout box for stability but hide it until the island
+   sets data-react-mounted. If the island bundle fails, reveal the server
+   fallback after four seconds so the no-JS path still works.
+
+   Only top-level mounts are gated. A root nested inside another island is part
+   of that island's fallback: the outer adapter replaces the subtree (a rails
+   row re-parents its cards, a provider page owns its credential cards), so the
+   nested root never mounts independently. Hiding it separately leaves a hole
+   in the otherwise server-owned subtree (for example the genre badges inside
+   the media table, or recommendation cards inside a rail) until the four-second
+   fail-safe reveals them.
+
+   Roots whose web adapter deliberately keeps server markup (the media table
+   and its Alpine column menu) are excluded; they never set data-react-mounted
+   and must stay visible.
+
+   The sidebar is excluded too, for a different reason. hx-boost swaps the whole
+   body on every navigation, so a hidden fallback blanks the sidebar until the
+   island remounts (28-600 ms on a fast machine, up to the four-second fail-safe
+   when a chunk or the main thread is slow). v26.10.29 never blanked it. Its
+   server fallback has the same items, icons and box as the mounted sidebar, so
+   it stays visible and React takes over in place. */
+[data-props-id]:not([data-props-id] *):not([data-react-mounted]):not([data-media-table-root]):not([data-media-column-menu-root]):not([data-sidebar-root]) {
+  visibility: hidden;
+  animation: island-fallback-reveal 0s 4s forwards;
+}
+
+@keyframes island-fallback-reveal {
+  to { visibility: visible; }
+}

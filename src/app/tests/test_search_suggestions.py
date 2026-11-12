@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TestCase
@@ -68,6 +70,22 @@ class SearchSuggestionsViewTests(TestCase):
             self.assertNotIn(column_or_table, sql)
         self.assertFalse(any('SELECT "app_tv"."id"' in query["sql"] for query in queries))
 
+    def test_tv_suggestion_says_tv_and_reads_status_without_the_graph(self):
+        """A show reads "TV · Status" without loading any season or episode rows."""
+        item = Item.objects.create(
+            media_id="show-2", source="tmdb", media_type="tv", title="Status Show",
+        )
+        TV.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        with CaptureQueriesContext(connection) as queries:
+            suggestions = get_saved_suggestions(self.user, "tv", "Status Show")
+
+        self.assertEqual([row["subtitle"] for row in suggestions], ["TV · In progress"])
+        sql = "\n".join(query["sql"] for query in queries)
+        for table in ('FROM "app_season"', 'FROM "app_episode"'):
+            self.assertNotIn(table, sql)
+
+
     def test_local_tv_cards_do_not_load_availability(self):
         """The full search still hydrates tracking data, without wide JSON."""
         item = Item.objects.create(
@@ -137,3 +155,51 @@ class SearchSuggestionsViewTests(TestCase):
         self.client.logout()
         response = self._get("godfa")
         self.assertEqual(response.status_code, 302)
+
+    def test_json_suggestions_return_data_without_server_html(self):
+        """The universal autocomplete gets URLs and text, never rendered HTML."""
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "godfa", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        payload = response.json()
+        self.assertEqual([row["title"] for row in payload["suggestions"]], ["The Godfather"])
+        self.assertIn("/details/", payload["suggestions"][0]["url"])
+        self.assertNotIn("<a", response.content.decode())
+
+    def test_suggestion_detail_line_names_type_year_and_status_once(self):
+        """The detail line reads "Type · Year · Status", in a typed scope and under All media."""
+        self.item.release_datetime = datetime(1972, 3, 14, tzinfo=UTC)
+        self.item.save(update_fields=["release_datetime"])
+
+        for scope in (MediaTypes.MOVIE.value, "all"):
+            response = self.client.get(
+                reverse("search_suggestions"),
+                {"q": "godfa", "media_type": scope, "format": "json"},
+            )
+            self.assertEqual(
+                [row["subtitle"] for row in response.json()["suggestions"]],
+                ["Movie · 1972 · Completed"],
+                scope,
+            )
+
+    def test_json_suggestions_short_query_returns_empty_list(self):
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "g", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"suggestions": []})
+
+    def test_json_suggestions_without_matches_returns_empty_list(self):
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "nonexistenttitle", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"suggestions": []})

@@ -7,7 +7,9 @@ from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
 
 from app import cache_utils, history_cache, statistics_cache
-from app.models import BasicMedia, MediaTypes
+from app.models import BasicMedia, MediaTypes, PodcastPlay
+from app.public_errors import PublicMessageError
+from app.services import podcast_plays
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +18,23 @@ class HistoryRecordNotFoundError(LookupError):
     """The history record does not exist or belongs to another user."""
 
 
-class HistoryDeletionError(RuntimeError):
+class HistoryDeletionError(PublicMessageError, RuntimeError):
     """The record was found but could not be deleted."""
+
+
+def _delete_podcast_play(user, play_id):
+    """Delete one podcast listen. ``play_id`` is the PodcastPlay id."""
+    play = (
+        PodcastPlay.objects.filter(id=play_id, podcast__user=user)
+        .select_related("podcast")
+        .first()
+    )
+    if play is None:
+        msg = f"History record {play_id} not found for user {user}"
+        raise HistoryRecordNotFoundError(msg)
+    # The PodcastPlay signals refresh the History and Statistics days.
+    podcast_plays.delete_play(play)
+    statistics_cache.schedule_all_ranges_refresh(user.id)
 
 
 def delete_history_record_core(user, media_type, history_id):
@@ -28,6 +45,9 @@ def delete_history_record_core(user, media_type, history_id):
     record. History and statistics caches are invalidated either way.
     """
     media_type_lower = media_type.lower()
+    if media_type_lower == MediaTypes.PODCAST.value:
+        _delete_podcast_play(user, history_id)
+        return
     historical_model = apps.get_model(
         app_label="app",
         model_name=f"historical{media_type_lower}",
@@ -182,6 +202,34 @@ def delete_history_record_core(user, media_type, history_id):
         media_instance_id,
     )
 
+    _invalidate_after_delete(user, media_type_lower, start_date, end_date, created_at)
+
+
+def delete_instance_without_history(user, media_type, media_instance):
+    """Delete a play-per-instance row that has no history record.
+
+    Runs the same season-status sync and cache invalidation as
+    ``delete_history_record_core`` so History, Statistics and the season stay
+    in step when simple_history never recorded the row.
+    """
+    media_type_lower = media_type.lower()
+    related_season = (
+        getattr(media_instance, "related_season", None)
+        if media_type_lower == MediaTypes.EPISODE.value
+        else None
+    )
+    start_date = getattr(media_instance, "start_date", None)
+    end_date = getattr(media_instance, "end_date", None)
+    created_at = getattr(media_instance, "created_at", None)
+    media_instance.delete()
+    if related_season:
+        related_season._sync_status_after_episode_change()
+        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
+        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+    _invalidate_after_delete(user, media_type_lower, start_date, end_date, created_at)
+
+
+def _invalidate_after_delete(user, media_type_lower, start_date, end_date, created_at):
     logging_styles = ("sessions", "repeats")
     if media_type_lower in ("game", "boardgame"):
         start_dt = start_date or end_date

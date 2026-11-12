@@ -23,7 +23,11 @@ from integrations.oauth_models import (
     oauth_token_digest,
 )
 from integrations.oauth_revocation import revoke_refresh_token_family
-from integrations.oauth_scope_info import normalise_scopes, serialise_scopes
+from integrations.oauth_scope_info import (
+    FULL_ACCOUNT_SCOPE,
+    normalise_scopes,
+    serialise_scopes,
+)
 
 
 def _no_store(response: JsonResponse) -> JsonResponse:
@@ -112,7 +116,7 @@ def oauth_token(request: HttpRequest) -> JsonResponse:
     if grant_type not in OAUTH_SUPPORTED_GRANT_TYPES:
         return _oauth_error("unsupported_grant_type", "Grant type is not supported.")
 
-    client = OAuthClient.objects.filter(client_id=client_id).first()
+    client = OAuthClient.resolve(client_id)
     if client is None or not client.is_active:
         return _oauth_error("invalid_client", "OAuth client is unknown or revoked.")
     if not client.allows_grant_type(grant_type):
@@ -175,6 +179,10 @@ def _exchange_device_code(
             )
 
         scopes = list(authorization.requested_scopes)
+        # Only the first-party client's own grant may carry the marker; the
+        # device-authorization step added it, this is defence in depth.
+        if not client.is_first_party:
+            scopes = [scope for scope in scopes if scope != FULL_ACCOUNT_SCOPE]
         raw_access_token, raw_refresh_token = _issue_token_pair(
             user=authorization.user,
             client=client,
@@ -227,8 +235,15 @@ def _exchange_refresh_token(
         else:
             scopes = list(refresh_token.scopes)
 
+        # The full-account marker is in no client's allowed scopes, so it is
+        # checked apart: it survives a refresh only when the original grant
+        # held it and the client is the first-party app. It is never added.
+        if not client.is_first_party:
+            scopes = [scope for scope in scopes if scope != FULL_ACCOUNT_SCOPE]
         if any(scope not in refresh_token.scopes for scope in scopes) or any(
-            not client.allows_scope(scope) for scope in scopes
+            not client.allows_scope(scope)
+            for scope in scopes
+            if scope != FULL_ACCOUNT_SCOPE
         ):
             return _oauth_error(
                 "invalid_scope",

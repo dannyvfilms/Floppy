@@ -1,0 +1,76 @@
+/*
+ * Server fallback spacing for the Statistics islands.
+ *
+ * The shared Statistics components own their presentation. This file only
+ * reserves the space of the server-rendered fallback that paints before the
+ * islands hydrate, so the page does not reflow when React replaces it. The
+ * hero and summary rows are siblings in the fallback; the shared component
+ * places a 1rem gap between them.
+ */
+[data-statistics-summary-root] > .stats-summary-row {
+  margin-top: 1rem;
+}
+
+/* The fallback hides its summary card values until Alpine runs; reserve the
+   settled card height so filling them cannot move the page. */
+@media (min-width: 1024px) {
+  [data-statistics-summary-root] .stats-summary-row > div {
+    min-height: 121px;
+  }
+}
+
+/* Alpine reveals the compare trigger and fills the consumption tiles after
+   the first paint. Reserve both so the toolbar and the rows below stay put. */
+.stats-compare-wrapper[x-cloak] {
+  display: block !important;
+}
+
+@media (min-width: 640px) {
+  .consumption-row {
+    min-height: 92px;
+  }
+}
+
+@media (max-width: 639px) {
+  .consumption-row {
+    min-height: 180px;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-statistics-summary-root] .stats-hero-row {
+    min-height: 141px;
+  }
+
+  .stats-chart-pair {
+    min-height: 255px;
+  }
+}
+/* The hero copy gains its numbers from Alpine after paint. Reserve the settled
+   copy height below the desktop layout so the cards do not jump. */
+@media (max-width: 1023px) {
+  [data-statistics-summary-root] .stats-hero-text {
+    min-height: 163px;
+    justify-content: flex-start;
+  }
+}
+
+/* Same reservation for the stacked summary cards below the desktop layout. */
+@media (max-width: 399px) {
+  [data-statistics-summary-root] .stats-summary-row > div {
+    min-height: 126px;
+  }
+}
+
+@media (min-width: 400px) and (max-width: 639px) {
+  [data-statistics-summary-root] .stats-summary-row > div {
+    min-height: 84px;
+  }
+}
+
+@media (max-width: 1023px) {
+  [data-statistics-summary-root] .stats-hero-text > div {
+    align-items: flex-start;
+    min-height: 52px;
+  }
+}

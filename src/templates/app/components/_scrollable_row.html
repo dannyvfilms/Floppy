@@ -1,5 +1,6 @@
 
 {% load i18n %}
+{% load app_tags %}
 {% comment %}
   Reusable horizontal scrolling row with HTMX infinite-scroll loading.
 
@@ -21,6 +22,7 @@
                     When set, wraps the row in Alpine x-data with a collapse toggle.
     collapse_default — "false" (default) keeps section open by default; set to "true" to default closed.
 {% endcomment %}
+{% if rails_mount %}{% rails_row_props row as rails_row %}{% endif %}
 {% if collapse_key %}
 <div x-data="{ open: localStorage.getItem('{{ collapse_key }}') !== '{{ collapse_default|default:'false' }}' }"
      x-init="$watch('open', v => localStorage.setItem('{{ collapse_key }}', v))">
@@ -31,10 +33,11 @@
   out-of-band swaps can target them.
 {% endcomment %}
 {% if row.poll_for_covers or force_artwork_anchor %}
-<div id="home-music-row-artwork-{{ row.row_id }}" data-home-row-wrapper="true"{% if row.poll_for_covers %} data-home-row-poll-id="{{ row.row_id }}"{% endif %}{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}>
+<div id="home-music-row-artwork-{{ row.row_id }}" data-home-row-wrapper="true"{% if row.poll_for_covers %} data-home-row-poll-id="{{ row.row_id }}"{% endif %}{% if oob_swap %} hx-swap-oob="outerHTML"{% endif %}{% if rails_row %} data-rails-row-root data-row-id="{{ row.row_id }}" data-props-id="{{ rails_row.id }}"{% endif %}>
 {% else %}
-<div data-home-row-wrapper="true">
+<div data-home-row-wrapper="true"{% if rails_row %} data-rails-row-root data-row-id="{{ row.row_id }}" data-props-id="{{ rails_row.id }}"{% endif %}>
 {% endif %}
+{% if rails_row %}{{ rails_row.props|json_script:rails_row.id }}{% endif %}
   {% if not hide_heading %}
   {% firstof row.title_main row.title as effective_title_main %}
   {% translate effective_title_main as translated_title_main %}

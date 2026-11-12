@@ -49,7 +49,7 @@ def ensure_demo_user_after_migrate(sender, **kwargs):
     if getattr(settings, "TESTING", False):
         return
 
-    if not getattr(settings, "DEMO_ACCOUNT_ENABLED", True):
+    if not getattr(settings, "DEMO_ACCOUNT_ENABLED", False):
         return
 
     if getattr(sender, "label", None) != "users":

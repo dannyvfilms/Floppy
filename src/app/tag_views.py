@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.db.models import Count
 from django.http import HttpResponse, HttpResponseBadRequest
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -100,6 +101,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Genres",
+                "title_label": gettext("Genres"),
+                "tone": "violet",
                 "entries": [
                     {
                         "label": genre,
@@ -124,6 +127,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Implied Genres",
+                "title_label": gettext("Implied Genres"),
+                "tone": "slate",
                 "entries": [
                     {
                         "label": genre,
@@ -146,6 +151,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Themes",
+                "title_label": gettext("Themes"),
+                "tone": "sky",
                 "entries": [
                     {
                         "label": theme,
@@ -169,6 +176,8 @@ def _build_detail_tag_sections(
     if is_authenticated_user:
         tag_section = {
             "title": "Tags",
+            "title_label": gettext("Tags"),
+            "tone": "slate",
             "entries": [
                 {
                     "label": tag_name,
@@ -216,6 +225,30 @@ def _user_tags_for_item(user, item):
     )
 
 
+def _tag_assignment_data(request, item, tags, preview_genres, preview_implied):
+    """Return JSON data for the shared tag assignment dialog."""
+    return {
+        "item": {"id": item.id, "title": item.title},
+        "tags": [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "hasTag": bool(tag.has_tag),
+                "owned": True,
+            }
+            for tag in tags
+        ],
+        "urls": {
+            "toggle": reverse("tag_item_toggle"),
+            "create": reverse("tag_create"),
+            "delete": reverse("tag_delete"),
+        },
+        "csrfToken": get_token(request),
+        "previewGenresJson": json.dumps(preview_genres or []),
+        "previewImpliedGenresJson": json.dumps(preview_implied or []),
+    }
+
+
 def _render_tag_modal_response(
     request,
     item,
@@ -223,14 +256,22 @@ def _render_tag_modal_response(
     preview_implied_genres=None,
 ):
     """Render the tag modal plus OOB preview refresh for the current item."""
+    user_tags = list(_user_tags_for_item(request.user, item))
     modal_html = render_to_string(
         "app/components/fill_tags.html",
         {
             "item": item,
-            "user_tags": _user_tags_for_item(request.user, item),
+            "user_tags": user_tags,
             "preview_genres_json": json.dumps(preview_genres),
             "preview_implied_genres_json": json.dumps(preview_implied_genres or []),
             "tag_surface": request.POST.get("tag_surface") or "modal",
+            "tag_assignment_data": _tag_assignment_data(
+                request,
+                item,
+                user_tags,
+                preview_genres,
+                preview_implied_genres,
+            ),
         },
         request=request,
     )
@@ -266,21 +307,13 @@ TAG_INDEX_LINKABLE_MEDIA_TYPES = {
 }
 
 
-@require_GET
-def tag_index(request):
-    """Render a page listing the user's tags with per-media-type usage counts."""
-    sort = request.GET.get("sort") or "name"
-
-    tags = list(
-        Tag.objects.filter(user=request.user).annotate(
-            item_count=Count("item_tags", distinct=True),
-        ),
-    )
+def tag_type_counts(user):
+    """Return ``{tag_id: {media_type: item count}}`` for the linkable types."""
     include_anime, _include_tv = metadata_resolution.anime_library_visibility(
-        request.user,
+        user,
     )
     type_counts = (
-        ItemTag.objects.filter(tag__user=request.user)
+        ItemTag.objects.filter(tag__user=user)
         .values("tag_id", "item__media_type", "item__library_media_type")
         .annotate(count=Count("id"))
         .order_by()
@@ -300,6 +333,20 @@ def tag_index(request):
             continue
         counts = counts_by_tag.setdefault(row["tag_id"], {})
         counts[media_type] = counts.get(media_type, 0) + row["count"]
+    return counts_by_tag
+
+
+@require_GET
+def tag_index(request):
+    """Render a page listing the user's tags with per-media-type usage counts."""
+    sort = request.GET.get("sort") or "name"
+
+    tags = list(
+        Tag.objects.filter(user=request.user).annotate(
+            item_count=Count("item_tags", distinct=True),
+        ),
+    )
+    counts_by_tag = tag_type_counts(request.user)
 
     # Every status plus "no status", so the list shows what the count counts:
     # rating-only and tagged-only items sit outside any status view.
@@ -326,10 +373,49 @@ def tag_index(request):
     else:
         tags.sort(key=lambda tag: tag.name.lower())
 
+    tag_index_data = {
+        "title": gettext("Tags"),
+        "subtitle": gettext(
+            "All tags you've created, with how many items use each one"
+        ),
+        "labels": {
+            "name": gettext("Name"),
+            "mostUsed": gettext("Most used"),
+        },
+        "tags": [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "count": tag.item_count,
+                "confirmMessage": gettext(
+                    'Delete the "%(name)s" tag from your library? '
+                    "This removes it from every item."
+                )
+                % {"name": tag.name},
+                "types": [
+                    {
+                        "key": entry["media_type"],
+                        "label": entry["media_type"].title(),
+                        "count": entry["count"],
+                        "url": entry["url"],
+                    }
+                    for entry in tag.type_breakdown
+                ],
+            }
+            for tag in tags
+        ],
+        "sort": sort,
+        "emptyText": gettext(
+            "No tags yet. Add tags to items from their detail page to see them here."
+        ),
+        "urls": {"delete": reverse("tag_delete")},
+        "csrfToken": get_token(request),
+    }
+
     return render(
         request,
         "app/tag_index.html",
-        {"tags": tags, "sort": sort},
+        {"tags": tags, "sort": sort, "tag_index_data": tag_index_data},
     )
 
 
@@ -402,14 +488,22 @@ def tags_modal(
     if item_updates:
         item.save(update_fields=item_updates)
 
+    user_tags = list(_user_tags_for_item(request.user, item))
     return render(
         request,
         "app/components/fill_tags.html",
         {
             "item": item,
-            "user_tags": _user_tags_for_item(request.user, item),
+            "user_tags": user_tags,
             "preview_genres_json": json.dumps(preview_genres),
             "preview_implied_genres_json": json.dumps(preview_implied_genres),
+            "tag_assignment_data": _tag_assignment_data(
+                request,
+                item,
+                user_tags,
+                preview_genres,
+                preview_implied_genres,
+            ),
         },
     )
 
@@ -471,9 +565,11 @@ def tag_item_toggle(request):
 @require_POST
 def tag_bulk_toggle(request):
     """Add or remove a tag across multiple items for the current user."""
+    from app.bulk_actions import posted_item_ids
+
     tag_name = (request.POST.get("tag_name") or "").strip()
     action = request.POST.get("action")
-    item_ids = [value for value in request.POST.getlist("item_ids") if value]
+    item_ids = posted_item_ids(request.POST)
 
     if not tag_name or action not in {"add", "remove"} or not item_ids:
         return HttpResponseBadRequest(

@@ -69,6 +69,8 @@ class ShowTrackerTests(PodcastApiTestCase):
         self.assertEqual(payload["genres"], ["Technology", "News"])
         self.assertEqual(payload["language"], "en")
         self.assertEqual(payload["website_url"], "https://example.com/show")
+        self.assertEqual(payload["listened_count"], 0)
+        self.assertEqual(payload["episode_count"], self.show.episodes.count())
 
     def test_show_payloads_never_expose_a_feed_url(self):
         """A private feed one user imported is unreachable for another."""
@@ -152,6 +154,8 @@ class ShowTrackerTests(PodcastApiTestCase):
         )
         self.assertEqual(created.status_code, HTTP.CREATED)
         self.assertEqual(created.json()["tracker"]["score"], "8.0")
+        # The label, like the music endpoints, never the integer status code.
+        self.assertEqual(created.json()["tracker"]["status"], Status.IN_PROGRESS.value)
 
         listed = self.call_api("get", "api_podcast_shows", headers=self.auth_headers)
         self.assertEqual(listed.json()["pagination"]["total"], 1)
@@ -191,6 +195,25 @@ class ShowTrackerTests(PodcastApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+    def test_itunes_import_error_returns_the_written_message(self):
+        """An import refusal answers with the importer's own text."""
+        from app.services.podcast_import import PodcastImportError
+
+        with patch(
+            "api.fork_views_podcast.podcast_import.import_show_from_itunes_id",
+            side_effect=PodcastImportError("No podcast found for iTunes id 12345."),
+        ):
+            response = self.call_api(
+                "post",
+                "api_podcast_shows",
+                payload={"itunes_id": "12345"},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            response.json(), {"detail": "No podcast found for iTunes id 12345."}
+        )
 
     @patch("api.fork_views_podcast.podcast_import.import_show_from_itunes_id")
     def test_itunes_id_track_rejects_invalid_tracker_before_importing(
@@ -845,4 +868,37 @@ class PodcastWebPlayDateTests(PodcastApiTestCase):
         self.assertTrue(
             any("did not add a second play" in message for message in messages),
             messages,
+        )
+
+
+class EpisodeNotesApiTests(PodcastApiTestCase):
+    """Private podcast episode notes write contract."""
+
+    def test_notes_create_without_a_play(self):
+        """Saving notes creates the Podcast row but no history record."""
+        response = self.call_api(
+            "patch",
+            "api_podcast_episode_notes",
+            args=(self.episode1.id,),
+            payload={"notes": "Start here"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["notes"], "Start here")
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(podcast.notes, "Start here")
+        self.assertFalse(podcast.history.exists())
+
+    def test_blank_note_leaves_untracked_episode_alone(self):
+        """A blank note does not create a tracker row."""
+        response = self.call_api(
+            "patch",
+            "api_podcast_episode_notes",
+            args=(self.episode1.id,),
+            payload={"notes": ""},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertFalse(
+            Podcast.objects.filter(user=self.user1, episode=self.episode1).exists(),
         )

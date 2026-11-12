@@ -124,8 +124,8 @@ class PreferencesViewTests(TestCase):
 
         self.assertContains(response, 'name="logo_style"')
         self.assertContains(response, "Colorful")
-        self.assertContains(response, "System default — Aug 12, 2025 / 12 Aug 2025")
-        self.assertContains(response, "System default — 6:45 PM / 18:45")
+        self.assertContains(response, "System default: Aug 12, 2025 / 12 Aug 2025")
+        self.assertContains(response, "System default: 6:45 PM / 18:45")
         self.assertNotContains(response, "System default (locale)")
         self.assertContains(response, "/static/img/floppy-logo.png")
         self.assertNotContains(response, "/static/img/floppy-logo-white.png")

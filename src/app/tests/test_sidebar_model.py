@@ -44,3 +44,22 @@ class SidebarModelTest(TestCase):
             with self.subTest(icon=path.name):
                 spec = file_icon(path.stem)
                 self.assertTrue(spec["children"])
+
+    def test_lists_link_and_secondary_destinations(self):
+        """The Lists entry points at the hub, is active there, and every peer resolves."""
+        props = self.props(reverse("lists"))
+        lists_item = next(item for item in props["secondary"] if item["type"] == "lists")
+        self.assertEqual(lists_item["href"], reverse("lists"))
+        self.assertTrue(lists_item["active"])
+
+        for item in props["secondary"]:
+            with self.subTest(label=item["label"]):
+                self.assertEqual(self.client.get(item["href"]).status_code, 200)
+
+    def test_sidebar_fallback_keeps_alpine_state(self):
+        """A failed React mount still leaves an expandable server sidebar."""
+        response = self.client.get(reverse("lists"))
+        html = response.content.decode()
+        self.assertIn("sidebarNavigation(", html)
+        self.assertNotRegex(html, r"data-sidebar-root[^>]*x-ignore")
+        self.assertIn(f'href="{reverse("lists")}"', html)

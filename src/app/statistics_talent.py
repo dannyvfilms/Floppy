@@ -784,42 +784,53 @@ def _aggregate_top_talent(
 
     # Project only aggregation fields. A cached select_related queryset keeps a
     # separate Person instance (including biography) alive for every credit.
-    person_credits = ItemPersonCredit.objects.filter(
-        item_id__in=played_item_ids
-    ).values_list(
-        "item_id",
-        "person_id",
-        "role_type",
-        "role",
-        "department",
-        "sort_order",
-        "person__gender",
-        "person__name",
-        named=True,
-    )
-    for credit in person_credits.iterator(chunk_size=500):
-        person_names[credit.person_id] = credit.person__name.lower()
-        if credit.role_type == CreditRoleType.CAST.value:
-            item_media_type = item_media_type_by_id.get(credit.item_id)
-            if (
-                item_media_type == MediaTypes.TV.value
-                and not credit_helpers.is_usable_tv_show_credit(
-                    item_source_by_id.get(credit.item_id),
-                    credit.role_type,
-                    credit.sort_order,
-                )
-            ):
+    # SQLite picks a person-first plan for one large `item_id IN (...)` filter,
+    # scanning app_person and sorting credits in a temp B-tree. Batch the IDs so
+    # each query uses the item_id index instead. Ordering is irrelevant here:
+    # credits are folded into sets and counters, so clear the model default.
+    played_item_id_batches = list(played_item_ids)
+    batch_size = 500
+    for offset in range(0, len(played_item_id_batches), batch_size):
+        person_credits = (
+            ItemPersonCredit.objects.filter(
+                item_id__in=played_item_id_batches[offset : offset + batch_size]
+            )
+            .order_by()
+            .values_list(
+                "item_id",
+                "person_id",
+                "role_type",
+                "role",
+                "department",
+                "sort_order",
+                "person__gender",
+                "person__name",
+                named=True,
+            )
+        )
+        for credit in person_credits.iterator(chunk_size=batch_size):
+            person_names[credit.person_id] = credit.person__name.lower()
+            if credit.role_type == CreditRoleType.CAST.value:
+                item_media_type = item_media_type_by_id.get(credit.item_id)
+                if (
+                    item_media_type == MediaTypes.TV.value
+                    and not credit_helpers.is_usable_tv_show_credit(
+                        item_source_by_id.get(credit.item_id),
+                        credit.role_type,
+                        credit.sort_order,
+                    )
+                ):
+                    continue
+                if credit.person__gender == PersonGender.FEMALE.value:
+                    cast_actress_ids_by_item[credit.item_id].add(credit.person_id)
+                else:
+                    cast_actor_ids_by_item[credit.item_id].add(credit.person_id)
                 continue
-            if credit.person__gender == PersonGender.FEMALE.value:
-                cast_actress_ids_by_item[credit.item_id].add(credit.person_id)
-            else:
-                cast_actor_ids_by_item[credit.item_id].add(credit.person_id)
-            continue
-        if credit.role_type == CreditRoleType.CREW.value:
-            if _is_director_credit(credit):
-                director_ids_by_item[credit.item_id].add(credit.person_id)
-            if _is_writer_credit(credit):
-                writer_ids_by_item[credit.item_id].add(credit.person_id)
+            if credit.role_type == CreditRoleType.CREW.value:
+                if _is_director_credit(credit):
+                    director_ids_by_item[credit.item_id].add(credit.person_id)
+                if _is_writer_credit(credit):
+                    writer_ids_by_item[credit.item_id].add(credit.person_id)
 
     studio_item_ids = movie_item_ids | show_item_ids | game_item_ids
     studio_credits = ItemStudioCredit.objects.filter(

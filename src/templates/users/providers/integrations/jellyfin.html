@@ -266,7 +266,7 @@
               {% if jellyfin_account.playback_reporting_available %}
                 {% translate "Using Playback Reporting's API (full per-play history)." %}
               {% elif jellyfin_account.playback_reporting_available is False %}
-                {% translate "Playback Reporting's API isn't reachable with this key — using the current-watched-state backfill instead (one event per item)." %}
+                {% translate "Playback Reporting's API isn't reachable with this key, so Floppy is using the current-watched-state backfill instead (one event per item)." %}
               {% else %}
                 {% translate "Not yet run." %}
               {% endif %}
@@ -396,10 +396,7 @@
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <div class="flex gap-2">
-                <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Update Jellyfin connection" %}
-                </button>
+                {% button _("Update Jellyfin connection") "primary" "sm" submit=True %}
                 <button type="button"
                         @click="editingJellyfin = false"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">

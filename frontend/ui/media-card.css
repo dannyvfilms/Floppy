@@ -1,6 +1,28 @@
 /* The React card's host and slot wrappers add no box of their own, so the
    existing .media-card layout rules see the same children as before. */
-[data-media-card-root],
+/* The server card wrapper is the React host, so it must keep its box. Older
+   inner roots (history and list rows) stay layout-transparent. */
+[data-media-card-root]:not(.media-card),
 .media-card-slot {
   display: contents;
+}
+
+/* The Collection grid sizes like the release .media-grid: three columns on a
+   phone, then as many 180px-minimum columns as fit. The shared grid is a flex
+   wrap of fixed 164px tiles, which gave an extra column and narrower cards. */
+div[data-testid="collection-grid"] {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 30rem) {
+  div[data-testid="collection-grid"] {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+div[data-testid="collection-grid"] > div[data-testid="collection-grid-item"] {
+  width: auto;
+  min-width: 0;
 }

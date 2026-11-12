@@ -123,7 +123,12 @@ def _status_chip(ctx):
         if has_event:
             return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
         status = _safe(media, "aggregated_status") or _safe(media, "status")
-        return {"kind": "status", "status": status, "hideOnMobile": hide_on_mobile}
+        return {
+            "kind": "status",
+            "status": status,
+            "colorClass": app_tags.status_color(status),
+            "hideOnMobile": hide_on_mobile,
+        }
     if has_event:
         return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
     return None
@@ -139,12 +144,18 @@ def _progress_bar(ctx, media_type):
         return None
     percent = _safe(media, "progress_percentage")
     if media_type == MediaTypes.PODCAST.value:
-        return None if percent is None else {"percent": percent, "paused": status == Status.PAUSED.value}
-    if media_type == MediaTypes.MOVIE.value or not (_safe(media, "max_progress") and _safe(media, "progress")):
+        if percent is None:
+            return None
+    elif media_type == MediaTypes.MOVIE.value or not (_safe(media, "max_progress") and _safe(media, "progress")):
         return None
-    if percent is None:
+    elif percent is None:
         percent = int(_safe(media, "progress") * 100 / _safe(media, "max_progress"))
-    return {"percent": percent, "paused": status == Status.PAUSED.value}
+    return {
+        "percent": percent,
+        "paused": status == Status.PAUSED.value,
+        # "dormant" keeps the bar visible at rest instead of only on hover.
+        "dormant": ctx.get("card_progress_display") == "dormant",
+    }
 
 
 def _plays(count):
@@ -377,7 +388,12 @@ def _corner_chips(ctx, media_type):
     ):
         href = app_tags.next_episode_url(item, media)
         if href:
-            chips.append({"kind": "next-episode", "text": _("Next ep"), "href": href})
+            chips.append({
+                "kind": "next-episode",
+                "text": _("Next ep"),
+                "compactText": _("Next"),
+                "href": href,
+            })
     return chips
 
 
@@ -957,4 +973,45 @@ def rating_model(ctx, media_type):
         "rateUrl": rate_url or None,
         "scaleMax": app_tags.rating_scale_max(user),
         "rateLabel": _("Rate"),
+    }
+
+
+def progress_changer_model(media, csrf_token=""):
+    """Return the shared quick-progress control's props for one tracked row."""
+    media_type = media.item.media_type
+    percentage = bool(getattr(media, "progress_is_percentage", False))
+    show_units = (
+        media_type not in {MediaTypes.GAME.value, MediaTypes.MOVIE.value}
+        and not percentage
+    )
+    max_progress = getattr(media, "max_progress", None)
+    unit = ""
+    if show_units and getattr(media, "progress_unit", None) != "minutes":
+        count = max_progress or (getattr(media, "progress", 0) or 0)
+        if media_type == MediaTypes.TV.value:
+            unit = ngettext("Episode", "Episodes", count)
+        else:
+            unit = app_tags.progress_unit_label(media_type, count)
+    value = getattr(media, "formatted_progress", None) or str(
+        getattr(media, "progress", ""),
+    )
+    progress = getattr(media, "progress", 0) or 0
+    formatted_max = getattr(media, "formatted_max_progress", None) or str(max_progress)
+    return {
+        "value": str(value),
+        "max": str(formatted_max) if max_progress else None,
+        "unit": str(unit),
+        "showMax": bool(max_progress) and show_units,
+        "canDecrease": progress != 0,
+        "canIncrease": max_progress is None or progress != max_progress,
+        "decreaseLabel": str(_("Decrease progress")),
+        "increaseLabel": str(_("Increase progress")),
+        "url": reverse("progress_edit", args=[media_type, media.id]),
+        "target": f"progress-{media_type}-{media.id}",
+        "csrfToken": str(csrf_token or ""),
+        "watchOperationId": (
+            app_tags.watch_operation_id()
+            if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
+            else ""
+        ),
     }

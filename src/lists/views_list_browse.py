@@ -173,7 +173,11 @@ def lists(request):
         .values("total")
     )
     custom_lists = (
-        CustomList.objects.filter(Q(owner=request.user) | Q(collaborators=request.user))
+        CustomList.objects.filter(
+            Q(owner=request.user)
+            | Q(collaborators=request.user)
+            | Q(viewers=request.user),
+        )
         .select_related("owner")
         .annotate(
             items_count=Coalesce(Subquery(item_counts), 0),
@@ -200,7 +204,7 @@ def lists(request):
             .distinct()
         )
 
-    custom_lists = custom_lists.prefetch_related("collaborators")
+    custom_lists = custom_lists.prefetch_related("collaborators", "viewers")
 
     if sort_by == ListSortChoices.NAME:
         custom_lists = custom_lists.order_by(_order_expression("name", direction))
@@ -259,7 +263,9 @@ def lists(request):
     available_tags = CustomListForm._normalize_tags(
         tag
         for tags in CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
+            Q(owner=request.user)
+            | Q(collaborators=request.user)
+            | Q(viewers=request.user),
         )
         .values_list("tags", flat=True)
         .iterator(chunk_size=500)
@@ -280,6 +286,7 @@ def lists(request):
     # cheap permission flag here.
     for custom_list in lists_page:
         custom_list.can_edit = custom_list.user_can_edit(request.user)
+        custom_list.role = custom_list.user_role(request.user)
     _attach_cached_covers(lists_page)
 
     # Add timestamp to context for cache busting
@@ -339,6 +346,7 @@ def lists(request):
                 trakt_account and trakt_account.is_configured
             ),
             "mdblist_account": mdblist_account,
+            "lists_page_model": {"testID": "lists-page"},
             "cache_buster": cache_buster,
             "list_url_template": _build_list_url_template(request),
         },

@@ -3,6 +3,8 @@
 {% load app_tags %}
 {% load ui_tags %}
 
+{% if library_move_results_props %}{{ library_move_results_props|json_script:"library-move-results-props" }}{% endif %}
+<div data-metadata-match-results-root{% if library_move_results_props %} data-props-id="library-move-results-props"{% endif %}>
 {% if error %}
   <p class="mt-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300" role="alert">{{ error }}</p>
 {% elif results %}
@@ -55,3 +57,4 @@
 {% elif query %}
   <p class="mt-2 px-2 text-sm text-[var(--color-text-muted)]">{% translate "No matching titles found." %}</p>
 {% endif %}
+</div>

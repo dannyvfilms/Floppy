@@ -397,6 +397,12 @@ class CandidatesTests(CoverTestCase):
             reverse("item_cover_candidates", args=[self.item.id])
         )
 
+    def candidates_json(self):
+        return self.client.get(
+            reverse("item_cover_candidates", args=[self.item.id]),
+            {"format": "json"},
+        )
+
     def test_provider_search_results_are_offered(self):
         results = {
             "results": [
@@ -410,6 +416,18 @@ class CandidatesTests(CoverTestCase):
         self.assertContains(response, "Moonlight Courier, Vol. 1")
         self.assertNotContains(response, "No art")
         self.assertContains(response, 'data-url="https://covers.openlibrary.org/a.jpg"')
+
+    def test_the_shared_picker_reads_candidates_as_json(self):
+        results = {
+            "results": [
+                {"title": "Moonlight Courier, Vol. 1", "image": "https://covers.openlibrary.org/a.jpg"},
+            ]
+        }
+        with patch.object(cover_views.services, "search", return_value=results):
+            response = self.candidates_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["candidates"][0]["title"], "Moonlight Courier, Vol. 1")
 
     def test_the_users_barcode_is_offered_first(self):
         group = CollectionFieldGroup.objects.create(user=self.user, name="Details")

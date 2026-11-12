@@ -4,6 +4,11 @@
 {% load user_tags %}
 
 {% if not is_pagination %}
+  {% if table_browser_props %}{{ table_browser_props|json_script:"table-browser-props" }}{% endif %}
+  <div id="{{ table_view_id|default:'media-table-view' }}"
+       class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll media-table"
+       {% if table_browser_props %}data-media-table-root data-props-id="table-browser-props"{% endif %}>
+  <table class="w-full bg-[var(--color-surface)] media-table">
   <thead class="text-left text-[var(--color-text-muted)] text-sm">
     <tr>
       {% if list_ordering_enabled %}<th class="w-8 px-2" x-cloak x-show="isOrderEditing"></th>{% endif %}
@@ -39,4 +44,8 @@
       {% endfor %}
     </tr>
   {% endfor %}
-  {% if not is_pagination %}</tbody>{% endif %}
+  {% if not is_pagination %}
+  </tbody>
+  </table>
+  </div>
+  {% endif %}

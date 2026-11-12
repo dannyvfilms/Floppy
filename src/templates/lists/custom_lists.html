@@ -19,8 +19,13 @@
 {% block content %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {{ form.media.css }}
-  <div x-data="{ showModal: false, listMode: 'manual', showTraktModal: false, showMdblistModal: false, showCsvImportModal: false, traktDefaultStep: {% if trakt_has_credentials %}3{% else %}1{% endif %}, traktStep: {% if trakt_has_credentials %}3{% else %}1{% endif %} }">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+  <div data-page-slot-scope x-data="{ showModal: false, listMode: 'manual', showTraktModal: false, showMdblistModal: false, showCsvImportModal: false, traktDefaultStep: {% if trakt_has_credentials %}3{% else %}1{% endif %}, traktStep: {% if trakt_has_credentials %}3{% else %}1{% endif %} }">
+    <div data-lists-page-root data-props-id="lists-page-model">
+      {{ lists_page_model|json_script:"lists-page-model" }}
+    </div>
+
+    <div data-page-slot="lists-heading">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
       <div>
         <h1 class="text-3xl font-bold mb-2">{% translate "Lists" %}</h1>
         <p class="text-[var(--color-text-muted)]">{% translate "Organize and share your media lists" %}</p>
@@ -77,7 +82,9 @@
         </div>
       </div>
     </div>
+    </div>
 
+    <div data-page-slot="lists-search">
     {% translate "All Types" as media_i18n_16 %}<div class="flex flex-col md:flex-row gap-4 mb-6"
          x-data="{ sort: '{{ current_sort }}', direction: '{{ current_direction|default:'desc' }}', mediaType: '{{ current_media_type }}', query: '{{ request.GET.q|default:''|escapejs }}', mediaTypeLabels: {
            {% for media_type in media_types %}'{{ media_type }}': '{{ media_type|media_type_readable_plural }}',{% endfor %}
@@ -198,35 +205,41 @@
         </div>
       </div>
     </div>
+    </div>
 
-    {% if custom_lists %}
-      <div id="lists-grid"
-           class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-           hx-history="false">
-        {% include "lists/components/list_grid.html" %}
-      </div>
-    {% else %}
-      <div class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
-        <div class="text-center max-w-md mx-auto p-6">
-          <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            {% include "app/icons/list-add.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
-          </div>
-          <h3 class="text-xl font-semibold mb-2">{% translate "No Lists Created Yet" %}</h3>
-          <p class="text-[var(--color-text-muted)] mb-6">{% translate "Create custom lists to organize your media collection and share with friends." %}</p>
-          <button @click="showModal = true"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-            {% translate "Create Your First List" %}
-          </button>
+    <div data-page-slot="lists-content">
+      {% if custom_lists %}
+        <div id="lists-grid"
+             class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+             hx-history="false">
+          {% include "lists/components/list_grid.html" %}
         </div>
-      </div>
-    {% endif %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
+          <div class="text-center max-w-md mx-auto p-6">
+            <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+              {% include "app/icons/list-add.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
+            </div>
+            <h3 class="text-xl font-semibold mb-2">{% translate "No Lists Created Yet" %}</h3>
+            <p class="text-[var(--color-text-muted)] mb-6">{% translate "Create custom lists to organize your media collection and share with friends." %}</p>
+            <button @click="showModal = true"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
+              {% translate "Create Your First List" %}
+            </button>
+          </div>
+        </div>
+      {% endif %}
+    </div>
 
-    <div id="loading-indicator" class="htmx-indicator text-center pt-8">
-      <div class="inline-flex justify-center items-center">
-        {% spinner 32 %}
+    <div data-page-slot="lists-footer">
+      <div id="loading-indicator" class="htmx-indicator text-center pt-8">
+        <div class="inline-flex justify-center items-center">
+          {% spinner 32 %}
+        </div>
       </div>
     </div>
 
+    <div data-page-slot="lists-dialogs">
     {% include "lists/components/list_form.html" %}
 
     {# Trakt OAuth Setup Modal #}
@@ -622,6 +635,7 @@
           </form>
         </div>
       </div>
+    </div>
     </div>
   </div>
 {% endblock content %}

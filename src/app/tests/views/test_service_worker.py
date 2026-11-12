@@ -43,7 +43,7 @@ class ServiceWorkerViewTests(TestCase):
         self.assertEqual(response["Expires"], "0")
 
         body = response.content.decode()
-        self.assertIn('const CACHE_NAME = "floppy-v2";', body)
+        self.assertIn('const CACHE_NAME = "floppy-v3";', body)
         self.assertIn("const isSameOrigin = url.origin === self.location.origin;", body)
         self.assertIn(
             'const isHtmxRequest = request.headers.get("HX-Request") === "true";', body

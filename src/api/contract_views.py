@@ -60,14 +60,17 @@ def api_docs(request):
 @require_safe
 @cache_control(public=True, max_age=3600)
 @condition(etag_func=_contract_etag)
-def openapi_contract(_request):
+def openapi_contract(request):
     """Serve the committed OpenAPI contract with public cache validation."""
+    download = request.GET.get("download") == "1"
     response = FileResponse(
         BytesIO(OPENAPI_CONTRACT),
         content_type="text/yaml; charset=utf-8",
-        as_attachment=False,
+        as_attachment=download,
     )
-    response["Content-Disposition"] = 'inline; filename="openapi.yaml"'
+    response["Content-Disposition"] = (
+        f'{"attachment" if download else "inline"}; filename="openapi.yaml"'
+    )
     return response
 
 
@@ -75,17 +78,20 @@ def openapi_contract(_request):
 @require_safe
 @cache_control(public=True, max_age=3600)
 @condition(etag_func=_context_etag)
-def jsonld_context(_request):
+def jsonld_context(request):
     """Serve the committed JSON-LD domain context.
 
     The representation does not vary by host, so no ``Vary: Host`` is needed.
     """
+    download = request.GET.get("download") == "1"
     response = FileResponse(
         BytesIO(JSONLD_CONTEXT),
         content_type="application/ld+json",
-        as_attachment=False,
+        as_attachment=download,
     )
-    response["Content-Disposition"] = 'inline; filename="context.jsonld"'
+    response["Content-Disposition"] = (
+        f'{"attachment" if download else "inline"}; filename="context.jsonld"'
+    )
     return response
 
 
@@ -93,12 +99,15 @@ def jsonld_context(_request):
 @require_safe
 @cache_control(public=True, max_age=3600)
 @condition(etag_func=_asyncapi_etag)
-def asyncapi_contract(_request):
+def asyncapi_contract(request):
     """Serve the committed AsyncAPI 3.0 contract."""
+    download = request.GET.get("download") == "1"
     response = FileResponse(
         BytesIO(ASYNCAPI_CONTRACT),
         content_type="application/json; charset=utf-8",
-        as_attachment=False,
+        as_attachment=download,
     )
-    response["Content-Disposition"] = 'inline; filename="asyncapi.json"'
+    response["Content-Disposition"] = (
+        f'{"attachment" if download else "inline"}; filename="asyncapi.json"'
+    )
     return response

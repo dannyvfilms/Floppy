@@ -188,7 +188,10 @@
 
     <div class="ml-auto flex items-center gap-2">
       {% if column_config %}
-        {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+        {% if table_browser_props %}{{ table_browser_props|json_script:"table-column-menu-props" }}{% endif %}
+        <div data-media-column-menu-root data-props-id="table-column-menu-props">
+          {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+        </div>
       {% endif %}
       <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
         <button hx-get="{% url 'list_detail' custom_list.public_reference %}"

@@ -3,6 +3,7 @@
 {% load app_tags %}
 {% load user_tags %}
 <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg"
+     data-detail-child-key="{{ episode.media_id }}"
      x-show="!$store.epLayout || $store.epLayout !== 'list'">
   <div class="flex flex-col md:flex-row">
     {# Cover image #}
@@ -44,6 +45,7 @@
 
 {# Compact list view row #}
 <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-border)] transition-colors"
+     data-detail-child-key="{{ episode.media_id }}"
      x-show="$store.epLayout === 'list'"
      style="display:none">
   <span class="shrink-0 w-9 text-center text-[11px] font-mono text-[var(--color-text-muted)] tabular-nums">

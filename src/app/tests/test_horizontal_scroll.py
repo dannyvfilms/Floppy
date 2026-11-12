@@ -40,3 +40,18 @@ class HorizontalScrollContractTests(SimpleTestCase):
         self.assertIn("cursor: grab", css)
         self.assertIn("cursor: grabbing", css)
         self.assertIn("var(--color-link)", css)
+
+    def test_proven_rows_opt_in_to_the_shared_rail(self):
+        home = self.read("templates/app/components/home_groups.html")
+        detail = self.read("templates/app/components/detail_secondary_content.html")
+        row = self.read("templates/app/components/_scrollable_row.html")
+
+        self.assertIn("row=row rails_mount=True", home)
+        self.assertIn(
+            'grid_template="app/components/home_grid.html" '
+            'collapse_key="detail-recommendations-open" rails_mount=True',
+            detail,
+        )
+        self.assertIn("{% rails_row_props row as rails_row %}", row)
+        self.assertIn("data-rails-row-root", row)
+        self.assertIn('data-props-id="{{ rails_row.id }}"', row)

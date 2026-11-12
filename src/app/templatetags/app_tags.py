@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from django import template
 from django.conf import settings
+from django.templatetags.static import static
 from django.urls import reverse as _django_reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
@@ -21,7 +22,15 @@ from django.utils.translation import (
 from django.utils.translation import gettext as _
 from unidecode import unidecode
 
-from app import card_surfaces, checkin, config, helpers, image_cache, track_actions
+from app import (
+    card_surfaces,
+    checkin,
+    config,
+    helpers,
+    image_cache,
+    live_playback,
+    track_actions,
+)
 from app import entry_sources as entry_sources_module
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
@@ -29,7 +38,11 @@ from app.services import metadata_resolution
 from app.stats_music import COUNTRY_NAME_MAP
 from users.media_type_chips import media_type_chip_preferences
 from users.models import ALL_SEARCH_TYPE, HISTORY_VIEW_TYPE, TimeFormatChoices
-from users.templatetags.user_tags import user_date_format, user_time_format
+from users.templatetags.user_tags import (
+    is_basic_theme,
+    user_date_format,
+    user_time_format,
+)
 
 
 @lru_cache(maxsize=8192)
@@ -2279,6 +2292,89 @@ def card_title_classes(context, media_type=None):
     return " " + " ".join(classes)
 
 
+def _as_int(value, default=0):
+    """Coerce a row count/seed to int without trusting template data."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@register.simple_tag(takes_context=True)
+def rails_row_props(context, row):
+    """Return the shared Rail's props beside a server-rendered scrollable row.
+
+    The fallback row keeps its cards and HTMX attributes. The browser adapter
+    reads those cards as item slots, so this only carries row-level values.
+    """
+    if not isinstance(row, dict) or not row.get("row_id"):
+        return {}
+
+    row_id = row["row_id"]
+    title = str(row.get("title_main") or row.get("title") or "")
+    title_main = str(_(title))
+    title_detail = str(row.get("title_detail") or "")
+    if title_detail:
+        title_detail = str(_(title_detail))
+    summary_inline = str(row.get("summary_inline") or "")
+    loaded = _as_int(row.get("loaded_count"))
+    total = _as_int(row.get("total"))
+
+    sort_url = ""
+    if summary_inline:
+        try:
+            sort_url = reverse("toggle_home_screen_row_direction", args=[row_id])
+        except Exception:
+            sort_url = ""
+
+    if sort_url:
+        sort_label = str(_("Toggle sort direction for %(title)s") % {"title": title_main})
+    else:
+        sort_label = ""
+
+    view_all = None
+    if row.get("view_all_url") and row.get("view_all_text"):
+        view_all = {
+            "label": str(row["view_all_text"]),
+            "href": str(row["view_all_url"]),
+            "external": not bool(row.get("view_all_internal")),
+        }
+
+    return {
+        "id": f"rails-row-{uuid4().hex[:8]}",
+        "props": {
+            "rowId": str(row_id),
+            "title": title_main,
+            "titleDetail": title_detail,
+            "summary": str(row.get("summary") or ""),
+            "summaryInline": summary_inline,
+            "direction": str(row.get("direction") or "desc"),
+            "total": total,
+            "loadedCount": loaded,
+            "hasMore": loaded < total,
+            "seed": _as_int(row.get("seed")),
+            "hxUrl": str(
+                context.get("hx_url")
+                or f"{reverse('home')}?load_row={row_id}"
+            ),
+            "sortUrl": sort_url,
+            "sortLabel": sort_label,
+            "csrfToken": str(context.get("csrf_token") or ""),
+            "titleHref": str(row.get("url") or ""),
+            "viewAll": view_all,
+            "hideHeading": bool(context.get("hide_heading")),
+            "collapseKey": str(context.get("collapse_key") or ""),
+            "collapseDefault": "true" if context.get("collapse_default") in {True, "true", "True"} else "false",
+            "labels": {
+                "scrollLeft": str(_("Scroll left")),
+                "scrollRight": str(_("Scroll right")),
+                "toggleSection": str(_("Toggle section")),
+                "loadingMore": str(_("Loading more")),
+            },
+        },
+    }
+
+
 @register.inclusion_tag("app/components/card_lines.html", takes_context=True)
 def card_lines(context, media_type, item=None, media=None):
     """Render the enabled subtitle lines for one card."""
@@ -2340,6 +2436,88 @@ def media_row_react(context, item, media, title, matched_title):
     }
 
 
+
+@register.simple_tag(takes_context=True)
+def shell_topbar_react(context, public=False):
+    """Return the props the shared shell top bar needs.
+
+    Navigation values, translated labels and the public sign-in destination
+    stay server-owned. The browser adapter supplies link semantics and theme
+    tokens; the fallback top bar remains in the template.
+    """
+    from uuid import uuid4
+
+    user = context.get("user")
+    if public:
+        return {
+            "id": f"shell-{uuid4().hex[:8]}",
+            "props": {
+                "variant": "public",
+                "showMenu": False,
+                "showSearch": False,
+                "themeToggle": False,
+                "logo": _shell_logo(user),
+                "logoText": "Floppy",
+                "signIn": (
+                    {
+                        "label": str(_("Sign In")),
+                        "href": reverse("account_login"),
+                    }
+                    if settings.REGISTRATION
+                    else None
+                ),
+                "labels": _shell_labels(),
+            },
+        }
+
+    request = context.get("request")
+    if not request:
+        return {"id": f"shell-{uuid4().hex[:8]}", "props": None}
+    public_view = bool(context.get("public_view", False))
+    return {
+        "id": f"shell-{uuid4().hex[:8]}",
+        "props": {
+            "variant": "app",
+            "showMenu": not public_view,
+            "showSearch": not public_view,
+            "themeToggle": bool(
+                user
+                and user.is_authenticated
+                and is_basic_theme(user.theme),
+            ),
+            "logo": None,
+            "logoText": None,
+            "signIn": None,
+            "labels": _shell_labels(),
+        },
+    }
+
+
+def _shell_logo(user):
+    mono = bool(
+        user
+        and user.is_authenticated
+        and getattr(user, "logo_style", "") == "monochrome"
+    )
+    return {
+        "src": static(
+            "img/floppy-logo-white.png" if mono else "img/floppy-logo.png",
+        ),
+        "alt": "Floppy",
+        "mono": mono,
+    }
+
+
+def _shell_labels():
+    return {
+        "menu": str(_("Toggle navigation menu")),
+        "closeMenu": str(_("Close navigation menu")),
+        "navigation": str(_("Navigation")),
+        "toggleTheme": str(_("Toggle theme")),
+        "logo": "Floppy",
+    }
+
+
 @register.simple_tag(takes_context=True)
 def global_search_react(context, search_type):
     """Return the props the shared React header search form needs."""
@@ -2361,7 +2539,7 @@ def global_search_react(context, search_type):
                 {"display": str(item["display"]), "value": str(item["value"])}
                 for item in get_search_media_types(context.get("user"))
             ],
-            "barcodeTypes": ["book", "manga", "comic", "comicissue"],
+            "barcodeTypes": ["all", "book", "manga", "comic", "comicissue"],
             "suggestionsUrl": reverse("search_suggestions"),
             "labels": {
                 "inputLabel": str(_("Search your library or online")),
@@ -2384,6 +2562,88 @@ def global_search_react(context, search_type):
                 ),
                 "barcodeFailed": str(_("Error scanning barcode: ")),
                 "tryAgain": str(_("Please try again.")),
+                "barcodeUnavailable": str(
+                    _("Barcode scanning is not available on this device. Enter an ISBN instead."),
+                ),
+                "suggestions": str(_("Search suggestions")),
+                "suggestionsLoading": str(_("Loading suggestions…")),
+                "suggestionsError": str(
+                    _("Suggestions could not load. Keep typing or press Enter."),
+                ),
+                "suggestionsSeeAll": str(
+                    _("See all library results for “%(query)s”"),
+                ),
+                "suggestionsSearchOnline": str(
+                    _("Search online for “%(query)s”"),
+                ),
+                "suggestionsEmptyAll": str(
+                    _(
+                        "Nothing in your library matches “%(query)s”. "
+                        "Pick a media type to search online.",
+                    ),
+                ),
+                "suggestionsEmptyType": str(
+                    _(
+                        "Nothing saved matches “%(query)s”. "
+                        "Keep typing and press Enter to search online.",
+                    ),
+                ),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def search_results_react(context):
+    """Return the props the shared React search results surface needs."""
+    from uuid import uuid4
+
+    from app.search_views import build_search_results_props
+
+    return {
+        "id": f"search-results-{uuid4().hex[:8]}",
+        "props": build_search_results_props(context.flatten()),
+    }
+
+
+@register.simple_tag(takes_context=True)
+def parent_picker_react(context, kind):
+    """Return the props the shared React parent picker needs."""
+    from django.utils.translation import gettext as _
+
+    pickers = {
+        "tv": {
+            "url": reverse("search_parent_tv"),
+            "placeholder": _("Search for a TV show..."),
+            "empty": _(
+                'No TV shows found matching "%(query)s". '
+                "Please try a different search term.",
+            ),
+        },
+        "season": {
+            "url": reverse("search_parent_season"),
+            "placeholder": _("Search for a season..."),
+            "empty": _(
+                'No seasons found matching "%(query)s". '
+                "Please try a different search term.",
+            ),
+        },
+    }
+    picker = pickers[kind]
+    return {
+        "id": f"parent-picker-{uuid4().hex[:8]}",
+        "props": {
+            "kind": kind,
+            "url": picker["url"],
+            "hiddenInputId": f"parent-{kind}-id",
+            "placeholder": str(picker["placeholder"]),
+            "labels": {
+                "empty": str(picker["empty"]),
+                "loading": str(_("Loading matches…")),
+                "errorTitle": str(_("Parent search could not load")),
+                "errorBody": str(_("Please try again.")),
+                "retry": str(_("Try again")),
+                "selected": str(_("Selected")),
             },
         },
     }
@@ -2417,6 +2677,184 @@ def filter_chips_react(options, label):
                 {"value": str(option["value"]), "label": str(_(option["label"]))}
                 for option in options
             ],
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def discover_row_react(context, row, selected_media_type, show_more, discover_debug):
+    """Return the shared React row props for one Discover row."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, row_props, surface_labels
+
+    return {
+        "id": f"discover-row-props-{uuid4().hex[:8]}",
+        "props": {
+            "row": row_props(
+                context.flatten(),
+                row,
+                selected_media_type=selected_media_type,
+                show_more=show_more,
+                discover_debug=discover_debug,
+            ),
+            "labels": {**surface_labels(), **card_labels()},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def discover_hidden_react(context):
+    """Return the shared React props for the hidden Discover grid."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, hidden_props, surface_labels
+
+    props = hidden_props(context.flatten())
+    return {
+        "id": f"discover-hidden-props-{uuid4().hex[:8]}",
+        "props": {**props, "labels": {**surface_labels(), **card_labels()}},
+    }
+
+
+@register.simple_tag(takes_context=True)
+def discover_preview_react(context, row, selected_media_type):
+    """Return the shared React rail props for an RSS row preview."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, row_props, surface_labels
+
+    return {
+        "id": f"discover-preview-props-{uuid4().hex[:8]}",
+        "props": {
+            "row": row_props(
+                context.flatten(),
+                row,
+                selected_media_type=selected_media_type,
+                show_more=False,
+                discover_debug=False,
+            ) if row else None,
+            "labels": {**surface_labels(), **card_labels()},
+        },
+    }
+
+
+@register.simple_tag
+def discover_state_react(kind):
+    """Return the shared React props for a Discover loading or empty state."""
+    from uuid import uuid4
+
+    from app.discover_presentation import surface_labels
+
+    return {
+        "id": f"discover-state-{uuid4().hex[:8]}",
+        "props": {"kind": str(kind), "labels": surface_labels()},
+    }
+
+
+@register.simple_tag
+def discover_feedback_react():
+    """Return the shared React props for Discover refresh and action feedback."""
+    from uuid import uuid4
+
+    from app.discover_presentation import surface_labels
+
+    return {
+        "id": f"discover-feedback-{uuid4().hex[:8]}",
+        "props": {"labels": surface_labels()},
+    }
+
+
+@register.simple_tag(takes_context=True)
+def music_relations_react(context, relations):
+    """Return the shared relation-card grid props for an artist page."""
+    items = []
+    for relation in relations or []:
+        artist = relation.get("artist")
+        if artist is None:
+            continue
+        tracker = relation.get("tracker")
+        image = artist.image or ""
+        if image == settings.IMG_NONE:
+            image = ""
+        items.append(
+            {
+                "id": artist.id,
+                "name": artist.name,
+                "image": image_cache.rewrite_image_url(image) if image else "",
+                "href": music_artist_url(artist),
+                "role": relation.get("role") or "",
+                "current": bool(relation.get("is_current")),
+                "status": tracker.status if tracker else None,
+                "score": float(tracker.score)
+                if tracker and tracker.score is not None
+                else None,
+            }
+        )
+    return {
+        "id": f"music-relations-{uuid4().hex[:8]}",
+        "props": {
+            "relations": items,
+            "labels": {
+                "former": str(_("Former")),
+                "rate": str(_("Rate")),
+                "close": str(_("Close")),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def music_albums_react(context, albums):
+    """Return the shared album-card grid props for an artist discography."""
+    from users.card_metadata import card_lines
+
+    user = context.get("user") or getattr(context.get("request"), "user", None)
+    items = []
+    for album in albums or []:
+        image = album.image or ""
+        if image == settings.IMG_NONE:
+            image = ""
+        items.append(
+            {
+                "id": album.id,
+                "title": album.title,
+                "image": image_cache.rewrite_image_url(image) if image else "",
+                "href": music_album_url(album),
+                "releaseType": album.release_type or "",
+                "year": album.release_date.year if album.release_date else None,
+                "plays": getattr(album, "play_count", 0) or 0,
+                "score": float(album.score)
+                if getattr(album, "score", None) is not None
+                else None,
+                "lines": [
+                    {
+                        "clamp": True,
+                        "dormant": bool(line.get("dormant")),
+                        "parts": [
+                            {
+                                "text": part["text"],
+                                **({"score": True} if part.get("score") else {}),
+                            }
+                            for part in line["parts"]
+                        ],
+                    }
+                    for line in card_lines(user, "music", album, None)
+                ],
+            }
+        )
+    return {
+        "id": f"music-albums-{uuid4().hex[:8]}",
+        "props": {
+            "albums": items,
+            "labels": {
+                "rate": str(_("Rate")),
+                "close": str(_("Close")),
+                "track": str(_("track")),
+                "tracks": str(_("tracks")),
+                "play": str(_("play")),
+                "plays": str(_("plays")),
+            },
         },
     }
 
@@ -2475,6 +2913,18 @@ def media_track_actions(context, media_type, instance):
     request = context.get("request")
     phase = checkin.phase(request.user, instance) if request and instance else None
     reload_in = phase["reload_in"] if phase else None
+    checkin_state = None
+    if phase and phase.get("phase") in (
+        checkin.PHASE_ACTIVE,
+        checkin.PHASE_FINISHABLE,
+        checkin.PHASE_PAUSED,
+        "session",
+    ):
+        checkin_state = {
+            "phase": phase["phase"],
+            "code": phase.get("code", ""),
+            "started_at_ts": phase.get("started_at_ts"),
+        }
     # Grouped anime (TMDB/TVDB) is stored as a TV show, which holds one tracker,
     # so the stored type decides the actions, not the route type.
     item = getattr(instance, "item", None)
@@ -2488,6 +2938,115 @@ def media_track_actions(context, media_type, instance):
         "reload_ms": max(1, reload_in + checkin.SETTLE_DELAY_SECONDS) * 1000
         if reload_in is not None
         else None,
+        "checkin_state": checkin_state,
+    }
+
+
+@register.simple_tag(takes_context=True)
+def playback_card_react(context, card):
+    """Return the shared Now Playing card props for one server-built card."""
+    control = card.get("checkin_control")
+    model = {
+        "title": card.get("title") or "",
+        "episodeCode": card.get("episode_code") or "",
+        "episodeTitle": card.get("episode_title") or "",
+        "subtitleLine": card.get("subtitle") or "",
+        "href": card.get("details_url") or "",
+        "image": {
+            "src": image_url(card.get("image")) or "",
+            "alt": card.get("title") or "",
+        },
+        "status": card.get("status") or live_playback.PLAYBACK_STATUS_PLAYING,
+        "offsetSeconds": max(0, int(card.get("offset_seconds") or 0)),
+        "durationSeconds": max(0, int(card.get("duration_seconds") or 0)),
+        "updatedAtSeconds": max(0, int(card.get("updated_at_ts") or 0)),
+        "progressPercent": card.get("progress_percent") or 0,
+        "staleAfterSeconds": (
+            live_playback.PLAYBACK_PAUSE_STALE_SECONDS
+            if card.get("status") in (
+                live_playback.PLAYBACK_STATUS_PAUSED,
+                live_playback.PLAYBACK_STATUS_STOPPED,
+            )
+            else live_playback.PLAYBACK_HARD_STALE_SECONDS
+        ),
+        "checkin": bool(control),
+    }
+    props = {
+        "model": model,
+        "control": None,
+        "labels": {
+            "nowPlaying": str(_("Now Playing")),
+            "playing": str(_("Playing")),
+            "paused": str(_("Paused")),
+            "stale": str(_("Last updated")),
+            "openDetails": str(_("Open details")),
+        },
+    }
+    if control:
+        props["labels"]["pauseCheckIn"] = str(_("Pause check-in"))
+        props["labels"]["stopCheckIn"] = str(_("Stop check-in"))
+        props["labels"]["cancelCheckIn"] = str(_("Cancel check-in"))
+        url = media_view_url("checkin_action", {
+            "source": control.get("source"),
+            "media_type": control.get("media_type"),
+            "media_id": control.get("media_id"),
+        })
+        props["control"] = {
+            "token": control.get("token"),
+            "pause": {
+                "url": url,
+                "action": "pause",
+                "token": control.get("token"),
+            } if control.get("action") == "pause" else None,
+            "stop": {
+                "url": url,
+                "action": "finish" if control.get("action") == "pause" else "stop",
+                "token": control.get("token"),
+            },
+            "cancel": {
+                "url": url,
+                "action": "cancel",
+                "token": control.get("token"),
+            } if control.get("action") == "stop" else None,
+        }
+    return {
+        "id": f"playback-card-{uuid4().hex}",
+        "props": props,
+    }
+
+
+@register.simple_tag
+def checkin_state_react(media, media_type, track):
+    """Return the shared detail check-in state props while a check-in is running."""
+    state = (track or {}).get("checkin_state")
+    if not state:
+        return {"id": "", "props": None}
+    return {
+        "id": f"checkin-state-{uuid4().hex}",
+        "props": {
+            "model": {
+                "phase": state.get("phase"),
+                "code": state.get("code") or "",
+                "startedAtSeconds": state.get("started_at_ts"),
+                "title": str(
+                    getattr(media, "title", None)
+                    or (media.get("title") if isinstance(media, dict) else "")
+                    or "",
+                ),
+            },
+            "actions": [
+                {"key": action["key"], "label": action["label"]}
+                for action in (track or {}).get("actions", [])
+            ],
+            "labels": {
+                "checkIn": str(_("Check-in")),
+                "active": str(_("Check-in running")),
+                "finishable": str(_("Ready to finish")),
+                "pausedState": str(_("Check-in paused")),
+                "session": str(_("Check-in running")),
+                "elapsed": str(_("elapsed")),
+            },
+        },
     }
 
 
@@ -2499,3 +3058,75 @@ def month_abbreviation(value):
     except ValueError:
         return value
     return formats.date_format(date(2000, number, 1), "M") if number else ""
+
+
+@register.simple_tag
+def collection_field_input_props(groups, values, form_id=None):
+    """Return plain descriptors for the shared custom-field value inputs."""
+    return {
+        "groups": [
+            {
+                "id": group.id,
+                "name": group.name,
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": field.label,
+                        "field_type": field.field_type,
+                        "options": field.options,
+                        "media_types": field.media_types,
+                    }
+                    for field in getattr(group, "visible_fields", group.fields.all())
+                ],
+            }
+            for group in groups or []
+        ],
+        "values": values or {},
+        "formId": form_id or "",
+    }
+
+
+@register.simple_tag
+def collection_copy_form_props(form, collection_fields=None):
+    """Return plain descriptors for the shared collection copy editor."""
+    names = list(collection_fields or [name for name in form.fields if name != "item"])
+    fields = []
+    values = {}
+    errors = {}
+    for name in names:
+        field = form.fields.get(name)
+        if field is None:
+            continue
+        widget_type = getattr(field.widget, "input_type", "text")
+        if widget_type == "checkbox":
+            field_type = "checkbox"
+        elif widget_type == "select":
+            field_type = "select"
+        elif widget_type == "number":
+            field_type = "number"
+        elif widget_type == "datetime-local":
+            field_type = "datetime"
+        else:
+            field_type = "text"
+        options = [
+            {"value": str(value), "label": str(label)}
+            for value, label in getattr(field.widget, "choices", [])
+        ]
+        value = form[name].value()
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else ""
+        if field_type == "datetime" and value:
+            value = str(value).replace(" ", "T")[:16]
+        values[name] = "" if value is None else value
+        if form.is_bound and form.errors.get(name):
+            errors[name] = " ".join(str(message) for message in form.errors.get(name))
+        fields.append({
+            "name": name,
+            "label": str(field.label),
+            "type": field_type,
+            "options": options,
+            "required": bool(field.required),
+            "help": str(field.help_text or ""),
+            "placeholder": str(field.widget.attrs.get("placeholder") or ""),
+        })
+    return {"fields": fields, "values": values, "errors": errors}

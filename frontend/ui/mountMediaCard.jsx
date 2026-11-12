@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { MediaCard } from './MediaCard';
+import { MediaCard } from './MediaCard.web';
 
 // Bulk selection lives in the page's Alpine scope (selectMode, isItemSelected,
 // toggleItemSelected). Mirror it here instead of keeping a second copy.
@@ -21,7 +21,8 @@ function useSelection(host, itemId) {
 
 function Card({ host, props, slots }) {
   const selection = useSelection(host, props.model.bulkItemId);
-  return <MediaCard model={props.model} slots={slots} labels={props.labels} selection={selection} host={host} />;
+  return <MediaCard model={props.model} slots={slots} labels={props.labels} selection={selection}
+    host={host} standalone={false} />;
 }
 
 export function mountMediaCard(host, props) {

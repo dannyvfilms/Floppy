@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {{ show.title }} - Floppy
+{% endblock title %}
+
+{% block content %}
+  <div class="mx-auto max-w-4xl">
+    <div class="mb-8">
+      <a class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500"
+         href="{{ show_url }}">{% translate "Back to show" %}</a>
+      <h1 class="text-3xl font-bold mt-2">{% translate "Manage episodes" %}</h1>
+      <p class="text-[var(--color-text-muted)]">{{ show.title }}</p>
+    </div>
+
+    <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-8">
+      <h2 class="text-xl font-bold mb-4">
+        {% if edit_episode %}
+          {% blocktranslate trimmed with value_1=edit_episode.title %}
+            Edit {{ value_1 }}
+          {% endblocktranslate %}
+        {% else %}
+          {% translate "Add episode" %}
+        {% endif %}
+      </h2>
+      <form method="post"
+            action="{% if edit_episode %}{% url 'podcast_episode_edit' edit_episode.id %}{% else %}{% url 'podcast_episode_add' show.id %}{% endif %}"
+            class="space-y-4">
+        {% csrf_token %}
+        {% for field in form %}
+          <div>
+            <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
+                   for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<p class="mt-1 text-sm text-[var(--color-text-muted)]">{{ field.help_text }}</p>{% endif %}
+            {% for error in field.errors %}<p class="mt-1 text-sm text-red-400">{{ error }}</p>{% endfor %}
+          </div>
+        {% endfor %}
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button type="submit"
+                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+            {% translate "Save" %}
+          </button>
+          {% if edit_episode %}
+            <a class="px-4 py-2 border border-[var(--color-surface-border)] rounded-md text-sm"
+               href="{% url 'podcast_episodes_manage' show.id %}">{% translate "Cancel" %}</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+
+    <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden">
+      <h2 class="text-xl font-bold p-4">{% translate "Episodes" %}</h2>
+      <div class="divide-y divide-gray-700">
+        {% for episode in episodes %}
+          <div class="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <p class="font-semibold">{{ episode.title }}</p>
+              <p class="text-sm text-[var(--color-text-muted)]">
+                {% if episode.episode_number %}
+                  {% blocktranslate trimmed with value_1=episode.episode_number %}
+                    Episode {{ value_1 }} •
+                  {% endblocktranslate %}
+
+                {% endif %}
+                {% if episode.published %}
+                  {{ episode.published|date:"M d, Y" }}
+                {% else %}
+                  {% translate "Unknown date" %}
+                {% endif %}
+                {% if episode.duration %}• {{ episode.duration_formatted }}{% endif %}
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <a class="px-3 py-1.5 border border-[var(--color-surface-border)] rounded-md text-sm"
+                 href="{% url 'podcast_episodes_manage' show.id %}?episode={{ episode.id }}">{% translate "Edit" %}</a>
+              <form method="post"
+                    action="{% url 'podcast_episode_delete' episode.id %}"
+                    onsubmit="return confirm('{% translate "Delete this episode?" %}');">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-3 py-1.5 border border-red-500 text-red-400 rounded-md text-sm cursor-pointer">
+                  {% translate "Delete" %}
+                </button>
+              </form>
+            </div>
+          </div>
+        {% empty %}
+          <div class="p-8 text-center text-[var(--color-text-muted)]">
+            <p>{% translate "No episodes yet." %}</p>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endblock content %}

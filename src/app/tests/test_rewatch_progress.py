@@ -263,6 +263,23 @@ class InferredRewatchTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIsNone(self.progress().rewatch_percent)
 
+    def test_refused_rewatch_shows_the_written_message(self):
+        from app.models.tv import RewatchAlreadyCompleteError
+
+        message = "Nothing is left to rewatch from that date."
+        with patch.object(
+            TV, "start_rewatch", side_effect=RewatchAlreadyCompleteError(message),
+        ):
+            response = self.client.post(reverse("media_rewatch"), {
+                "media_type": "tv", "instance_id": self.tv.pk, "action": "start",
+            })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content.decode(), message)
+        self.assertEqual(
+            json.loads(response["HX-Trigger"]),
+            {"showToast": {"message": message, "type": "error"}},
+        )
+
     def test_ending_explicit_pass_before_confirmation_suppresses_later_extension(self):
         self.seed()
         self.play(1, 1)

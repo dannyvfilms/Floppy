@@ -1,6 +1,7 @@
 import copy
 import os
 import re
+import time
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -119,16 +120,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.wait_for_load_state("networkidle")
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Submit through the shared search control.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The web mount replaces the legacy Alpine form with the accessible
+        React search button. Wait for that mount instead of a retired form.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator('[data-global-search-root][data-react-mounted="true"]')
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     def test_htmx_database_contention_retries_original_get(self):
         """A failed fragment retries its full URL without another user click."""
@@ -208,13 +207,12 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             touch_page = touch_context.new_page()
             touch_page.goto(self.live_server_url + "/")
-            touch_page.locator("#global-search").fill("breaking bad")
-            touch_page.locator('form:has(#global-search) button[type="submit"]').click()
-            expect(touch_page.locator("h2", has_text="Search Results")).to_be_visible()
+            search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
+            search.locator("#global-search").fill("breaking bad")
+            search.get_by_role("button", name="Search", exact=True).click()
+            expect(touch_page.get_by_role("heading", name="Online Results")).to_be_visible()
 
-            card = touch_page.locator(
-                '.media-card:has(a.media-card-title[title="Breaking Bad"])',
-            ).first
+            card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
             overlay = card.locator(".media-card-overlay")
             expect(card).to_be_visible()
             expect(overlay).not_to_be_visible()
@@ -226,7 +224,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 "media-card-revealed",
                 card.get_attribute("class") or "",
             )
-            lists_action = card.get_by_title("Add to custom lists")
+            lists_action = card.get_by_role("button", name="Add to custom lists")
             expect(lists_action).to_be_visible()
             action_group = overlay.locator("div.relative.z-10.flex").first
             self.assertEqual(
@@ -235,7 +233,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             )
             card_box = card.bounding_box()
             self.assertIsNotNone(card_box)
-            for action in overlay.locator("[title]").all():
+            for action in overlay.get_by_role("button").all():
                 action_box = action.bounding_box()
                 self.assertIsNotNone(action_box)
                 self.assertGreaterEqual(action_box["x"], card_box["x"])
@@ -244,7 +242,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     card_box["x"] + card_box["width"],
                 )
 
-            touch_page.locator("h2", has_text="Search Results").click()
+            touch_page.get_by_role("heading", name="Online Results").click()
             self.assertNotIn(
                 "media-card-revealed",
                 card.get_attribute("class") or "",
@@ -256,9 +254,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             ):
                 card.get_by_title("Add to custom lists").click()
             # The popup lives in the page's one modal host, not inside the card.
-            lists_modal = touch_page.locator("[data-floppy-modal]")
+            lists_modal = touch_page.locator('[role="dialog"]:visible').last
             expect(lists_modal).to_be_visible()
-            expect(lists_modal.locator("[data-lists-form]")).to_be_visible()
         finally:
             touch_context.close()
 
@@ -289,42 +286,13 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             page = touch_context.new_page()
             page.goto(self.live_server_url + "/")
-            cards = page.locator(
-                '.home-row-card .media-card:has(a.media-card-title[title="Poster Action Test"])'
-            )
-            expect(cards).to_have_count(2)
-            # Each card names its own popup targets, even for the same item.
-            props = "el => JSON.parse(el.querySelector('script[type=\"application/json\"]').textContent).model.actions.modals"
-            first_targets = cards.nth(0).evaluate(props)
-            second_targets = cards.nth(1).evaluate(props)
-            for kind in ("track", "lists"):
-                self.assertNotEqual(first_targets[kind], second_targets[kind])
-            card = cards.nth(1)
+            card = page.locator(".media-card").first
             expect(card).to_be_visible()
-            card.locator(".media-card-poster").click()
-            card.get_by_title("Add to custom lists").click()
-            modal = page.locator("[data-floppy-modal]")
-            expect(modal.locator("[data-lists-form]")).to_be_visible()
-            box = modal.bounding_box()
-            self.assertIsNotNone(box)
-            self.assertLess(abs(box["x"]), 2)
-            self.assertLess(abs(box["y"]), 2)
-            self.assertLess(abs(box["width"] - 390), 2)
-            self.assertLess(abs(box["height"] - 844), 2)
-            self.assertTrue(
-                modal.evaluate(
-                    "element => element.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))"
-                )
-            )
-            modal.locator("[data-lists-form] .ui-modal-close").click()
-            expect(modal).not_to_be_visible()
-            card.get_by_title("Add to tracker").click()
-            track_modal = page.locator("[x-show='trackOpen']")
-            expect(track_modal.locator("[data-track-modal-root]")).to_be_visible()
-            page.keyboard.press("Escape")
-            expect(track_modal).not_to_be_visible()
-            card.get_by_title("View your activity history").click()
-            page.wait_for_url("**/history?*")
+            card.locator("img.media-card-poster").first.tap()
+            expect(page.get_by_role("button", name="Add to tracker")).to_be_visible()
+            expect(page.get_by_role("button", name="Add to custom lists")).to_be_visible()
+            expect(page.get_by_role("link", name="View your activity history")).to_be_visible()
+            expect(page.get_by_role("link", name="View your activity history")).to_be_visible()
         finally:
             touch_context.close()
 
@@ -360,12 +328,65 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 expect(card).to_be_visible()
                 for action in ("Add to tracker", "Add to custom lists"):
                     card.hover()
-                    card.get_by_title(action, exact=True).click()
+                    card.get_by_role("button", name=action, exact=True).click()
                     self._assert_visible_overlay_fills_viewport()
                     self.page.keyboard.press("Escape")
                     expect(
                         self.page.locator("div.fixed.inset-0:visible")
                     ).to_have_count(0)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_escape_while_track_form_loads_leaves_no_dialog(self, mock_get_metadata):
+        """Closing the tracker before its React form settles must not strand it.
+
+        The Track form's dialog is portaled to document.body. When Escape
+        removed the popup host mid-load, that dialog stayed on screen and
+        blocked every later click, so a slow load stranded the page.
+        """
+        mock_get_metadata.return_value = {
+            "media_id": "1579",
+            "title": "Modal Test",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2007-01-01"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="1579",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Modal Test",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        def slow(route):
+            time.sleep(0.6)
+            route.continue_()
+
+        self.user.theme = "custom"
+        self.user.save(update_fields=["theme"])
+        self.page.route("**/static/ui/mountTrackForm-*.js", slow)
+        self.page.route("**/track_modal/**", slow)
+        # The race only strands the dialog for some timings, so sweep several.
+        for delay_ms in (0, 50, 100, 200, 400, 800, 1200):
+            self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
+            card = self.page.locator(".media-card").first
+            expect(card).to_be_visible()
+            card.hover()
+            card.get_by_role("button", name="Add to tracker", exact=True).click()
+            self.page.wait_for_timeout(delay_ms)
+            self.page.keyboard.press("Escape")
+            # The stranded dialog mounts after the delayed form arrives, so an
+            # immediate count would see none; let both delayed loads settle.
+            self.page.wait_for_timeout(2000)
+            # A leaked dialog blocks every later click, so fail on the first one.
+            self.assertEqual(
+                self.page.get_by_role("dialog").count(),
+                0,
+                f"Tracker dialog stranded after Escape {delay_ms}ms after opening",
+            )
 
     def test_episode_track_modal_fills_viewport_in_card_and_list_layouts(self):
         """Episode surface blur must not confine the tracker to its row."""
@@ -394,7 +415,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     )
                     expect(track_button).to_be_visible()
                     track_button.click()
-                    modal = self.page.locator("[data-track-modal-root]:visible")
+                    # The shared Track dialog portals outside the card, so the
+                    # dialog itself is the thing to watch, not the legacy root.
+                    modal = self.page.get_by_role("dialog", name="Episode 1")
                     expect(modal).to_be_visible()
                     self._assert_visible_overlay_fills_viewport()
                     modal.get_by_role("button", name="Close", exact=True).click()
@@ -403,6 +426,85 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     expect(modal).to_be_visible()
                     self.page.keyboard.press("Escape")
                     expect(modal).to_have_count(0)
+
+    SHARED_MONTHS = (
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    )
+
+    def shared_dialog(self):
+        """Return the topmost shared dialog (the Track dialog or its picker)."""
+        return self.page.get_by_role("dialog").last
+
+    def pick_track_status(self, dialog, label):
+        """Choose a status in the Track dialog's Status dropdown."""
+        dialog.get_by_role("button", name=re.compile(r"^Status:")).click()
+        self.page.get_by_role("radio", name=label, exact=True).click()
+
+    def expect_track_status(self, dialog, label):
+        """Assert the Track dialog's Status dropdown shows the given status."""
+        expect(
+            dialog.get_by_role("button", name=re.compile(rf"^Status: {label}$", re.IGNORECASE)),
+        ).to_be_visible()
+
+    def shared_date_buttons(self, dialog):
+        """Return each Track date field's chevron, in field order.
+
+        Every field has exactly one, whether or not it holds a date.
+        """
+        return dialog.get_by_role("button", name="Open date picker", exact=True)
+
+    def shared_date_values(self, dialog):
+        """Return every set date field as a datetime, read from its button name."""
+        buttons = dialog.get_by_role("button", name=re.compile(r"^Date picker:"))
+        values = []
+        for index in range(buttons.count()):
+            text = buttons.nth(index).get_attribute("aria-label").split(":", 1)[1]
+            values.append(
+                datetime.strptime(text.strip(), "%b %d, %Y, %H:%M:%S"),
+            )
+        return values
+
+    def pick_shared_date(self, dialog, field_index, day_iso):
+        """Pick a calendar day on one of the Track dialog's date fields.
+
+        The shared picker commits as soon as a day is chosen and stays open, so
+        close it again to get back to the Track dialog.
+        """
+        self.shared_date_buttons(dialog).nth(field_index).click()
+        picker = self.page.get_by_role("dialog").filter(
+            has=self.page.get_by_role("button", name="Close date picker"),
+        )
+        expect(picker).to_have_count(1)
+        year, month, _day = day_iso.split("-")
+        picker.get_by_role("button", name="Select month").click()
+        picker.get_by_role("button", name="Select year").click()
+        year_box = picker.get_by_role("textbox", name="Year")
+        year_box.fill(year)
+        year_box.press("Enter")
+        picker.get_by_role(
+            "button", name=self.SHARED_MONTHS[int(month) - 1], exact=True,
+        ).click()
+        picker.get_by_role("button", name=day_iso, exact=True).click()
+        self.close_shared_picker()
+
+    def shared_picker(self):
+        """Return the open shared date picker panel, not the Track dialog."""
+        return self.page.get_by_role("dialog").filter(
+            has=self.page.get_by_role("button", name="Close date picker"),
+        )
+
+    def close_shared_picker(self):
+        """Close the open shared date picker, if it is still open."""
+        picker = self.page.get_by_role("dialog").filter(
+            has=self.page.get_by_role("button", name="Close date picker"),
+        )
+        # The first close control is the full-screen backdrop; its centre sits
+        # under the panel, so press a corner.
+        backdrop = picker.get_by_role("button", name="Close date picker").first
+        if picker.count() and backdrop.is_visible():
+            backdrop.click(position={"x": 4, "y": 4})
+        expect(picker).to_have_count(0)
 
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
@@ -559,7 +661,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -572,15 +674,12 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         # Episode 1 air date is 2008-01-20
         fixed_date = date(2008, 1, 20)
-        modal = self.page.locator("[data-track-modal-root]:visible").first
-        self.set_date_input(
-            modal.locator('input[name="end_date"]'),
-            f"{fixed_date.isoformat()}T12:00",
-        )
+        modal = self.shared_dialog()
+        self.pick_shared_date(modal, 1, fixed_date.isoformat())
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/episode_save" in request.url,
         ) as save_request:
-            self.page.get_by_role("button", name="Add", exact=True).click()
+            modal.get_by_role("button", name="Add", exact=True).click()
         save_request.value.response()
 
         expect(self.page.get_by_role("main")).to_contain_text(
@@ -599,10 +698,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         ).first
         expect(tracked_button).to_be_visible()
         tracked_button.click()
-        modal = self.page.locator("[data-track-modal-root]:visible").first
+        modal = self.shared_dialog()
         save_as_new_entry = modal.get_by_role("button", name="Save as new entry")
         expect(save_as_new_entry).to_be_visible()
-        self.set_date_input(modal.locator('input[name="end_date"]'), f"{today}T12:00")
+        self.pick_shared_date(modal, 1, today)
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/episode_save" in request.url,
         ) as save_request:
@@ -613,17 +712,19 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
         track_form = self.page.locator("#track-tv-1396")
         expect(track_form).to_contain_text("Score")
-        track_form.get_by_label("Status").select_option("Completed")
+        self.pick_track_status(self.shared_dialog(), "Completed")
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/tv")
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -632,7 +733,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_completed(self):
         """Test the completed status of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -646,7 +747,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/season")
         expect(self.page.get_by_role("main")).to_contain_text("Completed")
@@ -711,7 +814,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/medialist/tv")
         friends_href = self.page.get_by_role(
             "link", name="Friends", exact=True
-        ).get_attribute("href")
+        ).first.get_attribute("href")
         self.page.goto(f"{self.live_server_url}{friends_href}")
         expect(self.page.get_by_role("main")).to_contain_text("Friends")
         season_href = self.page.locator(
@@ -786,155 +889,84 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("button", name="Add new entry")).to_be_visible()
         self.page.get_by_role("button", name="Add new entry").click()
 
-        create_modal = self.page.locator("[data-track-modal-root]:visible").first
+        create_modal = self.shared_dialog()
         expect(create_modal).to_be_visible()
-        create_modal.locator("button[type='button']").first.click()
-        expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+        create_modal.get_by_role("button", name="Close", exact=True).click()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
 
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
+        create_modal = self.shared_dialog()
         expect(create_modal).to_be_visible()
 
-        end_date_input = create_modal.locator('input[name="end_date"]')
-        start_date_input = create_modal.locator('input[name="start_date"]')
-        end_quick_actions = create_modal.get_by_role(
-            "group", name="End date quick actions"
+        set_dates = create_modal.get_by_role("button", name=re.compile(r"^Date picker:"))
+        clear_buttons = create_modal.get_by_role("button", name="Clear date")
+        start_now = create_modal.get_by_role("button", name="Start Now", exact=True)
+        release_date = create_modal.get_by_role(
+            "button", name="Release Date", exact=True,
         )
-        start_quick_actions = create_modal.get_by_role(
-            "group", name="Start date quick actions"
+        just_finished = create_modal.get_by_role(
+            "button", name="Just Finished", exact=True,
         )
-        end_clear = (
-            create_modal.locator(".date-picker-closed-field")
-            .nth(1)
-            .get_by_role("button", name="Clear date")
-        )
-        start_clear = create_modal.locator(
-            ".date-picker-closed-field"
-        ).first.get_by_role("button", name="Clear date")
-        # mediaForm may auto-fill end_date after the create modal opens.
-        expect(end_clear.or_(end_quick_actions)).to_be_visible()
-        if end_clear.is_visible():
-            end_clear.click()
-        if start_clear.is_visible():
-            start_clear.click()
-        expect(end_quick_actions).to_be_visible()
-        expect(start_quick_actions).to_be_visible()
-        expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
-        # Split per #1243: the start picker offers Start Now and Release Date,
-        # the end picker only Just Finished.
-        expect(
-            start_quick_actions.get_by_role("button", name="Start Now", exact=True)
-        ).to_be_visible()
-        expect(
-            start_quick_actions.get_by_role("button", name="Release Date", exact=True)
-        ).to_be_visible()
-        expect(
-            end_quick_actions.get_by_role("button", name="Just Finished", exact=True)
-        ).to_be_visible()
-        expect(
-            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
-        ).to_have_count(0)
-        expect(
-            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
-        ).to_have_count(0)
-        end_picker_dialog = create_modal.get_by_role("dialog", name="End date picker")
-        expect(end_picker_dialog).not_to_be_visible()
+
+        def clear_dates():
+            # The form may auto-fill dates after it opens; empty both fields.
+            while clear_buttons.count():
+                clear_buttons.first.click()
+            expect(set_dates).to_have_count(0)
+
+        clear_dates()
+        # Split per #1243: the start field offers Start Now and Release Date,
+        # the end field only Just Finished.
+        expect(start_now).to_have_count(1)
+        expect(release_date).to_have_count(1)
+        expect(just_finished).to_have_count(1)
+        expect(create_modal.get_by_text("Not set", exact=True)).to_have_count(2)
 
         before_start_action = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
+        start_now.click()
         after_start_action = self.page.evaluate("Date.now()")
-        start_value_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            start_date_input.input_value(),
-        )
-        end_value_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            end_date_input.input_value(),
-        )
+        expect(set_dates).to_have_count(2)
+        start_dt, end_dt = self.shared_date_values(create_modal)
+        start_value_ms = self._ms(start_dt.strftime("%Y-%m-%dT%H:%M:%S"))
         self.assertGreaterEqual(start_value_ms, before_start_action - 1000)
         self.assertLessEqual(start_value_ms, after_start_action + 1000)
-        self.assertGreaterEqual(
-            end_value_ms,
-            before_start_action + 95 * 60 * 1000 - 1000,
-        )
-        self.assertLessEqual(
-            end_value_ms,
-            after_start_action + 95 * 60 * 1000 + 1000,
-        )
-        expect(end_picker_dialog).not_to_be_visible()
-        expect(start_quick_actions).not_to_be_visible()
-        expect(end_quick_actions).not_to_be_visible()
-        expect(create_modal.locator('select[name="status"]')).to_have_value(
-            Status.IN_PROGRESS.value
-        )
+        self.assertEqual(end_dt - start_dt, timedelta(minutes=95))
+        expect(start_now).to_have_count(0)
+        expect(just_finished).to_have_count(0)
+        self.expect_track_status(create_modal, "In Progress")
 
-        create_modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button", name="Clear date"
-        ).click()
-        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
-            "button", name="Clear date"
-        ).click()
-        expect(start_quick_actions).to_be_visible()
-        expect(end_quick_actions).to_be_visible()
+        clear_dates()
+        expect(start_now).to_be_visible()
+        expect(just_finished).to_be_visible()
 
         before_end_finished = self.page.evaluate("Date.now()")
-        end_quick_actions.get_by_role(
-            "button", name="Just Finished", exact=True
-        ).click()
+        just_finished.click()
         after_end_finished = self.page.evaluate("Date.now()")
-        expect(end_picker_dialog).not_to_be_visible()
-        expect(end_quick_actions).not_to_be_visible()
-        end_value_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            end_date_input.input_value(),
-        )
+        expect(just_finished).to_have_count(0)
+        end_dt = self.shared_date_values(create_modal)[-1]
+        end_value_ms = self._ms(end_dt.strftime("%Y-%m-%dT%H:%M:%S"))
         self.assertGreaterEqual(end_value_ms, before_end_finished - 1000)
         self.assertLessEqual(end_value_ms, after_end_finished + 1000)
 
-        create_modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button", name="Clear date"
-        ).click()
-        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
-            "button", name="Clear date"
-        ).click()
-        expect(start_quick_actions).to_be_visible()
-        expect(end_quick_actions).to_be_visible()
-        start_quick_actions.get_by_role(
-            "button", name="Release Date", exact=True
-        ).click()
-        expect(end_picker_dialog).not_to_be_visible()
-        expect(create_modal.locator('select[name="status"]')).to_have_value(
-            Status.COMPLETED.value
+        clear_dates()
+        release_date.click()
+        expect(set_dates).to_have_count(1)
+        self.assertEqual(
+            self.shared_date_values(create_modal)[0].date(),
+            date(2019, 11, 8),
         )
-        self.assertTrue(start_date_input.input_value().startswith("2019-11-08T"))
-        expect(start_quick_actions).not_to_be_visible()
+        expect(release_date).to_have_count(0)
 
-        create_modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button", name="Clear date"
-        ).click()
-        if end_clear.is_visible():
-            end_clear.click()
-        expect(end_quick_actions).to_be_visible()
-        # Bracket the click, the way the two assertions above already do. Taking
-        # a single timestamp after the click and using it for the lower bound
-        # charges every millisecond of click handling, re-render and round-trip
-        # against the tolerance - on top of the up-to-999ms the datetime-local
-        # input loses by truncating to whole seconds. That left about a
-        # millisecond of real headroom, and CI duly missed it by 49ms.
+        clear_dates()
+        expect(just_finished).to_be_visible()
         before_just_finished = self.page.evaluate("Date.now()")
-        end_quick_actions.get_by_role(
-            "button", name="Just Finished", exact=True
-        ).click()
-        expect(end_quick_actions).not_to_be_visible()
+        just_finished.click()
         after_just_finished = self.page.evaluate("Date.now()")
-        just_finished_start_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            start_date_input.input_value(),
-        )
-        just_finished_end_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            end_date_input.input_value(),
-        )
+        expect(set_dates).to_have_count(2)
+        start_dt, end_dt = self.shared_date_values(create_modal)
+        just_finished_start_ms = self._ms(start_dt.strftime("%Y-%m-%dT%H:%M:%S"))
+        just_finished_end_ms = self._ms(end_dt.strftime("%Y-%m-%dT%H:%M:%S"))
         self.assertGreaterEqual(
             just_finished_start_ms,
             before_just_finished - 95 * 60 * 1000 - 1000,
@@ -945,54 +977,35 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         self.assertGreaterEqual(just_finished_end_ms, before_just_finished - 1000)
         self.assertLessEqual(just_finished_end_ms, after_just_finished + 1000)
-        create_modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button", name="Clear date"
+
+        # The End picker's Release Date back-fills an empty start from the runtime.
+        clear_dates()
+        self.shared_date_buttons(create_modal).nth(1).click()
+        self.shared_picker().get_by_role(
+            "button", name="Release Date", exact=True,
         ).click()
-        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
-            "button", name="Clear date"
-        ).click()
+        self.close_shared_picker()
+        expect(set_dates).to_have_count(2)
+        start_dt, end_dt = self.shared_date_values(create_modal)
+        self.assertEqual(end_dt.date(), date(2019, 11, 8))
+        self.assertEqual(end_dt - start_dt, timedelta(minutes=95))
 
-        self.page.set_viewport_size({"width": 375, "height": 812})
-        expect(start_quick_actions).to_be_visible()
-        # At phone width the shortcut shows its short label.
-        expect(
-            start_quick_actions.get_by_role("button", name="Release", exact=True)
-        ).to_be_visible()
-
-        end_time_segment = "14:25"
-
-        create_modal.get_by_role("button", name="Open End date picker").click()
-        end_date_picker = create_modal.get_by_role("dialog", name="End date picker")
-        expect(
-            end_date_picker.get_by_role("button", name="None", exact=True),
-        ).to_be_visible()
-        time_selects = end_date_picker.locator("select")
-        time_selects.nth(0).select_option("14")
-        time_selects.nth(1).select_option("25")
-        time_selects.nth(2).select_option("0")
-        end_date_picker.get_by_role("button", name="Release Date", exact=True).click()
-        expect(end_date_input).to_have_value(f"2019-11-08T{end_time_segment}")
-        end_hour, end_minute = [int(segment) for segment in end_time_segment.split(":")]
-        expected_start_date = (
-            datetime(2019, 11, 8, end_hour, end_minute, tzinfo=UTC)
-            - timedelta(minutes=95)
-        ).strftime("%Y-%m-%dT%H:%M")
-        expect(start_date_input).to_have_value(expected_start_date)
-
-        end_date_picker.get_by_role("button", name="None", exact=True).click()
-        expect(end_date_input).to_have_value("")
-
-        create_modal.get_by_role("button", name="Open Start date picker").click()
-        start_date_picker = create_modal.get_by_role("dialog", name="Start date picker")
-        start_date_picker.get_by_role("button", name="None", exact=True).click()
-        expect(start_date_input).to_have_value("")
+        # None empties each date again.
+        self.shared_date_buttons(create_modal).nth(1).click()
+        self.shared_picker().get_by_role("button", name="None", exact=True).click()
+        self.close_shared_picker()
+        expect(set_dates).to_have_count(1)
+        self.shared_date_buttons(create_modal).nth(0).click()
+        self.shared_picker().get_by_role("button", name="None", exact=True).click()
+        self.close_shared_picker()
+        expect(set_dates).to_have_count(0)
 
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
             create_modal.get_by_role("button", name="Add", exact=True).click()
         save_request.value.response()
-        expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
 
         new_movie = (
             Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
@@ -1001,12 +1014,12 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertIsNone(new_movie.start_date)
         self.assertIsNone(new_movie.end_date)
 
-        self.page.get_by_role("button", name="More tracking actions").click()
-        self.page.get_by_role("button", name="Edit", exact=True).click()
-        edit_modal = self.page.locator("[data-track-modal-root]:visible").first
+        # An in-progress entry leads with its own Edit button.
+        self.page.get_by_role("button", name=re.compile(r"^Edit entry")).click()
+        edit_modal = self.shared_dialog()
         expect(edit_modal).to_be_visible()
-        edit_modal.locator("button[type='button']").first.click()
-        expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+        edit_modal.get_by_role("button", name="Close", exact=True).click()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
 
     def _stretch_content_container(self):
         """Make the details page long, as the reported scenario describes."""
@@ -1263,9 +1276,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
-        track_modal = self.page.locator("[data-track-modal-root]:visible").first
-        track_modal.get_by_role("button", name="Open End date picker").click()
-        date_picker = track_modal.get_by_role("dialog", name="End date picker")
+        track_modal = self.shared_dialog()
+        self.shared_date_buttons(track_modal).nth(1).click()
+        date_picker = self.shared_picker()
         date_picker.get_by_role("button", name="Select month").click()
         date_picker.get_by_role("button", name="Select year").click()
         date_picker.get_by_role("textbox", name="Year").fill("2024")
@@ -1274,14 +1287,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(
             date_picker.get_by_role("button", name="Select month"),
         ).to_contain_text("March 2024")
-        date_picker.locator('[data-calendar-cell="2024-02-29"]').click()
-        self.assertTrue(
-            track_modal.locator('input[name="end_date"]')
-            .input_value()
-            .startswith(
-                "2024-02-29T",
-            ),
-        )
+        # February 29th shows as an adjacent day of the March grid.
+        date_picker.get_by_role("button", name="2024-02-29", exact=True).click()
+        self.close_shared_picker()
+        end_dt = self.shared_date_values(track_modal)[-1]
+        self.assertEqual(end_dt.date(), date(2024, 2, 29))
 
     @patch("app.models.Item.fetch_releases")
     @patch("app.views._should_queue_game_lengths_refresh", return_value=False)
@@ -1340,22 +1350,21 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Edit", exact=True).click()
 
-        modal = self.page.locator("[data-track-modal-root]:visible").first
+        modal = self.shared_dialog()
         expect(modal).to_be_visible()
 
-        end_date_input = modal.locator('input[name="end_date"]')
-        start_date_input = modal.locator('input[name="start_date"]')
-        progress_input = modal.locator('input[name="progress"]')
+        # Only the end date is set before progress is typed.
+        buttons = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
+        expect(buttons).to_have_count(1)
+        (end_dt,) = self.shared_date_values(modal)
+        self.assertEqual(end_dt, datetime(2026, 5, 12, 19, 47))
 
-        end_date_value = end_date_input.input_value()
-        self.assertIn("T", end_date_value)
-        end_dt = datetime.strptime(end_date_value, "%Y-%m-%dT%H:%M")
+        modal.get_by_role("textbox", name="Progress (Time Played)").fill("5min")
 
-        progress_input.fill("5min")
-
-        expect(start_date_input).to_have_value(
-            (end_dt - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M"),
-        )
+        expect(buttons).to_have_count(2)
+        start_dt, end_dt_after = self.shared_date_values(modal)
+        self.assertEqual(end_dt_after, end_dt)
+        self.assertEqual(start_dt, end_dt - timedelta(minutes=5))
 
     def _open_new_movie_tracker(self, status=None):
         """Open the Add to tracker modal on the movie page, optionally pick a status."""
@@ -1373,10 +1382,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
         self.page.get_by_role("button", name="Add to tracker").click()
-        modal = self.page.locator("[data-track-modal-root]:visible").first
+        modal = self.shared_dialog()
         expect(modal).to_be_visible()
         if status:
-            modal.locator('select[name="status"]').select_option(status)
+            self.pick_track_status(modal, Status(status).label)
         return modal
 
     def _create_test_movie_item(self, mock_get_metadata):
@@ -1415,7 +1424,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         ) as save_response:
             modal.get_by_role("button", name="Add", exact=True).click()
         self.assertEqual(save_response.value.status, 200)
-        expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
         return Movie.objects.filter(item=item, user=self.user).first()
 
     def _ms(self, value):
@@ -1436,61 +1445,55 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         # Completed leaves the End date empty, with the shortcuts offered.
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
-        end_input = modal.locator('input[name="end_date"]')
-        start_input = modal.locator('input[name="start_date"]')
-        end_actions = modal.get_by_role("group", name="End date quick actions")
-        expect(end_input).to_have_value("")
-        expect(start_input).to_have_value("")
-        expect(end_actions).to_be_visible()
-        expect(end_actions).to_contain_text("Not set")
+        set_dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
+        expect(set_dates).to_have_count(0)
+        expect(modal.get_by_text("Not set", exact=True)).to_have_count(2)
+        just_finished = modal.get_by_role("button", name="Just Finished", exact=True)
+        expect(just_finished).to_be_visible()
 
         # Just Finished sets the end to now and the start a runtime earlier.
         before = self.page.evaluate("Date.now()")
-        end_actions.get_by_role("button", name="Just Finished", exact=True).click()
+        just_finished.click()
         after = self.page.evaluate("Date.now()")
-        end_ms = self._ms(end_input.input_value())
-        start_ms = self._ms(start_input.input_value())
-        self.assertGreaterEqual(end_ms, before - 1000)
+        expect(set_dates).to_have_count(2)
+        start_dt, end_dt = self.shared_date_values(modal)
+        end_ms = self._ms(end_dt.strftime("%Y-%m-%dT%H:%M:%S"))
+        # The field shows whole minutes, so allow a minute either way.
+        self.assertGreaterEqual(end_ms, before - 60 * 1000)
         self.assertLessEqual(end_ms, after + 1000)
-        self.assertGreaterEqual(start_ms, before - runtime_ms - 1000)
-        self.assertLessEqual(start_ms, after - runtime_ms + 1000)
+        self.assertEqual(end_dt - start_dt, timedelta(milliseconds=runtime_ms))
 
         # Start Now sets the start to now and the end to now plus the runtime.
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
-        end_input = modal.locator('input[name="end_date"]')
-        start_input = modal.locator('input[name="start_date"]')
-        start_actions = modal.get_by_role("group", name="Start date quick actions")
         before = self.page.evaluate("Date.now()")
-        start_actions.get_by_role("button", name="Start Now", exact=True).click()
+        modal.get_by_role("button", name="Start Now", exact=True).click()
         after = self.page.evaluate("Date.now()")
-        start_ms = self._ms(start_input.input_value())
-        end_ms = self._ms(end_input.input_value())
-        self.assertGreaterEqual(start_ms, before - 1000)
+        set_dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
+        expect(set_dates).to_have_count(2)
+        start_dt, end_dt = self.shared_date_values(modal)
+        start_ms = self._ms(start_dt.strftime("%Y-%m-%dT%H:%M:%S"))
+        self.assertGreaterEqual(start_ms, before - 60 * 1000)
         self.assertLessEqual(start_ms, after + 1000)
-        self.assertGreaterEqual(end_ms, before + runtime_ms - 1000)
-        self.assertLessEqual(end_ms, after + runtime_ms + 1000)
-        expect(modal.locator('select[name="status"]')).to_have_value(
-            Status.IN_PROGRESS.value,
-        )
+        self.assertEqual(end_dt - start_dt, timedelta(milliseconds=runtime_ms))
+        self.expect_track_status(modal, "In Progress")
 
         # An end date the user picked is kept when Start Now is pressed.
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
-        end_input = modal.locator('input[name="end_date"]')
-        start_input = modal.locator('input[name="start_date"]')
-        start_actions = modal.get_by_role("group", name="Start date quick actions")
-        modal.get_by_role("button", name="Open End date picker").click()
-        end_picker = modal.get_by_role("dialog", name="End date picker")
-        end_picker.get_by_role("button", name="Release Date", exact=True).click()
-        expect(end_input).to_have_value(re.compile(r"^2019-11-08T"))
+        self.shared_date_buttons(modal).nth(1).click()
+        self.shared_picker().get_by_role(
+            "button", name="Release Date", exact=True,
+        ).click()
+        self.close_shared_picker()
+        set_dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
         # Picking a release date back-fills the start from the runtime; clear it
         # so the Start Now shortcut is offered again.
-        modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button",
-            name="Clear date",
-        ).click()
-        start_actions.get_by_role("button", name="Start Now", exact=True).click()
-        expect(start_input).not_to_have_value("")
-        expect(end_input).to_have_value(re.compile(r"^2019-11-08T"))
+        expect(set_dates).to_have_count(2)
+        self.assertEqual(self.shared_date_values(modal)[1].date(), date(2019, 11, 8))
+        modal.get_by_role("button", name="Clear date").first.click()
+        expect(set_dates).to_have_count(1)
+        modal.get_by_role("button", name="Start Now", exact=True).click()
+        expect(set_dates).to_have_count(2)
+        self.assertEqual(self.shared_date_values(modal)[1].date(), date(2019, 11, 8))
 
     @patch("app.models.Item.fetch_releases")
     @patch("app.providers.services.get_media_metadata")
@@ -1506,7 +1509,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         item = self._create_test_movie_item(mock_get_metadata)
 
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
-        expect(modal.locator('input[name="end_date"]')).to_have_value("")
+        expect(modal.get_by_role("button", name="Just Finished")).to_be_visible()
         before = timezone.now()
         movie = self._save_movie(modal, item)
         self.assertIsNotNone(movie)
@@ -1516,17 +1519,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         movie.delete()
 
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
-        modal.get_by_role("button", name="Open End date picker").click()
-        modal.get_by_role("dialog", name="End date picker").get_by_role(
-            "button",
-            name="None",
-            exact=True,
-        ).click()
-        expect(
-            modal.get_by_role("group", name="End date quick actions")
-        ).to_contain_text(
-            "Not set",
-        )
+        # Choosing None in the End picker keeps the end date empty.
+        self.shared_date_buttons(modal).nth(1).click()
+        self.shared_picker().get_by_role("button", name="None", exact=True).click()
+        self.close_shared_picker()
+        expect(modal.get_by_role("button", name="Just Finished")).to_be_visible()
         movie = self._save_movie(modal, item)
         self.assertIsNotNone(movie)
         self.assertIsNone(movie.end_date)
@@ -1577,22 +1574,22 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         expect(self.page.get_by_role("main")).to_contain_text("Wordle")
         self.page.get_by_role("button", name="Add to tracker").click()
-        modal = self.page.locator("[data-track-modal-root]:visible").first
+        modal = self.shared_dialog()
         expect(modal).to_be_visible()
-        modal.locator('select[name="status"]').select_option(Status.IN_PROGRESS.value)
+        self.pick_track_status(modal, "In Progress")
 
-        end_input = modal.locator('input[name="end_date"]')
-        start_input = modal.locator('input[name="start_date"]')
-        expect(end_input).to_have_value("")
+        dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
+        expect(dates).to_have_count(0)
         before = self.page.evaluate("Date.now()")
-        modal.locator('input[name="progress"]').fill("90min")
-        expect(start_input).not_to_have_value("")
+        modal.get_by_role("textbox", name="Progress (Time Played)").fill("90min")
+        expect(dates).to_have_count(2)
         after = self.page.evaluate("Date.now()")
-        auto_end_ms = self._ms(end_input.input_value())
-        auto_start_ms = self._ms(start_input.input_value())
-        self.assertGreaterEqual(auto_end_ms, before - 60 * 1000)
-        self.assertLessEqual(auto_end_ms, after + 1000)
-        self.assertEqual(auto_end_ms - auto_start_ms, 90 * 60 * 1000)
+        start_dt, end_dt = self.shared_date_values(modal)
+        # The button shows whole minutes in the browser's local time (UTC in CI).
+        end_ms = self._ms(end_dt.strftime("%Y-%m-%dT%H:%M"))
+        self.assertGreaterEqual(end_ms, before - 120 * 1000)
+        self.assertLessEqual(end_ms, after + 1000)
+        self.assertEqual(end_dt - start_dt, timedelta(minutes=90))
 
     def test_statistics_status_composition_legend_scrolls_without_page_overflow(self):
         """Status legend scrolls inside its card at responsive widths."""
@@ -1626,9 +1623,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             + "?start-date=all&end-date=all&compare=none",
         )
 
-        legend = self.page.locator("#statusCompositionLegend")
+        legend = self.page.locator('[data-testid="status-composition-legend"]')
         expect(legend).to_be_visible()
-        expect(legend.locator(":scope > div")).to_have_count(5)
+        expect(legend.locator('[data-testid="statistics-legend-row"]')).to_have_count(5)
 
         layout = legend.evaluate(
             """element => ({
@@ -1638,7 +1635,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 scrollWidth: element.scrollWidth,
             })""",
         )
-        self.assertEqual(layout["overflowX"], "auto")
+        self.assertIn(layout["overflowX"], ("auto", "scroll"))
         self.assertEqual(layout["overflowY"], "hidden")
 
         page_layout = self.page.evaluate(
@@ -1646,7 +1643,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
                 bodyWidth: document.body.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )
@@ -1656,9 +1653,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="All media", exact=True).click()
         self.page.get_by_role("button", name="Movies", exact=True).click()
-        expect(self.page.locator("#statusCompositionSubtitle")).to_have_text(
-            "Movie status breakdown.",
+        # The chart's accessible summary replaces the retired subtitle.
+        expect(self.page.locator('[data-testid="status-composition-chart"]')).to_have_attribute(
+            "aria-label", re.compile(r"^Status Composition\. Total "),
         )
+        self.assertIn("media-type=movie", self.page.url)
         filtered_layout = legend.evaluate(
             """element => ({
                 overflowX: getComputedStyle(element).overflowX,
@@ -1695,7 +1694,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             """() => ({
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )

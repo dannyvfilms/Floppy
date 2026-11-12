@@ -88,18 +88,38 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
     def test_first_click_selects_only_that_type_then_more_can_be_added(self):
         page = self.open_statistics()
         expect(self.trigger(page)).to_have_text("All media")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("3 titles")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("3 titles")
 
         self.pick(page, "Movies")
         expect(self.trigger(page)).to_have_text("Movies")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("2 films")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("2 films")
         self.assertIn("media-type=movie", page.url)
         self.assertNotIn("game", page.url)
 
         self.pick(page, "Games")
         expect(self.trigger(page)).to_have_text("Movies, Games")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("3 titles")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("3 titles")
         self.assertIn("media-type=movie%2Cgame", page.url)
+
+    def test_menu_does_not_shift_as_the_trigger_label_changes(self):
+        page = self.open_statistics()
+        page.locator(".stats-mediatype-button").click()
+        menu = page.locator(".stats-mediatype-wrapper .stats-dropdown-panel")
+        button = page.locator(".stats-mediatype-button")
+        expect(menu).to_be_visible()
+        before_menu = menu.bounding_box()
+        before_button = button.bounding_box()
+
+        self.pick(page, "Movies")
+        self.pick(page, "Games")
+        expect(self.trigger(page)).to_have_text("Movies, Games")
+
+        expect(menu).to_be_visible()
+        after_menu = menu.bounding_box()
+        after_button = button.bounding_box()
+        self.assertAlmostEqual(before_menu["x"], after_menu["x"], delta=1)
+        self.assertAlmostEqual(before_menu["width"], after_menu["width"], delta=1)
+        self.assertAlmostEqual(before_button["width"], after_button["width"], delta=1)
 
     def test_unticking_the_last_type_and_all_media_return_to_all(self):
         page = self.open_statistics()
@@ -120,4 +140,22 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
 
         page = self.open_statistics("?media-type=game")
         expect(self.trigger(page)).to_have_text("Games")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("1 games")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("1 games")
+
+    def test_selection_is_remembered_for_the_next_visit(self):
+        page = self.open_statistics()
+        with page.expect_response("**/statistics/media-types") as saved:
+            self.pick(page, "Movies")
+        self.assertTrue(saved.value.ok)
+        expect(self.trigger(page)).to_have_text("Movies")
+
+        page.goto(f"{self.live_server_url}/statistics")
+        expect(self.trigger(page)).to_have_text("Movies")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("2 films")
+        self.assertIn("media-type=movie", page.url)
+
+        with page.expect_response("**/statistics/media-types"):
+            self.pick(page, "All media")
+        page.goto(f"{self.live_server_url}/statistics")
+        expect(self.trigger(page)).to_have_text("All media")
+        self.assertNotIn("media-type", page.url)

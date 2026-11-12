@@ -96,7 +96,13 @@ def _status_code(status: str | None) -> int | None:
 
 
 @mcp.tool()
-async def search_media(media_type: str, query: str, page: int = 1) -> Any:
+async def search_media(
+    media_type: str,
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> Any:
     """Search a provider for media to track.
 
     media_type: one of tv, movie, anime, manga, game, book, comic,
@@ -107,12 +113,17 @@ async def search_media(media_type: str, query: str, page: int = 1) -> Any:
     a remaster) without a follow-up get_media call. If a title is ambiguous
     across platforms, prefer showing the candidates to the user over
     guessing one.
+
+    source is optional: omit it to search the user's preferred provider for
+    that media type (the one their Settings > Metadata choice names), or
+    pass a provider such as "openlibrary", "hardcover", "googlebooks",
+    "tmdb" or "igdb" to search that one. Each result states the source it
+    came from. Paginate with limit/offset (there is no page parameter).
     """
-    return await _call(
-        "get",
-        f"search/{media_type}",
-        params={"search": query, "page": page},
-    )
+    params: dict[str, Any] = {"search": query, "limit": limit, "offset": offset}
+    if source:
+        params["source"] = source
+    return await _call("get", f"search/{media_type}", params=params)
 
 
 def _search_failure(error: dict[str, Any]) -> dict[str, Any]:

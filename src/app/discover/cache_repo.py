@@ -158,6 +158,7 @@ def set_taste_profile(
     avoidance_offsets: dict[str, dict[str, float]] | None = None,
     avoidance_baselines: dict[str, dict[str, dict[str, float]]] | None = None,
     profile_schema_version: int = 1,
+    retry_when_locked: bool = True,
 ) -> DiscoverTasteProfile:
     """Persist taste profile to DB-backed profile cache."""
     now = timezone.now()
@@ -214,7 +215,9 @@ def set_taste_profile(
     # even with busy_timeout set, because select_for_update() inside
     # update_or_create() can trigger SQLITE_LOCKED (same-process lock) rather
     # than SQLITE_BUSY, which the timeout doesn't retry.  Back off and retry.
-    max_attempts = 5
+    # A page load passes retry_when_locked=False: it serves the profile it
+    # computed and must not sleep here.
+    max_attempts = 5 if retry_when_locked else 1
     for attempt in range(max_attempts):
         try:
             entry, _ = DiscoverTasteProfile.objects.update_or_create(

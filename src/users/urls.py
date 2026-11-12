@@ -11,6 +11,7 @@ from users import (
 urlpatterns = [
     path("settings/providers", provider_views.providers, name="providers"),
     path("settings/providers/pin", provider_views.pin_provider, name="pin_settings_provider"),
+    path("settings/sidebar-pins", provider_views.save_sidebar_pins, name="sidebar_pins"),
     path("settings/activity", provider_views.activity, name="provider_activity"),
     path("settings/data", provider_views.data_management, name="data_management"),
     path("settings/access", provider_views.access_tokens, name="access_tokens"),
@@ -54,8 +55,30 @@ urlpatterns = [
     ),
     path("setup/resume/", onboarding_views.onboarding_resume, name="onboarding_resume"),
     path("setup/restart/", onboarding_views.onboarding_restart, name="onboarding_restart"),
+    path("accounts/auth-config/", views.auth_config, name="auth_config"),
     path("accounts/password/recover/", views.password_recover, name="password_recover"),
     path("settings/account", views.account, name="account"),
+    path("settings/users", views.manage_users, name="manage_users"),
+    path(
+        "settings/users/create",
+        views.create_managed_user,
+        name="create_managed_user",
+    ),
+    path(
+        "settings/users/<int:user_id>/update",
+        views.update_managed_user,
+        name="update_managed_user",
+    ),
+    path(
+        "settings/users/<int:user_id>/password",
+        views.set_managed_user_password,
+        name="set_managed_user_password",
+    ),
+    path(
+        "settings/users/<int:user_id>/delete",
+        views.delete_managed_user,
+        name="delete_managed_user",
+    ),
     path("settings/notifications", views.notifications, name="notifications"),
     path("notifications/search/", views.search_items, name="search_notification_items"),
     path(
@@ -187,6 +210,11 @@ urlpatterns = [
         name="clear_image_cache",
     ),
     path("settings/advanced/logs", views.export_logs, name="export_logs"),
+    path(
+        "settings/advanced/diagnostics",
+        views.export_diagnostics,
+        name="export_diagnostics",
+    ),
     path(
         "settings/advanced/server-port",
         server_port_views.update_server_port,

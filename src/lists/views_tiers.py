@@ -104,6 +104,12 @@ def fill_from_ratings(request, list_id):
     if not request.user.ratings_enabled:
         return HttpResponse(status=400)
 
+    placements, order = apply_fill(custom_list, request.user)
+    return JsonResponse({"placements": placements, "order": order})
+
+
+def apply_fill(custom_list, user):
+    """Fill the Unranked pool from ``user``'s ratings; return placements and order."""
     from app.models import Item
     from lists.views_helpers import _attach_media_with_aggregation
 
@@ -115,7 +121,7 @@ def fill_from_ratings(request, list_id):
         .values_list("item_id", flat=True)[:TIER_BOARD_LIMIT],
     )
     items = list(Item.objects.filter(id__in=unranked))
-    _attach_media_with_aggregation(items, request.user)
+    _attach_media_with_aggregation(items, user)
 
     placements = []
     for item in items:
@@ -133,9 +139,7 @@ def fill_from_ratings(request, list_id):
                     item_id__in=ids,
                 ).update(tier=tier_id)
     touched = sorted({p["tier"] for p in placements})
-    return JsonResponse(
-        {"placements": placements, "order": _tier_orders(custom_list, touched)},
-    )
+    return placements, _tier_orders(custom_list, touched)
 
 
 @login_required
@@ -151,6 +155,11 @@ def undo_fill(request, list_id):
     except (ValueError, KeyError, TypeError):
         return HttpResponse(status=400)
 
+    return JsonResponse({"order": apply_undo(custom_list, pairs)})
+
+
+def apply_undo(custom_list, pairs):
+    """Return the given (item id, tier) placements to Unranked; return the order."""
     with transaction.atomic():
         for item_id, tier in pairs:
             CustomListItem.objects.filter(
@@ -158,7 +167,7 @@ def undo_fill(request, list_id):
                 item_id=item_id,
                 tier=tier,
             ).update(tier="")
-    return JsonResponse({"order": _tier_orders(custom_list, [""])})
+    return _tier_orders(custom_list, [""])
 
 
 @require_GET

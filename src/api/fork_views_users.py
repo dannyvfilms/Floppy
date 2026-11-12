@@ -1,14 +1,20 @@
 # FORK: user-settings endpoints under /api/v1/user/ mirroring the web
 # settings pages. URL wiring lives in fork_urls.py.
+import json
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
-from app import history_cache, statistics_cache
+from api.authentication import APIKeyAuthentication, BearerAuthentication
+from api.errors import failure_response
+from app import cache_utils, history_cache, statistics_cache
 from app.models import Item
 from users.forms import NotificationSettingsForm
 from users.models import PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH
@@ -35,9 +41,13 @@ _CHOICE_PREFERENCE_FIELDS = (
     "anime_library_mode",
     "quick_season_update_mobile",
     "session_duration",
+    "theme",
+    "logo_style",
+    "ui_language",
 )
 
 _BOOLEAN_PREFERENCE_FIELDS = (
+    "show_recommendations",
     "hide_completed_recommendations",
     "hide_zero_rating",
     "progress_bar",
@@ -84,6 +94,40 @@ _TEXT_PREFERENCE_MAX_LENGTHS = {
 # task that fails in the worker, where the client never sees it.
 _validate_webhook_url = URLValidator(schemes=["http", "https"])
 
+# Region and metadata language come from TMDB, not a model choices list, so the
+# web preferences view validates them against the provider's own lists.
+_TMDB_PREFERENCE_FIELDS = ("watch_provider_region", "metadata_language")
+
+
+def tmdb_preference_choices():
+    """Return the TMDB-backed option lists the web preferences page renders."""
+    from django.conf import settings
+
+    from app.providers import tmdb
+
+    try:
+        regions = [list(pair) for pair in tmdb.watch_provider_regions()]
+    except Exception as exc:
+        logger.warning("Could not load watch regions: %s", exc)
+        regions = [["", "Disabled"]]
+    try:
+        languages = [list(pair) for pair in tmdb.metadata_languages()]
+    except Exception as exc:
+        logger.warning("Could not load languages: %s", exc)
+        languages = [["", f"Server Default ({settings.TMDB_LANG})"]]
+    return {"watch_provider_region": regions, "metadata_language": languages}
+
+
+def _active_auto_pause_libraries(user):
+    from users.views import AUTO_PAUSE_MEDIA_TYPES
+
+    return [
+        library
+        for library in user.get_active_media_types()
+        if library in AUTO_PAUSE_MEDIA_TYPES
+    ]
+
+
 # Fields whose change requires the web view's statistics-cache refresh.
 _STATS_SENSITIVE_FIELDS = {
     "rating_scale",
@@ -105,7 +149,13 @@ def _field_choices(user, field_name):
 def _serialize_preferences(user):
     from users.card_metadata import OMIT, absorbed_preference_value
 
-    payload = {"playback_webhook_configured": bool(user.playback_webhook_url.strip())}
+    payload = {
+        "playback_webhook_configured": bool(user.playback_webhook_url.strip()),
+        "watch_provider_region": user.watch_provider_region,
+        "metadata_language": user.metadata_language,
+        "auto_pause_rules": user.auto_pause_rules or [],
+        "auto_pause_libraries": _active_auto_pause_libraries(user),
+    }
     readable = (
         _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS + _TEXT_PREFERENCE_FIELDS
     )
@@ -138,7 +188,13 @@ class UserPreferencesView(drf_views.APIView):
             for field in _CHOICE_PREFERENCE_FIELDS
         }
         return Response(
-            {"preferences": _serialize_preferences(request.user), "choices": choices},
+            {
+                "preferences": _serialize_preferences(request.user),
+                "choices": choices,
+                # Superuser-only settings pages are hidden on the client from
+                # this field and permission-checked again on the server.
+                "is_superuser": bool(request.user.is_superuser),
+            },
             status=HTTP.OK,
         )
 
@@ -249,9 +305,19 @@ class UserPreferencesView(drf_views.APIView):
                 fields_to_update.append(field)
                 changed.add(field)
 
+        error = self._patch_provider_fields(request, fields_to_update, changed)
+        if error is not None:
+            return error
+
         if fields_to_update:
             user.save(update_fields=fields_to_update)
             user.refresh_from_db()
+            if "metadata_language" in changed:
+                from app.tasks_metadata_language import (
+                    reset_metadata_language_repair,
+                )
+
+                reset_metadata_language_repair(user.pk)
             # Cache side effects mirrored from the web preferences view.
             if "game_logging_style" in changed:
                 history_cache.invalidate_history_cache(user.id)
@@ -281,13 +347,92 @@ class UserPreferencesView(drf_views.APIView):
             status=HTTP.OK,
         )
 
+    @staticmethod
+    def _patch_provider_fields(request, fields_to_update, changed):
+        """Apply region, metadata language and auto-pause rules, as the web does."""
+        user = request.user
+        data = request.data
+        for field in _TMDB_PREFERENCE_FIELDS:
+            if field not in data:
+                continue
+            value = data[field]
+            valid = {code for code, _label in tmdb_preference_choices()[field]}
+            if not isinstance(value, str) or (
+                value not in valid and field == "watch_provider_region"
+            ):
+                return Response(
+                    {"detail": f"Invalid value for {field}."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            if field == "metadata_language" and value not in valid:
+                value = ""
+            if getattr(user, field) != value:
+                setattr(user, field, value)
+                fields_to_update.append(field)
+                changed.add(field)
+        if "auto_pause_rules" in data:
+            from users.views import _normalize_auto_pause_rules
+
+            rules = data["auto_pause_rules"]
+            if not isinstance(rules, list):
+                return Response(
+                    {"detail": "auto_pause_rules must be a list."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            normalized = _normalize_auto_pause_rules(
+                json.dumps(rules), _active_auto_pause_libraries(user)
+            )
+            if user.auto_pause_rules != normalized:
+                user.auto_pause_rules = normalized
+                fields_to_update.append("auto_pause_rules")
+                changed.add("auto_pause_rules")
+        return None
+
+
+# /api/v1/user/navigation/
+class UserNavigationView(drf_views.APIView):
+    """The signed-in sidebar as data, for the native app.
+
+    Reads the same builder the web sidebar template uses, so labels, order,
+    icons and saved views cannot drift between surfaces.
+    """
+
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        """Return the sidebar model without the CSRF token."""
+        from app.sidebar_model import sidebar_model
+
+        model = sidebar_model(request, request.user, None)
+        model.pop("csrfToken", None)
+        model["lastSearchType"] = (
+            getattr(request.user, "last_search_type", None) or "all"
+        )
+        return Response(model, status=HTTP.OK)
+
 
 # /api/v1/user/sidebar/
 class UserSidebarView(drf_views.APIView):
     """Read or update media-type visibility (mirrors the sidebar page)."""
 
     def get(self, request):
-        """Return the enabled state per media type."""
+        """Return the enabled state, order and labels per media type."""
+        from app.icon_specs import file_icon, type_icon
+        from app.templatetags.app_tags import media_type_readable_plural
+
+        preferred = [
+            media_type
+            for media_type in (request.user.sidebar_media_type_order or [])
+            if media_type in SIDEBAR_MEDIA_TYPES
+        ]
+        order = preferred + [
+            media_type for media_type in SIDEBAR_MEDIA_TYPES if media_type not in preferred
+        ]
         return Response(
             {
                 "media_types": {
@@ -298,6 +443,17 @@ class UserSidebarView(drf_views.APIView):
                     )
                     for media_type in SIDEBAR_MEDIA_TYPES
                 },
+                "order": order,
+                "labels": {
+                    media_type: str(media_type_readable_plural(media_type))
+                    for media_type in SIDEBAR_MEDIA_TYPES
+                },
+                "icons": {
+                    media_type: type_icon(media_type)
+                    for media_type in SIDEBAR_MEDIA_TYPES
+                },
+                "discover_icon": file_icon("four-square"),
+                "show_discover": request.user.show_discover,
             },
             status=HTTP.OK,
         )
@@ -316,7 +472,31 @@ class UserSidebarView(drf_views.APIView):
                 {"detail": "'media_types' must be an object of booleans."},
                 status=HTTP.BAD_REQUEST,
             )
+        order = request.data.get("order")
+        show_discover = request.data.get("show_discover")
+        if order is not None and (
+            not isinstance(order, list)
+            or any(media_type not in SIDEBAR_MEDIA_TYPES for media_type in order)
+        ):
+            return Response(
+                {"detail": "'order' must be a list of known media types."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if show_discover is not None and not isinstance(show_discover, bool):
+            return Response(
+                {"detail": "'show_discover' must be a boolean."},
+                status=HTTP.BAD_REQUEST,
+            )
         fields_to_update = []
+        if show_discover is not None and user.show_discover != show_discover:
+            user.show_discover = show_discover
+            fields_to_update.append("show_discover")
+        if order is not None:
+            normalized = list(dict.fromkeys(order))
+            normalized += [m for m in SIDEBAR_MEDIA_TYPES if m not in normalized]
+            if user.sidebar_media_type_order != normalized:
+                user.sidebar_media_type_order = normalized
+                fields_to_update.append("sidebar_media_type_order")
         for media_type, enabled in updates.items():
             if media_type not in SIDEBAR_MEDIA_TYPES:
                 return Response(
@@ -334,6 +514,8 @@ class UserSidebarView(drf_views.APIView):
                 fields_to_update.append(field)
         if fields_to_update:
             user.save(update_fields=fields_to_update)
+            # Mixed Home rows depend on which media types are enabled.
+            cache_utils.clear_home_row_cache_for_user(user.id)
         return Response(
             {"updated_fields": sorted(fields_to_update)},
             status=HTTP.OK,
@@ -355,27 +537,46 @@ class UserNotificationsView(drf_views.APIView):
                 "release_notifications_enabled": (
                     request.user.release_notifications_enabled
                 ),
+                "premiere_notifications_enabled": (
+                    request.user.premiere_notifications_enabled
+                ),
+                "playback_webhook_configured": bool(
+                    request.user.playback_webhook_url.strip()
+                ),
             },
             status=HTTP.OK,
         )
 
     def patch(self, request):
-        """Update notification settings via the web form's validation."""
+        """Update notification settings via the web form's validation.
+
+        The form declares every notification field, and a ModelForm resets a
+        field the data omits. Each omitted field therefore falls back to the
+        stored value, so a partial PATCH never clears the premiere toggle or
+        the playback webhook.
+        """
+        user = request.user
+        if user.is_demo:
+            # The web form is guarded by DemoAccountGuardMiddleware.
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
         data = {
-            "notification_urls": request.data.get(
+            field: request.data.get(field, getattr(user, field))
+            for field in (
                 "notification_urls",
-                request.user.notification_urls,
-            ),
-            "daily_digest_enabled": request.data.get(
                 "daily_digest_enabled",
-                request.user.daily_digest_enabled,
-            ),
-            "release_notifications_enabled": request.data.get(
                 "release_notifications_enabled",
-                request.user.release_notifications_enabled,
-            ),
+                "premiere_notifications_enabled",
+                "playback_webhook_url",
+            )
         }
-        form = NotificationSettingsForm(data, instance=request.user)
+        # Blank keeps the stored secret (see the form's clean method).
+        data["playback_webhook_secret"] = request.data.get(
+            "playback_webhook_secret", ""
+        )
+        form = NotificationSettingsForm(data, instance=user)
         if not form.is_valid():
             errors = dict(form.errors)
             if "notification_urls" in errors:
@@ -395,6 +596,8 @@ class UserNotificationExclusionsView(drf_views.APIView):
 
     def get(self, request):
         """Return excluded items."""
+        from app.templatetags.app_tags import image_url, media_type_readable
+
         return Response(
             {
                 "results": [
@@ -402,6 +605,8 @@ class UserNotificationExclusionsView(drf_views.APIView):
                         "item_id": item.id,
                         "title": item.title,
                         "media_type": item.media_type,
+                        "media_type_label": media_type_readable(item.media_type),
+                        "image": image_url(item.image),
                     }
                     for item in request.user.notification_excluded_items.all()
                 ],
@@ -460,9 +665,13 @@ class UserNotificationTestView(drf_views.APIView):
                 body_format=apprise.NotifyFormat.HTML,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Failed to send test notification.", "errors": str(e)},
+            # Apprise errors can name the notification URL, which holds the
+            # service token: keep the text out of the response and the log.
+            return failure_response(
+                "Failed to send test notification.",
+                e,
                 status=HTTP.BAD_GATEWAY,
+                traceback=False,
             )
         if not result:
             return Response(

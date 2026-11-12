@@ -1,5 +1,12 @@
 {% load i18n %}
 {% load app_tags %}
+{% if cf_form_id %}
+{% collection_field_input_props custom_field_groups entry_custom_field_values cf_form_id as cf_input_props %}
+{% with props_id="collection-field-inputs-"|add:cf_form_id|stringformat:"s" %}
+{{ cf_input_props|json_script:props_id }}
+<div data-collection-field-inputs-root data-props-id="{{ props_id }}" data-form-id="{{ cf_form_id }}">
+{% endwith %}
+{% endif %}
 {% for group in custom_field_groups %}
   <div class="mb-5">
     <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
@@ -30,7 +37,7 @@
                   <button type="button"
                           @click="open = !open"
                           class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-                    <span x-text="selectedValue || '—'" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
+                    <span x-text="selectedValue || '-'" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
                     {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
                   </button>
                   <div x-show="open"
@@ -44,7 +51,7 @@
                     <button type="button"
                             @click="selectedValue = ''; open = false"
                             class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-muted)]">
-                      —
+                      -
                     </button>
                     {% for option in field.options %}
                       <button type="button"
@@ -71,3 +78,6 @@
     </div>
   </div>
 {% endfor %}
+{% if cf_form_id %}
+</div>
+{% endif %}

@@ -1,0 +1,43 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% translate "Users - Floppy" %}
+{% endblock title %}
+
+{% block settings_content %}
+  <div>
+    {{ users_management|json_script:"users-management-props" }}
+    <div data-users-management-root
+         data-props-id="users-management-props"
+         x-ignore>
+      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-2">{% translate "User accounts" %}</h2>
+        <p class="text-[var(--color-text-muted)] text-sm mb-4">
+          {% translate "Manage the accounts on this Floppy instance." %}
+        </p>
+        <ul class="divide-y divide-[var(--color-border)]">
+          {% for member in managed_users %}
+            <li class="py-3">
+              <p class="font-medium">{{ member.username }}</p>
+              <p class="text-xs text-[var(--color-text-muted)]">
+                {% translate "Joined" %}: {{ member.date_joined|date:"DATETIME_FORMAT" }}
+                &middot;
+                {% translate "Last login" %}:
+                {% if member.last_login %}
+                  {{ member.last_login|date:"DATETIME_FORMAT" }}
+                {% else %}
+                  {% translate "Never" %}
+                {% endif %}
+              </p>
+            </li>
+          {% empty %}
+            <li class="py-3 text-sm text-[var(--color-text-muted)]">
+              {% translate "No users have been created yet." %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock settings_content %}

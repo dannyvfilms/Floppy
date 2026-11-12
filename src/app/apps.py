@@ -72,6 +72,7 @@ class AppConfig(AppConfig):
         """Import signals when the app is ready."""
         import_module("app.signals")
         import_module("app.signals_watch_state")
+        import_module("app.library_changes")
         from app.signals_music import load_music_listen_hooks
 
         load_music_listen_hooks()
@@ -88,6 +89,11 @@ class AppConfig(AppConfig):
         from app.db_diagnostics import connect_celery_signals as connect_db_signals
 
         connect_db_signals()
+        # Start/finish lines for every task, so a hung task shows in a bug
+        # report as a start with no finish (docs/architecture/log-levels.md).
+        from app.task_progress import connect_celery_signals as connect_progress
+
+        connect_progress()
         if _is_management_command_process():
             # One-off manage.py commands (migrate, shell, check, ...) must
             # not enqueue startup tasks or consume the once-per-day startup

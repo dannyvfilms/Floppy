@@ -54,6 +54,15 @@ def routed_api_views():
 class ScopeMapCoverageTests(FloppyApiTestCase):
     """The scope map must stay exhaustive over the routed API surface."""
 
+    def test_home_playback_cards_are_never_available_to_scoped_tokens(self):
+        """The Home playback endpoint stays reserved for browser sessions."""
+        self.assertEqual(
+            scopes.VIEW_SCOPES[
+                "api.fork_views_playback.HomePlaybackCardsView"
+            ],
+            {"GET": scopes.NEVER, "POST": scopes.NEVER},
+        )
+
     def test_every_routed_view_and_method_is_mapped(self):
         """A routed view or method missing from the map fails the build."""
         missing = []
@@ -81,7 +90,7 @@ class ScopeMapCoverageTests(FloppyApiTestCase):
 
     def test_every_mapped_scope_is_in_the_vocabulary(self):
         """A typo in a scope name would silently deny every token."""
-        sentinels = {scopes.ANY_SCOPE, scopes.NEVER}
+        sentinels = {scopes.ANY_SCOPE, scopes.NEVER, scopes.SESSION_ONLY}
         unknown = sorted(
             {
                 scope
@@ -191,12 +200,15 @@ class ScopeEnforcementTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
 
-    def test_token_rotation_still_works_for_the_legacy_token(self):
-        """The account token keeps full access, including rotation."""
+    def test_token_rotation_requires_a_session_even_for_the_legacy_token(self):
+        """No bearer credential may mint a replacement account token."""
         response = self.client.post(
             "/api/v1/user/token/regenerate/",
             **self.auth_headers,
         )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.client.force_login(self.user1)
+        response = self.client.post("/api/v1/user/token/regenerate/")
         self.assertEqual(response.status_code, HTTP.OK)
 
     def test_legacy_token_keeps_full_access(self):

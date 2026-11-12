@@ -4,20 +4,32 @@ import { basename, resolve } from 'node:path';
 
 const outdir = resolve('src/static/ui');
 const result = await build({
-  entryPoints: { 'settings-islands': 'frontend/settings/index.js' },
+  entryPoints: { 'settings-islands': 'frontend/settings/index.js', 'markdown-islands': 'frontend/ui/mountMarkdownIslands.jsx' },
   outdir, bundle: true, splitting: true, format: 'esm', minify: true,
   target: ['es2022'], jsx: 'automatic', legalComments: 'external',
+  resolveExtensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js',
+    '.tsx', '.ts', '.jsx', '.js', '.css', '.json'],
   alias: { 'react-native': 'react-native-web' },
-  define: { 'process.env.NODE_ENV': '"production"' },
+  define: { 'process.env.NODE_ENV': '"production"', global: 'globalThis' },
   chunkNames: '[name]-[hash]', write: false,
 });
 const files = new Map(result.outputFiles.map((file) => [basename(file.path), file.contents]));
 if (process.argv.includes('--check')) {
-  const existing = await readdir(outdir);
-  if (existing.length !== files.size) throw new Error('UI assets differ; run npm run build:ui');
+  const existing = new Set(await readdir(outdir));
+  const missing = [...files.keys()].filter((name) => !existing.has(name)).sort();
+  const unexpected = [...existing].filter((name) => !files.has(name)).sort();
+  if (missing.length || unexpected.length) {
+    const differences = [
+      ...missing.map((name) => `Missing: ${name}`),
+      ...unexpected.map((name) => `Unexpected: ${name}`),
+    ];
+    throw new Error(
+      `UI assets differ:\n${differences.join('\n')}\nRun npm run build:ui and commit src/static/ui/`
+    );
+  }
   for (const [name, contents] of files) {
     if (!Buffer.from(await readFile(resolve(outdir, name))).equals(Buffer.from(contents))) {
-      throw new Error(`Stale UI asset ${name}; run npm run build:ui`);
+      throw new Error(`Stale UI asset ${name}; run npm run build:ui and commit src/static/ui/`);
     }
   }
 } else {

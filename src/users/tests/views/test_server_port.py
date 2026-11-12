@@ -127,6 +127,23 @@ class AdvancedServerPortTests(TestCase):
         self.assertContains(response, "target to 9123")
         self.assertContains(response, "restart Floppy")
 
+    def test_superuser_json_save_returns_fresh_port_props(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.post(
+            reverse("update_server_port"),
+            {"action": "save", "port": "9123"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(load_saved_port(), 9123)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertIn("9123", payload["message"])
+        self.assertEqual(payload["serverPort"]["savedPort"], 9123)
+        self.assertIn("csrfToken", payload["serverPort"])
+
     def test_invalid_port_is_rejected_without_changing_saved_value(self):
         self.client.force_login(self.superuser)
         save_server_port(9123)

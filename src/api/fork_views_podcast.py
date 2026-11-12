@@ -2,19 +2,35 @@
 # the web podcast views. URL wiring lives in fork_urls.py.
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
+from uuid import uuid4
 
 from django.core.cache import cache
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import fork_services_podcast, helpers
-from app.forms import PodcastShowTrackerForm
+from app.forms import PodcastEpisodeForm, PodcastShowTrackerForm
 from app.log_safety import safe_url
-from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker, Status
-from app.podcast_views import podcast_episodes_api
+from app.models import (
+    Podcast,
+    PodcastEpisode,
+    PodcastPlay,
+    PodcastShow,
+    PodcastShowTracker,
+    Status,
+)
+from app.podcast_views import (
+    episode_payload,
+    manual_episode_for_user_or_404,
+    manual_show_for_user_or_404,
+    podcast_episodes_api,
+)
 from app.providers import pocketcasts, services
-from app.services import podcast_import
+from app.services import podcast_import, podcast_plays
 from integrations import podcast_rss
 
 from .helpers import (
@@ -24,7 +40,14 @@ from .helpers import (
     parse_limit_offset,
     try_parse_datetime_input,
 )
-from .serializers import serialize_data
+from .serializers import HistorySerializer, serialize_data
+
+_OBJ_READ = extend_schema(responses={200: OpenApiTypes.OBJECT})
+_OBJ_WRITE = extend_schema(
+    request=OpenApiTypes.OBJECT,
+    responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT, 204: None},
+)
+_OBJ_DELETE = extend_schema(responses={204: None})
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +59,7 @@ def _serialize_show(show, tracker=None):
     tracker_payload = None
     if tracker is not None:
         tracker_payload = {
-            "status": get_media_status(tracker.status),
+            "status": tracker.status,
             "score": str(tracker.score) if tracker.score is not None else None,
             "start_date": tracker.start_date,
             "end_date": tracker.end_date,
@@ -134,7 +157,7 @@ class PodcastShowsView(drf_views.APIView):
             try:
                 show = podcast_import.import_show_from_itunes_id(itunes_id)
             except podcast_import.PodcastImportError as e:
-                return Response({"detail": str(e)}, status=HTTP.BAD_REQUEST)
+                return Response({"detail": e.message}, status=HTTP.BAD_REQUEST)
 
         tracker = PodcastShowTracker.objects.filter(
             user=request.user,
@@ -278,7 +301,14 @@ class PodcastShowDetailView(drf_views.APIView):
             user=request.user,
             show=show,
         ).first()
-        return Response(_serialize_show(show, tracker), status=HTTP.OK)
+        payload = _serialize_show(show, tracker)
+        # Same counts as the web page's "Progress: N/M".
+        payload["listened_count"] = Podcast.objects.filter(
+            user=request.user,
+            show=show,
+        ).count()
+        payload["episode_count"] = show.episodes.count()
+        return Response(payload, status=HTTP.OK)
 
     def patch(self, request, show_id):
         """Update the caller's tracker (creates one if missing)."""
@@ -416,15 +446,117 @@ class PodcastMarkAllPlayedView(drf_views.APIView):
         return Response({"marked_played": created_count}, status=HTTP.OK)
 
 
+# /api/v1/podcasts/episodes/[episode_id]/notes/
+class PodcastEpisodeNotesView(drf_views.APIView):
+    """Edit private episode notes without recording a play."""
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    def patch(self, request, episode_id):
+        """Save notes on the caller's Podcast tracker for the episode."""
+        episode = (
+            PodcastEpisode.objects.select_related("show")
+            .filter(id=episode_id)
+            .first()
+        )
+        if episode is None:
+            return Response({"detail": "Episode not found."}, status=HTTP.NOT_FOUND)
+        if "notes" not in request.data:
+            return Response(
+                {"detail": "'notes' is required."},
+                status=HTTP.BAD_REQUEST,
+            )
+        notes = request.data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return Response(
+                {"detail": "'notes' must be a string or null."},
+                status=HTTP.BAD_REQUEST,
+            )
+        podcast = fork_services_podcast.set_episode_notes(
+            request.user,
+            episode.show,
+            episode,
+            notes or "",
+        )
+        return Response(
+            {
+                "episode_id": episode.id,
+                "notes": podcast.notes if podcast is not None else "",
+            },
+            status=HTTP.OK,
+        )
+
+
+def _parse_play_fields(data, *, partial):
+    """Return ``(fields, error_response)`` from a play request body.
+
+    ``fields`` holds only keys the caller sent, so a PATCH touches nothing
+    else. A null or blank date clears it.
+    """
+    fields = {}
+    if "status" in data:
+        status = get_media_status(data.get("status"), reverse=True)
+        if status not in (Status.IN_PROGRESS.value, Status.COMPLETED.value):
+            return None, Response(
+                {"detail": "'status' must be 'In progress' or 'Completed'."},
+                status=HTTP.BAD_REQUEST,
+            )
+        fields["status"] = status
+    for name in ("start_date", "end_date"):
+        if name not in data:
+            continue
+        raw = data.get(name)
+        if raw in (None, ""):
+            fields[name] = None
+            continue
+        try:
+            fields[name] = try_parse_datetime_input(raw)
+        except (TypeError, ValueError):
+            return None, Response(
+                {"detail": f"Invalid {name} format."},
+                status=HTTP.BAD_REQUEST,
+            )
+    for name in ("progress", "played_up_to_seconds"):
+        if name not in data or data.get(name) in (None, ""):
+            continue
+        value = data.get(name)
+        if isinstance(value, bool) or not str(value).isdigit():
+            return None, Response(
+                {"detail": f"'{name}' must be a non-negative integer."},
+                status=HTTP.BAD_REQUEST,
+            )
+        fields[name] = int(value)
+    if partial and not fields:
+        return None, Response(
+            {"detail": "No updatable fields supplied."},
+            status=HTTP.BAD_REQUEST,
+        )
+    return fields, None
+
+
+def _serialize_play(play):
+    """Return one listen with the ids an integration keeps."""
+    payload = serialize_data(
+        play,
+        serializer_class=HistorySerializer,
+    )
+    payload["episode_id"] = play.podcast.episode_id
+    payload["tracker_id"] = play.podcast_id
+    return payload
+
+
 # /api/v1/podcasts/episodes/plays/
 class PodcastEpisodePlayView(drf_views.APIView):
-    """Record a completed podcast episode play."""
+    """Record a podcast episode play, completed or in progress."""
 
     def post(self, request):
-        """Add a completed play.
+        """Add a play and return its ``consumption_id``.
 
-        If end_date is omitted or blank, use the current server time. Report
-        a repeat within five minutes as HTTP 200 with duplicate set to true.
+        ``status`` defaults to Completed. A completed play with no end_date ends
+        now, and accepts an optional start_date. An In progress play takes a
+        start_date, ``progress`` (minutes) and ``played_up_to_seconds``, and has
+        no end_date; update the same play later with PATCH. A repeat of a
+        completed play within five minutes, or a second In progress play for the
+        episode, is reported as HTTP 200 with duplicate set to true.
         """
         show_id = request.data.get("show_id")
         if not show_id:
@@ -458,27 +590,182 @@ class PodcastEpisodePlayView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        end_date = None
-        raw_end_date = request.data.get("end_date")
-        if raw_end_date not in (None, ""):
-            try:
-                end_date = try_parse_datetime_input(raw_end_date)
-            except (TypeError, ValueError):
-                return Response(
-                    {"detail": "Invalid end_date format."},
-                    status=HTTP.BAD_REQUEST,
-                )
+        fields, error = _parse_play_fields(request.data, partial=False)
+        if error is not None:
+            return error
+        external_id = request.data.get("external_id")
+        try:
+            play, created = podcast_plays.create_play(
+                request.user,
+                show,
+                episode=episode,
+                episode_uuid=episode_uuid,
+                external_id=str(external_id) if external_id else None,
+                entry_source="api",
+                **fields,
+            )
+        except podcast_plays.PodcastPlayError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
 
-        podcast, duplicate = fork_services_podcast.record_podcast_play(
-            request.user,
-            show,
-            episode=episode,
-            episode_uuid=episode_uuid,
-            end_date=end_date,
-        )
-        payload = serialize_data(podcast)
-        payload["duplicate"] = duplicate
+        payload = serialize_data(play.podcast)
+        payload.update(_serialize_play(play))
+        payload["duplicate"] = not created
         return Response(
             payload,
-            status=HTTP.OK if duplicate else HTTP.CREATED,
+            status=HTTP.CREATED if created else HTTP.OK,
         )
+
+
+def _episode_form_errors(form):
+    return {
+        field: [entry["message"] for entry in entries]
+        for field, entries in form.errors.get_json_data().items()
+    }
+
+
+# /api/v1/podcasts/shows/[show_id]/episodes/manage/
+class PodcastShowEpisodeManageView(drf_views.APIView):
+    """Manually managed episodes of a manual show the caller tracks."""
+
+    @_OBJ_READ
+    def get(self, request, show_id):
+        """Return every episode in manager shape, newest first."""
+        show = manual_show_for_user_or_404(request, show_id)
+        episodes = PodcastEpisode.objects.filter(show=show).order_by(
+            "-published",
+            "-episode_number",
+            "id",
+        )
+        return Response(
+            {"results": [episode_payload(episode) for episode in episodes]},
+            status=HTTP.OK,
+        )
+
+    @_OBJ_WRITE
+    def post(self, request, show_id):
+        """Add an episode (mirrors podcast_episode_add)."""
+        show = manual_show_for_user_or_404(request, show_id)
+        form = PodcastEpisodeForm(request.data)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Could not add the episode.", "errors": _episode_form_errors(form)},
+                status=HTTP.BAD_REQUEST,
+            )
+        episode = form.save(commit=False)
+        episode.show = show
+        episode.episode_uuid = f"manual-{uuid4()}"
+        episode.save()
+        return Response(episode_payload(episode), status=HTTP.CREATED)
+
+
+# /api/v1/podcasts/episodes/[episode_id]/
+class PodcastEpisodeDetailView(drf_views.APIView):
+    """Edit or delete a manually managed episode."""
+
+    @_OBJ_WRITE
+    def patch(self, request, episode_id):
+        """Update an episode (mirrors podcast_episode_edit)."""
+        episode = manual_episode_for_user_or_404(request, episode_id)
+        form = PodcastEpisodeForm(request.data, instance=episode)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Could not update the episode.", "errors": _episode_form_errors(form)},
+                status=HTTP.BAD_REQUEST,
+            )
+        form.save()
+        return Response(episode_payload(episode), status=HTTP.OK)
+
+    @_OBJ_DELETE
+    def delete(self, request, episode_id):
+        """Delete an episode (mirrors podcast_episode_delete)."""
+        manual_episode_for_user_or_404(request, episode_id).delete()
+        return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/podcasts/episodes/[episode_id]/score/
+class PodcastEpisodeScoreView(drf_views.APIView):
+    """Set or clear the caller's score on an episode they have tracked."""
+
+    @_OBJ_WRITE
+    def patch(self, request, episode_id):
+        """Update the score (raw 0-10 scale; null clears)."""
+        podcast = Podcast.objects.filter(
+            user=request.user,
+            episode_id=episode_id,
+        ).first()
+        if podcast is None:
+            return Response({"detail": "Episode entry not found."}, status=HTTP.NOT_FOUND)
+        if "score" not in request.data:
+            return Response(
+                {"detail": "'score' is required (number or null)."},
+                status=HTTP.BAD_REQUEST,
+            )
+        raw_score = request.data.get("score")
+        score = None
+        if raw_score is not None:
+            try:
+                score = Decimal(str(raw_score))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({"detail": "Invalid score."}, status=HTTP.BAD_REQUEST)
+            if not (Decimal(0) <= score <= Decimal(10)):
+                return Response(
+                    {"detail": "Score must be between 0 and 10."},
+                    status=HTTP.BAD_REQUEST,
+                )
+        podcast.score = score
+        podcast.save()
+        return Response(
+            {"score": str(score) if score is not None else None},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/podcasts/episodes/plays/<consumption_id>/
+class PodcastEpisodePlayDetailView(drf_views.APIView):
+    """Read, update or delete one listen by its consumption_id."""
+
+    @staticmethod
+    def _play(request, consumption_id):
+        return (
+            PodcastPlay.objects.filter(id=consumption_id, podcast__user=request.user)
+            .select_related("podcast", "podcast__item")
+            .first()
+        )
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def get(self, request, consumption_id):
+        """Return one play."""
+        play = self._play(request, consumption_id)
+        if play is None:
+            return Response({"detail": "Play not found."}, status=HTTP.NOT_FOUND)
+        return Response(_serialize_play(play))
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    def patch(self, request, consumption_id):
+        """Change this play in place; it never adds another play.
+
+        Send only the fields to change: ``status``, ``start_date``,
+        ``end_date``, ``progress`` (minutes), ``played_up_to_seconds``.
+        Completing without an end_date ends the play now.
+        """
+        play = self._play(request, consumption_id)
+        if play is None:
+            return Response({"detail": "Play not found."}, status=HTTP.NOT_FOUND)
+        fields, error = _parse_play_fields(request.data, partial=True)
+        if error is not None:
+            return error
+        try:
+            play = podcast_plays.update_play(play, **fields)
+        except podcast_plays.PodcastPlayError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
+        play.refresh_from_db()
+        return Response(_serialize_play(play))
+
+    @extend_schema(request=None, responses={204: None})
+    def delete(self, request, consumption_id):
+        """Delete only this play. The episode stays tracked."""
+        play = self._play(request, consumption_id)
+        if play is None:
+            return Response({"detail": "Play not found."}, status=HTTP.NOT_FOUND)
+        podcast_plays.delete_play(play)
+        return Response(status=HTTP.NO_CONTENT)
