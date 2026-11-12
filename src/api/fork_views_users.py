@@ -515,7 +515,7 @@ class UserSidebarView(drf_views.APIView):
         if fields_to_update:
             user.save(update_fields=fields_to_update)
             # Mixed Home rows depend on which media types are enabled.
-            cache_utils.clear_home_row_cache_for_user(user.id)
+            cache_utils.clear_library_view_caches(user.id, cache_utils.HOME_SETTING)
         return Response(
             {"updated_fields": sorted(fields_to_update)},
             status=HTTP.OK,

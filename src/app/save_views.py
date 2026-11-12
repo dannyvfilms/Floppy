@@ -655,8 +655,10 @@ def media_delete(request):
             "HX-Request",
         ):
             related_season._sync_status_after_episode_change()
-            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            cache_utils.clear_library_view_caches(
+                related_season.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
             history_day_key = history_cache.history_day_key(
                 end_date or start_date or created_at,
             )
@@ -830,7 +832,7 @@ def media_rewatch(request):
             )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, media_types=(media_type,))
 
     redirect_response = helpers.redirect_back(request)
     if request.headers.get("HX-Request"):
@@ -1201,8 +1203,10 @@ def episode_save(request):
         delattr(related_season, "_episode_stats_cache")
     if episode_instance:
         related_season._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+        cache_utils.clear_library_view_caches(
+            related_season.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     if request.headers.get("HX-Request"):
         episode_history = list(
