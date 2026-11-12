@@ -686,6 +686,28 @@ def import_kapowarr_recurring(instance_id):
     )
 
 
+@shared_task(name="Remove Collection Source States")
+def remove_collection_source_states(user_id, source, instance_id):
+    """Drop a disconnected arr instance's collection rows outside the request.
+
+    A large library holds tens of thousands of rows, each reconciled on its
+    own, which is far too slow for a web worker (#1911).
+    """
+    from integrations.source_sync import prune_collection_source_states
+
+    user = get_user_model().objects.get(pk=user_id)
+    removed = prune_collection_source_states(
+        user=user,
+        source=source,
+        source_instance_id=instance_id,
+        keep_item_ids=(),
+    )
+    logger.info(
+        "Removed %s %s collection rows for instance %s", removed, source, instance_id
+    )
+    return removed
+
+
 @shared_task(name="Import from Sonarr")
 def import_sonarr(user_id, mode="new", username=None, instance_id=None):
     """Celery task for importing TV collection data from Sonarr."""
