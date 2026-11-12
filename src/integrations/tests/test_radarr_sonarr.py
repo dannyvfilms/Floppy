@@ -260,6 +260,21 @@ class ArrMultiInstanceTests(TestCase):
         self.assertFalse(CollectionEntry.objects.filter(item=lone).exists())
         self.assertTrue(CollectionEntry.objects.filter(item=shared).exists())
 
+    @patch("integrations.views.tasks.remove_collection_source_states.delay")
+    def test_disconnect_queues_cleanup_instead_of_looping_in_request(self, mock_delay):
+        """Row cleanup runs in a task so a big library cannot 504 (#1911)."""
+        instance = SonarrInstance.objects.create(
+            user=self.user, base_url="https://sonarr.local:8989", api_key="k"
+        )
+
+        response = self.client.post(
+            reverse("sonarr_disconnect"), {"instance_id": instance.id}
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(SonarrInstance.objects.filter(pk=instance.pk).exists())
+        mock_delay.assert_called_once_with(self.user.id, "sonarr", instance.id)
+
     def test_disconnect_scoped_to_owner(self):
         """A user cannot disconnect another user's Radarr instance."""
         other_instance = RadarrInstance.objects.create(
@@ -358,6 +373,70 @@ class ArrImporterTests(TestCase):
             MediaTypes.TV.value,
             "95396",
             Sources.TMDB.value,
+        )
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes", return_value=[])
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_tvdb_user_reuses_tracked_tvdb_show_not_tmdb(
+        self, mock_series, _mock_episodes, mock_get_media_metadata
+    ):
+        """A TVDB-preferring user keeps one show: no TMDB item is created (#1911)."""
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+        tracked = Item.objects.create(
+            media_id="371980",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Severance",
+            image="x",
+        )
+        mock_series.return_value = [
+            {
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 9},
+                "tmdbId": 95396,
+                "tvdbId": 371980,
+            },
+        ]
+
+        sonarr.importer(None, self.user, "new")
+
+        mock_get_media_metadata.assert_not_called()
+        self.assertFalse(Item.objects.filter(source=Sources.TMDB.value).exists())
+        self.assertTrue(
+            CollectionSourceState.objects.filter(item=tracked, source="sonarr").exists()
+        )
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes", return_value=[])
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_tvdb_user_creates_new_show_on_tvdb(
+        self, mock_series, _mock_episodes, mock_get_media_metadata
+    ):
+        """An untracked show is created on TheTVDB for a TVDB-preferring user."""
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+        mock_series.return_value = [
+            {
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 9},
+                "tmdbId": 95396,
+                "tvdbId": 371980,
+            },
+        ]
+        mock_get_media_metadata.return_value = {"title": "Severance", "genres": []}
+
+        sonarr.importer(None, self.user, "new")
+
+        mock_get_media_metadata.assert_called_once_with(
+            MediaTypes.TV.value, "371980", Sources.TVDB.value
+        )
+        self.assertFalse(Item.objects.filter(source=Sources.TMDB.value).exists())
+        self.assertTrue(
+            Item.objects.filter(
+                source=Sources.TVDB.value, media_id="371980"
+            ).exists()
         )
 
     @patch("integrations.imports.sonarr.services.get_media_metadata")
