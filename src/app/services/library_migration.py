@@ -498,6 +498,15 @@ def _move_grouped(user, source_item: Item, plan: LibraryMigrationPlan) -> Item:
         season_number = int(source_season.item.season_number)
         source_season_item = source_season.item
         metadata = plan.target_seasons[season_number]
+        if not metadata:
+            # The preview only lets an empty season through when the
+            # destination lacks it; there is nowhere to move it to.
+            if Episode.objects.filter(related_season=source_season).exists():
+                _migration_error(
+                    f"The destination has no matching season {season_number}; nothing was changed."
+                )
+            source_season.delete()
+            continue
         destination_season_item = _season_item(plan, season_number, metadata)
         destination_season = Season.objects.filter(
             user=user,
@@ -791,7 +800,18 @@ def preview_tv_provider_switch(user, item: Item) -> TvProviderSwitch:
         number: dict(payload.get(f"season/{number}") or {})
         for number in season_numbers
     }
-    missing = [f"Season {number}" for number, meta in target_seasons.items() if not meta]
+    # A tracked season with no plays has nothing to lose: one the destination
+    # lacks (an announced season, say) is dropped by the move, not a blocker.
+    played_seasons = {
+        int(episode.related_season.item.season_number)
+        for episode in source_episodes
+        if episode.related_season.item.season_number is not None
+    }
+    missing = [
+        f"Season {number}"
+        for number, meta in target_seasons.items()
+        if not meta and number in played_seasons
+    ]
     episodes_by_season = {
         number: _episode_map(meta) for number, meta in target_seasons.items() if meta
     }
