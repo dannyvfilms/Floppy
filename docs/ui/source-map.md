@@ -91,6 +91,7 @@ build artifacts. The Python composition tag is documented in the register.
 ## FORM-CONTROLS
 
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
+- `native-proof/app/components/AdaptivePresentationSheet.jsx`, `native-proof/app/components/SheetCloseButton.jsx`, `native-proof/app/components/SheetCloseButton.ios.jsx`, `native-proof/app/components/SheetHost.jsx`, `native-proof/app/components/SheetHost.ios.jsx` (Expo UI sheet adapter and platform close controls; header uses 16-point horizontal insets, and iOS extends into horizontal safe areas for the Duo rail; no production consumers yet; existing modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
 
 Status: `Partial / coexisting`
 
