@@ -9,7 +9,7 @@ export function AdaptivePresentationSheet({ children, title, onClose, titleColor
   const insets = useSheetInsets();
   return <SheetContainer snapPoints={snapPoints} showDragIndicator contentPadding={0} {...props}>
     <SheetHost><View style={{ flex: 1 }}>
-      {title ? <View style={{ height: 68, paddingLeft: 16 + insets.left, paddingRight: 16, justifyContent: 'center', alignItems: 'flex-start' }}>
+      {title ? <View style={{ height: 80, paddingLeft: 16 + insets.left, paddingRight: 16, justifyContent: 'center', alignItems: 'flex-start' }}>
         <Text accessibilityRole="header" numberOfLines={1} style={{ color: titleColor, fontSize: 20, fontWeight: '600', marginRight: 52 }}>{title}</Text>
         {onClose ? <View style={{ position: 'absolute', right: 16 }}><SheetCloseButton onPress={onClose} color={titleColor} /></View> : null}
       </View> : null}
