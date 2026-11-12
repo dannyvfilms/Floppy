@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app import helpers
 from app.discover.feature_metadata import normalize_certification
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 
 ANIME_SUPPLEMENT_GENRE = "Anime"
 
@@ -330,6 +330,40 @@ def apply_provider_episode_count(item, metadata: dict | None) -> list[str]:
 
     item.provider_episode_count = value
     return ["provider_episode_count"]
+
+
+def store_provider_episode_count(media_id, source, count, *, season_number=None):
+    """Record a just-fetched provider episode count on the rows that hold it.
+
+    Called where a provider payload is in hand, so the stored count follows the
+    payload instead of waiting for a whole-item metadata refresh. With
+    `season_number` the count is that season's `len(episodes)`; without it, the
+    show's total. Never creates an item, and never erases a count because a
+    payload lacked one.
+
+    Reads first and writes only the rows that differ: an UPDATE that matches
+    nothing still takes SQLite's write lock, and this runs on page reads. The
+    queryset update sends no `post_save`, so no cache is cleared and no
+    backfill is queued. Returns the number of rows changed.
+    """
+    count = _coerce_episode_count(count)
+    if count is None:
+        return 0
+
+    items = Item.objects.filter(media_id=str(media_id), source=source)
+    if season_number is None:
+        items = items.filter(media_type=MediaTypes.TV.value)
+    else:
+        items = items.filter(
+            media_type=MediaTypes.SEASON.value,
+            season_number=season_number,
+        )
+    stale_ids = list(
+        items.exclude(provider_episode_count=count).values_list("pk", flat=True),
+    )
+    if not stale_ids:
+        return 0
+    return Item.objects.filter(pk__in=stale_ids).update(provider_episode_count=count)
 
 
 def apply_item_metadata(

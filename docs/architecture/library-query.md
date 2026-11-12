@@ -19,7 +19,10 @@ the others (#1248), and their semantics drifted apart.
 Surfaces whose unit is not one item keep their own pipeline:
 
 - separate-entry mode, which shows one card per tracker row;
-- TV's "time left" order, which is grouped and caches its own order;
+- TV's "time left" order, which is grouped and caches its own order. It ranks
+  the filtered library from grouped rows (`app.tv_show_facts`,
+  `app.tv_sort.build_time_left_records`), not from hydrated seasons and plays,
+  and hydrates one page;
 - the podcast show view;
 - the music artist and album views;
 - Home's "recently unrated" shelf, which is bounded by its time window.
