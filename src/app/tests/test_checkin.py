@@ -485,6 +485,8 @@ class CheckInTests(TestCase):
 class CheckInShowTests(TestCase):
     """A show check-in is of the next unwatched episode, and saves an open play."""
 
+    source = Sources.TMDB.value
+
     def setUp(self):
         cache.clear()
         self.user = get_user_model().objects.create_user(
@@ -546,7 +548,7 @@ class CheckInShowTests(TestCase):
         self.addCleanup(patcher.stop)
 
     def start(self):
-        checkin.start(self.user, "tv", "1668")
+        checkin.start(self.user, "tv", "1668", source=self.source)
 
     def card(self):
         return peek_card(self.user.id)
@@ -631,7 +633,7 @@ class CheckInShowTests(TestCase):
         self.start()
 
         with self.at(5 * 60):
-            checkin.pause(self.user, "tv", "1668")
+            checkin.pause(self.user, "tv", "1668", source=self.source)
 
         self.assertIsNone(self.card())
         self.assertEqual(self.open_plays().count(), 1)
@@ -649,7 +651,7 @@ class CheckInShowTests(TestCase):
         self.start()
 
         with self.at(19 * 60):
-            checkin.finish(self.user, "tv", "1668")
+            checkin.finish(self.user, "tv", "1668", source=self.source)
 
         self.assertFalse(self.open_plays().exists())
         self.assertEqual(
@@ -661,17 +663,17 @@ class CheckInShowTests(TestCase):
     def test_cancel_removes_the_play_it_added(self):
         self.start()
 
-        checkin.cancel(self.user, "tv", "1668")
+        checkin.cancel(self.user, "tv", "1668", source=self.source)
 
         self.assertFalse(Episode.objects.filter(related_season=self.season).exists())
         self.assertIsNone(self.card())
 
     def test_cancel_after_pause_and_resume_still_removes_the_play_it_added(self):
         self.start()
-        checkin.pause(self.user, "tv", "1668")
+        checkin.pause(self.user, "tv", "1668", source=self.source)
         self.start()
 
-        checkin.cancel(self.user, "tv", "1668")
+        checkin.cancel(self.user, "tv", "1668", source=self.source)
 
         self.assertFalse(Episode.objects.filter(related_season=self.season).exists())
 
@@ -688,7 +690,7 @@ class CheckInShowTests(TestCase):
         self.season.refresh_from_db()
         self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
 
-        checkin.cancel(self.user, "tv", "1668")
+        checkin.cancel(self.user, "tv", "1668", source=self.source)
 
         self.season.refresh_from_db()
         self.show.refresh_from_db()
@@ -704,7 +706,7 @@ class CheckInShowTests(TestCase):
         )
         self.start()
 
-        checkin.cancel(self.user, "tv", "1668")
+        checkin.cancel(self.user, "tv", "1668", source=self.source)
 
         self.assertEqual(self.open_plays().count(), 1)
 
@@ -760,6 +762,45 @@ class CheckInShowTests(TestCase):
         url = reverse(
             "checkin_action",
             kwargs={"source": "tmdb", "media_type": "tv", "media_id": "1668"},
+        )
+
+        response = self.client.post(url, {"action": "start"})
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(self.open_plays().count(), 1)
+
+
+class CheckInTvdbShowTests(CheckInShowTests):
+    """A show tracked on TVDB checks in like a TMDB one (TV default can be TVDB)."""
+
+    source = Sources.TVDB.value
+
+    def setUp(self):
+        super().setUp()
+        Item.objects.filter(media_id="1668").update(source=Sources.TVDB.value)
+        self.show.refresh_from_db()
+
+    def test_supports_tvdb_shows_but_not_tvdb_movies(self):
+        self.assertTrue(checkin.supports(MediaTypes.TV.value, Sources.TVDB.value))
+        self.assertFalse(checkin.supports(MediaTypes.MOVIE.value, Sources.TVDB.value))
+
+    def test_card_and_record_carry_the_tvdb_source(self):
+        self.start()
+
+        self.assertEqual(running_checkin(self.user.id)["source"], Sources.TVDB.value)
+        self.assertEqual(self.card()["source"], Sources.TVDB.value)
+
+    def test_a_tmdb_action_does_not_touch_a_tvdb_check_in(self):
+        self.start()
+
+        with self.assertRaises(checkin.CheckInError):
+            checkin.pause(self.user, "tv", "1668", source=Sources.TMDB.value)
+
+    def test_the_button_endpoint_accepts_a_show(self):
+        self.client.login(username="checkin-show", password="12345")
+        url = reverse(
+            "checkin_action",
+            kwargs={"source": "tvdb", "media_type": "tv", "media_id": "1668"},
         )
 
         response = self.client.post(url, {"action": "start"})

@@ -1011,14 +1011,14 @@ class MediaCheckInView(drf_views.APIView):
         name = request.data.get("action")
         if checkin_session.supports(media_type):
             action = SESSION_ACTIONS.get(name)
-            arguments = (request.user, source, media_type, media_id)
+            arguments, kwargs = (request.user, source, media_type, media_id), {}
         else:
             action = ACTIONS.get(name) if checkin.supports(media_type, source) else None
-            arguments = (request.user, media_type, media_id)
+            arguments, kwargs = (request.user, media_type, media_id), {"source": source}
         if action is None:
             return Response({"detail": "Unsupported check-in."}, status=HTTP.BAD_REQUEST)
         try:
-            action(*arguments)
+            action(*arguments, **kwargs)
         except checkin.CheckInError as error:
             return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         return self.get(request, media_type, source, media_id)

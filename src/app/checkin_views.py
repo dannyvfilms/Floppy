@@ -66,15 +66,15 @@ def checkin_action(request, source, media_type, media_id):
             return HttpResponseBadRequest("This check-in is no longer active.")
     if checkin_session.supports(media_type):
         action = SESSION_ACTIONS.get(name)
-        arguments = (request.user, source, media_type, media_id)
+        arguments, kwargs = (request.user, source, media_type, media_id), {}
     else:
         action = ACTIONS.get(name) if checkin.supports(media_type, source) else None
-        arguments = (request.user, media_type, media_id)
+        arguments, kwargs = (request.user, media_type, media_id), {"source": source}
     if action is None:
         return HttpResponseBadRequest("Unsupported check-in")
 
     try:
-        action(*arguments)
+        action(*arguments, **kwargs)
     except checkin.CheckInError as error:
         return HttpResponseBadRequest(error.message)
     except Exception:
