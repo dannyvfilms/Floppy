@@ -84,6 +84,16 @@ def fence_overwrite_tracking_writes(sender, instance, **kwargs):
         guard_instances([instance])
 
 
+@receiver(post_save)
+def refresh_entry_source_suggestions(sender, instance, **kwargs):
+    """Offer a newly typed source in the tracking modal straight away."""
+    if kwargs.get("raw") or not getattr(instance, "entry_source", ""):
+        return
+    from app import entry_sources
+
+    entry_sources.note_saved_source(instance)
+
+
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
 GENRE_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl", "igdb", "bgg")
 # Non-import tasks with user-facing results. Import tasks are tracked by their
