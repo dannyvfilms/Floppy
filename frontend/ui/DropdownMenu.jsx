@@ -2,32 +2,39 @@ import React, { useContext, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Modal } from './Modal';
 import { DROPDOWN, dropdownPlacement } from './dropdownMetrics';
-import { KeyboardOverlapContext } from './keyboardOverlapContext';
+import { DropdownInsetsContext, KeyboardOverlapContext } from './keyboardOverlapContext';
 
 // Anchor coordinates are in the window, while a sheet's modal host is local to
 // the sheet. Measure the host so the same menu positions correctly in both.
 export function DropdownMenu({ open, onClose, children, palette, closeLabel, anchor,
-  estimatedHeight = 112, layerProps }) {
-  return <Modal transparent visible={open} animationType={anchor ? 'none' : 'fade'} onRequestClose={onClose}>
-    <DropdownMenuContent {...{ onClose, children, palette, closeLabel, anchor, estimatedHeight, layerProps }} />
+  estimatedHeight = 112, align = 'end', layerProps }) {
+  // A caller may clear the anchor in the same update that closes the menu. It must close the way it opened:
+  // switching to the fade animation while closing flashes a dark overlay across the page and leaves a layer
+  // over it that swallows clicks until the fade ends.
+  const openedAnchored = useRef(false);
+  if (open) openedAnchored.current = Boolean(anchor);
+  const anchored = open ? Boolean(anchor) : openedAnchored.current;
+  return <Modal transparent visible={open} animationType={anchored ? 'none' : 'fade'} onRequestClose={onClose}>
+    <DropdownMenuContent {...{ onClose, children, palette, closeLabel, anchor, estimatedHeight, align, layerProps }} />
   </Modal>;
 }
 
 // Keep keyboard-driven layout inside the modal host: Duo registers modal children in a separate
 // commit, which would otherwise consume the keyboard's LayoutAnimation before the menu resizes.
-function DropdownMenuContent({ onClose, children, palette, closeLabel, anchor, estimatedHeight, layerProps }) {
+function DropdownMenuContent({ onClose, children, palette, closeLabel, anchor, estimatedHeight, align, layerProps }) {
   const viewport = useWindowDimensions();
   const host = useRef(null);
   const [bounds, setBounds] = useState(null);
   const dropdown = Boolean(anchor);
+  const inset = useContext(DropdownInsetsContext);
   const useKeyboardOverlap = useContext(KeyboardOverlapContext);
   const keyboard = useKeyboardOverlap(true);
   const width = bounds?.width || viewport.width;
   const fullHeight = bounds?.height || viewport.height;
   // Placement ignores the keyboard, so opening it never moves the menu: the top stays where it was and only
   // the bottom comes up, the menu getting shorter and scrolling (the Search suggestions fit the same way).
-  const placement = anchor ? dropdownPlacement(anchor, { ...(bounds || { x: 0, y: 0 }), width, height: fullHeight }, estimatedHeight) : null;
-  const baseRoom = placement?.top != null ? fullHeight - placement.top - 8
+  const placement = anchor ? dropdownPlacement(anchor, { ...(bounds || { x: 0, y: 0 }), width, height: fullHeight }, estimatedHeight, undefined, align, inset) : null;
+  const baseRoom = placement?.top != null ? fullHeight - inset.bottom - placement.top - 8
     : placement?.bottom != null ? fullHeight - placement.bottom - 8 : fullHeight - 16;
   const overlap = placement?.bottom != null ? 0 : keyboard;
   const room = typeof overlap === 'number' ? Math.max(80, baseRoom - overlap)

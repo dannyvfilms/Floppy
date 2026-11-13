@@ -3600,6 +3600,21 @@ class MediaListViewTests(TestCase):
             response, "layout = layout === 'grid' ? 'table' : 'grid'"
         )
 
+    def test_filters_status_and_sort_are_the_shared_filter_bar_island(self):
+        """The three toolbar dropdowns mount the shared FilterBar, which groups the date options under Date."""
+        response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
+
+        self.assertContains(response, "data-filter-bar-root")
+        self.assertContains(response, '"date": "Date"')
+        self.assertContains(response, '"releaseDate": "Release date"')
+        self.assertContains(response, '"addedDate": "Added date"')
+        self.assertContains(response, '"completedDate": "Completed date"')
+        self.assertContains(response, '"releaseStatus": "Release status"')
+        for key in ("year", "release"):
+            self.assertContains(response, f'"key": "{key}"')
+        for key in ("releaseDate", "dateAdded", "completedDate"):
+            self.assertContains(response, f'"key": "{key}"')
+
     def test_comic_media_list_can_switch_to_issue_subview(self):
         """Comic media list should reuse the music-style subview switch for issues."""
         comic_item = Item.objects.create(

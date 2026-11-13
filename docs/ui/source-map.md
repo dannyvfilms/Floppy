@@ -1434,6 +1434,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountDeviceApproval.jsx`
 - `frontend/ui/mountDeviceConnect.jsx`
 - `frontend/ui/mountFilterBar.jsx`
+- `src/templates/app/components/filter_bar.html` (island host for the toolbar's Filters, Status and Sort dropdowns; props from `src/app/filter_bar.py`)
 - `frontend/ui/mountSettingsMenu.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `frontend/ui/mountHome.jsx`

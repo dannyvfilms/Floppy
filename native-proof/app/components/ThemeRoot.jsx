@@ -3,7 +3,8 @@ import { useColorScheme } from 'react-native';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { createSettingsTransport } from '../data/settingsTransport';
 import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
-import { KeyboardOverlapContext } from '../../../frontend/ui/keyboardOverlapContext';
+import { DropdownInsetsContext, KeyboardOverlapContext } from '../../../frontend/ui/keyboardOverlapContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { applyPlatformTheme } from '../themeColor';
 import { applyServerTheme, restoreStoredTheme } from '../themeSync';
 import { getTheme, setSystemScheme, subscribeTheme } from '../themeState';
@@ -15,6 +16,7 @@ import { getTheme, setSystemScheme, subscribeTheme } from '../themeState';
 // Mount once, above every screen.
 export default function ThemeRoot({ children }) {
   const scheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const [resolved, setResolved] = useState(getTheme);
 
   useEffect(() => subscribeTheme(setResolved), []);
@@ -36,5 +38,8 @@ export default function ThemeRoot({ children }) {
   }, []);
 
   // Menus size themselves to what the keyboard leaves visible, like the Search suggestions.
-  return <KeyboardOverlapContext.Provider value={useKeyboardOverlap}>{children}</KeyboardOverlapContext.Provider>;
+  // Menus also stay out of the safe area, so one opened near the iOS side rail is placed beside it, not under it.
+  return <KeyboardOverlapContext.Provider value={useKeyboardOverlap}>
+    <DropdownInsetsContext.Provider value={insets}>{children}</DropdownInsetsContext.Provider>
+  </KeyboardOverlapContext.Provider>;
 }
