@@ -26,14 +26,41 @@
        x-transition:leave-start="transform opacity-100 scale-100"
        x-transition:leave-end="transform opacity-0 scale-95">
 
+    {# The view row names the current view and switches to the other. The rest are alphabetical. #}
     <a :href="layoutHref(layout === 'grid' ? 'table' : 'grid')"
        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
        @click="$el.href = layoutHref(layout === 'grid' ? 'table' : 'grid'); open = false"
        @auxclick="$el.href = layoutHref(layout === 'grid' ? 'table' : 'grid')">
-      <span x-show="layout === 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
-      <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
-      {% translate "Table View" as media_i18n_55 %}{% translate "Grid View" as media_i18n_56 %}<span x-text="layout === 'grid' ? '{{ media_i18n_55|escapejs }}' : '{{ media_i18n_56|escapejs }}'"></span>
+      <span x-show="layout === 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
+      <span x-show="layout !== 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
+      {% translate "Grid View" as media_i18n_55 %}{% translate "Table View" as media_i18n_56 %}<span x-text="layout === 'grid' ? '{{ media_i18n_55|escapejs }}' : '{{ media_i18n_56|escapejs }}'"></span>
     </a>
+
+    <div class="border-t border-gray-700 my-1" role="separator"></div>
+
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            type="button"
+            @click="open = false; saveView()">
+      {% include "app/icons/save.svg" with classes="w-4 h-4" %}
+      <span>{% translate "Save View" %}</span>
+    </button>
+
+    {% if enable_bulk_select %}
+      <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+              type="button"
+              @click="open = false; toggleSelectMode()">
+        {% include "app/icons/circle-check.svg" with classes="w-4 h-4" %}
+        {% translate "Cancel Select" as media_i18n_59 %}{% translate "Select Items" as media_i18n_60 %}<span x-text="selectMode ? '{{ media_i18n_59|escapejs }}' : '{{ media_i18n_60|escapejs }}'"></span>
+      </button>
+    {% endif %}
+
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+            type="button"
+            :disabled="sharing"
+            @click="open = false; sharing = true; shareView().finally(() => { sharing = false; })">
+      {% include "app/icons/share.svg" with classes="w-4 h-4" %}
+      {% translate "Sharing…" as media_i18n_57 %}{% translate "Share View" as media_i18n_58 %}<span x-text="sharing ? '{{ media_i18n_57|escapejs }}' : '{{ media_i18n_58|escapejs }}'"></span>
+    </button>
 
     {% if entry_grouping.supported %}
       <form method="post"
@@ -55,32 +82,6 @@
           </span>
         </button>
       </form>
-    {% endif %}
-
-    <div class="border-t border-gray-700 my-1" role="separator"></div>
-
-    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
-            type="button"
-            :disabled="sharing"
-            @click="open = false; sharing = true; shareView().finally(() => { sharing = false; })">
-      {% include "app/icons/link.svg" with classes="w-4 h-4" %}
-      {% translate "Sharing…" as media_i18n_57 %}{% translate "Share View" as media_i18n_58 %}<span x-text="sharing ? '{{ media_i18n_57|escapejs }}' : '{{ media_i18n_58|escapejs }}'"></span>
-    </button>
-
-    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-            type="button"
-            @click="open = false; saveView()">
-      {% include "app/icons/save.svg" with classes="w-4 h-4" %}
-      <span>{% translate "Save View" %}</span>
-    </button>
-
-    {% if enable_bulk_select %}
-      <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-              type="button"
-              @click="open = false; toggleSelectMode()">
-        {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
-        {% translate "Cancel Select" as media_i18n_59 %}{% translate "Select Items" as media_i18n_60 %}<span x-text="selectMode ? '{{ media_i18n_59|escapejs }}' : '{{ media_i18n_60|escapejs }}'"></span>
-      </button>
     {% endif %}
   </div>
 </div>
