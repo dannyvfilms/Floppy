@@ -8154,18 +8154,18 @@ class MediaDetailsViewTests(TestCase):
             ),
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            reverse(
-                "person_detail",
-                kwargs={
-                    "source": Sources.TMDB.value,
-                    "person_id": "159320",
-                    "name": "andy-hallett",
-                },
-            ),
+        person_url = reverse(
+            "person_detail",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "person_id": "159320",
+                "name": "andy-hallett",
+            },
         )
+        self.assertEqual(response.status_code, 200)
+        # The server cards shown before React mounts link from the same props
+        # the island receives; the props JSON alone would not match href="...".
+        self.assertContains(response, f'href="{person_url}"')
 
     @patch("app.views.tmdb.episode")
     @patch("app.providers.services.get_media_metadata")
