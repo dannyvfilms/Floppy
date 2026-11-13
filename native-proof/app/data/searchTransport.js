@@ -1,0 +1,25 @@
+import { getActiveAuthSession } from './authSession.js';
+import {
+  createLocalSearchActions,
+  createRemoteSearchActions,
+  searchBarFromPayload,
+  suggestionsFromPayload,
+} from './searchTransportCore.js';
+
+export function createSearchTransport(options = {}) {
+  if (typeof options.request === 'function') {
+    return createRemoteSearchActions(options.request);
+  }
+  const auth = options.auth || getActiveAuthSession();
+  if (auth && typeof auth.request === 'function') {
+    return createRemoteSearchActions(auth.request, {
+      suggestionsViaWeb: auth.authType === 'session',
+      serverUrl: auth.serverUrl || '',
+    });
+  }
+  return createLocalSearchActions(
+    'Sign in to your Floppy server to search.',
+  );
+}
+
+export { searchBarFromPayload, suggestionsFromPayload };

@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers, history_cache
 from app.activity_builders import _build_detail_activity_state
+from app.card_events import card_update_event
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
 from app.history_processor import USER_EDIT_REASON
@@ -541,6 +542,11 @@ def media_save(request):
             }
             if home_row_id and instance_id and old_status != media.status:
                 htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            htmx_trigger["floppyCardUpdate"] = card_update_event(
+                media.item,
+                media,
+                request.user,
+            )
             response["HX-Trigger"] = json.dumps(
                 htmx_trigger,
             )
@@ -649,8 +655,10 @@ def media_delete(request):
             "HX-Request",
         ):
             related_season._sync_status_after_episode_change()
-            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            cache_utils.clear_library_view_caches(
+                related_season.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
             history_day_key = history_cache.history_day_key(
                 end_date or start_date or created_at,
             )
@@ -797,9 +805,9 @@ def media_rewatch(request):
         except RewatchAlreadyCompleteError as error:
             # htmx doesn't swap a non-2xx response, so without an explicit
             # trigger the button click would just silently do nothing.
-            response = HttpResponseBadRequest(str(error))
+            response = HttpResponseBadRequest(error.message)
             response["HX-Trigger"] = json.dumps(
-                {"showToast": {"message": str(error), "type": "error"}},
+                {"showToast": {"message": error.message, "type": "error"}},
             )
             return response
         if skipped_seasons:
@@ -818,13 +826,13 @@ def media_rewatch(request):
             messages.warning(
                 request,
                 gettext(
-                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                    "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
                 )
                 % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, media_types=(media_type,))
 
     redirect_response = helpers.redirect_back(request)
     if request.headers.get("HX-Request"):
@@ -1189,14 +1197,16 @@ def episode_save(request):
                 notes=form.cleaned_data.get("notes") or "",
             )
         except fork_services_episode.EpisodeWatchConflictError as error:
-            return HttpResponse(str(error), status=409)
+            return HttpResponse(error.code, status=409)
         episode = result.episode
     if episode_instance and hasattr(related_season, "_episode_stats_cache"):
         delattr(related_season, "_episode_stats_cache")
     if episode_instance:
         related_season._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+        cache_utils.clear_library_view_caches(
+            related_season.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     if request.headers.get("HX-Request"):
         episode_history = list(

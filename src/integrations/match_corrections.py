@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 
 from django.db.models import Q
 
@@ -27,19 +28,20 @@ from app.models import (
     WatchStateChange,
 )
 from app.providers import services
+from app.public_errors import PublicMessageError
 from integrations.external_references import save_correction
 from lists.models import CustomListItem, ListRecommendation
 
 
-class InvalidMatchCorrectionError(ValueError):
+class InvalidMatchCorrectionError(PublicMessageError, ValueError):
     """The source and destination cannot be corrected together."""
 
 
-class StaleCorrectionPreviewError(ValueError):
+class StaleCorrectionPreviewError(PublicMessageError, ValueError):
     """The affected user-owned state changed after preview."""
 
 
-class MissingEpisodeMappingError(ValueError):
+class MissingEpisodeMappingError(PublicMessageError, ValueError):
     """At least one source episode has not been mapped."""
 
 
@@ -386,8 +388,15 @@ def _merge_scalars(source, destination, decisions):
     )
 
 
-def _move_unique_state(model, user, source_item, destination_item, fields):
-    """Move one user/item singleton, keeping the newer destination row."""
+def _move_unique_state(
+    model, user, source_item, destination_item, fields, *, clock=None
+):
+    """Move one user/item singleton, keeping the newer destination row.
+
+    ``clock`` names an event-ordering watermark. Both rows describe the same
+    title, so the kept row takes the newer of the two whichever row's values
+    win: an event older than one already applied to either row is stale.
+    """
     source = model.objects.filter(user=user, item=source_item).first()
     if not source:
         return
@@ -395,12 +404,22 @@ def _move_unique_state(model, user, source_item, destination_item, fields):
     if destination is None:
         model.objects.filter(pk=source.pk).update(item=destination_item)
         return
+    values = {}
     if (
         getattr(source, "updated_at", None)
         and getattr(destination, "updated_at", None)
         and source.updated_at > destination.updated_at
     ):
         values = {field: getattr(source, field) for field in fields}
+    if clock:
+        clocks = [
+            value
+            for value in (getattr(source, clock), getattr(destination, clock))
+            if value is not None
+        ]
+        if clocks:
+            values[clock] = max(clocks)
+    if values:
         model.objects.filter(pk=destination.pk).update(**values)
     source.delete()
 
@@ -416,6 +435,7 @@ def _move_relations(user, source_item, destination_item):
         source_item,
         destination_item,
         ("position_seconds", "duration_seconds", "completed"),
+        clock="last_event_at",
     )
     _move_unique_state(
         WatchState,
@@ -499,6 +519,29 @@ def _move_movie(user, source_item, destination_item, decisions):
         Movie.objects.filter(pk=source.pk).update(item=destination_item)
 
 
+def _destination_season_item(destination_item, season_number, template):
+    """Return the destination show's season Item, creating it from the source's."""
+    season_item = Item.objects.filter(
+        media_id=destination_item.media_id,
+        source=destination_item.source,
+        media_type=MediaTypes.SEASON.value,
+        season_number=season_number,
+    ).first()
+    if season_item is None:
+        season_item = Item.objects.create(
+            media_id=destination_item.media_id,
+            source=destination_item.source,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=template.library_media_type,
+            title=template.title,
+            original_title=template.original_title,
+            localized_title=template.localized_title,
+            image=template.image,
+            season_number=season_number,
+        )
+    return season_item
+
+
 def _move_tv(user, source_item, destination_item, mapping, decisions):
     """Move TV tracking while preserving every episode watch row."""
     source = TV.objects.filter(user=user, item=source_item).first()
@@ -527,33 +570,21 @@ def _move_tv(user, source_item, destination_item, mapping, decisions):
         source_season = season.item.season_number
         destination_season_number = source_season
         if source_season is not None:
-            candidates = [
-                key for key in mapping if key.startswith(f"{source_season}:")
-            ]
-            if candidates:
-                destination_season_number, _ = _mapping_value(mapping, candidates[0])
+            # The season row follows where most of its episodes go; an episode
+            # mapped elsewhere (a special, say) gets that season's row below.
+            targets = Counter(
+                _mapping_value(mapping, key)[0]
+                for key in mapping
+                if key.startswith(f"{source_season}:")
+            )
+            if targets:
+                destination_season_number = targets.most_common(1)[0][0]
         destination_season = destination_seasons.get(destination_season_number)
         if destination_season is None:
-            destination_season_item = Item.objects.filter(
-                media_id=destination_item.media_id,
-                source=destination_item.source,
-                media_type=MediaTypes.SEASON.value,
-                season_number=destination_season_number,
-            ).first()
-            if destination_season_item is None:
-                destination_season_item = Item.objects.create(
-                    media_id=destination_item.media_id,
-                    source=destination_item.source,
-                    media_type=MediaTypes.SEASON.value,
-                    library_media_type=season.item.library_media_type,
-                    title=season.item.title,
-                    original_title=season.item.original_title,
-                    localized_title=season.item.localized_title,
-                    image=season.item.image,
-                    season_number=destination_season_number,
-                )
             Season.objects.filter(pk=season.pk).update(
-                item=destination_season_item,
+                item=_destination_season_item(
+                    destination_item, destination_season_number, season.item
+                ),
                 related_tv=destination,
             )
             destination_season = Season.objects.get(pk=season.pk)
@@ -565,6 +596,20 @@ def _move_tv(user, source_item, destination_item, mapping, decisions):
                 continue
             key = f"{source_season}:{episode.item.episode_number}"
             target_season_number, target_episode_number = _mapping_value(mapping, key)
+            target_season = destination_seasons.get(target_season_number)
+            if target_season is None:
+                target_season = Season(
+                    user=user,
+                    related_tv=destination,
+                    item=_destination_season_item(
+                        destination_item, target_season_number, season.item
+                    ),
+                    status=season.status,
+                )
+                # bulk_create skips Season.save(), whose status cascade would
+                # rewrite the show while it is half moved.
+                Season.objects.bulk_create([target_season])
+                destination_seasons[target_season_number] = target_season
             target_item = Item.objects.filter(
                 media_id=destination_item.media_id,
                 source=destination_item.source,
@@ -586,7 +631,7 @@ def _move_tv(user, source_item, destination_item, mapping, decisions):
                     episode_number=target_episode_number,
                 )
             Episode.objects.filter(pk=episode.pk).update(
-                related_season=destination_season,
+                related_season=target_season,
                 item=target_item,
             )
         if season.pk != destination_season.pk:
@@ -634,7 +679,12 @@ def apply_match_correction(
         if source_item.media_type == MediaTypes.MOVIE.value:
             _move_movie(user, source_item, destination_item, decisions)
         else:
+            from app.services import library_migration
+
             _move_tv(user, source_item, destination_item, mapping, decisions)
+            # The same follow-ups as a provider move: the rehomed show needs its
+            # calendar (next episode, progress) and caches rebuilt.
+            library_migration._schedule_cache_reconcile(user, destination_item)
         _move_relations(user, source_item, destination_item)
 
         if reference_ids:

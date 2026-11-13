@@ -4,6 +4,7 @@ See docs/architecture/media-card.md. If a test here fails after adding a grid,
 declare the surface in app.card_surfaces rather than special-casing the card.
 """
 
+import json
 import re
 from pathlib import Path
 from unittest.mock import patch
@@ -30,6 +31,19 @@ from app.models import (
 
 TEMPLATES_DIR = Path(settings.BASE_DIR) / "templates"
 CARD_TEMPLATE = "app/components/media_card.html"
+
+
+def card_model(content):
+    """Return the model React renders the card from, read out of its props."""
+    match = re.search(
+        r'<script id="media-card-[^"]*" type="application/json">(.*?)</script>',
+        content,
+        re.DOTALL,
+    )
+    if not match:
+        msg = "the card rendered no React props"
+        raise AssertionError(msg)
+    return json.loads(match.group(1))["model"]
 
 
 class MediaCardSurfaceContractTest(TestCase):
@@ -88,6 +102,18 @@ class MediaCardSurfaceContractTest(TestCase):
         self.assertIn("Existing Home subtitle", content)
         self.assertIn("Contract Movie", content)
 
+    @patch("app.media_card_model.app_tags.alternative_title", return_value="Alternate")
+    def test_detail_recommendation_uses_home_card_without_alternative_title(self, _alternative):
+        content = self.render(
+            '{% include "app/components/home_grid.html" %}',
+            media_list={"card_surface": "detail_recommendations", "items": [{
+                "item": self.item, "media": self.movie, "subtitle_override": "2022",
+            }]},
+        )
+        model = card_model(content)
+        self.assertIsNone(model["altTitle"])
+        self.assertIn("2022", json.dumps(model["lines"]))
+
     def test_mixed_home_row_marks_square_and_video_cards(self):
         for media_type, expected_class in (
             (MediaTypes.MUSIC.value, "home-row-card-mixed-square"),
@@ -114,7 +140,9 @@ class MediaCardSurfaceContractTest(TestCase):
         """A rating is never a per-surface choice: a tracked card always shows it."""
         for surface in SURFACES:
             with self.subTest(surface=surface):
-                self.assertIn(">8.5</span>", self.render_card(surface))
+                self.assertEqual(
+                    card_model(self.render_card(surface))["rating"]["label"], "8.5"
+                )
 
     def test_artwork_url_is_available_without_javascript_on_every_surface(self):
         """Warm artwork can load from browser cache without a JS unveil step."""
@@ -144,10 +172,11 @@ class MediaCardSurfaceContractTest(TestCase):
                 )
                 self.assertIn("video-card", content)
                 self.assertEqual("video-card-landscape" in content, landscape)
-                self.assertIn("/maxresdefault.jpg", content)
-                self.assertIn(
-                    'data-image-fallback="https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg"',
-                    content,
+                image = card_model(content)["image"]
+                self.assertIn("/maxresdefault.jpg", image["src"])
+                self.assertEqual(
+                    image["fallback"],
+                    "https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg",
                 )
 
     @patch("app.image_cache.is_enabled", return_value=False)
@@ -222,8 +251,9 @@ class MediaCardSurfaceContractTest(TestCase):
             media=self.movie,
             credit={"watched_person_runtime_display": "2:30"},
         )
-        self.assertRegex(content, r'class="absolute bottom-3 right-2[^"]*">\s*2:30')
-        self.assertNotRegex(content, r'top-2 right-2[^"]*">\s*2:30')
+        chips = {c["kind"]: c["text"] for c in card_model(content)["cornerChips"]}
+        self.assertEqual(chips.get("runtime"), "2:30")
+        self.assertNotIn("runtime-top", chips)
 
     def test_rating_is_a_button_that_rates_the_tracked_item(self):
         """A tracked card's rating opens the shared picker, posting to this item."""
@@ -232,30 +262,30 @@ class MediaCardSurfaceContractTest(TestCase):
         )
         for surface, flags in SURFACES.items():
             with self.subTest(surface=surface):
-                content = self.render_card(surface)
+                model = card_model(self.render_card(surface))
                 rate_button = not flags.is_recommend_mode and not flags.rating_read_only
-                self.assertEqual("media-card-rate-button" in content, rate_button)
-                self.assertEqual(f'hx-post="{rate_url}"' in content, rate_button)
+                self.assertEqual(model["ratingEditable"], rate_button)
+                if rate_button:
+                    self.assertEqual(model["rating"]["rateUrl"], rate_url)
 
     def test_rating_is_read_only_where_the_viewer_cannot_rate(self):
         """Public pages and untracked items keep the plain rating, with no button."""
-        self.assertNotIn(
-            "media-card-rate-button",
-            self.render_card("related", public_view=True),
-        )
+        public = card_model(self.render_card("related", public_view=True))
+        self.assertFalse(public["ratingEditable"])
         content = self.render(
             "{% media_card 'library' item=item %}",
             item=self.item,
         )
-        self.assertNotIn("media-card-rate-button", content)
+        self.assertIsNone(card_model(content)["rating"])
 
     def test_unrated_tracked_card_offers_the_empty_star(self):
         """A tracked item with no rating still gets the button, starting empty."""
         self.movie.score = None
         self.movie.save()
-        content = self.render_card("library")
-        self.assertIn("media-card-rate-button", content)
-        self.assertIn("rating: null", content)
+        model = card_model(self.render_card("library"))
+        self.assertTrue(model["ratingEditable"])
+        self.assertIsNone(model["rating"]["value"])
+        self.assertTrue(model["rating"]["rateUrl"])
 
     def test_disabled_ratings_hide_the_card_rating(self):
         """Turning ratings off removes the rating and the rate button on every surface."""
@@ -264,7 +294,7 @@ class MediaCardSurfaceContractTest(TestCase):
         for surface in SURFACES:
             with self.subTest(surface=surface):
                 content = self.render_card(surface)
-                self.assertNotIn("media-card-rate-button", content)
+                self.assertIsNone(card_model(content)["rating"])
                 self.assertNotIn("8.5", content)
         self.movie.refresh_from_db()
         self.assertEqual(self.movie.score, 8.5)
@@ -275,16 +305,16 @@ class MediaCardSurfaceContractTest(TestCase):
             with self.subTest(scale=scale):
                 self.user.rating_scale = scale
                 self.user.save()
-                content = self.render_card("library")
-                self.assertEqual(content.count('"toggle": true'), stars)
+                model = card_model(self.render_card("library"))
+                self.assertEqual(model["rating"]["scaleMax"], stars)
 
     def test_status_chip_follows_the_surface_table(self):
         """The status chip shows exactly where the surface declares it."""
         for surface, flags in SURFACES.items():
             with self.subTest(surface=surface):
-                content = self.render_card(surface)
+                model = card_model(self.render_card(surface))
                 self.assertEqual(
-                    'class="media-status-chip ' in content,
+                    model["statusChip"] is not None,
                     flags.show_status_chip,
                 )
 
@@ -299,8 +329,9 @@ class MediaCardSurfaceContractTest(TestCase):
                     search_preview_url="/preview",
                 )
                 self.assertIn("Contract Movie", content)
-                self.assertNotIn(">8.5</span>", content)
-                self.assertNotIn('class="media-status-chip ', content)
+                model = card_model(content)
+                self.assertIsNone(model["rating"])
+                self.assertIsNone(model["statusChip"])
 
     def test_card_values_do_not_leak_from_the_page(self):
         """A value the call does not set is cleared, not read from the page."""
@@ -320,11 +351,23 @@ class MediaCardSurfaceContractTest(TestCase):
     def test_two_cards_for_one_item_do_not_share_modal_targets(self):
         """A second copy of an item opens its own modal, not the first card's."""
         content = self.render_card("collection") + self.render_card("collection")
-        track_ids = re.findall(r'<div id="(track-movie-[^"]+)"></div>', content)
-        self.assertEqual(len(track_ids), 2)
-        self.assertNotEqual(track_ids[0], track_ids[1])
-        for track_id in track_ids:
-            self.assertIn(f'hx-target="#{track_id}"', content)
+        props = re.findall(
+            r'<script id="media-card-[0-9a-f]+" type="application/json">(.*?)</script>',
+            content,
+            re.DOTALL,
+        )
+        self.assertEqual(len(props), 2)
+        targets = [
+            next(
+                action["target"]
+                for action in json.loads(raw)["model"]["actions"]["items"]
+                if action.get("modal") == "track"
+            )
+            for raw in props
+        ]
+        self.assertNotEqual(targets[0], targets[1])
+        for target in targets:
+            self.assertTrue(target.startswith("#track-movie-"))
 
     def test_unknown_value_is_rejected(self):
         """An ad-hoc flag must be declared in app.card_surfaces first."""
@@ -378,6 +421,84 @@ class MediaCardTemplateUsageTest(TestCase):
         self.assertEqual(undeclared, [])
 
 
+# Templates that carry `media-card` markup without going through the shared
+# media item card. Each is a different kind of card (see docs/architecture/
+# media-card.md, "Not this card"), listed here so a new one is a decision.
+DOCUMENTED_EXCEPTIONS = {
+    "app/components/person_card_inline.html": "person card, not a media item",
+    "app/components/person_filmography_card.html": "Statistics repeat-player strip",
+    "app/components/statistics/highlight_set.html": "Statistics highlight tiles",
+    "app/statistics.html": "Statistics page styles for its highlight tiles",
+    "app/components/active_playback_card.html": "server-rendered fallback for the shared Now Playing MediaCard",
+    "app/components/album_grid.html": "music album card: needs an Album, not an Item",
+    "app/components/album_list_grid_items.html": "music library albums, no Item row",
+    "app/components/artist_grid_items.html": "music library artists, no Item row",
+    "app/components/artist_relation_grid.html": "music artist page albums",
+    "app/components/search_local_album_cards.html": "music search albums, no Item row",
+    "lists/components/list_grid.html": "list index cards, a list is not a media item",
+    "lists/components/list_cover_image.html": "list cover artwork",
+}
+# Parts of the card itself, or places that only name its CSS classes.
+CARD_PARTS = {
+    CARD_TEMPLATE,
+    "app/components/media_card_rate_button.html",
+    "app/components/media_card_rating_oob.html",
+    "app/components/card_lines.html",
+    "base.html",
+}
+# Cards React renders from a model: the surface tag, History and the Search row.
+REACT_ENTRY = re.compile(r"\{%\s*(media_card\s|history_card_react|media_row_react)")
+
+
+class MediaCardInventoryTest(TestCase):
+    """Every template that draws a media card is React-owned or a documented exception."""
+
+    def sources(self):
+        for path in TEMPLATES_DIR.rglob("*.html"):
+            yield path.relative_to(TEMPLATES_DIR).as_posix(), path.read_text()
+
+    def test_every_surface_renders_through_react(self):
+        """A surface that opts out of React is a new legacy card."""
+        self.assertEqual(
+            [name for name, flags in SURFACES.items() if not flags.react_card], []
+        )
+
+    def test_card_template_is_a_shell_without_a_legacy_body(self):
+        """React owns the card; the template keeps only the wrapper and first paint."""
+        source = (TEMPLATES_DIR / CARD_TEMPLATE).read_text()
+        for legacy in ("trackOpen", "listsOpen", "x-data", "tapToReveal", "x-show"):
+            self.assertNotIn(legacy, source)
+        self.assertLess(len(source.splitlines()), 80)
+
+    def test_history_and_search_row_render_through_react(self):
+        for name in (
+            "app/components/history_card.html",
+            "app/components/media_card_list.html",
+        ):
+            self.assertRegex((TEMPLATES_DIR / name).read_text(), REACT_ENTRY)
+
+    def test_no_template_draws_an_undocumented_card(self):
+        """New `media-card` markup must use the tag or be listed as an exception."""
+        undocumented = [
+            name
+            for name, source in self.sources()
+            if "media-card" in source
+            and name not in CARD_PARTS
+            and name not in DOCUMENTED_EXCEPTIONS
+            and not REACT_ENTRY.search(source)
+        ]
+        self.assertEqual(undocumented, [])
+
+    def test_documented_exceptions_still_exist(self):
+        """A stale exception hides the day it should have been migrated."""
+        stale = [
+            name
+            for name in DOCUMENTED_EXCEPTIONS
+            if "media-card" not in (TEMPLATES_DIR / name).read_text()
+        ]
+        self.assertEqual(stale, [])
+
+
 class MusicGridRatingTest(TestCase):
     """The music library's artist and album cards rate through the same picker."""
 
@@ -406,7 +527,7 @@ class MusicGridRatingTest(TestCase):
         content = self.render_grid("app/components/artist_grid_items.html", tracker)
         self.assertIn("media-card-rate-button", content)
         self.assertIn(
-            f'hx-post="{reverse("update_artist_score", args=[self.artist.id])}"',
+            f'"postUrl": "{reverse("update_artist_score", args=[self.artist.id])}"',
             content,
         )
 
@@ -420,7 +541,7 @@ class MusicGridRatingTest(TestCase):
         content = self.render_grid("app/components/album_list_grid_items.html", tracker)
         self.assertIn("rating: 6", content)
         self.assertIn(
-            f'hx-post="{reverse("update_album_score", args=[self.album.id])}"',
+            f'"postUrl": "{reverse("update_album_score", args=[self.album.id])}"',
             content,
         )
 
@@ -433,14 +554,13 @@ PROFILE_CARDS = (
     "app/components/album_list_grid_items.html",
     "app/components/album_grid.html",
     "app/components/artist_relation_grid.html",
-    "app/search.html",
     "app/components/media_card_list.html",
     "app/components/episode_row.html",
     "app/components/person_card_inline.html",
     "app/components/person_filmography_card.html",
     "app/components/statistics/highlight_set.html",
-    "app/components/active_playback_card.html",
-    "app/episode_details.html",
+    # The Now Playing fallback has one fixed episode/progress subtitle, not
+    # profile-controlled metadata lines, matching the shared PlaybackCard.
     "events/components/calendar_list.html",
     "events/components/calendar_grid.html",
 )

@@ -1033,6 +1033,7 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             env = {
                 **os.environ,
+                "BACKUP_DIR": str(tmp_path / "backups"),
                 "DB_HOST": "",
                 "PARKING_PID_FILE": str(tmp_path / "parking.pid"),
                 "FLOPPY_DATA_DIR": tmp_dir,
@@ -1128,6 +1129,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             timeout_wrapper.chmod(0o755)
             env = {
                 **os.environ,
+                "BACKUP_DIR": str(tmp_path / "backups"),
                 "DB_HOST": "",
                 "CHECKER_PID_FILE": str(tmp_path / "checker.pid"),
                 "FLOPPY_DATA_DIR": tmp_dir,
@@ -1570,8 +1572,9 @@ class SqliteIntegrityTests(SimpleTestCase):
 
     def test_entrypoint_bounds_admission_before_migrations(self):
         script = ENTRYPOINT.read_text()
-        check = "timeout -k 5 30 python manage.py sqlite_startup &"
+        check = 'timeout -k 5 "$SQLITE_ADMISSION_TIMEOUT" python manage.py sqlite_startup &'
 
+        self.assertIn("SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}", script)
         self.assertIn(check, script)
         # Admission must finish quickly; full verification is independent.
         self.assertNotIn("integrity_timeout", script)
@@ -1585,14 +1588,18 @@ class SqliteIntegrityTests(SimpleTestCase):
             'trap \'kill "$integrity_pid" 2>/dev/null || :; '
             'wait "$integrity_pid" 2>/dev/null || :; exit 0\' TERM INT'
         )
+        admission_call = script.index("run_sqlite_admission || integrity_status=$?")
         wait = script.index('wait "$integrity_pid"', launch)
         reset_trap = script.index("trap - TERM INT", wait)
-        self.assertLess(cleanup_trap, launch)
+        self.assertLess(cleanup_trap, admission_call)
         self.assertLess(launch, wait)
         self.assertLess(wait, reset_trap)
-        timeout_case = script.index("124)", reset_trap)
+        timeout_case = script.index("124|143)", reset_trap)
         failure_case = script.index("*)", timeout_case)
-        self.assertIn("exceeded 30s", script[timeout_case:failure_case])
+        self.assertIn(
+            "exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts",
+            script[timeout_case:failure_case],
+        )
         self.assertIn("integrity check failed", script[failure_case:])
         self.assertIn(
             'trap \'kill "$parking_pid" 2>/dev/null || :; '

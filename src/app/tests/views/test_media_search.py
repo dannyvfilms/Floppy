@@ -1,3 +1,5 @@
+import json
+import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -28,6 +30,7 @@ from app.models import (
 )
 from app.providers import services
 from app.search_views import get_saved_suggestions
+from app.services import metadata_resolution
 from app.templatetags.app_tags import get_search_media_types
 from users.models import MetadataSourceDefaultChoices
 
@@ -40,6 +43,35 @@ class MediaSearchViewTests(TestCase):
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+
+    def _props(self, response):
+        """Return the shared search results props the page embeds."""
+        match = re.search(
+            r'<script id="search-results-[0-9a-f]+" type="application/json">(.*?)</script>',
+            response.content.decode(),
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        return json.loads(match.group(1))
+
+    def _rows(self, response):
+        return self._streamed(response)[0]
+
+    def _streamed(self, response):
+        """Rows and notes once the page has asked each provider for its row."""
+        props = self._props(response)
+        rows = list(props["rows"])
+        notes = list(props["notes"])
+        for source in props["onlineSources"]:
+            payload = self.client.get(
+                reverse("search_results_json"),
+                {"q": props["query"], "media_type": props["mediaType"], "row": source["rowId"], "page": 1},
+            ).json()
+            if payload["row"]:
+                rows.append(payload["row"])
+            if payload["unavailable"]:
+                notes.append(f"{payload['unavailable']} is currently unavailable.")
+        return rows, notes
 
     @patch("app.providers.services.search")
     def test_media_search_view(self, mock_search):
@@ -63,6 +95,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=movie&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
 
@@ -77,6 +110,22 @@ class MediaSearchViewTests(TestCase):
             language="en",
             user=self.user,
         )
+
+    @patch("app.providers.services.search")
+    def test_media_search_without_media_type_renders(self, mock_search):
+        """A search URL without media_type should render instead of raising KeyError."""
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        response = self.client.get(reverse("search") + "?q=test")
+
+        self._streamed(response)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/search.html")
+        mock_search.assert_called()
 
     @patch("app.providers.services.search")
     def test_video_search_lists_local_videos_without_a_provider_call(self, mock_search):
@@ -100,14 +149,15 @@ class MediaSearchViewTests(TestCase):
         mock_search.assert_not_called()
 
     @patch("app.providers.services.search")
-    def test_search_result_track_modal_is_cloaked(self, mock_search):
-        """The track modal must not flash before Alpine hides it.
+    def test_search_results_open_popups_from_the_shared_host(self, mock_search):
+        """Result cards and rows carry no popup markup of their own.
 
-        media_card_list.html's overlay is a full-screen
-        `fixed inset-0 bg-black/50` div; without x-cloak it renders visible
-        until Alpine boots and applies x-show="trackOpen".
+        A popup is a full-screen `fixed inset-0 bg-black/50` div, so one per
+        result used to need x-cloak to stay hidden until Alpine booted. The
+        shared React host now renders a popup only when one is opened.
         """
-        mock_search.return_value = {
+        # The view edits result dicts in place, so each request gets a fresh one.
+        mock_search.side_effect = lambda *args, **kwargs: {
             "page": 1,
             "total_results": 1,
             "total_pages": 1,
@@ -122,15 +172,12 @@ class MediaSearchViewTests(TestCase):
             ],
         }
 
-        response = self.client.get(
-            reverse("search") + "?media_type=movie&q=test",
-        )
+        response = self.client.get(reverse("search") + "?media_type=movie&q=test")
 
         self.assertEqual(response.status_code, 200)
-        self.assertRegex(
-            response.content.decode(),
-            r'x-show="trackOpen"[^>]*\sx-cloak\b',
-        )
+        self.assertNotIn('x-show="trackOpen"', response.content.decode())
+        card = self._rows(response)[0]["items"][0]["card"]
+        self.assertEqual(card["title"], "Test Movie")
 
     @patch("app.providers.services.search")
     def test_podcast_local_result_keeps_show_source(self, mock_search):
@@ -160,46 +207,33 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(local_results[0]["item"].source, Sources.GPODDER.value)
 
     @patch("app.providers.services.search")
-    def test_podcast_online_results_name_the_source_that_answered(self, mock_search):
-        """The heading names the source the results came from, with an info tip."""
-        result = {
-            "media_id": "https://example.com/feed.xml",
-            "source": Sources.GPODDER.value,
-            "media_type": MediaTypes.PODCAST.value,
-            "title": "Das Portal",
-            "image": "https://example.com/portal.jpg",
-        }
-        mock_search.return_value = {
-            "page": 1,
-            "total_results": 1,
-            "total_pages": 1,
-            "results": [dict(result)],
-            "fallback_source": Sources.PODCASTINDEX.value,
-        }
+    def test_podcast_provider_that_answered_for_another_has_no_row(self, mock_search):
+        """A fallback answer is another provider's, which has its own row."""
+        def answer(media_type, query, page, source, **_kwargs):
+            result = {
+                "media_id": f"https://example.com/{source}.xml",
+                "source": source,
+                "media_type": MediaTypes.PODCAST.value,
+                "title": "Das Portal",
+                "image": "https://example.com/portal.jpg",
+            }
+            data = {
+                "page": 1,
+                "total_results": 1,
+                "total_pages": 1,
+                "results": [result],
+            }
+            if source == Sources.POCKETCASTS.value:
+                data["fallback_source"] = Sources.GPODDER.value
+            return data
 
-        response = self.client.get(
-            reverse("search")
-            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
-        )
+        mock_search.side_effect = answer
 
-        content = response.content.decode()
-        self.assertContains(response, "Online Results (Podcast Index)")
-        self.assertContains(response, "Pocket Casts had no match for this search")
-        self.assertNotIn("Online Results (Pocket Casts)", content)
+        response = self.client.get(reverse("search") + "?media_type=podcast&q=portal")
 
-        # The view rewrites result dicts in place, so give the second search its own.
-        mock_search.return_value = {
-            "page": 1,
-            "total_results": 1,
-            "total_pages": 1,
-            "results": [dict(result)],
-        }
-        response = self.client.get(
-            reverse("search")
-            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
-        )
-        self.assertContains(response, "Online Results (Pocket Casts)")
-        self.assertContains(response, "These results come from Pocket Casts")
+        row_ids = [row["rowId"] for row in self._rows(response)]
+        self.assertNotIn(f"online:{Sources.POCKETCASTS.value}", row_ids)
+        self.assertIn(f"online:{Sources.GPODDER.value}", row_ids)
 
     @patch("app.providers.services.search")
     def test_music_search_view_uses_shared_template(
@@ -332,8 +366,10 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=anime&q=chainsaw",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
-        mock_search.assert_called_once_with(
+        # Every provider is searched for its own row; the user's default is one of them.
+        mock_search.assert_any_call(
             MediaTypes.ANIME.value,
             "chainsaw",
             1,
@@ -355,6 +391,7 @@ class MediaSearchViewTests(TestCase):
 
         response = self.client.get(reverse("search") + "?media_type=book&q=quo+vadis")
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_search.call_args.args[3], Sources.OPENLIBRARY.value)
         self.assertNotIn(
@@ -377,6 +414,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=quo+vadis&source=hardcover",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_search.call_args.args[3], Sources.OPENLIBRARY.value)
 
@@ -399,8 +437,9 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
-        mock_search.assert_called_once()
+        mock_search.assert_called()
         self.assertFalse(services._interactive_request.get())
 
     @patch("app.providers.services.search")
@@ -414,12 +453,12 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
-        messages = list(response.context["messages"])
-        self.assertEqual(len(messages), 1)
-        self.assertIn("Hardcover", str(messages[0]))
-        self.assertIn("unavailable", str(messages[0]))
+        notes = " ".join(self._streamed(response)[1])
+        self.assertIn("Hardcover", notes)
+        self.assertIn("unavailable", notes)
 
     @patch("app.providers.services.search")
     def test_search_not_configured_provider_explains_setup(self, mock_search):
@@ -435,11 +474,11 @@ class MediaSearchViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        messages = list(response.context["messages"])
-        self.assertEqual(len(messages), 1)
-        self.assertIn("not configured", str(messages[0]))
-        self.assertIn("Settings", str(messages[0]))
-        self.assertNotIn("unavailable", str(messages[0]))
+        # A provider that is not set up is skipped without a message, and has no row.
+        self.assertEqual(list(response.context["messages"]), [])
+        props = self._props(response)
+        self.assertEqual(props["rows"], [])
+        self.assertNotIn("unavailable", " ".join(props["notes"]))
 
 
 class CollectedItemSearchTests(TestCase):
@@ -753,7 +792,7 @@ class AllTypeSearchTests(TestCase):
         )
         self.assertEqual(
             {s["title"]: s["subtitle"] for s in suggestions}["Dune Movie"],
-            "Movie",
+            "Movie · Completed",
         )
         self.assertContains(response, "See all library results")
 
@@ -915,5 +954,188 @@ class BarcodeOwnedSearchTests(TestCase):
                 {"media_type": MediaTypes.COMIC_ISSUE.value, "q": "x"},
             )
 
-        scan_types = f"['book', 'manga', 'comic', '{MediaTypes.COMIC_ISSUE.value}']"
+        scan_types = f"['all', 'book', 'manga', 'comic', '{MediaTypes.COMIC_ISSUE.value}']"
         self.assertContains(response, scan_types)
+
+
+class AllScopeIsbnSearchTests(TestCase):
+    """A checksum-valid ISBN in All scope fans out to the barcode-capable types."""
+
+    ISBN = "9780306406157"
+
+    def setUp(self):
+        """Create a signed-in user."""
+        self.user = get_user_model().objects.create_user("allscan", password="12345")
+        self.client.login(username="allscan", password="12345")
+
+    @staticmethod
+    def provider_result(media_type, title):
+        """Return a provider search payload with one result."""
+        return {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": f"{media_type}-1",
+                    "title": title,
+                    "media_type": media_type,
+                    "source": Sources.MANUAL.value,
+                    "image": "http://example.com/x.jpg",
+                },
+            ],
+        }
+
+    def search(self, query, side_effect):
+        """Run an All-scope search and return the response."""
+        with patch("app.providers.services.search", side_effect=side_effect) as mock:
+            response = self.client.get(
+                reverse("search"),
+                {"media_type": "all", "q": query},
+            )
+        self.assertEqual(response.status_code, 200)
+        return response, mock
+
+    def test_isbn_searches_each_barcode_type_with_its_default_source(self):
+        """Each eligible type is searched once, with its default provider."""
+        calls = []
+
+        def fake(media_type, query, page, source, **kwargs):
+            calls.append((media_type, query, source))
+            return self.provider_result(media_type, f"{media_type} hit")
+
+        response, _ = self.search(self.ISBN, fake)
+        searched = {call[0] for call in calls}
+        enabled = set(self.user.get_enabled_media_types())
+        self.assertEqual(
+            searched,
+            {
+                MediaTypes.BOOK.value,
+                MediaTypes.MANGA.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.COMIC_ISSUE.value,
+            }
+            & enabled,
+        )
+        self.assertIn(MediaTypes.BOOK.value, searched)
+        for media_type, query, source in calls:
+            self.assertEqual(query, self.ISBN)
+            self.assertEqual(
+                source,
+                metadata_resolution.metadata_default_source(self.user, media_type),
+            )
+        groups = {g["media_type"]: g for g in response.context["local_groups"]}
+        self.assertEqual(set(groups), searched)
+        self.assertEqual(groups[MediaTypes.BOOK.value]["total"], 1)
+
+    def test_typed_text_never_fans_out(self):
+        """Titles and invalid ISBNs do not call a provider in All scope."""
+        _, mock = self.search("9780306406158", [])
+        mock.assert_not_called()
+
+    def test_disabled_types_are_not_searched(self):
+        """Only media types in the user's search menu are searched."""
+        self.user.manga_enabled = False
+        self.user.save()
+        calls = []
+
+        def fake(media_type, *args, **kwargs):
+            calls.append(media_type)
+            return self.provider_result(media_type, "hit")
+
+        self.search(self.ISBN, fake)
+        self.assertNotIn(MediaTypes.MANGA.value, calls)
+        self.assertIn(MediaTypes.BOOK.value, calls)
+
+    def test_one_provider_failing_keeps_the_others(self):
+        """A provider error drops only that type's group."""
+
+        def fake(media_type, *args, **kwargs):
+            if media_type == MediaTypes.BOOK.value:
+                raise services.ProviderAPIError(Sources.OPENLIBRARY.value, Exception("x"))
+            return self.provider_result(media_type, "hit")
+
+        response, _ = self.search(self.ISBN, fake)
+        groups = {g["media_type"] for g in response.context["local_groups"]}
+        self.assertNotIn(MediaTypes.BOOK.value, groups)
+        self.assertIn(MediaTypes.MANGA.value, groups)
+
+    def test_saved_barcode_is_grouped_with_online_results(self):
+        """An owned volume appears first in its type's group."""
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Shelf")
+        field = CollectionField.objects.create(
+            group=group,
+            label="Barcode",
+            field_type=CollectionFieldType.TEXT,
+            media_types=[MediaTypes.BOOK.value],
+        )
+        owned = Item.objects.create(
+            media_id="owned-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Owned Book",
+            image="",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=owned,
+            custom_field_values={str(field.id): self.ISBN},
+        )
+        response, _ = self.search(
+            self.ISBN,
+            lambda media_type, *a, **k: self.provider_result(media_type, "hit"),
+        )
+        books = next(
+            g
+            for g in response.context["local_groups"]
+            if g["media_type"] == MediaTypes.BOOK.value
+        )
+        self.assertEqual(books["results"][0]["item"], owned)
+        self.assertEqual(books["total"], 2)
+
+
+class ProviderResultSetsTests(TestCase):
+    """One provider failing is reported by label; anything else still raises."""
+
+    def setUp(self):
+        """Build a request for a signed-in user."""
+        from django.test import RequestFactory
+
+        self.request = RequestFactory().get("/search")
+        self.request.user = get_user_model().objects.create_user("sets", password="12345")
+
+    def _sets(self, side_effect):
+        from app.search_views import _provider_result_sets
+
+        sources = [Sources.TMDB.value, Sources.TVDB.value]
+        with (
+            patch("app.providers.services.search", side_effect=side_effect),
+            patch(
+                "app.search_views.helpers.enrich_items_with_user_data",
+                side_effect=lambda _request, results, **_kwargs: results,
+            ),
+        ):
+            return _provider_result_sets(
+                self.request, MediaTypes.TV.value, "query", sources, 1
+            )
+
+    def test_provider_failure_is_reported_once_per_provider(self):
+        def fake(_media_type, _query, _page, source, **_kwargs):
+            if source == Sources.TVDB.value:
+                raise services.ProviderAPIError(source, Exception("secret"))
+            return {"results": [{"media_id": "1", "title": "Hit"}]}
+
+        sets, unavailable = self._sets(fake)
+        self.assertEqual([entry["source"] for entry in sets], [Sources.TMDB.value])
+        self.assertEqual(
+            unavailable,
+            [metadata_resolution.metadata_provider_label(Sources.TVDB.value)],
+        )
+
+    def test_unconfigured_provider_is_skipped_and_other_errors_raise(self):
+        def unconfigured(_media_type, _query, _page, source, **_kwargs):
+            raise services.ProviderNotConfiguredError(source, "Add a key.")
+
+        self.assertEqual(self._sets(unconfigured), ([], []))
+        with self.assertRaises(RuntimeError):
+            self._sets(RuntimeError("unexpected"))

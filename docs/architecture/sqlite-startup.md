@@ -5,8 +5,12 @@ Ordinary restarts do not warm the database, run `quick_check`, run
 schema, migration history, model table/column names and recovery sidecars.
 Each SQLite statement has a five-second progress deadline and a two-second busy
 timeout; the entrypoint bounds the whole command, including imports and I/O,
-to 30 seconds (then five seconds to kill it). A kernel storage operation in
-uninterruptible sleep cannot be made healthy by a Python or shell deadline.
+to `FLOPPY_SQLITE_ADMISSION_TIMEOUT` seconds (default 30, then five seconds to
+kill it). This setting must be a positive whole number. GNU `timeout` returns
+124 when it reaches the deadline; BusyBox may return 143 after sending TERM.
+The entrypoint treats both as timeouts, retries admission once, then parks if
+the retry also times out. A kernel storage operation in uninterruptible sleep
+cannot be made healthy by a Python or shell deadline.
 
 An expired verification, absent record, interrupted scan or previous timeout
 only lets the sliced background verifier continue; a changed image does not. These are not corruption findings. An old record is not proof that

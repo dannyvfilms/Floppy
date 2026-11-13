@@ -76,14 +76,53 @@ and addresses are not.
 ## Ordering
 
 Webhooks are queued, so an older event can be processed after a newer one. The
-receipt timestamp is carried into the worker and used in two places:
+receipt timestamp is carried into the worker as epoch seconds with its
+fraction, because two events can arrive in the same second and a backlog can
+process them in reverse. It is used in two places:
 
 - `app.live_playback.apply_playback_event` drops a card update whose receipt
   time is older than the card's last update, so a delayed `media.play` cannot
-  replace the card left by a later `media.scrobble`.
+  replace the card left by a later `media.scrobble`. The card keeps the precise
+  time as `event_ts`; its display timestamps (`updated_at_ts` and the expiry
+  times) stay whole seconds. A card without `event_ts` (cached before it
+  existed, or written without a receipt time) is compared by `updated_at_ts`.
 - `api.fork_views_playback.upsert_playback_progress` drops a progress write
-  whose receipt time is older than the stored row, so the delayed play cannot
-  reset a completed scrobble to 0% / not completed.
+  whose receipt time is older than the row's `last_event_at` (the receipt time
+  of the newest event it applied), so a delayed Jellyfin Pause or Emby partial
+  Stop cannot undo a completed stop. A dropped write saves nothing and
+  publishes no progress change. It never compares against `updated_at`, which
+  is processing time: a backlog would make every queued event look older than
+  the one processed just before it. An equal receipt time applies in
+  processing order.
+
+`last_event_at` is unknown (null) on rows written before it existed and on rows
+only ever written without a receipt time. It is deliberately not backfilled
+from `updated_at`, for the reason above, so the next event on such a row
+applies and starts its clock; until then a late event on an upgraded row is not
+caught. Writes without a receipt time (the progress API, Check-in, the UI)
+always apply and leave `last_event_at` alone. The trade-off: a webhook received
+before such a write but processed after it still applies, because a
+processing-time stamp on the write would wrongly drop webhooks received just
+after it. A match correction that merges two progress rows keeps the newer of
+their two clocks, whichever row's values win.
+
+Every provider whose worker carries a receipt time passes it to both the card
+and the durable row, including the stop path that writes the row after media
+processing (Plex, Emby, Jellyfin). A stop that reached the row without its
+receipt time would leave the clock unset, and a Jellyfin Pause or Emby partial
+Stop received earlier in the same second could then be dropped by the card
+but still reset the row.
+
+Rollout: migration `app.0222` (`last_event_at`) and the worker code must ship
+together, so stop and restart every worker before taking webhooks again. An
+older worker still running alongside a new one writes progress without
+touching `last_event_at`, so its writes bypass the clock in both directions.
+Cards cached before the upgrade cannot recover fractional receipt times; they
+order by whole seconds until the next event replaces them. The migration adds
+the column only if no column of that name exists, which protects an
+installation where the column was already added; it does not check that
+column's type or repair a mismatched schema, and reversing the migration drops
+the column whether or not this migration created it.
 
 Final events still write their history rows regardless of order: Plex plays do
 not write tracking rows at all (`STOP_ONLY` policy, see

@@ -360,15 +360,47 @@ def _build_item_from_entry(entry):
         "image": metadata.get("image") or settings.IMG_NONE,
     }
 
-    item, _ = Item.objects.get_or_create(
-        media_id=str(tmdb_id),
-        source=Sources.TMDB.value,
-        media_type=media_type,
+    return get_or_create_tmdb_item(
+        media_type,
+        str(tmdb_id),
         season_number=season_number,
         episode_number=episode_number,
         defaults=defaults,
     )
-    return item
+
+
+def get_or_create_tmdb_item(
+    media_type,
+    media_id,
+    *,
+    season_number=None,
+    episode_number=None,
+    defaults=None,
+):
+    """Return the TMDB Item for a list entry, tolerating several library buckets.
+
+    The same TMDB identity can have one Item per library bucket, so a plain
+    ``get_or_create`` raises ``MultipleObjectsReturned``. A list member has no
+    bucket of its own: prefer the default bucket, else the oldest Item.
+    """
+    matches = Item.objects.filter(
+        media_id=media_id,
+        source=Sources.TMDB.value,
+        media_type=media_type,
+        season_number=season_number,
+        episode_number=episode_number,
+    ).order_by("id")
+    item = matches.filter(library_media_type=media_type).first() or matches.first()
+    if item:
+        return item
+    return Item.objects.create(
+        media_id=media_id,
+        source=Sources.TMDB.value,
+        media_type=media_type,
+        season_number=season_number,
+        episode_number=episode_number,
+        **(defaults or {}),
+    )
 
 
 def _get_metadata(media_type, tmdb_id, title, season_number=None, episode_number=None):

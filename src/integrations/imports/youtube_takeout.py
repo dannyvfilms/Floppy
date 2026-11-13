@@ -225,12 +225,14 @@ def _history_from_zip(file):
             if not names:
                 msg = "No watch-history.json or watch-history.html in this zip."
                 raise MediaImportError(msg)
-            return archive.read(
-                min(
-                    names,
-                    key=lambda name: (not name.lower().endswith(".json"), len(name)),
-                )
+            name = min(
+                names,
+                key=lambda name: (not name.lower().endswith(".json"), len(name)),
             )
+            if archive.getinfo(name).file_size > 100 * 1024 * 1024:
+                msg = "The YouTube watch history file is too large to import."
+                raise MediaImportError(msg)
+            return archive.read(name)
     except zipfile.BadZipFile as error:
         msg = "This zip can't be opened."
         raise MediaImportError(msg) from error

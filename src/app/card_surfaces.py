@@ -24,34 +24,49 @@ class CardSurface:
     is_recommend_mode: bool = False
     rating_read_only: bool = False
     secondary_color: bool = False
+    # Body rendered by the shared React card (frontend/ui/MediaCard.jsx).
+    react_card: bool = False
+    hide_alt_title: bool = False
 
 
 SURFACES = {
-    "library": CardSurface(),
-    "collection": CardSurface(),
-    "related": CardSurface(),
-    "seasons": CardSurface(),
-    "list_recommendations": CardSurface(),
+    "library": CardSurface(react_card=True),
+    "collection": CardSurface(react_card=True),
+    "related": CardSurface(react_card=True),
+    "seasons": CardSurface(react_card=True),
+    "list_recommendations": CardSurface(react_card=True),
     # Upcoming shelves lead with the next release instead of the status.
-    "home": CardSurface(show_next_event_chip=True, show_next_event_subtitle=True),
+    "home": CardSurface(
+        show_next_event_chip=True,
+        show_next_event_subtitle=True,
+        react_card=True,
+    ),
+    "detail_recommendations": CardSurface(
+        show_next_event_chip=True,
+        show_next_event_subtitle=True,
+        react_card=True,
+        hide_alt_title=True,
+    ),
     # Home card with the Behind or countdown chip in the next-episode slot.
     "up_next": CardSurface(
         show_next_event_chip=True,
         show_next_event_subtitle=True,
         show_episode_queue=True,
+        react_card=True,
     ),
     # A list can hold single episodes; S01E02 says which one.
-    "list": CardSurface(show_episode_identity=True),
+    "list": CardSurface(show_episode_identity=True, react_card=True),
     # A tile on a tier board: the board owns clicks and drags, so no hover
     # actions, and no status chip or release year to load for a small poster.
     "tier": CardSurface(
         show_status_chip=False,
         show_release_year_placeholder=False,
         hover_action_mode="none",
+        react_card=True,
     ),
     # A person's or studio's titles: the shared card plus what that person did
     # on each one (role line, watched runtime).
-    "credit": CardSurface(),
+    "credit": CardSurface(react_card=True),
     # A game franchise/series tile: the poster and subtitle come from the group,
     # not one tracked game, so there is no status chip or hover action.
     "group": CardSurface(
@@ -59,25 +74,29 @@ SURFACES = {
         show_release_year_placeholder=False,
         hover_action_mode="none",
         rating_read_only=True,
+        react_card=True,
     ),
     # Provider results are not saved items, so there is no release year to load.
-    "search": CardSurface(show_release_year_placeholder=False),
+    "search": CardSurface(show_release_year_placeholder=False, react_card=True),
     # Picking an item inside a modal: a click previews it, no hover actions.
     "search_modal": CardSurface(
         show_release_year_placeholder=False,
         is_recommend_mode=True,
         secondary_color=True,
+        react_card=True,
     ),
     # Candidates are untracked by definition; hover offers plan/hide/list.
     "discover": CardSurface(
         show_status_chip=False,
         show_release_year_placeholder=False,
         hover_action_mode="discover",
+        react_card=True,
     ),
     # The subtitle is the date it was hidden, not the release year.
     "discover_hidden": CardSurface(
         show_status_chip=False,
         show_release_year_placeholder=False,
+        react_card=True,
     ),
 }
 
@@ -156,7 +175,33 @@ def card_context(page_context, surface, values):
     if surface == "library" and rendered_context.get("card_media_type") == "video":
         rendered_context["video_landscape"] = True
     rendered_context.update(_card_render_context(rendered_context))
+    _attach_react_card(rendered_context)
     return rendered_context
+
+
+def _attach_react_card(ctx):
+    """Give the template the React card's props when this card can use them.
+
+    Bulk selection is read from the page's Alpine scope by the adapter, and the
+    modal-search picker keeps its click-to-preview request on the card itself.
+    """
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import card_model
+
+    blocked = ctx.get("item") is None
+    if not ctx.get("react_card") or blocked:
+        return
+    ctx["react_props_id"] = f"media-card-{ctx['card_uid']}"
+    ctx["react_props"] = {
+        "model": card_model(ctx),
+        "labels": {
+            "altTitle": str(_("Show alternative title")),
+            "nextEpisode": str(_("Jump to next episode")),
+            "nextEpisodeCompact": str(_("Next")),
+            "noStatus": str(_("No Status")),
+        },
+    }
 
 
 def _card_render_context(rendered_context):

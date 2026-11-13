@@ -29,6 +29,8 @@ VERIFIED_OPERATIONS = frozenset(
         ("/api/v1/sync/snapshot/", "GET"),
         ("/api/v1/sync/changes/", "GET"),
         ("/api/v1/sync/progress-changes/", "GET"),
+        ("/api/v1/media/{media_type}/{source}/{media_id}/detail/", "GET"),
+        ("/api/v1/media/{media_type}/{source}/{media_id}/detail/gallery/", "GET"),
     }
 )
 
@@ -54,7 +56,11 @@ It is called `source` everywhere in this API, including search; there is no \
 `provider` field on the wire.
 - `media_id`: the provider's id for the item, always a string in paths.
 - Statuses are written as an integer code (0 Planning, 1 In progress, \
-2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label.
+2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label. Comic issues \
+also accept `null` or an empty string for no status.
+- `start_date` and `end_date` take an ISO 8601 date or date-time. A date \
+alone means midnight, and a value without an offset is read in the server's \
+active timezone, so send an offset (`2026-03-01T20:00:00Z`) to be exact.
 
 ## Golden path: add a play to a game
 
@@ -69,6 +75,21 @@ Planning.
 4. `PATCH /api/v1/media/{media_type}/{source}/{media_id}/history/{consumption_id}/` \
 changes exactly one consumption. Re-read `state` to verify.
 
+## Detail projection
+
+`GET /api/v1/media/{media_type}/{source}/{media_id}/detail/` returns serializable
+title, artwork, facts, synopsis, sections and viewer tracking capabilities for
+shared web and native detail surfaces, including score/tag chips, links,
+providers, cast/crew, related/recommendation cards, seasons, paginated episodes,
+book formats, game lengths, game YouTube activity, viewer notes, recent
+history and collection details when those builders return data. It contains no
+server-rendered HTML. Anonymous callers receive public, read-only metadata;
+`?public_view=1` suppresses viewer state and actions. Returned action
+capabilities are authoritative; child watch/rating actions are limited to
+signed-in, non-public TV detail views.
+The companion `GET /api/v1/media/{media_type}/{source}/{media_id}/detail/gallery/`
+resolves the deferred title logo, backdrop, gallery photos and trailer.
+
 ## Errors
 
 Error bodies keep their `detail` text and HTTP status. Where recovery differs \
@@ -82,7 +103,7 @@ or a manual item does not exist). Do not retry. |
 track it first. |
 | `CONSUMPTION_NOT_FOUND` | 404 | `consumption_id` is not one of this item's \
 entries; re-read `state`. |
-| `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label. |
+| `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label (comic issues also allow no status). |
 | `PROVIDER_UNAVAILABLE` | 503 | The metadata provider failed; \
 `retryable: true`. |
 | `DATABASE_BUSY` | 503 | The database was locked; retry GET requests after \
@@ -153,9 +174,12 @@ _LIST_SCHEMA = {
         "image",
         "owner",
         "collaborators",
+        "viewers",
         "items_count",
         "latest_update",
+        "visibility",
         "is_public",
+        "is_unlisted",
         "public_slug",
         "allow_recommendations",
     ],
@@ -166,15 +190,36 @@ _LIST_SCHEMA = {
         "image": {"type": "string", "nullable": True},
         "owner": {"type": "object", "additionalProperties": True},
         "collaborators": _ARRAY_SCHEMA,
+        "viewers": _ARRAY_SCHEMA,
         "items_count": {"type": "integer"},
         "latest_update": {
             "type": "string",
             "format": "date-time",
             "nullable": True,
         },
+        "visibility": {"type": "string", "enum": ["public", "unlisted", "private"]},
         "is_public": {"type": "boolean"},
+        "is_unlisted": {"type": "boolean"},
         "public_slug": {"type": "string", "nullable": True},
         "allow_recommendations": {"type": "boolean"},
+        "is_smart": {"type": "boolean"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "include_notes": {"type": "boolean"},
+        "completed_count": {"type": "integer"},
+        "completion_percent": {"type": "integer", "nullable": True},
+        "media_type_breakdown": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string"},
+                    "label": {"type": "string"},
+                    "count": {"type": "integer"},
+                    "percent": {"type": "integer"},
+                    "color": {"type": "string"},
+                },
+            },
+        },
         "items": {"oneOf": [_ARRAY_SCHEMA, _PAGINATED_SCHEMA]},
     },
 }
@@ -440,10 +485,12 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.fork_views_discover.DiscoverHiddenView", "serializer-unresolved"),
         ("api.fork_views_discover.DiscoverRefreshView", "serializer-unresolved"),
         ("api.fork_views_discover.DiscoverRowsView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeArtworkView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeRowDirectionView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeRowView", "serializer-unresolved"),
         ("api.fork_views_discover.HomeView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportCsvView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportTemplateView", "serializer-unresolved"),
-        ("api.fork_views_integrations.ImportActivityView", "serializer-unresolved"),
         ("api.fork_views_integrations.ImportDispatchView", "serializer-unresolved"),
         ("api.fork_views_lists.ListActivityView", "serializer-unresolved"),
         ("api.fork_views_lists.ListCollaboratorsView", "serializer-unresolved"),
@@ -484,10 +531,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
             "serializer-unresolved",
         ),
         ("api.fork_views_podcast.PodcastShowsView", "serializer-unresolved"),
-        (
-            "api.fork_views_statistics.StatisticsOverviewView",
-            "serializer-unresolved",
-        ),
         (
             "api.fork_views_statistics.StatisticsRefreshView",
             "serializer-unresolved",

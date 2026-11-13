@@ -4,7 +4,7 @@
 {% block settings_content %}
   {{ provider_directory|json_script:"provider-directory-model" }}
   <div data-provider-directory-root data-props-id="provider-directory-model" x-ignore hx-disable>
-  <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-6">
+  <div class="bg-[var(--color-surface)] rounded-[var(--theme-radius,.5rem)] p-6 space-y-6">
     <div>
       <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div class="flex items-center">

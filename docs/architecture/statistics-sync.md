@@ -132,6 +132,15 @@ range; `stats_sync` carries `days` and `days_ms` for the day-building phase,
 and each `stats_range_summary` carries `missing_days` and `days_ms` so the
 range's own day-building can be told apart from its aggregation. A range that
 is slow with `missing_days=0` is aggregation work, not a cold cache.
+`phases_ms` then says which part: wall milliseconds per phase of the aggregate
+as `phase:ms` pairs (`day_fetch` and `day_merge` are the walk over the day
+payloads, the rest is the finish), and `days_decoded` is how many day payloads
+it read.
+
+Ranges of one pass share an in-memory memo of lookups that do not depend on
+the range (the History index and the History days the highlight cards read).
+It lives for the pass only: it is never cached and never part of a snapshot,
+and a pass still stops at any range boundary.
 
 The highlights ("on this day") read the History day cache and keep any day they
 had to build, so a History cache that keeps losing days (see the coverage repair
@@ -256,7 +265,9 @@ throws away every day payload the user has.
 Signals (`app/signals.py`, `_handle_media_cache_change`) mark the days a media
 row touched; a change with no day marks the aggregate. A `pre_save`/`post_save`
 pair marks the day a Movie, Music, Podcast, Game, BoardGame, Anime, Manga, Book
-or Comic entry moved *away* from (Episode already did this). Paths without
+or Comic entry moved *away* from (Episode already did this). Audiobook listening
+sessions (`BookListeningSession`) mark the day they started on, since Statistics
+reports their minutes apart from page counts. Paths without
 signals mark explicitly: generic imports
 (`invalidate_all_statistics_days`), the TV and season completion fan-outs,
 episode-order remaps, music track relinks and TV provider migrations.
@@ -310,7 +321,7 @@ above has no message whose loss matters, and polling never touches it.
 | --- | --- |
 | `stats_mark user_id days reason` | a change was recorded |
 | `stats_sync user_id status ranges elapsed_ms` | a sync pass ended (`done`, `continued`, `busy`, `lost_lease`) |
-| `stats_range_summary user_id range generation elapsed_ms missing_days days_ms` | one range published (`days_ms` is the day-building part of `elapsed_ms`) |
+| `stats_range_summary user_id range generation elapsed_ms missing_days days_ms days_decoded phases_ms` | one range published (`days_ms` is the day-building part of `elapsed_ms`; `phases_ms` splits the aggregate) |
 | `stats_snapshot_superseded user_id range generation` | a publish was skipped: a newer generation is already out |
 | `stats_reconcile candidates queued` | the reconciler found unfinished work |
 | `stats_sync_enqueue_failed` | the broker refused a sync; the reconciler will retry |

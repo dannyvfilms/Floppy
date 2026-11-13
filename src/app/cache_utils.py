@@ -4,6 +4,7 @@ import time
 import redis
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django_redis import get_redis_connection
 
 logger = logging.getLogger(__name__)
@@ -329,6 +330,9 @@ HOME_ROW_CACHE_TTL = 60  # seconds — matches the media-list cache horizon
 # one page instead of re-ranking the shelf. Media writes invalidate it through
 # the same registry; only provider/event refreshes can lag.
 HOME_ROW_ORDER_CACHE_TTL = 1800
+# Up Next's membership scan depends on air dates, which move without a user
+# write, so it expires sooner than a shelf's order. Media writes still clear it.
+HOME_ROW_RELEASED_CACHE_TTL = 300
 _HOME_ROW_REGISTRY_TEMPLATE = f"{HOME_ROW_CACHE_PREFIX}_registry_{{user_id}}"
 
 
@@ -413,3 +417,100 @@ def clear_media_list_cache_for_user(user_id: int) -> None:
         len(keys),
         user_id,
     )
+
+
+# What changed, for clear_library_view_caches. Callers name the change; the
+# table below decides which views it can affect. Contract and rationale:
+# docs/architecture/view-caches.md.
+LIBRARY_EDIT = "library_edit"  # tracked rows written; pass media_types
+TAGS = "tags"  # tags applied, removed, created or deleted
+LIST_SETTING = "list_setting"  # a media-list display preference
+HOME_SETTING = "home_setting"  # which media types Home shows
+EPISODE_DETAILS = "episode_details"  # provider runtime / air dates, no user write
+
+_TIME_LEFT = "time_left"
+_MEDIA_LIST = "media_list"
+_HOME = "home"
+_TV_MEDIA_TYPES = frozenset({"tv", "season", "episode"})
+_VIEWS_BY_CHANGE = {
+    # Time-left only holds TV, so it is added for TV media types below.
+    LIBRARY_EDIT: (_MEDIA_LIST, _HOME),
+    # Home is added only for a user with a tag-filtered Home row (below).
+    TAGS: (_MEDIA_LIST,),
+    LIST_SETTING: (_MEDIA_LIST,),
+    HOME_SETTING: (_HOME,),
+    # Home is left out on purpose: provider refreshes touch every tracker of
+    # a show, and Home's order/Up Next caches expire on their own TTLs.
+    EPISODE_DETAILS: (_TIME_LEFT, _MEDIA_LIST),
+}
+
+
+def _home_filters_by_tag(user_id: int) -> bool:
+    from users.models import HomeScreenRow
+
+    return any(
+        (filters or {}).get("tag")
+        for filters in HomeScreenRow.objects.filter(
+            user_id=user_id,
+            enabled=True,
+        ).values_list("filters", flat=True)
+    )
+
+
+def _clear_views(user_id: int, views) -> None:
+    clear_by_view = {
+        _TIME_LEFT: clear_time_left_cache_for_user,
+        _MEDIA_LIST: clear_media_list_cache_for_user,
+        _HOME: clear_home_row_cache_for_user,
+    }
+    for view in views:
+        clear_by_view[view](user_id)
+
+
+def clear_library_view_caches(user_id, change=LIBRARY_EDIT, *, media_types=()) -> None:
+    """Clear the per-user view caches that ``change`` can make stale.
+
+    The one entry point for the media list, Home rows and the TV time-left
+    order. Inside a transaction it clears now and again on commit, because a
+    concurrent reader can re-cache pre-write rows before the write commits.
+    """
+    if not user_id:
+        return
+    views = list(_VIEWS_BY_CHANGE[change])
+    if change == LIBRARY_EDIT and _TV_MEDIA_TYPES.intersection(media_types):
+        views.insert(0, _TIME_LEFT)
+    if change == TAGS and _home_filters_by_tag(user_id):
+        views.append(_HOME)
+
+    _clear_views(user_id, views)
+    if transaction.get_connection().in_atomic_block:
+        transaction.on_commit(lambda: _clear_views(user_id, views))
+
+
+def clear_show_view_caches(
+    media_id,
+    source,
+    change=EPISODE_DETAILS,
+    *,
+    user_ids=None,
+) -> None:
+    """Clear view caches for every user tracking a show or one of its seasons."""
+    if not media_id or not source:
+        return
+    if user_ids is None:
+        from app.models import TV, Season
+
+        user_ids = set(
+            TV.objects.filter(
+                item__media_id=media_id,
+                item__source=source,
+            ).values_list("user_id", flat=True),
+        )
+        user_ids.update(
+            Season.objects.filter(
+                item__media_id=media_id,
+                item__source=source,
+            ).values_list("user_id", flat=True),
+        )
+    for user_id in sorted(set(user_ids)):
+        clear_library_view_caches(user_id, change, media_types=("tv",))

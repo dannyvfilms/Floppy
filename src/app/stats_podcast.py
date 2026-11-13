@@ -1,16 +1,11 @@
 import logging
 from collections import defaultdict
 
-from django.apps import apps
-from django.db.models import Q
-
 from app import config
 from app.models import MediaTypes
 from app.statistics_talent import STATISTICS_TOP_N
 
 logger = logging.getLogger(__name__)
-
-SECONDS_PER_DAY = 86400
 
 
 def _get_podcast_runtime_minutes(podcast_entry, history_record=None):
@@ -34,30 +29,22 @@ def _get_podcast_runtime_minutes(podcast_entry, history_record=None):
 
 
 def _get_podcast_history_data(user, start_date, end_date):
-    """Return podcast history records and a lookup for metadata."""
+    """Return the user's completed podcast plays and a lookup for metadata."""
     if not user:
         return [], {}
 
-    from app.models import Podcast
+    from app.models import Podcast, PodcastPlay
 
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-
-    podcast_history_records = HistoricalPodcast.objects.filter(
-        Q(history_user=user) | Q(history_user__isnull=True),
-        end_date__isnull=False,
-    )
-
+    plays = PodcastPlay.objects.filter(podcast__user=user, end_date__isnull=False)
     if start_date:
-        podcast_history_records = podcast_history_records.filter(
-            end_date__gte=start_date
-        )
+        plays = plays.filter(end_date__gte=start_date)
     if end_date:
-        podcast_history_records = podcast_history_records.filter(end_date__lte=end_date)
+        plays = plays.filter(end_date__lte=end_date)
 
-    podcast_history_records = list(podcast_history_records.order_by("history_date"))
-    podcast_ids = {record.id for record in podcast_history_records if record.id}
+    plays = list(plays.order_by("end_date"))
+    podcast_ids = {play.podcast_id for play in plays}
     if not podcast_ids:
-        return podcast_history_records, {}
+        return plays, {}
 
     podcasts_lookup = {
         podcast.id: podcast
@@ -67,15 +54,11 @@ def _get_podcast_history_data(user, start_date, end_date):
         ).select_related("item", "show", "episode", "episode__show")
     }
 
-    return podcast_history_records, podcasts_lookup
+    return plays, podcasts_lookup
 
 
-def _collect_podcast_play_data(
-    podcast_history_records, podcasts_lookup, start_date, end_date
-):
-    """Collect podcast play datetimes and per-play runtime from history records.
-
-    We deduplicate by end_date per podcast entry to avoid counting metadata updates.
+def _collect_podcast_play_data(plays, podcasts_lookup, start_date, end_date):
+    """Collect podcast play datetimes and per-play runtime from plays.
 
     Returns:
         tuple: (list of datetimes, list of (podcast_entry, datetime, runtime_minutes) tuples)
@@ -85,62 +68,22 @@ def _collect_podcast_play_data(
     datetimes = []
     play_details = []  # (podcast_entry, datetime, runtime_minutes)
 
-    if not podcast_history_records:
-        logger.debug("Podcast history records empty in _collect_podcast_play_data")
-        return datetimes, play_details
-
-    logger.debug(
-        "Found %d podcast history records for date range %s to %s",
-        len(podcast_history_records),
-        start_date,
-        end_date,
-    )
-
-    # Group history records by podcast id and end_date to deduplicate plays
-    plays_by_podcast = defaultdict(
-        dict
-    )  # podcast_id -> end_date -> (history_record, history_date)
-
-    for history_record in podcast_history_records:
-        podcast_id = getattr(history_record, "id", None)
-        history_end_date = getattr(history_record, "end_date", None)
-        history_date = getattr(history_record, "history_date", None)
-
-        if not podcast_id or not history_end_date or not history_date:
+    for play in plays or []:
+        play_end_date = play.end_date
+        if not play_end_date:
             continue
-
-        if start_date and end_date and not (start_date <= history_end_date <= end_date):
+        if start_date and end_date and not (start_date <= play_end_date <= end_date):
             continue
-
-        plays_for_podcast = plays_by_podcast[podcast_id]
-        if history_end_date not in plays_for_podcast:
-            plays_for_podcast[history_end_date] = (history_record, history_date)
-        else:
-            existing_history_date = plays_for_podcast[history_end_date][1]
-            time_diff_existing = abs(
-                (existing_history_date - history_end_date).total_seconds()
-            )
-            time_diff_current = abs((history_date - history_end_date).total_seconds())
-
-            if (
-                time_diff_current < time_diff_existing
-                and time_diff_current < SECONDS_PER_DAY
-            ):
-                plays_for_podcast[history_end_date] = (history_record, history_date)
-
-    for podcast_id, plays_for_podcast in plays_by_podcast.items():
-        podcast = podcasts_lookup.get(podcast_id)
+        podcast = podcasts_lookup.get(play.podcast_id)
         if not podcast:
             continue
+        runtime_minutes = _get_podcast_runtime_minutes(podcast, play)
+        if runtime_minutes <= 0:
+            continue
 
-        for play_end_date, (history_record, _) in plays_for_podcast.items():
-            runtime_minutes = _get_podcast_runtime_minutes(podcast, history_record)
-            if runtime_minutes <= 0:
-                continue
-
-            localized_date = _localize_datetime(play_end_date)
-            datetimes.append(localized_date)
-            play_details.append((podcast, localized_date, runtime_minutes))
+        localized_date = _localize_datetime(play_end_date)
+        datetimes.append(localized_date)
+        play_details.append((podcast, localized_date, runtime_minutes))
 
     logger.debug("Collected %d podcast plays", len(datetimes))
     return datetimes, play_details

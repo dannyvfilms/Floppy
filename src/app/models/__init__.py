@@ -58,6 +58,7 @@ from app.models.media import (
     BasicMedia,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     ComicIssue,
     Game,
@@ -81,6 +82,7 @@ from app.models.playback import PlaybackProgress
 from app.models.podcast import (
     Podcast,
     PodcastEpisode,
+    PodcastPlay,
     PodcastShow,
     PodcastShowTracker,
 )
@@ -98,7 +100,7 @@ from app.models.statistics import (
     StatisticsSnapshot,
     StatisticsSyncState,
 )
-from app.models.tombstone import DeletedMedia
+from app.models.tombstone import DeletedEntry, DeletedMedia
 from app.models.tv import (
     TV,
     Episode,
@@ -137,6 +139,7 @@ __all__ = [
     "BasicMedia",
     "BoardGame",
     "Book",
+    "BookListeningSession",
     "CollectionEntry",
     "CollectionEntrySource",
     "CollectionField",
@@ -147,6 +150,7 @@ __all__ = [
     "ComicIssue",
     "ConsumptionBatchItem",
     "CreditRoleType",
+    "DeletedEntry",
     "DeletedMedia",
     "DiscoverApiCache",
     "DiscoverFeedback",
@@ -181,6 +185,7 @@ __all__ = [
     "PlaybackProgress",
     "Podcast",
     "PodcastEpisode",
+    "PodcastPlay",
     "PodcastShow",
     "PodcastShowTracker",
     "ProgressChange",

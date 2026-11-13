@@ -4,8 +4,14 @@
 {% load user_tags %}
 {% load app_tags %}
 
+<div data-track-popup>
+  {% if track_form_presentation %}
+    {{ track_form_presentation|json_script:track_form_props_id }}
+    <div data-track-form-root data-props-id="{{ track_form_props_id }}"></div>
+  {% endif %}
 <div class="bg-[var(--color-surface-dim)] rounded-xl shadow-2xl overflow-hidden"
      data-track-modal-root
+     data-track-fallback
      x-data="{ activeTab: '{{ initial_active_tab|default:"general" }}' }">
   <div class="flex items-center justify-between px-5 py-3 sm:px-7 sm:py-4 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
     <div>
@@ -91,6 +97,7 @@
     <div class="flex-1 min-w-0 p-4 sm:p-5 md:p-6 overflow-y-auto bg-[var(--color-surface-dim)]">
           <section x-show="activeTab === 'general'" x-cloak>
             <form id="{{ track_form_id }}"
+                  data-track-form-legacy
                   method="post"
                   action="{{ general_submit_formaction }}"
                   hx-post="{{ general_submit_formaction }}"
@@ -153,9 +160,9 @@
                       </button>
                     </div>
                   {% elif field.name == "start_date" %}
-                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("Start:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.end_date|yesno:"end_date," copy_from_label=_("End") quick_action_mode="start" only %}
+                    {% include "app/components/date_time_picker.html" with legacy_picker=True field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("Start:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.end_date|yesno:"end_date," copy_from_label=_("End") quick_action_mode="start" only %}
                   {% elif field.name == "end_date" %}
-                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") quick_action_mode="end" only %}
+                    {% include "app/components/date_time_picker.html" with legacy_picker=True field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") quick_action_mode="end" only %}
                   {% elif field.name == "entry_source" %}
                     {% entry_source_suggestions user as source_suggestions %}
                     {{ source_suggestions|json_script:"entry-source-suggestions" }}
@@ -298,19 +305,19 @@
       </section>
 
       {% if tags_tab_available %}
-        <section x-show="activeTab === 'tags'" x-cloak>
+        <section x-show="activeTab === 'tags'" x-cloak data-track-tab-section="tags">
           {% include "app/components/fill_tags.html" with item=tags_item user_tags=user_tags preview_genres_json=preview_genres_json preview_implied_genres_json=preview_implied_genres_json tag_surface=tag_surface %}
         </section>
       {% endif %}
 
       {% if metadata_tab_available %}
-        <section x-show="activeTab === 'metadata'" x-cloak>
+        <section x-show="activeTab === 'metadata'" x-cloak data-track-tab-section="metadata">
           {% include "app/components/media_metadata_panel.html" %}
         </section>
       {% endif %}
 
       {% if collection_tab_available %}
-        <section x-show="activeTab === 'collection'" x-cloak>
+        <section x-show="activeTab === 'collection'" x-cloak data-track-tab-section="collection">
           {% if library_panel_url %}
             {# Radarr/Sonarr/Seerr details are fetched once, the first time this tab is shown. #}
             <div class="library-panel"
@@ -318,17 +325,17 @@
                  hx-trigger="intersect once"
                  hx-swap="outerHTML"></div>
           {% endif %}
-          {% include "app/components/collection_modal.html" with item=collection_context.item entry=collection_context.entry existing_entries=collection_context.existing_entries visible_existing_entries=collection_context.visible_existing_entries season_audit_entries=collection_context.season_audit_entries episode_audit_entries=collection_context.episode_audit_entries form=collection_context.form return_url=collection_context.return_url collection_fields=collection_context.collection_fields custom_field_groups=collection_context.custom_field_groups entry_custom_field_values=collection_context.entry_custom_field_values manage_fields_open=collection_context.manage_fields_open custom_field_schema_json=collection_context.custom_field_schema_json field_type_choices_json=collection_context.field_type_choices_json media_type_choices_json=collection_context.media_type_choices_json collection_fields_save_url=collection_context.collection_fields_save_url collection_tab=True request=request csrf_token=csrf_token only %}
+          {% include "app/components/collection_modal.html" with collection_context_props=collection_context.collection_context_props item=collection_context.item entry=collection_context.entry existing_entries=collection_context.existing_entries visible_existing_entries=collection_context.visible_existing_entries season_audit_entries=collection_context.season_audit_entries episode_audit_entries=collection_context.episode_audit_entries form=collection_context.form return_url=collection_context.return_url collection_fields=collection_context.collection_fields custom_field_groups=collection_context.custom_field_groups entry_custom_field_values=collection_context.entry_custom_field_values manage_fields_open=collection_context.manage_fields_open custom_field_schema_json=collection_context.custom_field_schema_json field_type_choices_json=collection_context.field_type_choices_json media_type_choices_json=collection_context.media_type_choices_json collection_fields_save_url=collection_context.collection_fields_save_url collection_tab=True request=request csrf_token=csrf_token only %}
         </section>
       {% endif %}
 
       {% if episode_plays_tab_available %}
-        <section x-show="activeTab === 'episode-plays'" x-cloak>
+        <section x-show="activeTab === 'episode-plays'" x-cloak data-track-tab-section="episode-plays">
           {% include "app/components/fill_track_episode_bulk.html" %}
         </section>
       {% endif %}
       {% if status_history_tab_available %}
-        <section x-show="activeTab === 'status-history'" x-cloak data-status-changes>
+        <section x-show="activeTab === 'status-history'" x-cloak data-status-changes data-track-tab-section="status-history">
           <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Status history" %}</h3>
           <p class="text-xs text-[var(--color-text-muted)] mb-4">{% translate "Every status change, newest first, with what made it." %}</p>
           {% if status_changes %}
@@ -357,7 +364,7 @@
         </section>
       {% endif %}
       {% if discover_tab_available %}
-        <section x-show="activeTab === 'discover'" x-cloak>
+        <section x-show="activeTab === 'discover'" x-cloak data-track-tab-section="discover">
           {% include "app/components/discover_tab_content.html" with item=metadata_item is_hidden_from_discover=is_hidden_from_discover %}
         </section>
       {% endif %}
@@ -367,4 +374,5 @@
   {% if episode_plays_domain %}
     {{ episode_plays_domain|json_script:episode_plays_domain_script_id }}
   {% endif %}
+</div>
 </div>

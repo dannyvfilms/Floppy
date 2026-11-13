@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
-from django.http import Http404, StreamingHttpResponse
+from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -29,6 +29,7 @@ from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
 )
 from app.release_years import prefill_display_release_years
+from app.table_browser import build_table_browser_props, table_json_url
 from integrations import exports
 from lists import smart_rules
 from lists import tasks as list_tasks
@@ -137,15 +138,13 @@ def list_detail(request, list_reference):
             ),
         )
 
-    # Determine if this is a public view (anonymous user viewing public list)
+    # Anyone who can open the list without editing sees the owner's view of it.
     can_edit = custom_list.user_can_edit(request.user)
-    is_public_view = custom_list.visibility == "public" and not can_edit
+    is_public_view = not can_edit
     public_view = (
-        not request.user.is_authenticated and custom_list.visibility == "public"
+        not request.user.is_authenticated and custom_list.is_viewable_by_link
     )
 
-    # Determine which user's data to use for media queries
-    # For public views, use owner's data; otherwise use request.user
     media_user = custom_list.owner if is_public_view else request.user
 
     if custom_list.is_smart:
@@ -276,6 +275,10 @@ def list_detail(request, list_reference):
     status_filter = tuple(params["status_filter"] or ())
     parsed_filters = replace(
         parse_media_list_filters(request, strict=False),
+        initial="",  # Applied below with the viewer's title preference.
+        # Grouping is an API/library view option, not a custom-list filter.
+        group_by="item",
+        group="",
         statuses=tuple(v for v in status_filter if v != MEDIA_LIST_NO_STATUS),
         include_no_status=MEDIA_LIST_NO_STATUS in status_filter,
         search=params["search_query"],
@@ -377,6 +380,7 @@ def list_detail(request, list_reference):
         "list_ordering_enabled": can_edit
         and params["sort_by"] == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,
+        "list_user_role": custom_list.user_role(request.user),
         "recommendation_count": recommendation_count,
         "base_template": "base_public.html" if public_view else "base.html",
         "is_partial": is_partial,
@@ -453,6 +457,39 @@ def list_detail(request, list_reference):
                 "table_include_selector": "#filter-form",
             },
         )
+        next_url = (
+            table_json_url(request, items_page.next_page_number())
+            if items_page.has_next()
+            else ""
+        )
+        context["table_browser_props"] = build_table_browser_props(
+            rows=list(items_page.object_list),
+            resolved_columns=context["resolved_columns"],
+            column_config=context["column_config"],
+            default_column_config=context["default_column_config"],
+            user=request.user,
+            table_type="list",
+            media_type=current_media_type,
+            current_sort=params["sort_by"],
+            current_direction=params["direction"],
+            update_url=context["table_column_update_url"],
+            refresh_url=context["table_refresh_url"],
+            refresh_target="#items-view",
+            refresh_include="#filter-form",
+            csrf_token=get_token(request),
+            public_view=public_view,
+            public_list_reference=context["public_list_reference"],
+            show_public_notes=context["show_public_notes"],
+            next_url=next_url,
+        )
+        if request.GET.get("table_json") == "1":
+            return JsonResponse(
+                {
+                    "rows": context["table_browser_props"]["table"]["rows"],
+                    "nextUrl": next_url,
+                    "resultCount": filtered_items_count,
+                },
+            )
 
     # Additional context for full page render
     if not is_partial:
@@ -465,6 +502,11 @@ def list_detail(request, list_reference):
                     MediaTypes.values, key=lambda v: MediaTypes(v).label
                 ),
                 "collaborators_count": custom_list.collaborators.count() + 1,
+                "viewers_count": custom_list.viewers.count(),
+                "list_detail_page_model": {
+                    "testID": "list-detail-page",
+                    "title": custom_list.name,
+                },
                 "completion_percent": completion_percent,
                 "completed_count": completed_count,
                 "media_type_breakdown": media_type_breakdown,

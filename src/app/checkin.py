@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from django.core.cache import cache
 from django.utils import timezone
 
-from app import live_playback
+from app import cache_utils, live_playback
 from app.models import (
     TV,
     Episode,
@@ -220,7 +220,7 @@ def _subject(user, media_type, media_id):
             media_id=str(media_id),
             item=item,
             duration=_seconds(item.runtime_minutes),
-            card={"title": item.title, "image": item.image},
+            card={"title": item.title},
         )
 
     show = _tracked_show(user, media_id)
@@ -250,7 +250,6 @@ def _subject(user, media_type, media_id):
             "series_title": show.item.title,
             "season_number": season_number,
             "episode_number": episode_number,
-            "image": episode_item.image or show.item.image,
         },
     )
 
@@ -521,12 +520,17 @@ def finish(user, media_type, media_id):
     _complete(user, record, timezone.now().replace(second=0, microsecond=0))
 
 
-def _restore_parents(parents):
+def _restore_parents(user_id, parents):
     """Put back the season and show status the created episode play changed."""
     if not parents:
         return
     Season.objects.filter(id=parents["season_id"]).update(status=parents["season"])
     TV.objects.filter(id=parents["tv_id"]).update(status=parents["tv"])
+    # QuerySet.update skips the save signals that would clear these views.
+    cache_utils.clear_library_view_caches(
+        user_id,
+        media_types=(MediaTypes.TV.value, MediaTypes.SEASON.value),
+    )
 
 
 def cancel(user, media_type, media_id):
@@ -536,7 +540,7 @@ def cancel(user, media_type, media_id):
     if row is not None and row.status == Status.IN_PROGRESS.value:
         if record["created"]:
             row.delete()
-            _restore_parents(record.get("parents"))
+            _restore_parents(user.id, record.get("parents"))
         elif record["previous"] and record["previous"]["status"] != row.status:
             row.status = record["previous"]["status"]
             row.start_date = record["previous"]["start_date"]
@@ -575,15 +579,28 @@ def _settle_slot(user_id, media_type):
 def _running_phase(record, now_ts):
     """Return the phase of a running check-in, and when its label next changes."""
     duration = record["duration"]
+    started_at = record["started_at_ts"]
     if duration is None:
-        return {"phase": PHASE_FINISHABLE, "reload_in": None}
-    finish_at = record["started_at_ts"] + max(
+        return {
+            "phase": PHASE_FINISHABLE,
+            "reload_in": None,
+            "started_at_ts": started_at,
+        }
+    finish_at = started_at + max(
         0,
         int(duration * FINISH_RATIO) - record["offset"],
     )
     if now_ts >= finish_at:
-        return {"phase": PHASE_FINISHABLE, "reload_in": record["end_ts"] - now_ts}
-    return {"phase": PHASE_ACTIVE, "reload_in": finish_at - now_ts}
+        return {
+            "phase": PHASE_FINISHABLE,
+            "reload_in": record["end_ts"] - now_ts,
+            "started_at_ts": started_at,
+        }
+    return {
+        "phase": PHASE_ACTIVE,
+        "reload_in": finish_at - now_ts,
+        "started_at_ts": started_at,
+    }
 
 
 def _idle_target(user, instance):

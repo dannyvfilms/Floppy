@@ -857,55 +857,55 @@ msgid "Colorful"
 msgstr "Монохромный"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:7
-msgid "System default — Aug 12, 2025 / 12 Aug 2025"
-msgstr "ISO 8601 — 2025-08-12"
+msgid "System default: Aug 12, 2025 / 12 Aug 2025"
+msgstr "ISO 8601: 2025-08-12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:8
-msgid "ISO 8601 — 2025-08-12"
-msgstr "Месяц Д, ГГГГ — 12 августа 2025 г."
+msgid "ISO 8601: 2025-08-12"
+msgstr "Месяц Д, ГГГГ: 12 августа 2025 г."
 
 #: inline_translation_extraction/templates/users/preferences.html.js:9
-msgid "Month D, YYYY — Aug 12, 2025"
-msgstr "Д месяц ГГГГ — 12 Aug 2025"
+msgid "Month D, YYYY: Aug 12, 2025"
+msgstr "Д месяц ГГГГ: 12 Aug 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:10
-msgid "D Mon YYYY — 12 Aug 2025"
-msgstr "М/Д/ГГГГ — 08/12/2025"
+msgid "D Mon YYYY: 12 Aug 2025"
+msgstr "М/Д/ГГГГ: 08/12/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:11
-msgid "M/D/YYYY — 08/12/2025"
-msgstr "Д/М/ГГГГ — 12/08/2025"
+msgid "M/D/YYYY: 08/12/2025"
+msgstr "Д/М/ГГГГ: 12/08/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:12
-msgid "D/M/YYYY — 12/08/2025"
-msgstr "ДД.ММ.ГГГГ — 12.08.2025"
+msgid "D/M/YYYY: 12/08/2025"
+msgstr "ДД.ММ.ГГГГ: 12.08.2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:13
-msgid "DD.MM.YYYY — 12.08.2025"
-msgstr "ГГГГ/ММ/ДД — 2025/08/12"
+msgid "DD.MM.YYYY: 12.08.2025"
+msgstr "ГГГГ/ММ/ДД: 2025/08/12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:14
-msgid "YYYY/MM/DD — 2025/08/12"
+msgid "YYYY/MM/DD: 2025/08/12"
 msgstr "Формат времени"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:15
-msgid "System default — 6:45 PM / 18:45"
-msgstr "12-часовой (ч:мм AM/PM) — 18:45"
+msgid "System default: 6:45 PM / 18:45"
+msgstr "12-часовой (ч:мм AM/PM): 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:16
-msgid "12-hour (h:mm AM/PM) — 6:45 PM"
-msgstr "12-часовой с ведущими нулями (чч:мм AM/PM) — 06:45"
+msgid "12-hour (h:mm AM/PM): 6:45 PM"
+msgstr "12-часовой с ведущими нулями (чч:мм AM/PM): 06:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:17
-msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
-msgstr "24-часовой (ЧЧ:мм) — 18:45"
+msgid "12-hour, leading zero (hh:mm AM/PM): 06:45 PM"
+msgstr "24-часовой (ЧЧ:мм): 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:18
-msgid "24-hour (HH:mm) — 18:45"
-msgstr "24-часовой с секундами (ЧЧ:мм:сс) — 18:45:00"
+msgid "24-hour (HH:mm): 18:45"
+msgstr "24-часовой с секундами (ЧЧ:мм:сс): 18:45:00"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:19
-msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
+msgid "24-hour with seconds (HH:mm:ss): 18:45:00"
 msgstr "Мобильная сетка"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:20
@@ -982,12 +982,11 @@ msgid "Both"
 msgstr "Журнал игр"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:39
-msgid "Sessions — new entry per play; exact history"
-msgstr ""
-"Повторы — обновление одной записи; распределение времени по диапазону."
+msgid "Sessions: new entry per play; exact history"
+msgstr "Повторы: обновление одной записи; распределение времени по диапазону."
 
 #: inline_translation_extraction/templates/users/preferences.html.js:40
-msgid "Repeats — update one entry; spreads time across range"
+msgid "Repeats: update one entry; spreads time across range"
 msgstr "Формат прогресса"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:41

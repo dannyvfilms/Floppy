@@ -284,6 +284,18 @@
       flex: 0 0 auto;
       min-width: 0;
     }
+    /* Keep the trigger the same width whatever is ticked, so the menu below it
+       does not jump as the label changes. Long labels truncate. */
+    .stats-mediatype-button .stats-button-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+    }
+    .stats-mediatype-wrapper .stats-dropdown-panel {
+      width: 100%;
+    }
     .stats-media-card-icon {
       width: 2.75rem;
       height: 2.75rem;
@@ -511,6 +523,9 @@
       .stats-mediatype-button {
         padding-top: 0;
         padding-bottom: 0;
+      }
+      .stats-mediatype-button {
+        width: 14rem;
       }
     }
     @media (max-width: 768px) {
@@ -839,8 +854,10 @@
     initialCompareMode: '{{ selected_compare_mode|default:"previous_period"|escapejs }}',
     refreshUrl: '{% url "refresh_statistics" %}',
     compareModeUpdateUrl: '{% url "update_statistics_compare_mode" %}',
+    mediaTypesUpdateUrl: '{% url "update_statistics_media_types" %}',
     csrfToken: '{{ csrf_token }}',
     ratingScaleMax: {{ user|rating_scale_max }},
+    initialSelectedMediaTypes: '{{ selected_media_types|default:""|escapejs }}',
     initialMediaTypeOptions: [
       {value: 'all', label: 'All media'},
       {value: 'tv', label: 'TV Shows'},
@@ -887,7 +904,7 @@
             <path d="M3 10h18"></path>
           </svg>
           <div class="stats-button-copy">
-            <span class="stats-button-title" x-text="rangeTriggerLabel()"></span>
+            <span class="stats-button-title" x-text="rangeTriggerLabel()">{{ selected_range_name }}</span>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -1011,7 +1028,9 @@
                class="w-5 h-5 text-[var(--color-link)] shrink-0">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
           </svg>
-          <span class="stats-button-title" x-text="mediaTypeTriggerLabel()"></span>
+          <span class="stats-button-title"
+                :title="mediaTypeTriggerLabel()"
+                x-text="mediaTypeTriggerLabel()">{% if selected_media_types %}{{ selected_media_types }}{% else %}{% translate "All media" %}{% endif %}</span>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -1031,7 +1050,7 @@
              x-show="isMediaTypeOpen"
              x-transition
              @click.outside="isMediaTypeOpen = false"
-             class="absolute left-0 z-20 mt-2 stats-dropdown-panel"
+             class="absolute right-0 z-20 mt-2 stats-dropdown-panel"
              style="min-width: 160px;">
           <div class="p-2 space-y-1">
             <template x-for="opt in mediaTypeOptions" :key="opt.value">
@@ -1058,13 +1077,17 @@
         </div>
       </div>
 
-      <div class="stats-compare-wrapper relative min-w-0" x-show="hasFiniteRange()" x-cloak>
+      {% comment %}
+        Rendered visible so the trigger reserves its width before Alpine fills
+        the label; x-show hides it for infinite ranges once Alpine starts.
+      {% endcomment %}
+      <div class="stats-compare-wrapper relative min-w-0" x-show="hasFiniteRange()">
         <button @click="toggleCompareDropdown()"
                 class="stats-compare-button flex items-center gap-2 w-full px-4 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)] rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
           <div class="stats-compare-copy">
             <span class="stats-compare-prefix">{% translate "Compare to:" %}</span>
             <span class="stats-compare-value"
-                  x-text="comparisonTriggerLabel()"></span>
+                  x-text="comparisonTriggerLabel()">{% if selected_compare_mode == 'last_year' %}{% translate "Last year" %}{% elif selected_compare_mode == 'none' %}{% translate "No comparison" %}{% else %}{% translate "Previous period" %}{% endif %}</span>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -1147,13 +1170,15 @@
     <div class="space-y-8">
       <div class="space-y-4 mb-4">
       <!-- Hero + Highlight Cards -->
+      {{ statistics_react_props.summary|json_script:"statistics-summary-props" }}
+      <div data-statistics-summary-root data-props-id="statistics-summary-props">
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            {% translate "You've spent" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> {% translate "hours" %}
+            {% translate "You've spent" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()">{% widthratio summary_stats_by_type.all.total_minutes 60 1 %}</span> {% translate "hours" %}
           </p>
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            {% translate "with" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
+            {% translate "with" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()">{{ summary_stats_by_type.all.total|default:0 }}</span> <span x-text="currentTypeLabel + '.'">{% translate "titles" %}.</span>
           </p>
           <div class="flex items-center gap-2 mt-4 pb-3 text-sm text-[var(--color-text-muted)]">
             <div class="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-link)] shrink-0">
@@ -1163,7 +1188,7 @@
           </div>
         </div>
         <div class="min-w-0 stats-hero-cards">
-          <div x-show="isHighlightSetVisible('all')" x-cloak>
+          <div x-show="isHighlightSetVisible('all')">
             {% with highlights=history_highlights %}
               {% include "app/components/statistics/highlight_set.html" %}
             {% endwith %}
@@ -1351,7 +1376,10 @@
           </div>
         </div>
       </div>
+      </div>
       <!-- Activity Rhythm + Time Across Your Worlds -->
+      {{ statistics_react_props.charts.overview|json_script:"statistics-charts-overview" }}
+      <div data-statistics-charts-root data-props-id="statistics-charts-overview">
       <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
     <!-- Activity Rhythm -->
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
@@ -1397,9 +1425,12 @@
     </div>
   </div>
       </div>
+      </div>
 
   <!-- Activity History Section -->
   {% if user.activity_history_view != 'stacked' %}
+  {{ statistics_react_props.charts.heatmap|json_script:"statistics-charts-heatmap" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-heatmap">
   {# Translated tooltip templates for the media-type filter; the script swaps in the date and count. #}
   <div id="activityHistory" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4"
        data-title-0="{% blocktranslate with date='__DATE__' count count=0 %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}"
@@ -1456,9 +1487,12 @@
 
         </div>
     </div>
+  </div>
   {% endif %}
 
   <!-- Combined Hours charts -->
+  {{ statistics_react_props.charts.hours|json_script:"statistics-charts-hours" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-hours">
   <div class="stats-hour-charts grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Month" %}</h2>
@@ -1478,6 +1512,7 @@
         <canvas id="combinedPlaysByTimeChart"></canvas>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- Consumption -->
@@ -1500,6 +1535,8 @@
   </div>
 
   <!-- Status Composition + Rating Distribution -->
+  {{ statistics_react_props.charts.status|json_script:"statistics-charts-status" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-status">
   <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex flex-col h-full">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">{% translate "Status Composition" %}</h2>
@@ -1519,6 +1556,7 @@
         <canvas id="ratingDistributionChart"></canvas>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- Status Breakdown + Average Rating -->
@@ -1627,60 +1665,90 @@
 
       {% if tv_consumption.has_data %}
         <div x-show="isMediaTypeVisible('tv')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-tv">
+          {{ statistics_react_props.sections.overviews.tv|json_script:"statistics-overview-tv" }}
           {% include "app/components/statistics/tv_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if anime_consumption.has_data %}
         <div x-show="isMediaTypeVisible('anime')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-anime">
+          {{ statistics_react_props.sections.overviews.anime|json_script:"statistics-overview-anime" }}
           {% include "app/components/statistics/anime_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.manga_enabled and manga_consumption.has_data %}
         <div x-show="isMediaTypeVisible('manga')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-manga">
+          {{ statistics_react_props.sections.overviews.manga|json_script:"statistics-overview-manga" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Manga") consumption=manga_consumption media_type_slug='manga' chart_prefix='manga' top_rated_list=top_rated_manga %}
+        </div>
         </div>
       {% endif %}
 
       {% if movie_consumption.has_data %}
         <div x-show="isMediaTypeVisible('movie')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-movie">
+          {{ statistics_react_props.sections.overviews.movie|json_script:"statistics-overview-movie" }}
           {% include "app/components/statistics/movie_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if game_consumption.has_data %}
         <div x-show="isMediaTypeVisible('game')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-game">
+          {{ statistics_react_props.sections.overviews.game|json_script:"statistics-overview-game" }}
           {% include "app/components/statistics/game_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.book_enabled and book_consumption.has_data %}
         <div x-show="isMediaTypeVisible('book')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-book">
+          {{ statistics_react_props.sections.overviews.book|json_script:"statistics-overview-book" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Books") consumption=book_consumption media_type_slug='book' chart_prefix='book' top_rated_list=top_rated_book show_top_authors=True %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.comic_enabled and comic_consumption.has_data %}
         <div x-show="isMediaTypeVisible('comic')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-comic">
+          {{ statistics_react_props.sections.overviews.comic|json_script:"statistics-overview-comic" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Comics") consumption=comic_consumption media_type_slug='comic' chart_prefix='comic' top_rated_list=top_rated_comic %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.music_enabled and music_consumption.has_data %}
         <div x-show="isMediaTypeVisible('music')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-music">
+          {{ statistics_react_props.sections.overviews.music|json_script:"statistics-overview-music" }}
           {% include "app/components/statistics/music_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.video_enabled and video_consumption.has_data %}
         <div x-show="isMediaTypeVisible('video')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-video">
+          {{ statistics_react_props.sections.overviews.video|json_script:"statistics-overview-video" }}
           {% include "app/components/statistics/video_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
       {% if user.podcast_enabled and podcast_consumption.has_data %}
         <div x-show="isMediaTypeVisible('podcast')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-podcast">
+          {{ statistics_react_props.sections.overviews.podcast|json_script:"statistics-overview-podcast" }}
           {% include "app/components/statistics/podcast_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
@@ -2427,6 +2495,17 @@
     {% endif %}
   {% endif %}
 
+  {% if selected_media_types %}
+    <script>
+      (function () {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has("media-type")) {
+          url.searchParams.set("media-type", "{{ selected_media_types|escapejs }}");
+          window.history.replaceState({}, "", url.toString());
+        }
+      })();
+    </script>
+  {% endif %}
   <script src="{% static 'js/statistics-charts.js' %}{% get_static_file_mtime 'js/statistics-charts.js' %}"></script>
   <script src="{% static 'js/cache-updater.js' %}"></script>
   {% include "app/components/_scrollable_row_js.html" %}

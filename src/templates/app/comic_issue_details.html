@@ -3,6 +3,7 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 {% load humanize %}
 {% load static %}
 
@@ -65,45 +66,10 @@
     <div class="flex flex-col sm:contents">
       {# User rating chip — shown when the issue has been tracked #}
       {% if not public_view|default:False and current_instance and user.ratings_enabled %}
-        {% with ep_score=current_instance.score %}
-          <div class="order-2 mt-0 mb-5 flex w-full items-center justify-between gap-0.5 sm:order-1 sm:mt-4 sm:flex-wrap sm:justify-start sm:gap-2">
-            <div x-data="{
-              showRatingPopup: false,
-              rating: {% if ep_score is not None %}{{ ep_score|score_display:user }}{% else %}null{% endif %},
-              ratingScaleMax: {{ user|rating_scale_max }},
-              hoverRating: null,
-              isHovering: false,
-              formatRating(v) { if (v === null || v === undefined || v === '') return ''; return this.ratingScaleMax === 5 ? String(v) + '/5' : String(v); }
-            }"
-                 class="relative shrink-0 sm:w-auto">
-              <button type="button"
-                      @click="showRatingPopup = !showRatingPopup"
-                      class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11] sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-                <span class="sr-only">{% translate "Your score" %}</span>
-                <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
-                  {% include "app/icons/star.svg" with classes="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 sm:h-4 sm:w-4" %}
-                </span>
-                <span class="inline-flex items-center gap-1 sm:gap-2">
-                  <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm {% if ep_score is None %}hidden{% endif %}"
-                        :class="rating ? '' : 'hidden'"
-                        x-text="formatRating(rating)">{% if ep_score is not None %}{{ ep_score|score_display:user }}{% endif %}</span>
-                  <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm {% if ep_score is None %}hidden{% endif %}"
-                        :class="rating ? '' : 'hidden'">|</span>
-                  {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
-                        x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if ep_score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
-                </span>
-              </button>
-              <div x-show="showRatingPopup"
-                   @click.outside="showRatingPopup = false; isHovering = false"
-                   class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
-                   @mouseenter="isHovering = true"
-                   @mouseleave="isHovering = false; hoverRating = null">
-                {% url 'update_media_score' MediaTypes.COMIC_ISSUE.value current_instance.id as rating_post_url %}
-                {% include "app/components/rating_picker.html" with post_url=rating_post_url %}
-              </div>
-            </div>
-          </div>
-        {% endwith %}
+        <div class="order-2 mt-0 mb-5 flex w-full items-center justify-between gap-0.5 sm:order-1 sm:mt-4 sm:flex-wrap sm:justify-start sm:gap-2">
+          {% url 'update_media_score' MediaTypes.COMIC_ISSUE.value current_instance.id as rating_post_url %}
+          {% rating_chip current_instance "comic_issue" rating_post_url %}
+        </div>
       {% endif %}
 
       {# Action buttons — mirrors episode_details.html button row #}
@@ -142,25 +108,12 @@
 
             {# Secondary icon buttons #}
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
-              <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
+              <div class="flex-1 sm:flex-none">
                 <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                         title="{% translate "Add to custom lists" %}"
-                        hx-get="{% media_view_url 'lists_modal' media %}"
-                        hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
-                        hx-target="#{% component_id 'lists' media %}"
-                        hx-trigger="click once"
-                        @click="listsOpen = true">
+                        {% lists_modal_click media detail_return_url %}>
                   {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                 </button>
-                <div x-show="listsOpen"
-                @mousedown.self="listsOpen = false"
-                     x-cloak
-                     @keydown.escape.window="listsOpen = false"
-                     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                  <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-                    <div id="{% component_id 'lists' media %}"></div>
-                  </div>
-                </div>
               </div>
 
               <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">

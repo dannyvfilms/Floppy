@@ -15,7 +15,7 @@ Use `src/config/server_port.py` as the single owner of Floppy's public HTTP list
 
 ## Runtime surfaces
 
-The container launcher resolves the value once, renders Nginx, records the active listener in `/run/floppy/server-port`, and passes the validated value to the normal entrypoint.
+The container launcher resolves the value once, renders Nginx, records the active listener in `/tmp/floppy-runtime/server-port`, and passes the validated value to the normal entrypoint.
 
 If SQLite integrity checks pause startup, the recovery server binds to that passed listener. Its written HTML fallback must name the same port. Do not restore a recovery-only fixed port or a second recovery setting.
 

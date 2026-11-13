@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
@@ -36,6 +37,7 @@ class EntrySourceSuggestionsTests(TestCase):
     """The Source field offers values the user has recorded before."""
 
     def setUp(self):
+        cache.clear()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username="a", password="x")
         self.other = user_model.objects.create_user(username="b", password="x")
@@ -47,6 +49,25 @@ class EntrySourceSuggestionsTests(TestCase):
             status=Status.COMPLETED.value,
             entry_source=source,
         )
+
+    def test_second_read_is_served_from_the_cache(self):
+        self.game("1", "plex")
+        self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+        with self.assertNumQueries(0):
+            self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+
+    def test_a_known_source_keeps_the_cache(self):
+        self.game("1", "plex")
+        entry_source_suggestions(self.user)
+        self.game("2", "Plex")
+        with self.assertNumQueries(0):
+            self.assertEqual(entry_source_suggestions(self.user), ["plex"])
+
+    def test_a_new_source_is_offered_on_the_next_read(self):
+        self.game("1", "plex")
+        entry_source_suggestions(self.user)
+        self.game("2", "Theatre")
+        self.assertEqual(entry_source_suggestions(self.user), ["plex", "Theatre"])
 
     def test_empty_when_nothing_recorded(self):
         self.game("1", "")
@@ -193,3 +214,33 @@ class BackfillEntrySourceMigrationTests(TestCase):
         self.assertEqual(blank_from_run.entry_source, "trakt")
         self.assertEqual(typed.entry_source, "Theatre")
         self.assertEqual(blank_manual.entry_source, "")
+
+    def test_historical_rows_with_a_deleted_run_stay_blank(self):
+        from importlib import import_module
+
+        migration = import_module(
+            "app.migrations.0218_backfill_entry_source_from_import_run",
+        )
+        user = get_user_model().objects.create_user(username="a", password="x")
+        run = ImportRun.objects.create(user=user, source="trakt")
+        game = Game.objects.create(
+            user=user,
+            item=make_item("1"),
+            status=Status.COMPLETED.value,
+            entry_source="",
+            import_run=run,
+        )
+        orphan_id = run.pk
+        run.delete()
+        history = Game.history.filter(id=game.id).first()
+        self.assertIsNotNone(history)
+        Game.history.filter(pk=history.pk).update(import_run_id=orphan_id)
+
+        apps = MigrationExecutor(connection).loader.project_state(
+            [("app", "0218_backfill_entry_source_from_import_run")],
+        ).apps
+        migration.fill_blank_entry_sources(apps, None)
+        migration.fill_blank_entry_sources(apps, None)
+
+        history.refresh_from_db()
+        self.assertEqual(history.entry_source, "")

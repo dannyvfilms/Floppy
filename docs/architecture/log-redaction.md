@@ -17,6 +17,7 @@ HTTP request
      v
 Nginx (port 8000) -----> access log: "$request_method $server_protocol"
      |                   Paths, query strings and referrers are not written.
+     |                   Timings (rt, urt, uct) and an opaque rid are: they carry no URL.
      v
 Gunicorn (port 8001) --> accesslog = None. Nginx owns the request log.
      |                   Gunicorn still writes its error log.
@@ -192,3 +193,14 @@ processor time.
    `test_redact_secrets_strips_every_credential_name_spelling`.
 4. Add any diagnostic name that is now at risk to
    `test_redact_secrets_keeps_names_that_only_end_in_a_keyword_word`.
+
+## What the console shows
+
+With `DEBUG` off, the console hides routine below-warning lines: Celery's
+per-task and scheduler messages and anything about the `/health` and `/ping`
+endpoints. `DEBUG` on shows everything. The log file keeps the full record, so
+the download in Settings > Advanced is complete for a bug report without anyone
+changing a setting first.
+
+Which level a line belongs at, and what a long-running process must log, is in
+`log-levels.md`.

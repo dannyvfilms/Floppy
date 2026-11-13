@@ -11,7 +11,9 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from app import cache_utils
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+from app.tests.card_props import card_model, card_models, card_text, corner_chip
 from events.models import Event
 from users import home_screen
 from users.models import HomeScreenRow
@@ -55,9 +57,9 @@ class EpisodeFeedTests(TestCase):
     @staticmethod
     def _queue(card):
         """Return the card's chip label and the season and episode it links to."""
-        chip = card.select_one('[data-episode-queue="true"]')
+        chip = corner_chip(card_model(card), "queue")
         link = re.search(r"/season/(\d+)/episode/(\d+)", chip.get("href", ""))
-        label = " ".join(chip.stripped_strings)
+        label = chip["text"]
         if link is None:
             return (label, None, None)
         return (label, int(link.group(1)), int(link.group(2)))
@@ -231,20 +233,31 @@ class EpisodeFeedTests(TestCase):
             # The user's subtitle setting decides; Up Next adds none of its own.
             self.assertIsNone(card.select_one(".media-card-subtitle-always"))
             # One chip in the next-episode slot, linking the same way.
-            self.assertEqual(len(card.select('[data-episode-queue="true"]')), 1)
-            self.assertNotIn("Next ep", card.get_text())
+            model = card_model(card)
+            self.assertEqual(
+                [c["kind"] for c in model["cornerChips"] if c["kind"] == "queue"],
+                ["queue"],
+            )
+            self.assertIsNone(corner_chip(model, "next-episode"))
             # The status chip steps aside on phones so the two never overlap.
-            status = card.select_one(".media-status-chip")
-            self.assertEqual(status["data-mobile-hide-on-mobile"], "true")
+            self.assertTrue(model["statusChip"]["hideOnMobile"])
         # Shows with a known next episode link to it; an undated show has none.
-        self.assertEqual(len(queue.select('a[data-episode-queue="true"]')), 2)
+        self.assertEqual(
+            sum(
+                1
+                for card in cards
+                if corner_chip(card_model(card), "queue").get("href")
+            ),
+            2,
+        )
         self.assertEqual(
             [label for label, *_ in self._chips(response)],
             ["2 Behind", "1 day", "Upcoming"],
         )
         ordinary = soup.select_one(f"#media-grid-row-{regular.pk}")
         self.assertIsNotNone(ordinary)
-        self.assertIsNone(ordinary.select_one('[data-episode-queue="true"]'))
+        for model in card_models(str(ordinary)):
+            self.assertIsNone(corner_chip(model, "queue"))
 
     def test_up_next_sort_direction_reverses_the_queue(self):
         self._show("One behind", watched=2)
@@ -333,11 +346,10 @@ class EpisodeFeedTests(TestCase):
                 self.user.ui_language = language
                 self.user.save(update_fields=["ui_language"])
                 response = self._hydrated_home()
-                self.assertContains(response, title)
-                self.assertContains(response, behind)
-                self.assertContains(response, day)
-                self.assertContains(response, upcoming)
-                self.assertNotContains(response, "released episodes not watched")
+                text = card_text(response.content)
+                for expected in (title, behind, day, upcoming):
+                    self.assertIn(expected, text)
+                self.assertNotIn("released episodes not watched", text)
 
     def test_date_only_release_today_counts_down_instead_of_behind(self):
         tv, season = self._show("Date only", watched=3)
@@ -453,6 +465,60 @@ class EpisodeFeedTests(TestCase):
         self.assertEqual(
             [card.img["alt"] for card in cards], ["Z two left", "A two left"]
         )
+
+    def _membership_scans(self):
+        """Patch in a spy that records each Up Next membership scan (a full-library rank)."""
+        real = home_screen.LibraryQueryExecutor.ranked_ids
+        scans = []
+
+        def spy(executor):
+            if executor.query.filters.progress == "not_caught_up":
+                scans.append(executor)
+            return real(executor)
+
+        patcher = patch.object(
+            home_screen.LibraryQueryExecutor, "ranked_ids", autospec=True, side_effect=spy
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return scans
+
+    def test_section_expiry_does_not_rescan_up_next_membership(self):
+        """The 60 s section expiry must not re-rank the whole library (it did, each time)."""
+        self._show("Cached once", watched=1)
+        scans = self._membership_scans()
+        self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertEqual(len(scans), 1)
+        cache.delete(
+            cache_utils.build_home_row_cache_key(self.user.id, self.row.pk, 14)
+        )
+        response = self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertContains(response, "Cached once")
+        self.assertEqual(len(scans), 1)
+
+    def test_watching_an_episode_clears_cached_up_next_membership(self):
+        """Cached membership must follow user writes, not wait out its lifetime."""
+        tv, _ = self._show("Last episode", watched=2)
+        scans = self._membership_scans()
+        self.assertContains(
+            self.client.get(reverse("home_row_fragment", args=[self.row.pk])),
+            "Last episode",
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                reverse("episode_save"),
+                {
+                    "media_id": tv.item.media_id,
+                    "source": tv.item.source,
+                    "season_number": 1,
+                    "episode_number": 3,
+                    "end_date": timezone.localtime().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "watch_operation_id": uuid4(),
+                },
+            )
+        scans_before = len(scans)
+        self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertGreater(len(scans), scans_before)
 
     def test_undated_sort_uses_episode_dates_without_calendar_events(self):
         self._show("Alpha older", watched=3, days_ago=30)

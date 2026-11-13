@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import formats, timezone
 
@@ -734,7 +734,7 @@ class SessionHistoryModalTests(TestCase):
         self.assertEqual(stats["Activity entries"], "2")
         self.assertEqual(stats["Tracked time"], "0min")
         self.assertEqual(stats["Average per active day"], "0min")
-        self.assertEqual(stats["Average gap"], "—")
+        self.assertEqual(stats["Average gap"], "-")
         self.assertEqual(stats["Longest streak"], "1 day")
         self.assertEqual(
             stats["Most active weekday"],
@@ -872,6 +872,75 @@ class DeleteHistoryRecordViewTests(TestCase):
             Movie.objects.filter(id=self.movie.id).exists(),
         )
 
+    def test_delete_failure_returns_the_written_message(self):
+        """A deletion that fails answers with the service's own text."""
+        from app.fork_services_history import HistoryDeletionError
+
+        with patch(
+            "app.history_views.fork_services_history.delete_history_record_core",
+            side_effect=HistoryDeletionError("Deletion failed"),
+        ):
+            response = self.client.delete(
+                reverse(
+                    "delete_history_record",
+                    kwargs={"media_type": "movie", "history_id": self.history_id},
+                ),
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.content.decode(), "Deletion failed")
+
+    def test_delete_history_oob_uses_the_row_id(self):
+        """The out-of-band fragments carry the loaded row's id, not the query text."""
+        artist = Artist.objects.create(name="OOB Artist")
+        album = Album.objects.create(title="OOB Album", artist=artist)
+        music = Music.objects.create(
+            item=Item.objects.create(
+                media_id="oob-track",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MUSIC.value,
+                title="OOB Track",
+            ),
+            user=self.user,
+            album=album,
+            artist=artist,
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        podcast = Podcast.objects.create(
+            item=Item.objects.create(
+                media_id="oob-episode",
+                source=Sources.POCKETCASTS.value,
+                media_type=MediaTypes.PODCAST.value,
+                title="OOB Episode",
+            ),
+            user=self.user,
+            show=PodcastShow.objects.create(podcast_uuid="oob-show", title="Show"),
+            status=Status.IN_PROGRESS.value,
+            progress=10,
+        )
+        cases = (
+            ("music", "music_id", music.id, ("track-history", "modal-listen-count")),
+            ("podcast", "podcast_id", podcast.id, ("modal-listen-count",)),
+        )
+        for media_type, parameter, row_id, prefixes in cases:
+            url = reverse(
+                "delete_history_record",
+                kwargs={"media_type": media_type, "history_id": 1},
+            )
+            with patch(
+                "app.history_views.fork_services_history.delete_history_record_core",
+            ):
+                # int() accepts the padded form; the response must not echo it.
+                response = self.client.delete(f"{url}?{parameter}=0{row_id}")
+                missing = self.client.delete(f"{url}?{parameter}=999999")
+            with self.subTest(media_type=media_type):
+                self.assertEqual(response.status_code, 200)
+                body = response.content.decode()
+                for prefix in prefixes:
+                    self.assertIn(f'id="{prefix}-{row_id}"', body)
+                self.assertNotIn(f"-0{row_id}", body)
+                self.assertEqual(missing.content.decode(), "")
+
     def test_delete_nonexistent_history_record(self):
         """Deleting a missing history record should return 404."""
         response = self.client.delete(
@@ -942,13 +1011,17 @@ class DeleteHistoryRecordViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(cache.get(later_cache_key))
-        for logging_style in ("sessions", "repeats"):
-            mock_schedule_history_refresh.assert_any_call(
-                self.user.id,
-                logging_style,
-                warm_days=0,
-                day_keys=[later_day_key],
-            )
+        # Only the user's style (repeats) is rebuilt; the other is deleted.
+        mock_schedule_history_refresh.assert_any_call(
+            self.user.id,
+            logging_style,
+            warm_days=0,
+            day_keys=[later_day_key],
+        )
+        self.assertEqual(
+            {call.args[1] for call in mock_schedule_history_refresh.call_args_list},
+            {logging_style},
+        )
 
         later_page = self.client.get(
             reverse("history")
@@ -1294,7 +1367,175 @@ class HistoryMonthViewTests(TestCase):
             {f"Large History {index:03d}" for index in range(30, 35)},
         )
         self.assertNotContains(response, "Large History Music")
-        self.assertNotContains(response, "Load more")
+        self.assertFalse(day["has_more"])
+
+    def test_history_page_embeds_a_bounded_feed_model(self):
+        """The shared feed receives page metadata and bounded first slices."""
+        day_key, total_entries = self._cache_large_history_day()
+
+        response = self.client.get(reverse("history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-history-feed-root")
+        self.assertContains(response, "history-feed-props")
+        model = response.context["history_feed"]
+        self.assertEqual(model["mode"], "activity")
+        day = next(day for day in model["days"] if day["key"] == day_key)
+        self.assertEqual(day["entryCount"], total_entries)
+        self.assertEqual(
+            len(day["entries"]),
+            history_cache.HISTORY_ENTRIES_PER_DAY_PAGE,
+        )
+        self.assertTrue(day["hasMore"])
+        self.assertTrue(day["entries"][0]["canEdit"])
+        self.assertFalse(day["entries"][0]["canDelete"])
+        self.assertIn("format=json", day["nextUrl"])
+
+    def test_history_feed_model_owns_month_nav_and_filters(self):
+        """The shared feed receives the month nav and active filter state."""
+        response = self.client.get(
+            reverse("history"),
+            {
+                "year": 2020,
+                "m": 6,
+                "media_type": MediaTypes.MOVIE.value,
+                "genre": "drama,comedy",
+                "implied_genre": "mystery",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        model = response.context["history_feed"]
+        self.assertEqual(model["nav"]["monthLabel"], "June")
+        self.assertIn("year=2020&m=5", model["nav"]["previousMonth"]["url"])
+        self.assertIn("year=2020&m=7", model["nav"]["nextMonth"]["url"])
+        self.assertIn("genre=drama%2Ccomedy", model["nav"]["previousMonth"]["url"])
+        self.assertEqual(model["filters"]["mediaTypes"], ["movie"])
+        self.assertEqual(model["filters"]["genres"], ["drama", "comedy"])
+        self.assertEqual(model["filters"]["impliedGenres"], ["mystery"])
+        self.assertEqual(model["filters"]["activeCount"], 3)
+        self.assertEqual(
+            [option["value"] for option in model["options"]["mediaTypes"]],
+            [
+                "tv", "movie", "anime", "game", "music", "book", "manga",
+                "comic", "podcast", "video", "boardgame",
+            ],
+        )
+
+    def test_history_feed_withholds_lazy_day_entries(self):
+        """A lazy day must not ship its entries in the first response."""
+        from app.history_views import _history_feed_day
+
+        request = RequestFactory().get(reverse("history"))
+        request.user = self.user
+        day = {
+            "day_key": "20261104",
+            "weekday": "Wednesday",
+            "date_display": "November 4, 2026",
+            "entry_count": 40,
+            "entry_offset": 0,
+            "next_entry_offset": 30,
+            "has_more": True,
+            "remaining_entry_count": 10,
+            "lazy": True,
+            "entries": [{"entry_key": "hidden-entry", "title": "Hidden"}],
+        }
+
+        model = _history_feed_day(day, "activity", self.user, request)
+
+        self.assertTrue(model["lazy"])
+        self.assertTrue(model["hasMore"])
+        self.assertEqual(model["entryCount"], 40)
+        self.assertEqual(model["entries"], [])
+        self.assertIn("format=json", model["loadUrl"])
+
+    def test_history_feed_pagination_keeps_filters_and_elides_pages(self):
+        """Filtered-view pagination is a feed intent, not template HTML."""
+        from app.history_views import _history_feed_pagination
+
+        request = RequestFactory().get(
+            reverse("history"),
+            {"media_type": MediaTypes.MOVIE.value, "page": "4"},
+        )
+        pagination = _history_feed_pagination(
+            request,
+            {"use_month_view": False, "total_pages": 12, "current_page": 4},
+        )
+
+        self.assertEqual(pagination["page"], 4)
+        self.assertEqual(pagination["pageCount"], 12)
+        self.assertIn("page=3", pagination["previousUrl"])
+        self.assertIn("page=5", pagination["nextUrl"])
+        self.assertIn("media_type=movie", pagination["previousUrl"])
+        numbers = [page["number"] for page in pagination["pages"] if page]
+        self.assertEqual(numbers, [1, 2, 3, 4, 5, 6, 12])
+        self.assertIn(None, pagination["pages"])
+
+    def test_activity_sessions_modal_json_matches_the_shared_dialog(self):
+        """The activity dialog fetches bounded sessions as plain data."""
+        response = self.client.get(
+            reverse("activity_sessions_modal"),
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "month-movie",
+                "source": Sources.MANUAL.value,
+                "format": "json",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["sessions"]), 1)
+        session = payload["sessions"][0]
+        self.assertEqual(session["label"], "Watched")
+        self.assertEqual(session["date"], timezone.localdate().isoformat())
+        self.assertTrue(session["when"])
+        self.assertIn("stats", payload)
+
+    def test_history_day_fragment_json_returns_the_next_bounded_slice(self):
+        """The browser feed loads one JSON day slice without whole-history payloads."""
+        day_key, _total_entries = self._cache_large_history_day()
+        offset = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE
+
+        response = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {"format": "json", "entry_offset": offset},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        day = response.json()["day"]
+        self.assertEqual(day["key"], day_key)
+        self.assertEqual(day["offset"], offset)
+        self.assertFalse(day["hasMore"])
+        self.assertIn("Large History 034", {entry["title"] for entry in day["entries"]})
+        self.assertNotIn("Large History 000", {entry["title"] for entry in day["entries"]})
+        self.assertIsNone(day["nextUrl"])
+
+    def test_history_day_fragment_json_keeps_filters_and_bounds(self):
+        """JSON day slices filter before pagination, like the server fragment."""
+        day_key, _total_entries = self._cache_large_history_day(
+            keep_count=5,
+            total_count=history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5,
+        )
+
+        response = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {
+                "format": "json",
+                "genre": "keep",
+                "media_type": MediaTypes.MOVIE.value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        day = response.json()["day"]
+        self.assertEqual(day["entryCount"], 5)
+        self.assertEqual(len(day["entries"]), 5)
+        self.assertFalse(day["hasMore"])
+        self.assertEqual(
+            {entry["title"] for entry in day["entries"]},
+            {f"Large History {index:03d}" for index in range(30, 35)},
+        )
 
     def test_history_day_fragment_rejects_invalid_day_and_offset(self):
         invalid_day = self.client.get(

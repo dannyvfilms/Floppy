@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load app_tags %}
 {% load user_tags %}
@@ -70,7 +71,7 @@
           <h2 class="text-xl font-bold mb-4">{% translate "Genres" %}</h2>
           <div class="flex flex-wrap gap-2 justify-center md:justify-start">
             {% for genre in show.genres %}
-              <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+              {% badge genre "tag" "genre" %}
             {% endfor %}
           </div>
         </div>
@@ -118,7 +119,16 @@
 
   {# Episodes list #}
   <div class="mb-8" {% detail_section_attrs user "podcast" "content" "episodes" %}>
-    <h2 class="text-2xl font-bold mb-4">{% translate "Episodes" %}</h2>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold">{% translate "Episodes" %}</h2>
+      {% if episode_manager_props %}
+        <div data-podcast-episode-manager-root data-props-id="podcast-episode-manager-props">
+          <a class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors"
+             href="{% url 'podcast_episodes_manage' show.id %}">{% translate "Manage episodes" %}</a>
+        </div>
+        {{ episode_manager_props|json_script:"podcast-episode-manager-props" }}
+      {% endif %}
+    </div>
     <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden">
       <div class="divide-y divide-gray-700">
         {% for episode in episodes %}
@@ -131,6 +141,9 @@
                 {% endif %}
                 {% if episode.duration %}
                   <p class="text-sm text-[var(--color-text-muted)]">{{ episode.duration_formatted }}</p>
+                {% endif %}
+                {% if episode.description %}
+                  <p class="text-sm text-[var(--color-text-secondary)] line-clamp-2">{{ episode.description }}</p>
                 {% endif %}
                 {% if episode.website_url %}
                   <a href="{{ episode.website_url }}"

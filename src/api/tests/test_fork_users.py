@@ -217,6 +217,30 @@ class PreferencesTests(FloppyApiTestCase):
 class SidebarTests(FloppyApiTestCase):
     """GET/PUT user/sidebar."""
 
+    def test_navigation_model_matches_the_web_sidebar(self):
+        """The native shell reads the same links, order and labels as web."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/user/navigation/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertNotIn("csrfToken", body)
+        self.assertEqual(body["primary"][0]["label"], "Home")
+        self.assertEqual(body["primary"][0]["href"], "/")
+        self.assertEqual(
+            [item["label"] for item in body["secondary"]],
+            ["Calendar", "Collection", "Custom", "History", "Lists", "Statistics", "Tags"],
+        )
+        self.assertTrue(body["logo"]["src"].endswith("floppy-logo.png"))
+        self.assertIn("icon", body["primary"][0])
+        self.assertIn("lastSearchType", body)
+
+    def test_signed_in_browser_session_can_read_the_api(self):
+        """The native client signs in through allauth and then calls the API."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/user/sidebar/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertIn(MediaTypes.MOVIE.value, response.json()["media_types"])
+
     def test_toggle_media_type(self):
         """A media type can be disabled and re-enabled."""
         response = self.call_api(
@@ -231,6 +255,32 @@ class SidebarTests(FloppyApiTestCase):
 
         listed = self.call_api("get", "api_user_sidebar", headers=self.auth_headers)
         self.assertFalse(listed.json()["media_types"][MediaTypes.MOVIE.value])
+
+    def test_order_and_discover_round_trip(self):
+        """The sidebar order and the Discover switch are read and saved."""
+        listed = self.call_api("get", "api_user_sidebar", headers=self.auth_headers).json()
+        self.assertEqual(set(listed["order"]), set(listed["media_types"]))
+        self.assertEqual(listed["labels"][MediaTypes.MOVIE.value], "Movies")
+        reordered = [MediaTypes.MOVIE.value] + [
+            m for m in listed["order"] if m != MediaTypes.MOVIE.value
+        ]
+        response = self.call_api(
+            "put",
+            "api_user_sidebar",
+            payload={"media_types": {}, "order": reordered, "show_discover": False},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        saved = self.call_api("get", "api_user_sidebar", headers=self.auth_headers).json()
+        self.assertEqual(saved["order"], reordered)
+        self.assertFalse(saved["show_discover"])
+        bad = self.call_api(
+            "put",
+            "api_user_sidebar",
+            payload={"media_types": {}, "order": ["vinyl"]},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(bad.status_code, HTTP.BAD_REQUEST)
 
     def test_unknown_media_type_rejected(self):
         """Unknown media types return 400."""
@@ -329,6 +379,8 @@ class NotificationsTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(len(listed.json()["results"]), 1)
+        self.assertEqual(listed.json()["results"][0]["media_type_label"], "Movie")
+        self.assertIn("image", listed.json()["results"][0])
 
         removed = self.call_api(
             "delete",
@@ -368,17 +420,47 @@ class NotificationsTests(FloppyApiTestCase):
         self.assertTrue(response.json()["sent"])
 
 
+class NotificationTestFailureTests(FloppyApiTestCase):
+    """A failing notification URL never reaches the response or the log."""
+
+    URL = "https://hooks.example.com/services/T000/B000/tokenSECRET123"
+
+    @patch("apprise.Apprise")
+    def test_test_notification_failure_hides_apprise_text(self, mock_apprise):
+        self.user1.notification_urls = self.URL
+        self.user1.save(update_fields=["notification_urls"])
+        mock_apprise.return_value.notify.side_effect = RuntimeError(
+            f"Could not reach {self.URL}",
+        )
+        with self.assertLogs("api.errors", level="WARNING") as logs:
+            response = self.call_api(
+                "post",
+                "api_user_notification_test",
+                payload={},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        self.assertEqual(
+            response.json(), {"detail": "Failed to send test notification."}
+        )
+        for text in (response.content.decode(), *logs.output):
+            self.assertNotIn("tokenSECRET123", text)
+            self.assertNotIn("hooks.example.com", text)
+        self.assertFalse(logs.records[0].exc_text)
+
+
 class TokenRegenerateTests(FloppyApiTestCase):
     """POST user/token/regenerate."""
 
     def test_regenerate_rotates_token(self):
         """The new token is returned and the old credential stops working."""
         old_token = self.user1.token
+        self.client.force_login(self.user1)
         response = self.call_api(
             "post",
             "api_user_token_regenerate",
             payload={},
-            headers=self.auth_headers,
+            headers={},
         )
         self.assertEqual(response.status_code, HTTP.OK)
         new_token = response.json()["token"]

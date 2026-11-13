@@ -1,4 +1,5 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load ui_tags %}
 {% load i18n %}
 
 {% load user_tags %}
@@ -37,14 +38,11 @@
     </div>
   {% else %}
     <p class="text-sm text-[var(--color-text-muted)] mb-6">
-      {% translate "No services connected yet — you can connect one anytime from Settings > Import." %}
+      {% translate "No services connected yet. You can connect one anytime from Settings > Import." %}
     </p>
   {% endif %}
   <form method="post" class="flex justify-end">
     {% csrf_token %}
-    <button type="submit"
-            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-      {% translate "Continue" %}
-    </button>
+    {% button _("Continue") submit=True %}
   </form>
 {% endblock step_options %}

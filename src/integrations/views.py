@@ -35,7 +35,6 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import (
@@ -62,6 +61,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     mal_sync,
+    pending_auth,
     pocketcasts_api,
     psn_api,
     seerr_api,
@@ -307,13 +307,13 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
             user.onboarding_connected_sources = [*user.onboarding_connected_sources, connected_slug]
             user.save(update_fields=["onboarding_connected_sources"])
     destination = next_url or request.POST.get("next") or request.GET.get("next")
-    if destination and not url_has_allowed_host_and_scheme(
-        destination,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        destination = None
-    return redirect(destination or "import_data")
+    if pending_auth.is_native_return(destination):
+        # Back into the native app: only its own scheme, never another URL.
+        # Django's redirect() refuses custom schemes, so answer directly.
+        return HttpResponse(status=HTTPStatus.FOUND, headers={"Location": destination})
+    return redirect(
+        app_helpers.safe_return_url(request, destination, reverse("import_data"))
+    )
 
 
 def _consume_oauth_state(request, provider):
@@ -327,7 +327,7 @@ def _consume_oauth_state(request, provider):
         )
         return None
 
-    state_data = request.session.pop(state_token, None)
+    state_data = pending_auth.pop_state(request, state_token)
     if not isinstance(state_data, dict):
         logger.warning("%s OAuth callback state not found in session", provider)
         messages.error(
@@ -804,7 +804,7 @@ def trakt_oauth(request):
         # An app without a client secret authorizes with PKCE instead.
         state["code_verifier"], code_challenge = trakt.new_pkce_pair()
         query += f"&code_challenge={code_challenge}&code_challenge_method=S256"
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
     return redirect(f"{url}?{query}")
 
 
@@ -849,7 +849,7 @@ def _start_trakt_device_flow(request):
         messages.error(request, str(error))
         return _integration_redirect(request)
 
-    request.session[TRAKT_DEVICE_SESSION_KEY] = {
+    pending_auth.put(TRAKT_DEVICE_SESSION_KEY, request.user.pk, {
         "device_code": device["device_code"],
         "user_code": device["user_code"],
         "verification_url": device["verification_url"],
@@ -861,13 +861,13 @@ def _start_trakt_device_flow(request):
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
         "return_to": request.POST.get("next"),
-    }
+    })
     return redirect("trakt_device_verify")
 
 
 def _trakt_device_state(request):
     """Return the pending device authorization, or None if gone or expired."""
-    state = request.session.get(TRAKT_DEVICE_SESSION_KEY)
+    state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
     if not isinstance(state, dict):
         return None
     expires_at = parse_datetime(state.get("expires_at") or "")
@@ -881,19 +881,48 @@ def trakt_device_verify(request):
     """Show the Trakt device code the user must enter at trakt.tv/activate."""
     state = _trakt_device_state(request)
     if state is None:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
         messages.error(request, "The Trakt authorization code expired. Start again.")
         return _integration_redirect(request)
 
+    poll_url = reverse("trakt_device_poll")
+    cancel_url = reverse("import_data")
+    verification_url = state["verification_url"]
+    user_code = state["user_code"]
+    props = {
+        "code": user_code,
+        "openUrl": f"{verification_url.rstrip('/')}/{user_code}",
+        "pollUrl": poll_url,
+        "cancelUrl": cancel_url,
+        "interval": state["interval"],
+        "expiresAt": state["expires_at"],
+        "title": gettext("Connect Trakt"),
+        "description": gettext(
+            "This instance is not served over HTTPS, so Trakt will not accept "
+            "a browser redirect. Enter this code on Trakt instead."
+        ),
+        "labels": {
+            "copy": gettext("Copy code"),
+            "copied": gettext("Copied!"),
+            "open": gettext("Open %(url)s") % {"url": verification_url},
+            "waiting": gettext("Waiting for you to authorize Floppy…"),
+            "cancel": gettext("Cancel"),
+            "expired": gettext(
+                "The Trakt authorization code expired. Start again."
+            ),
+            "retry": gettext("Start again"),
+        },
+    }
     return render(
         request,
         "integrations/trakt_device_code.html",
         {
-            "user_code": state["user_code"],
-            "verification_url": state["verification_url"],
+            "user_code": user_code,
+            "verification_url": verification_url,
             "interval": state["interval"],
-            "poll_url": reverse("trakt_device_poll"),
-            "cancel_url": reverse("import_data"),
+            "poll_url": poll_url,
+            "cancel_url": cancel_url,
+            "device_connect_props": props,
         },
     )
 
@@ -903,27 +932,39 @@ def _htmx_redirect(location):
     return HttpResponse(status=HTTPStatus.NO_CONTENT, headers={"HX-Redirect": location})
 
 
-@require_GET
-def trakt_device_poll(request):
-    """Poll Trakt once for the pending device authorization."""
+def poll_trakt_device(request):
+    """Poll Trakt once; return (status, message, state) for web and native callers.
+
+    Status is pending, connected, expired or error. A finished state is cleared.
+    """
     state = _trakt_device_state(request)
     if state is None:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
-        messages.error(request, "The Trakt authorization code expired. Start again.")
-        return _htmx_redirect(reverse("import_data"))
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
+        return "expired", "The Trakt authorization code expired. Start again.", None
 
     try:
         result = trakt.poll_device_token(state["device_code"])
     except helpers.MediaImportError as error:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
-        messages.error(request, str(error))
-        return _htmx_redirect(reverse("import_data"))
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
+        return "error", error.message, state
 
     if result is None:
-        return HttpResponse(status=HTTPStatus.NO_CONTENT)
+        return "pending", "", state
 
-    request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+    pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
     _finish_trakt_connection(request, result, state)
+    return "connected", "", state
+
+
+@require_GET
+def trakt_device_poll(request):
+    """Poll Trakt once for the pending device authorization."""
+    status, message, state = poll_trakt_device(request)
+    if status in ("expired", "error"):
+        messages.error(request, message)
+        return _htmx_redirect(reverse("import_data"))
+    if status == "pending":
+        return HttpResponse(status=HTTPStatus.NO_CONTENT)
     redirect_response = _integration_redirect(
         request,
         connected_slug="trakt",
@@ -1049,11 +1090,11 @@ def plex_connect(request):
         messages.error(request, f"Unexpected Plex error: {exc}")
         return _integration_redirect(request)
 
-    request.session[state_token] = {
+    pending_auth.stash_state(request, state_token, {
         "plex_pin_id": pin["id"],
         "plex_pin_code": pin["code"],
         "return_to": request.POST.get("next"),
-    }
+    })
 
     auth_url = plex_api.build_auth_url(
         pin["code"], f"{redirect_uri}?state={state_token}"
@@ -1065,7 +1106,7 @@ def plex_connect(request):
 def plex_callback(request):
     """Handle Plex auth callback and persist the token."""
     state_token = request.GET.get("state")
-    state_data = request.session.pop(state_token, None)
+    state_data = pending_auth.pop_state(request, state_token)
 
     if not state_data:
         messages.error(request, "Invalid or expired Plex authorization request.")
@@ -1339,7 +1380,7 @@ def simkl_oauth(request):
             f"&code_challenge={code_challenge}&code_challenge_method=S256"
         )
 
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
     return redirect(url)
 
 
@@ -1491,7 +1532,7 @@ def anilist_oauth(request):
     }
 
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
 
     return redirect(
         f"{url}?client_id={credentials.get("anilist", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
@@ -1572,7 +1613,7 @@ def mal_oauth(request):
         "return_to": request.POST.get("next"),
     }
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
 
     query = urlencode({
         "response_type": "code",
@@ -2364,6 +2405,12 @@ def import_trakt_export_file(request):
         )
         return _integration_redirect(request, connected_slug="trakt")
 
+    if mode not in helpers.TRAKT_EXPORT_MODES:
+        for path in staged_files:
+            discard_staged_upload(path)
+        messages.error(request, helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE)
+        return _integration_redirect(request, connected_slug="trakt")
+
     if len(payloads) == 1 and staged_payload_is_zip(payloads[0][1]):
         archive_path = payloads[0][1]
     else:
@@ -2627,18 +2674,17 @@ def radarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=RADARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="radarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="radarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "radarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Radarr", _disconnect)
     messages.info(request, "Disconnected Radarr.")
     return redirect("import_data")
@@ -2718,18 +2764,17 @@ def mylar_disconnect(request):
             task=MYLAR_RECURRING_TASK_NAME,
         ).delete()
         # Through the reconciling helper, so copies only Mylar3 created go too.
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="mylar", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="mylar",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "mylar",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Mylar3", _disconnect)
     messages.info(request, "Disconnected Mylar3.")
     return redirect("import_data")
@@ -2899,18 +2944,17 @@ def sonarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=SONARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="sonarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="sonarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "sonarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Sonarr", _disconnect)
     messages.info(request, "Disconnected Sonarr.")
     return redirect("import_data")
@@ -3904,7 +3948,7 @@ def storyteller_connect(request):
         return _integration_redirect(request)
 
     expires_in = int(data.get("expires_in") or 600)
-    request.session[STORYTELLER_PENDING_SESSION_KEY] = {
+    pending_auth.put(STORYTELLER_PENDING_SESSION_KEY, request.user.pk, {
         "server_url": server_url,
         "device_code": device_code,
         "user_code": data.get("user_code") or "",
@@ -3917,8 +3961,7 @@ def storyteller_connect(request):
         ),
         "interval": int(data.get("interval") or 5),
         "expires_at": (timezone.now() + timedelta(seconds=expires_in)).isoformat(),
-    }
-    request.session.modified = True
+    }, ttl=expires_in)
     messages.info(
         request, "Approve the login on your Storyteller server to finish connecting."
     )
@@ -3928,20 +3971,22 @@ def storyteller_connect(request):
 @require_GET
 def storyteller_poll(request):
     """Poll Storyteller for the access token during device login."""
-    pending = request.session.get(STORYTELLER_PENDING_SESSION_KEY)
+    pending = pending_auth.get(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     if not pending:
         return JsonResponse({"status": "idle"})
 
     expires_at = pending.get("expires_at")
     if expires_at and timezone.now() > datetime.fromisoformat(expires_at):
-        request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+        pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
         return JsonResponse({"status": "expired"})
 
     client = StorytellerClient(pending["server_url"])
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
     except Exception as exc:
-        return JsonResponse({"status": "pending", "detail": str(exc)})
+        # requests errors carry the server URL: log the class, answer plainly.
+        logger.warning("Storyteller device poll failed: %s", exception_summary(exc))
+        return JsonResponse({"status": "pending"})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
     if access_token:
@@ -3959,7 +4004,7 @@ def storyteller_poll(request):
             _ensure_storyteller_schedule(request.user)
 
         _run_with_lock_retry("connect Storyteller", _connect)
-        request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+        pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
         if not _queue_task_quietly(
             tasks.import_storyteller, user_id=request.user.id, mode="new"
         ):
@@ -3973,14 +4018,14 @@ def storyteller_poll(request):
     ):
         return JsonResponse({"status": "pending"})
 
-    request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+    pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     return JsonResponse({"status": "error", "message": error or "Login failed."})
 
 
 @require_POST
 def storyteller_cancel(request):
     """Cancel an in-progress Storyteller device login."""
-    request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+    pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     messages.info(request, "Storyteller login cancelled.")
     return redirect("import_data")
 
@@ -6157,8 +6202,8 @@ def stremio_addon_catalog(
 
     try:
         skip = stremio_catalog.parse_skip(extra)
-    except ValueError as error:
-        return _stremio_addon_response({"error": str(error)}, status=400)
+    except stremio_catalog.CatalogSkipError as error:
+        return _stremio_addon_response({"error": error.message}, status=400)
 
     metas, unresolved_count = stremio_catalog.project_catalog(user, spec, skip)
     logger.info(
@@ -6181,12 +6226,33 @@ def stremio_addon_configure(request, token, config=None):
         logger.warning("Invalid token on Stremio addon configure request")
         return HttpResponse("Invalid token", status=401)
 
+    catalog_options = stremio_catalog.catalog_options(user)
+    selected_ids = list(stremio_catalog.parse_catalog_config(config))
+    props = {
+        "options": catalog_options,
+        "selectedIds": selected_ids,
+        "labels": {
+            "catalogs": gettext("Catalogs"),
+            "hint": gettext(
+                "Use the URL below, not the address of this page. It works "
+                "in Stremio directly, or in an addon manager such as "
+                "AIOStreams or AIOMetadata."
+            ),
+            "copy": gettext("Copy URL"),
+            "copied": gettext("Copied."),
+            "install": gettext("Install in Stremio"),
+            "noneSelected": gettext(
+                "Nothing selected. The default catalogs will be used."
+            ),
+        },
+    }
     return render(
         request,
         "integrations/stremio_configure.html",
         {
-            "catalog_options": stremio_catalog.catalog_options(user),
-            "selected_ids": list(stremio_catalog.parse_catalog_config(config)),
+            "catalog_options": catalog_options,
+            "selected_ids": selected_ids,
+            "stremio_config_props": props,
         },
     )
 

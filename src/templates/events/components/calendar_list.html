@@ -4,7 +4,7 @@
 {% load events_tags %}
 {% load user_tags %}
 
-<div class="space-y-6">
+<div class="space-y-6" data-calendar-view="list">
   {% for day, releases in release_dict.items %}
     <div data-calendar-day class="bg-[var(--color-surface-muted)] rounded-lg overflow-hidden">
       <div class="px-4 py-3 font-medium flex items-center justify-between text-gray-100 {% if day == today.day and month == today.month and year == today.year %}bg-indigo-600{% else %}bg-gray-600{% endif %}">
@@ -22,12 +22,12 @@
                    class="w-10 h-10 object-cover rounded-md shrink-0"
                    src="{{ release.calendar_backdrop|default:release.item.image|image_url }}">
               <div class="flex-1 min-w-0">
-                <h4 class="font-medium text-sm line-clamp-1">{{ release.item }}</h4>
+                <h4 class="font-medium text-sm line-clamp-1">{{ release.calendar_title }}</h4>
                 <div class="flex items-center">
                   <span class="text-xs text-[var(--color-text-muted)] me-2">{{ release.item.media_type|media_type_readable }}</span>
                   {% card_lines release.item.media_type release.item %}
-                  {% if release.readable_content_number %}
-                    <span class="text-xs text-[var(--color-link)]">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
+                  {% if release.season_episode_label %}
+                    <span class="text-xs text-[var(--color-link)]">{{ release.season_episode_label }} {{ release|user_event_time:user }}</span>
                   {% endif %}
                   {% if release.release_type %}<span class="text-xs text-[var(--color-link)]">{{ release.get_release_type_display }} {% translate "release" %}</span>{% endif %}
                 </div>

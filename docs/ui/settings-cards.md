@@ -34,12 +34,18 @@ existing Connection setup/restore dialogs that share Import templates.
 Translate text before passing it. A unique `json_script` contains presentation
 props only: no keys, provider context, raw HTML, action URLs or form state.
 
-The shared `frontend/settings/SettingsCard.jsx` uses React Native primitives.
+The shared `frontend/settings/SettingsCard.jsx` and `frontend/settings/Chip.jsx`
+use React Native primitives and are registered universal presentation.
 `mount.jsx` is the web adapter: it uses React DOM, supplies browser theme tokens,
 and renders the component without its own frame because Django's outer section
-contains both the React header and the server body. Future React-owned children
-can use the framed component directly. The web slot is not a portable form API.
-Neither React hydration nor `dangerouslySetInnerHTML` is used.
+contains both the React header and the server body. `Chip.web.jsx` is the
+browser link adapter: it keeps native anchors and new-tab attributes, uses a
+caller-supplied palette for React-owned cards, and falls back to the scoped
+CSS-variable palette for server card/chip wrappers while the shared chip owns
+hover, focus and action semantics. Future React-owned children can use the
+framed component directly.
+The web slot is not a portable form API. Neither React hydration nor
+`dangerouslySetInnerHTML` is used.
 
 `settings-card.css` owns the browser frame, semantic palette mapping and useful
 server-rendered fallback. React owns heading/badge/help descendants exclusively;
@@ -56,7 +62,7 @@ element so closing the dialog can restore focus. Permission checks remain server
 Read-only actions, provider-key links and media pills. It owns typography, border,
 padding, shape and hover/focus feedback. Use the browser `ProviderChip` wrapper
 when a chip needs a standalone tone; card badges inherit their card's palette.
-Links retain native anchor/new-tab behavior through RNW's web `href`/`hrefAttrs`;
+Links retain native anchor/new-tab behavior through the `Chip.web.jsx` adapter;
 actions use `onPress`, and passive chips have no interactive role. Web adapters
 suppress text underlining and outline animation while preserving theme motion.
 The `pill` option preserves rounded media-identity chips. Native link behavior
@@ -132,8 +138,14 @@ provider-specific import controls retain their legacy owners. Their retirement c
 port with equivalent permissions, validation and interactions, not removal of a
 fallback or an automatic conversion of every provider at once.
 
-iOS and Android are **not verified**. No Expo application or native transport has
-been added. Native consumers must supply concrete theme values and React-owned
-children; CSS variables, server body slots and DOM dialog events stay in the web
-adapter. Do not label this component Cross-Platform Verified until both platforms
-have been exercised and recorded. The broader native architecture proof remains open.
+Android 15 Pixel 7 AVD rendered the shared card and chip on Settings. iOS, the
+help dialog, links and VoiceOver/TalkBack remain **unverified**.
+The former `SettingsCardSlot` demo adapter was deleted. Native now reaches the shared
+settings composition through `native-proof/app/surfaces/CardsSettingsSlot.jsx`
+(`SettingsCardsView`), and `native-proof/app/screens/AuthScreen.jsx` renders the shared
+`Chip`; both take theme values from the native theme. A bundle or `expo export` compile
+is a build check, not runtime evidence. CSS variables, server
+body slots and DOM dialog events stay in the web adapter. Do not label this component
+Cross-Platform Verified until both platforms have been exercised and recorded,
+including interaction and accessibility. The broader native architecture work
+remains open.

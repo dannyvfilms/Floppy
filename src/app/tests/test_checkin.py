@@ -131,6 +131,18 @@ class CheckInTests(TestCase):
         self.assertIsNotNone(card["scrobble_expires_at_ts"])
         self.assertEqual(self.phase(planning), checkin.PHASE_ACTIVE)
 
+    def test_start_card_uses_the_backdrop_not_the_stored_poster(self):
+        self.movie(Status.PLANNING.value)
+
+        with patch(
+            "app.helpers.get_tmdb_backdrop_image",
+            return_value="http://example.com/heat-backdrop.jpg",
+        ):
+            self.start()
+
+        card = self.card()
+        self.assertEqual(card["image"], "http://example.com/heat-backdrop.jpg")
+
     def test_start_on_a_completed_movie_adds_a_rewatch_row(self):
         done = self.movie(Status.COMPLETED.value)
 
@@ -682,6 +694,31 @@ class CheckInShowTests(TestCase):
         self.show.refresh_from_db()
         self.assertEqual(self.season.status, Status.PAUSED.value)
         self.assertEqual(self.show.status, Status.PAUSED.value)
+
+    @patch("app.models.Episode._local_season_max_progress", return_value=3)
+    def test_cancel_clears_views_after_putting_the_show_back(self, _max_progress):
+        """The status restore skips signals, so it clears the views itself."""
+        from app.tests.test_view_cache_invalidation import ALL, cleared, seed
+
+        self.watched(1)
+        self.start()
+        original_restore = checkin._restore_parents
+
+        def restore_after_a_reader_cached(*args, **kwargs):
+            # A page read between the play's delete and the status restore.
+            seed(self.user.id)
+            return original_restore(*args, **kwargs)
+
+        with (
+            patch(
+                "app.checkin._restore_parents",
+                side_effect=restore_after_a_reader_cached,
+            ),
+            self.captureOnCommitCallbacks(execute=False),
+        ):
+            checkin.cancel(self.user, "tv", "1668")
+
+        self.assertEqual(cleared(self.user.id), ALL)
 
     def test_cancel_keeps_a_play_that_was_already_open(self):
         Episode.objects.create(

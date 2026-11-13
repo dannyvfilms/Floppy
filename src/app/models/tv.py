@@ -23,6 +23,7 @@ from app.models.choices import USER_HELD_STATUSES, MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import Media, ScoreMonitorField
+from app.public_errors import PublicMessageError
 from app.services.sync_lock import serialized_state_write
 from integrations.import_scope import ImportScopedManager
 
@@ -116,7 +117,7 @@ def classify_production_status(raw_status):
     return PRODUCTION_STATUS_UNKNOWN
 
 
-class RewatchAlreadyCompleteError(Exception):
+class RewatchAlreadyCompleteError(PublicMessageError):
     """Raised when a rewatch's start date leaves nothing left to rewatch."""
 
 
@@ -180,6 +181,7 @@ class TV(Media):
     def save(self, *args, **kwargs):
         """Save the media instance."""
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A show created directly as COMPLETED (rather than transitioned into it)
@@ -223,8 +225,10 @@ class TV(Media):
             # Keep TV+Season state aligned even when status was already IN_PROGRESS.
             self._start_next_available_season()
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.TV.value,),
+        )
 
     @cached_property
     def progress(self):
@@ -1245,6 +1249,7 @@ class Season(Media):
             self.related_tv = self.get_tv()
 
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A season created directly as COMPLETED (rather than transitioned into
@@ -1344,8 +1349,10 @@ class Season(Media):
 
             self.item.fetch_releases(delay=True)
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.SEASON.value,),
+        )
 
     @property
     def progress(self):
@@ -1796,8 +1803,10 @@ class Season(Media):
         )
         if result.created:
             logger.info("%s created successfully.", result.episode)
-            cache_utils.clear_time_left_cache_for_user(self.user_id)
-            cache_utils.clear_media_list_cache_for_user(self.user_id)
+            cache_utils.clear_library_view_caches(
+                self.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
 
             entry_source = episode_fields.get("entry_source")
             if entry_source and self.entry_source != entry_source:
@@ -1852,8 +1861,10 @@ class Season(Media):
         if hasattr(self, "_episode_stats_cache"):
             delattr(self, "_episode_stats_cache")
         self._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     def _sync_status_after_episode_change(self, *, max_progress=None, plays_added=False):
         """Recalculate season (and TV) status from local episode history.
@@ -2541,47 +2552,20 @@ class Episode(models.Model):
         season_number = self.item.season_number
         if season_number is None:
             return
-        try:
-            tv_with_seasons_metadata = providers.services.get_media_metadata(
-                "tv_with_seasons",
-                self.item.media_id,
-                self.item.source,
-                [season_number],
-            )
-            season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-            max_progress = len(season_metadata["episodes"])
-            self.related_season.max_progress = max_progress
-        except (
-            providers.services.ProviderAPIError,
-            RequestException,
-            KeyError,
-            TypeError,
-            ValueError,
-        ) as error:
-            max_progress = self._local_season_max_progress()
-            if not max_progress:
-                logger.warning(
-                    "Skipping Episode status sync due to missing metadata for "
-                    "%s S%sE%s: %s",
-                    self.item.media_id,
-                    season_number,
-                    self.item.episode_number,
-                    error,
-                )
-                return
-            logger.info(
-                "Using locally recorded episode count %s for %s S%s "
-                "(provider metadata missing)",
-                max_progress,
-                self.item.media_id,
-                season_number,
-            )
-            self.related_season.max_progress = max_progress
+        stored_count = self._stored_season_episode_count()
 
         # clear prefetch cache to get the updated episodes
         if hasattr(self.related_season, "_episode_stats_cache"):
             delattr(self.related_season, "_episode_stats_cache")
         self.related_season.refresh_from_db()
+
+        max_progress = self._max_progress_for_status_sync(
+            season_number,
+            stored_count,
+        )
+        if max_progress is None:
+            return
+        self.related_season.max_progress = max_progress
 
         desired_status = self.related_season.derived_status_from_episode_progress(
             max_progress=max_progress,
@@ -2657,6 +2641,88 @@ class Episode(models.Model):
     def progressed_at(self):
         """Return the progressed at."""
         return None
+
+    def _stored_season_episode_count(self):
+        """Return the season item's stored provider episode count, if usable.
+
+        None for a custom episode order: its seasons are the order's, not the
+        provider's, and `get_media_metadata` resolves them from the order.
+        Reads the loaded season item when there is one, else one column.
+        """
+        if str(self.item.media_id).startswith("order_"):
+            return None
+        season = self.related_season
+        if Season._meta.get_field("item").is_cached(season):
+            count = season.item.provider_episode_count
+        else:
+            count = (
+                Item.objects.filter(pk=season.item_id)
+                .values_list("provider_episode_count", flat=True)
+                .first()
+            )
+        return count if count and count > 0 else None
+
+    def _max_progress_for_status_sync(self, season_number, stored_count):
+        """Return the season's episode count for the status sync, or None to skip.
+
+        The stored count may only answer "not finished yet". It is refreshed
+        when a payload is fetched, which can be long ago: a season that was
+        still airing then has a stored count that is too low, and trusting it
+        would complete the season early. So it is used only while the plays
+        of this pass are below it; a play that reaches it asks the provider
+        payload, exactly as before. The remaining difference is a count that
+        is too high (the provider removed episodes), which leaves the season
+        open until the next payload fetch lowers it.
+        """
+        season = self.related_season
+        if stored_count and season.completed_episode_count < stored_count:
+            return stored_count
+
+        try:
+            tv_with_seasons_metadata = providers.services.get_media_metadata(
+                "tv_with_seasons",
+                self.item.media_id,
+                self.item.source,
+                [season_number],
+            )
+            season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+            max_progress = len(season_metadata["episodes"])
+        except (
+            providers.services.ProviderAPIError,
+            RequestException,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            max_progress = self._local_season_max_progress()
+            if not max_progress:
+                logger.warning(
+                    "Skipping Episode status sync due to missing metadata for "
+                    "%s S%sE%s: %s",
+                    self.item.media_id,
+                    season_number,
+                    self.item.episode_number,
+                    error,
+                )
+                return None
+            logger.info(
+                "Using locally recorded episode count %s for %s S%s "
+                "(provider metadata missing)",
+                max_progress,
+                self.item.media_id,
+                season_number,
+            )
+            return max_progress
+
+        if max_progress != stored_count and not str(self.item.media_id).startswith(
+            "order_",
+        ):
+            # The payload is in hand, so later plays of this season need not
+            # ask for it. A queryset update sends no post_save.
+            Item.objects.filter(pk=season.item_id).exclude(
+                provider_episode_count=max_progress,
+            ).update(provider_episode_count=max_progress)
+        return max_progress
 
     def _local_season_max_progress(self):
         """Return the media-server-sourced episode count for this season, if any.

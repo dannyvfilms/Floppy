@@ -22,6 +22,8 @@ from app.models import (
     Album,
     Artist,
     BoardGame,
+    Book,
+    BookListeningSession,
     Item,
     MediaTypes,
     Movie,
@@ -498,6 +500,98 @@ class StatisticsBoardGameDayTests(TestCase):
         self.assertIn(str(item.id), stats["items"][key])
         self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
         self.assertEqual(stats["daily_minutes_by_type"].get(key, 0), 0)
+
+
+class StatisticsAudiobookDayTests(TestCase):
+    """Pages and listening minutes are counted apart, never summed."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-audiobook-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 3, 10, 12))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _book(self, key, fmt, progress, *, end=None):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title=key,
+            format=fmt,
+        )
+        return Book.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=end or self.day,
+            end_date=end or self.day,
+        )
+
+    def test_audiobook_minutes_do_not_become_pages(self):
+        self._book("ebook", "ebook", 120)
+        audio = self._book("audio", "audiobook", 300)
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=84,
+        )
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.BOOK.value
+        self.assertEqual(stats["daily_minutes_by_type"][key], 120)
+        self.assertEqual(stats["totals"]["listening_minutes"], 84)
+
+    def test_listening_only_day_is_active(self):
+        audio = self._book("audio2", "audiobook", 300, end=self.day - timedelta(days=9))
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=47,
+        )
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        self.assertEqual(stats["totals"]["listening_minutes"], 47)
+        self.assertGreaterEqual(stats["activity"]["count"], 1)
+
+    def test_saving_a_session_marks_its_statistics_day_dirty(self):
+        from app.models import StatisticsDirtyDay
+
+        audio = self._book("audio3", "audiobook", 10)
+        StatisticsDirtyDay.objects.all().delete()
+
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=30,
+        )
+
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(
+                user=self.user, day=self.day.date(),
+            ).exists(),
+        )
+
+    def test_legacy_consumption_keeps_pages_and_listening_apart(self):
+        from app import statistics as stats_module
+
+        self._book("ebook2", "ebook", 120)
+        audio = self._book("audio4", "audiobook", 300)
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=84,
+        )
+
+        result = stats_module.get_reading_consumption_stats(
+            {MediaTypes.BOOK.value: Book.objects.filter(user=self.user)},
+            None,
+            None,
+            MediaTypes.BOOK.value,
+        )
+
+        self.assertEqual(result["units"]["total"], 120)
+        self.assertEqual(result["listening"]["minutes"], 84)
+        self.assertEqual(result["listening"]["formatted"], "1h 24min")
 
 
 class StatisticsMusicDayTests(TestCase):

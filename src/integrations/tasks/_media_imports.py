@@ -66,6 +66,8 @@ from integrations.tasks._import_helpers import (
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
     STREMIO_IMPORT_SOFT_TIME_LIMIT,
     STREMIO_IMPORT_TIME_LIMIT,
+    WETRAKR_IMPORT_SOFT_TIME_LIMIT,
+    WETRAKR_IMPORT_TIME_LIMIT,
     _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
@@ -449,7 +451,11 @@ def import_trakt_export(file, user_id, mode):
     )
 
 
-@shared_task(name="Import WeTrakr data export")
+@shared_task(
+    name="Import WeTrakr data export",
+    soft_time_limit=WETRAKR_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=WETRAKR_IMPORT_TIME_LIMIT,
+)
 def import_wetrakr_export(file, user_id, mode):
     """Celery task for importing a WeTrakr data export archive."""
     return _run_file_import(wetrakr.importer, file, user_id, mode)
@@ -678,6 +684,28 @@ def import_kapowarr_recurring(instance_id):
     return _run_arr_import(
         "Kapowarr", kapowarr.importer, user_id, "new", instance_id=instance_id
     )
+
+
+@shared_task(name="Remove Collection Source States")
+def remove_collection_source_states(user_id, source, instance_id):
+    """Drop a disconnected arr instance's collection rows outside the request.
+
+    A large library holds tens of thousands of rows, each reconciled on its
+    own, which is far too slow for a web worker (#1911).
+    """
+    from integrations.source_sync import prune_collection_source_states
+
+    user = get_user_model().objects.get(pk=user_id)
+    removed = prune_collection_source_states(
+        user=user,
+        source=source,
+        source_instance_id=instance_id,
+        keep_item_ids=(),
+    )
+    logger.info(
+        "Removed %s %s collection rows for instance %s", removed, source, instance_id
+    )
+    return removed
 
 
 @shared_task(name="Import from Sonarr")

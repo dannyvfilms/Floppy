@@ -53,10 +53,21 @@ def _copy(key):
     return ("copy", key)
 
 
+def _primary(guide, label, key="webhook", sentence=None):
+    """Show the copy value above the steps and shorten the step that only repeated it."""
+    guide["primary"] = {"label": _(label), "key": key}
+    replacement = [_t(sentence or "Set the webhook URL to the one shown above.")]
+    guide["steps"] = [
+        replacement if isinstance(step, list) and step[-1:] == [("copy", key)] and all(part[0] == "t" for part in step[:-1]) else step
+        for step in guide["steps"]
+    ]
+    return guide
+
+
 def _guide(title, description, steps, copy, warning=None, notes=()):
     return {
         "title": title, "description": description, "steps": steps, "warning": warning, "notes": list(notes),
-        "heading": _("Setup Instructions"), "copyLabel": _("Copy"), "copiedLabel": _("Copied"),
+        "heading": _("Setup Instructions"), "stepsLabel": _("Show steps"), "copyLabel": _("Copy"), "copiedLabel": _("Copied"),
     }, copy
 
 
@@ -66,7 +77,7 @@ def setup_guide(request, slug):
     tokens = reverse("access_tokens") + "#app-tokens"
     if slug == "emby":
         url = absolute(reverse("emby_webhook", args=[request.user.token]))
-        return _guide(_("Emby Integration"), _("Connect Emby to automatically track your watching progress."), [
+        guide, copy = _guide(_("Emby Integration"), _("Connect Emby to automatically track your watching progress."), [
             [_t("In Emby, go to"), _b("Settings > Notifications"), _t(".")],
             [_t("Click"), _b("Add Notification"), _t(".")],
             {"parts": [_t("Configure the notification with the following settings:")], "items": [
@@ -77,6 +88,8 @@ def setup_guide(request, slug):
             ]},
             [_t("Set the webhook URL to:"), _copy("webhook")],
         ], {"webhook": url})
+        _primary(guide, "Webhook URL")["collapsed"] = True
+        return guide, copy
     if slug == "kodi":
         url = absolute(reverse("kodi_webhook", args=[request.user.token]))
         return _guide(_("Kodi Integration"), _("Connect Kodi to automatically track your watching progress."), [
@@ -84,10 +97,10 @@ def setup_guide(request, slug):
             [_t("Download and install the"), _a("HTTP Scrobbler add-on", "https://github.com/sboddy/KodiAddon-HttpScrobbler"), _t(".")],
             [_t("In Kodi, go to"), _b("Settings > Services > Control"), _t("and enable"), _b("Allow remote control via HTTP"), _t(".")],
             [_t("In the HTTP Scrobbler add-on settings, set the webhook URL to:"), _copy("webhook")],
-            [_em("Tip: open the Kodi web interface at"), ("code", "http://<kodi-ip>:8080"), _em("to configure the add-on — easier than using the remote.")],
+            [_em("Tip: open the Kodi web interface at"), ("code", "http://<kodi-ip>:8080"), _em("to configure the add-on, which is easier than using the remote.")],
             [_t("Leave the username and password fields blank.")],
             [_t("If you use the add-on's"), _b("Skip all events after sending stop/end"),
-             _t("option, turn it off — it can suppress the events Floppy needs to mark an episode watched.")],
+             _t("option, turn it off. It can suppress the events Floppy needs to mark an episode watched.")],
             [_t("An item is marked watched when playback reaches 80% or Kodi reports"), _em("Playback finished"), _t(".")],
         ], {"webhook": url})
     if slug == "navidrome":
@@ -104,11 +117,33 @@ def setup_guide(request, slug):
                       _("Not supported yet. A Floppy tracker for Nuvio TV has been proposed but isn't in any Nuvio release."), [
             [_t("Create an"), _a("app token", tokens),
              _t("in Access & Tokens, named after the device. The default permissions already cover everything Nuvio needs.")],
-            [_t("Copy the token secret when it's shown — Floppy only displays it once.")],
+            [_t("Copy the token secret when it's shown. Floppy only displays it once.")],
             [_t("In a Nuvio TV build with the Floppy tracker, enter this Server URL and the token secret you copied:"), _copy("webhook")],
             [_t("Revoke the token in"), _a("App tokens", tokens), _t("to disconnect the device. This never deletes your tracking data.")],
         ], {"webhook": url})
     return None, {}
+
+
+def _plex_webhook_badge(user, context):
+    """Summarise the webhook's health as a badge, with the detail in a tooltip."""
+    from users.templatetags.user_tags import user_datetime_format
+
+    def when(value):
+        return user_datetime_format(value, user)
+
+    if context.get("plex_webhook_needs_update"):
+        return {"label": _("Needs update"), "tone": "warning", "summary": _("Webhook URL needs updating."),
+                "tooltip": _("You regenerated your API token on %(when)s. Plex webhooks using the old token will be rejected with a 401. Update the Plex webhook URL to the one shown here.") % {"when": when(user.plex_webhook_token_rotated_at)}}
+    if user.plex_webhook_last_error:
+        detail = user.plex_webhook_last_error
+        if user.plex_webhook_last_error_at:
+            detail = f"{detail} ({when(user.plex_webhook_last_error_at)})"
+        return {"label": _("Webhook error"), "tone": "warning", "summary": _("Last webhook error."), "tooltip": detail}
+    if user.plex_webhook_last_received_at:
+        return {"label": _("Receiving"), "tone": "success", "summary": _("Last webhook received %(when)s.") % {"when": when(user.plex_webhook_last_received_at)},
+                "tooltip": _("Last webhook received %(when)s.") % {"when": when(user.plex_webhook_last_received_at)}}
+    return {"label": _("Not received yet"), "tone": "neutral", "summary": _("No Plex webhooks received yet."),
+            "tooltip": _("If you expect automatic logging, confirm webhooks are enabled in Plex and that the URL includes your current API token.")}
 
 
 def setup_guides(request, slug, context):
@@ -120,7 +155,7 @@ def setup_guides(request, slug, context):
             if context.get("jellyfin_template_outdated") else None
         official, _copy_values = _guide(
             _("Jellyfin Integration (Official Repo)"),
-            _("Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository."), [
+            _("Use this if your server can reach the official Jellyfin plugin repository."), [
                 [_t("You will need to have TMDB and TVDB as metadata providers in Jellyfin.")],
                 [_t("Install the Webhook plugin from the Jellyfin Stable repo via your server's Plugin Catalog.")],
                 [_t("Restart your server, then open the Webhook plugin and click"), _b("Add Generic Destination"), _t(".")],
@@ -132,23 +167,37 @@ def setup_guides(request, slug, context):
                 ]},
                 [_t("Set the webhook URL to:"), _copy("webhook")],
                 [_t("Under the"), _b("Template"), _t("section, paste the following JSON:"), _pre(JELLYFIN_TEMPLATE)],
+                [_b("KefinTweaks watchlist users:"),
+                 _t("KefinTweaks stores watchlist membership as a rating of 1, which Floppy cannot tell apart from a real 1-star rating. "
+                    "Remove the"), _code("{{#if Rating}}"),
+                 _t("block (the comma and the"), _code('"Rating": {{Rating}}'),
+                 _t("line it guards) from the template above. Otherwise every item you add to a KefinTweaks watchlist is saved with a 1-star rating.")],
             ], {"webhook": url}, warning=warning)
         unofficial, _copy_values = _guide(
             _("Jellyfin Integration (Unofficial Repo)"),
-            _("An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server."), [
+            _("Use this if your server cannot reach the official Jellyfin plugin repository."), [
                 [_t("You will need to have TMDB and TVDB as metadata providers in Jellyfin.")],
-                [_t("In Jellyfin, go to"), _b("Dashboard > Plugins > Repositories"), _t("and add the following repository URL:"),
-                 _a("https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json",
-                    "https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json")],
+                [_t("In Jellyfin, go to"), _b("Dashboard > Plugins > Repositories"), _t("and add the community repository:"),
+                 _a("Plugin repository manifest", "https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json")],
                 [_t("From the Plugin Catalog, install the"), _a("Unofficial Webhooks plugin", "https://github.com/shemanaev/jellyfin-plugin-webhooks"), _t(".")],
                 {"parts": [_t("Restart your server, then open the Unofficial Webhooks plugin and configure it:")], "items": [
                     [_t("Payload format:"), _b("Default")],
-                    [_t("Listen to events only for: your Jellyfin user")],
                     [_t("Events:"), _b("Play"), _b("Stop"), _b("MarkPlayed"), _b("MarkUnplayed"), _b("ItemAdded"), _t(", and"), _b("ItemRemoved")],
+                    [_t("User Filter: your Jellyfin user")],
                 ]},
                 [_t("Set the webhook URL to:"), _copy("webhook")],
             ], {"webhook": url})
-        return [official, unofficial], {"webhook": url}
+        _primary(official, "Webhook URL")
+        _primary(unofficial, "Webhook URL")
+        official["collapsed"] = True
+        if warning:
+            official["badge"] = {"label": _("Needs update"), "tone": "warning", "summary": _("Webhook template needs updating."),
+                                 "tooltip": warning["text"]}
+        merged = {**official, "title": _("Jellyfin webhook"), "steps": [],
+                  "description": _("Jellyfin sends what you watch to this URL. Choose the setup that matches your plugin repository."),
+                  "methods": [{"title": _("Official plugin repository"), "description": official["description"], "steps": official["steps"]},
+                              {"title": _("Unofficial plugin repository"), "description": unofficial["description"], "steps": unofficial["steps"]}]}
+        return [merged], {"webhook": url}
     if slug == "seerr":
         url = app_helpers.build_absolute_app_url(request, reverse("jellyseerr_webhook", args=[request.user.token]))
         copy = {"webhook": url}
@@ -162,6 +211,8 @@ def setup_guides(request, slug, context):
                  _code("unsupported media_type='{media_type}'"), _t(", Seerr is sending the literal template (it was pasted/escaped incorrectly).")],
                 [_t("Select the notification types you want (commonly request/approval events).")],
             ], copy)[0]]
+        _primary(guides[0], "Webhook URL")
+        guides[0]["collapsed"] = True
         if context.get("seerr_global_webhook_enabled"):
             copy["global"] = app_helpers.build_absolute_app_url(request, reverse("seerr_global_webhook"))
             guides.append(_guide(
@@ -174,7 +225,22 @@ def setup_guides(request, slug, context):
                      _t("with the value your administrator configured in"), _code("SEERR_GLOBAL_WEBHOOK_SECRET"), _t(":"),
                      _pre(SEERR_TEMPLATE.replace('"{{requestedBy_username}}"', '"{{requestedBy_username}}",\n  "secret": "REPLACE_WITH_SHARED_SECRET"'))],
                 ], copy)[0])
+            _primary(guides[1], "Global webhook URL", "global")
+            guides[1]["collapsed"] = True
         return guides, copy
+    if slug == "plex":
+        user = request.user
+        url = app_helpers.build_absolute_app_url(request, reverse("plex_webhook", args=[user.token]))
+        guide, _copy_values = _guide(
+            _("Plex webhook"), _("Plex sends what you watch to this URL. Webhooks need a Plex Pass subscription."), [
+                [_t("In Plex, go to"), _b("Settings > Server > Network"), _t("and enable Webhooks.")],
+                [_t("Go to"), _a("Settings > Webhooks", "https://app.plex.tv/desktop/#!/settings/webhooks"), _t("and click"), _b("Add Webhook"),
+                 _t(", then enter the URL above.")],
+            ], {"webhook": url})
+        guide["primary"] = {"label": _("Webhook URL"), "key": "webhook"}
+        guide["collapsed"] = True
+        guide["badge"] = _plex_webhook_badge(user, context)
+        return [guide], {"webhook": url}
     if slug == "stremio":
         grants = context.get("catalog_grants")
         credential = grants[0].token if grants else request.user.token
@@ -193,4 +259,6 @@ def setup_guides(request, slug, context):
         guide["bare"] = True
         return [guide], {"webhook": addon, "configure": configure}
     guide, copy = setup_guide(request, slug)
+    if guide and slug in {"emby", "kodi"}:
+        _primary(guide, "Webhook URL")
     return ([guide] if guide else []), copy

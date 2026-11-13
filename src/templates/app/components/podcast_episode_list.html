@@ -18,6 +18,9 @@
               <p class="text-sm text-[var(--color-text-muted)]">
                 {% if episode.episode_number %}{% blocktranslate trimmed with value_1=episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
               </p>
+              {% if episode.description %}
+                <p class="text-sm text-[var(--color-text-secondary)] line-clamp-2">{{ episode.description }}</p>
+              {% endif %}
               {% if episode.website_url %}
                 <a href="{{ episode.website_url }}"
                    target="_blank"
@@ -46,30 +49,19 @@
 
               {# Lists #}
               {% if episode.item %}
-              <div x-data="{ listsOpen: false }">
+              <div>
                 <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
                         title="{% translate "Add to custom lists" %}"
-                        hx-get="{% media_view_url 'lists_modal' episode.item %}"
-                        hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                        hx-target="#{% component_id 'lists' episode.item %}"
-                        hx-trigger="click once"
-                        @click="listsOpen = true">
+                        {% lists_modal_click episode.item request.get_full_path %}>
                   {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                 </button>
 
-                <div x-show="listsOpen"
-                     x-cloak
-                     @keydown.escape.window="listsOpen = false"
-                     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-                     @mousedown.self="listsOpen = false">
-                  <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-                    <div id="{% component_id 'lists' episode.item %}"></div>
-                  </div>
-                </div>
               </div>
 
               {# History #}
-              <div x-data="{ historyOpen: false }">
+              {# The Edit action swaps a track modal (x-show="trackOpen") into the history overlay, so both flags live here. Closing that modal closes the overlay. #}
+              <div x-data="{ historyOpen: false, trackOpen: true }"
+                   x-effect="if (!trackOpen) { historyOpen = false; trackOpen = true }">
                 <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
                         title="{% translate "View your activity history" %}"
                         hx-get="{% media_view_url 'history_modal' episode.item %}"
@@ -101,6 +93,10 @@
         {% endif %}
       </div>
     </div>
+  </div>
+{% empty %}
+  <div class="bg-[var(--color-surface)] rounded-lg p-8 text-center text-[var(--color-text-muted)]">
+    <p>{% translate "No episodes yet." %}</p>
   </div>
 {% endfor %}
 

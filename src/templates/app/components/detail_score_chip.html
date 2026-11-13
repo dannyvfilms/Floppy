@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load l10n %}
 {% load app_tags %}
+{% load ui_tags %}
 
 <div id="detail-score-chip-{{ current_instance.id }}"
      {% if score_chip_oob %}hx-swap-oob="outerHTML"{% endif %}
@@ -9,6 +10,8 @@
      @detail-score-row-scroll.window="showRatingPopup = false"
      @resize.window="showRatingPopup = false"
      class="detail-personal-score-slot relative min-w-0 sm:w-auto">
+  {% if media_type == 'podcast' %}{% url 'update_podcast_show_score' current_instance.id as rating_chip_url %}{% else %}{% url 'update_media_score' media_type current_instance.id as rating_chip_url %}{% endif %}
+  {% rating_chip current_instance media_type rating_chip_url derived_tv_score %}
   <button type="button"
           x-ref="ratingTrigger"
           @click="showRatingPopup = !showRatingPopup"
@@ -54,7 +57,7 @@
     {% if current_instance.score is None %}
       <span class="detail-personal-score-card__prompt">{% if derived_tv_score.score is not None %}{% translate "Derived" %} {{ derived_tv_score.score|floatformat:"-1" }} · {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}{% else %}{% translate "Rate this" %} {% if media_type == "tv" or media_type == "season" %}{% translate "show" %}{% elif media_type == "movie" %}{% translate "movie" %}{% else %}{% translate "item" %}{% endif %}{% endif %}</span>
       <span class="detail-personal-score-card__stars">
-        {% url 'update_media_score' media_type current_instance.id as direct_rating_url %}
+        {% if media_type == 'podcast' %}{% url 'update_podcast_show_score' current_instance.id as direct_rating_url %}{% else %}{% url 'update_media_score' media_type current_instance.id as direct_rating_url %}{% endif %}
         {% with rating_range=user|rating_scale_max|get_range %}
           {% for rating_value in rating_range %}
             <button type="button"
@@ -94,7 +97,7 @@
        class="fixed z-[70] w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg"
        @mouseenter="isHovering = true"
        @mouseleave="isHovering = false; hoverRating = null">
-    {% url 'update_media_score' media_type current_instance.id as rating_post_url %}
+    {% if media_type == 'podcast' %}{% url 'update_podcast_show_score' current_instance.id as rating_post_url %}{% else %}{% url 'update_media_score' media_type current_instance.id as rating_post_url %}{% endif %}
     {% include "app/components/rating_picker.html" with post_url=rating_post_url %}
   </div>
   </template>

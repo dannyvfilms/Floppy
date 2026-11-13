@@ -33,6 +33,7 @@ from app.models import (
     Video,
 )
 from app.services.item_merge import dedupe_cross_provider_items
+from app.tests.card_props import card_models
 from lists import smart_rules
 from lists.models import CustomList
 from users import home_screen
@@ -201,6 +202,21 @@ class HomeScreenViewTests(TestCase):
 
         self.assertEqual(result, ["Episode left TV", "Current Movie"])
 
+    @staticmethod
+    def _media_type_chips(response):
+        """Return {type: {style, color}} for the media-type chips on the page.
+
+        The card is React: the chip travels in each card's props, not in markup.
+        """
+        return {
+            model["statusChip"]["type"]: {
+                "style": model["statusChip"]["style"],
+                "color": model["statusChip"]["color"],
+            }
+            for model in card_models(response.content)
+            if model["statusChip"] and model["statusChip"]["kind"] == "media-type"
+        }
+
     def test_all_media_in_progress_row_mixes_selected_families_and_has_no_url(self):
         cache.clear()
         self.addCleanup(cache.clear)
@@ -247,7 +263,7 @@ class HomeScreenViewTests(TestCase):
         build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-media-type-chip="movie"')
+        self.assertIn("movie", self._media_type_chips(response))
 
     def test_all_media_row_supports_every_all_media_sort_and_progress_filter(self):
         cache.clear()
@@ -411,15 +427,14 @@ class HomeScreenViewTests(TestCase):
         build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
 
-        self.assertContains(response, 'data-media-type-chip="anime"')
-        self.assertContains(response, 'data-media-type-chip-style="outline"')
-        self.assertContains(response, "--media-type-chip-color: #123ABC")
+        chips = self._media_type_chips(response)
+        self.assertEqual(chips.get("anime"), {"style": "outline", "color": "#123ABC"})
 
         self.user.home_media_type_chips_enabled = False
         self.user.save(update_fields=["home_media_type_chips_enabled"])
         cache.clear()
         response = self.client.get(reverse("home"))
-        self.assertNotContains(response, 'data-media-type-chip="anime"')
+        self.assertNotIn("anime", self._media_type_chips(response))
 
     def test_home_screen_get_only_serializes_enabled_media_types(self):
         self._set_enabled_media_types(MediaTypes.TV.value, MediaTypes.MOVIE.value)

@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -167,6 +168,7 @@ class CacheClearButtonsTests(TestCase):
         response = self.client.get(reverse("advanced"))
 
         self.assertContains(response, "Cache Management")
+        self.assertContains(response, "Provider search results (shared instance-wide)")
         for key in ("search", "history", "statistics", "discover", "all"):
             self.assertContains(response, f"openConfirm('{key}')")
         self.assertContains(response, "Clear All Caches")
@@ -843,3 +845,144 @@ class ExportLogsTests(TestCase):
             response = self.client.get(reverse("advanced"))
 
         self.assertContains(response, "Covers 2026-10-01 03:42:10 onward.")
+
+
+class ExportDiagnosticsTests(TestCase):
+    """Tests for the diagnostic report every signed-in user can download."""
+
+    def setUp(self):
+        """Create a regular user, a second account, and an isolated log file."""
+        self.credentials = {"username": "regular", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        get_user_model().objects.create_user(username="otherperson", password="x")
+        self.client.login(**self.credentials)
+
+        log_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, log_dir, ignore_errors=True)
+        self.log_file = log_dir / "floppy.log"
+
+    @staticmethod
+    def line(level, message, minutes_ago=5, pid=1):
+        """Return one log line in the format Floppy writes."""
+        when = timezone.now() - timedelta(minutes=minutes_ago)
+        return f"[{when:%Y-%m-%d %H:%M:%S %z}] [{pid}] [{level}] {message}\n"
+
+    def download(self):
+        """Return the report text for the current user."""
+        with override_settings(LOG_FILE=str(self.log_file)):
+            response = self.client.get(reverse("export_diagnostics"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        return response.content.decode()
+
+    def test_requires_login(self):
+        """Anonymous requests must pass through authentication middleware."""
+        self.client.logout()
+        response = self.client.get(reverse("export_diagnostics"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_regular_user_gets_report_but_not_full_logs(self):
+        """A non-superuser can download this report; the full log stays denied."""
+        self.log_file.write_text(self.line("ERROR", "boom"))
+        self.assertIn("boom", self.download())
+        self.assertEqual(self.client.get(reverse("export_logs")).status_code, 403)
+
+    def test_advanced_page_offers_report_to_regular_users(self):
+        """The Advanced page must link the report for accounts without admin."""
+        self.assertContains(
+            self.client.get(reverse("advanced")),
+            reverse("export_diagnostics"),
+        )
+
+    def test_report_leaves_out_routine_info_lines(self):
+        """Plain INFO lines describe what accounts did, so only problems stay."""
+        self.log_file.write_text(
+            self.line("INFO", "regular finished Some Private Show")
+            + self.line("WARNING", "provider slow")
+            + self.line("ERROR", "Task failed")
+            + "Traceback (most recent call last):\n"
+            + '  File "x.py", line 1, in run\n'
+            + "ValueError: bad\n"
+            + self.line("INFO", "next private line")
+            + "indented continuation of the info line\n",
+        )
+        body = self.download()
+        self.assertNotIn("Some Private Show", body)
+        self.assertNotIn("next private line", body)
+        self.assertNotIn("continuation of the info line", body)
+        for kept in ("provider slow", "Task failed", "Traceback", "ValueError: bad"):
+            self.assertIn(kept, body)
+
+    def test_report_keeps_tagged_progress_lines_only(self):
+        """Lines written through app.progress_log are shown, with names scrubbed."""
+        self.log_file.write_text(
+            self.line("INFO", "[progress] plex_sync_started task=7")
+            + self.line("INFO", "[progress] plex_sync_progress done=400 for regular")
+            + self.line("INFO", "plain line about a Private Title"),
+        )
+        body = self.download()
+        self.assertIn("plex_sync_started task=7", body)
+        self.assertIn("plex_sync_progress done=400 for [USER]", body)
+        self.assertNotIn("Private Title", body)
+
+    def test_progress_helper_writes_the_tag_the_report_reads(self):
+        """The helper and the report must agree on the tag."""
+        from app.progress_log import PROGRESS_TAG, progress
+
+        with self.assertLogs("floppy.progress", level="INFO") as captured:
+            progress("job_finished duration_ms=%d", 12)
+        self.assertEqual(
+            captured.records[0].getMessage(),
+            f"{PROGRESS_TAG} job_finished duration_ms=12",
+        )
+
+    def test_timeline_shows_counts_without_message_text(self):
+        """The activity section says how busy the log was, never what it said."""
+        self.log_file.write_text(
+            self.line("INFO", "secret watched thing", minutes_ago=3, pid=11)
+            + self.line("INFO", "another secret thing", minutes_ago=2, pid=11)
+            + self.line("WARNING", "slow", minutes_ago=1, pid=22),
+        )
+        body = self.download()
+        activity = body.split("== Activity ==")[1].split("== Progress")[0]
+        self.assertIn("Newest log line:", activity)
+        self.assertIn("pid 11 at", activity)
+        self.assertIn("pid 22 at", activity)
+        self.assertRegex(activity, r"INFO \d+")
+        self.assertNotIn("secret", activity)
+
+    def test_timeline_reports_silence(self):
+        """A log with nothing recent says so, which is how a hang looks."""
+        self.log_file.write_text(self.line("INFO", "old", minutes_ago=60 * 10))
+        activity = self.download().split("== Activity ==")[1]
+        self.assertIn("nothing was logged", activity)
+        self.assertRegex(activity, r"\(\d+ min ago\)")
+
+    def test_report_removes_secrets_usernames_and_emails(self):
+        """Kept lines are scrubbed of credentials and of every account's name."""
+        self.log_file.write_text(
+            self.line("ERROR", "Authorization: Bearer sk-secret-value")
+            + self.line("ERROR", "sync failed for OtherPerson")
+            + self.line("ERROR", "mail to a.b@example.com bounced")
+            + self.line("ERROR", "regular lost the connection"),
+        )
+        body = self.download()
+        self.assertNotIn("sk-secret-value", body)
+        self.assertNotIn("OtherPerson", body)
+        self.assertNotIn("a.b@example.com", body)
+        self.assertNotIn("regular lost", body)
+        self.assertIn("[USER] lost the connection", body)
+
+    def test_report_includes_server_details_and_handles_missing_logs(self):
+        """A fresh install with no log still yields a report with versions."""
+        body = self.download()
+        self.assertIn("Floppy version:", body)
+        self.assertIn("none in the retained logs", body)
+
+    def test_report_appends_process_logs(self):
+        """Restart history and crash traces explain exits, so they are included."""
+        self.log_file.write_text("")
+        (self.log_file.parent / "supervisord.log").write_text(
+            "exited: gunicorn (terminated by SIGKILL; not expected)\n",
+        )
+        self.assertIn("terminated by SIGKILL", self.download())

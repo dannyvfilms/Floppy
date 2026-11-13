@@ -1,0 +1,2 @@
+{{ props|json_script:props_id }}
+<span data-button-root data-props-id="{{ props_id }}" class="ui-button-host" x-ignore><button type="{{ props.type }}" class="{{ classes }}"{% if props.disabled %} disabled{% endif %}{% for name, value in props.attrs.items %} {{ name }}="{{ value }}"{% endfor %}>{{ props.label }}</button></span>

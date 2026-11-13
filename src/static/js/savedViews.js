@@ -23,7 +23,7 @@ if (!window.__floppySavedViewsBound) {
     }
   };
 
-  document.addEventListener("alpine:init", () => {
+  const registerSidebar = (Alpine) => {
     Alpine.directive("sidebar-reveal", (el, { expression }, { effect, evaluateLater, cleanup }) => {
       const evaluate = evaluateLater(expression);
       let initialized = false;
@@ -57,7 +57,52 @@ if (!window.__floppySavedViewsBound) {
       cleanup(() => animation?.cancel());
     });
 
-    Alpine.data("sidebarNavigation", (userId) => ({
+    // Sidebar pins live on the account. This copy is shared by the sidebar and
+    // every list's "Pin to sidebar" button; changes post to the server.
+    const readPins = () => {
+      if (window.floppySidebarPins) return window.floppySidebarPins;
+      let data = {};
+      try { data = JSON.parse(document.getElementById("sidebar-pins-data")?.textContent || "{}"); }
+      catch { data = {}; }
+      window.floppySidebarPins = {
+        nav: Array.isArray(data?.nav) ? data.nav : [],
+        lists: Array.isArray(data?.lists) ? data.lists : [],
+      };
+      return window.floppySidebarPins;
+    };
+    const csrfToken = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] || "";
+    const savePins = (url, next) => {
+      window.floppySidebarPins = { nav: next.nav, lists: next.lists };
+      window.dispatchEvent(new Event("sidebar-pins-changed"));
+      return fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
+        body: JSON.stringify(window.floppySidebarPins),
+      }).catch(() => { /* The pins still apply to this page. */ });
+    };
+    // Pins saved by older versions in this browser move to the account once.
+    const adoptLocalPins = (url, userId) => {
+      const current = readPins();
+      if (current.nav.length || current.lists.length) return;
+      const read = (key) => {
+        try {
+          const value = JSON.parse(localStorage.getItem(`floppy:sidebar-${key}:${userId}`) || "[]");
+          return Array.isArray(value) ? value : [];
+        } catch { return []; }
+      };
+      const nav = read("pins");
+      const lists = read("lists");
+      if (!nav.length && !lists.length) return;
+      savePins(url, { nav, lists }).then(() => {
+        try {
+          localStorage.removeItem(`floppy:sidebar-pins:${userId}`);
+          localStorage.removeItem(`floppy:sidebar-lists:${userId}`);
+        } catch { /* Nothing to clean up without storage. */ }
+      });
+    };
+
+    Alpine.data("sidebarNavigation", (pinsUrl, userId) => ({
       navOpen: false,
       pinned: [],
       pinnedLists: [],
@@ -65,28 +110,24 @@ if (!window.__floppySavedViewsBound) {
       keys: ["calendar", "collection", "custom", "history", "lists", "statistics", "tags"],
 
       init() {
-        this.loadPinnedLists();
-        this.listsOpen = readOpen("lists") === "1" || this.pinnedLists.some((item) => item.url === window.location.pathname);
-        try {
-          const saved = JSON.parse(localStorage.getItem(`floppy:sidebar-pins:${userId}`) || "[]");
-          this.pinned = Array.isArray(saved) ? saved.filter((key) => this.keys.includes(key)) : [];
-        } catch {
-          this.pinned = [];
-        }
+        adoptLocalPins(pinsUrl, userId);
+        this.loadPins();
+        const listsOpen = readOpen("lists");
+        this.listsOpen = listsOpen === null
+          ? this.pinnedLists.length > 0
+          : listsOpen === "1" || this.pinnedLists.some((item) => item.url === window.location.pathname);
+        if (this.pinnedLists.length) this.navOpen = true;
       },
 
-      loadPinnedLists() {
-        try {
-          const saved = JSON.parse(localStorage.getItem(`floppy:sidebar-lists:${userId}`) || "[]");
-          this.pinnedLists = Array.isArray(saved) ? saved : [];
-        } catch {
-          this.pinnedLists = [];
-        }
+      loadPins() {
+        const pins = readPins();
+        this.pinnedLists = pins.lists;
+        this.pinned = pins.nav.filter((key) => this.keys.includes(key));
       },
 
       onPinnedListsChanged() {
         const count = this.pinnedLists.length;
-        this.loadPinnedLists();
+        this.loadPins();
         if (this.pinnedLists.length > count) {
           this.listsOpen = true;
           if (!this.isPinned("lists")) this.navOpen = true;
@@ -100,11 +141,7 @@ if (!window.__floppySavedViewsBound) {
       },
 
       unpinList(id) {
-        this.pinnedLists = this.pinnedLists.filter((item) => item.id !== id);
-        try {
-          localStorage.setItem(`floppy:sidebar-lists:${userId}`, JSON.stringify(this.pinnedLists));
-        } catch { /* Keep the current page usable without storage. */ }
-        window.dispatchEvent(new Event("sidebar-lists-changed"));
+        savePins(pinsUrl, { nav: readPins().nav, lists: readPins().lists.filter((item) => item.id !== id) });
       },
 
       isPinned(key) {
@@ -116,33 +153,22 @@ if (!window.__floppySavedViewsBound) {
       },
 
       togglePin(key) {
-        this.pinned = this.isPinned(key)
-          ? this.pinned.filter((item) => item !== key)
-          : [...this.pinned, key];
-        try {
-          localStorage.setItem(`floppy:sidebar-pins:${userId}`, JSON.stringify(this.pinned));
-        } catch {
-          // The preference still works for the current page when storage is unavailable.
-        }
+        const nav = readPins().nav;
+        savePins(pinsUrl, {
+          nav: nav.includes(key) ? nav.filter((item) => item !== key) : [...nav, key],
+          lists: readPins().lists,
+        });
       },
     }));
 
-    Alpine.data("sidebarListPin", (userId, id, name, url) => ({
+    Alpine.data("sidebarListPin", (pinsUrl, id, name, url) => ({
       pinned: false,
       init() { this.refresh(); },
-      read() {
-        try {
-          const value = JSON.parse(localStorage.getItem(`floppy:sidebar-lists:${userId}`) || "[]");
-          return Array.isArray(value) ? value : [];
-        } catch { return []; }
-      },
-      refresh() { this.pinned = this.read().some((item) => item.id === id); },
+      refresh() { this.pinned = readPins().lists.some((item) => item.id === id); },
       toggle() {
-        const items = this.read().filter((item) => item.id !== id);
-        if (!this.pinned) items.push({ id, name, url });
-        try { localStorage.setItem(`floppy:sidebar-lists:${userId}`, JSON.stringify(items)); }
-        catch { return; }
-        window.dispatchEvent(new Event("sidebar-lists-changed"));
+        const { nav, lists } = readPins();
+        const others = lists.filter((item) => item.id !== id);
+        savePins(pinsUrl, { nav, lists: this.pinned ? others : [...others, { id, name, url }] });
       },
     }));
 
@@ -201,5 +227,10 @@ if (!window.__floppySavedViewsBound) {
         });
       },
     }));
-  });
+  };
+  if (window.Alpine) {
+    registerSidebar(window.Alpine);
+  } else {
+    document.addEventListener("alpine:init", () => registerSidebar(window.Alpine), { once: true });
+  }
 }

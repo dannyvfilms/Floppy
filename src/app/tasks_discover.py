@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import cache_safety, history_cache
+from app.history_cache_utils import HISTORY_LOGGING_STYLES, history_coverage_styles
 from app.interactive_requests import interactive_request_active
 from app.models import MediaTypes
 from app.providers import credentials
@@ -270,7 +271,12 @@ def warm_history_day_cache_coverage(
     user_ids: list[int] | None = None,
     logging_styles: list[str] | None = None,
 ):
-    """Queue chunked history day coverage repair for active users."""
+    """Queue chunked history day coverage repair for active users.
+
+    Each user's own logging style unless ``logging_styles`` names styles; the
+    repair itself keeps to the recent window and skips a style the user does
+    not read (see ``history_cache_utils.history_coverage_styles``).
+    """
     if interactive_request_active():
         logger.info(
             "warm_history_day_cache_coverage skipped reason=interactive_request_active",
@@ -278,7 +284,7 @@ def warm_history_day_cache_coverage(
         return {
             "scheduled": 0,
             "users_count": 0,
-            "logging_styles": logging_styles or ["sessions", "repeats"],
+            "logging_styles": list(logging_styles or HISTORY_LOGGING_STYLES),
             "reason": "interactive_request_active",
         }
 
@@ -294,14 +300,16 @@ def warm_history_day_cache_coverage(
             settings.WARMUP_USER_LIMIT,
         )
 
-    styles = logging_styles or ["sessions", "repeats"]
     scheduled = 0
+    styles_seen = set()
     users_count = 0
     run = CooperativeRun("history_coverage_warmup")
     # Checked per user rather than once at entry: a sweep that starts while the
     # user is away must stop when they come back, not run to completion.
     for user in run.iter(selected):
         users_count += 1
+        styles = logging_styles or history_coverage_styles(user)
+        styles_seen.update(styles)
         for logging_style in styles:
             scheduled += int(
                 history_cache.schedule_history_day_cache_coverage(
@@ -316,7 +324,7 @@ def warm_history_day_cache_coverage(
     return {
         "scheduled": scheduled,
         "users_count": users_count,
-        "logging_styles": styles,
+        "logging_styles": sorted(styles_seen),
     }
 
 

@@ -353,20 +353,7 @@
     {% if provider_tab == 'import' and import_slug != 'plex' and import_slug != 'clz' and not import_preferences.fixed %}
       <p x-cloak x-show="standardImportsDisabled()" class="text-sm text-[var(--color-text-muted)]">{% translate "This import mode is not supported by this provider." %}</p>
     {% endif %}
-    {% if provider_slug %}
-      {% if provider_tab == 'connection' %}
-        <p class="text-sm text-[var(--color-text-muted)]">
-          {% translate "Set up account access here." %}
-          <a href="{% url 'provider_detail' provider_slug %}?tab=import" class="text-[var(--color-link)] hover:underline">{% translate "Open Import for import options, schedules and manual runs." %}</a>
-        </p>
-        {% if import_slug == 'audiobookshelf' or import_slug == 'stremio' or import_slug == 'kavita' or import_slug == 'komga' or import_slug == 'storyteller' or import_slug == 'pocketcasts' or import_slug == 'gpodder' or import_slug == 'lastfm' or import_slug == 'koito' or import_slug == 'psn' %}
-          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connecting also starts incoming imports and enables recurring intake. Review the provider's setup options before proceeding; Activity shows its runs and schedules." %}</p>
-        {% elif import_slug == 'xbox' or import_slug == 'koreader' or import_slug == 'mdblist' %}
-          <p class="text-sm text-[var(--color-warning-text)]">{% blocktranslate with frequency=user.get_import_frequency_display %}This setup also starts importing data using your saved import frequency: {{ frequency }}. Review Import before connecting if you want to change it.{% endblocktranslate %}</p>
-        {% endif %}
-      {% endif %}
-    {% endif %}
-    {% if provider_tab != 'import' %}<button type="button" @click="openModal('{{ import_slug }}')" class="px-4 py-2 rounded-md bg-indigo-600 text-white cursor-pointer">{% if provider_tab == 'connection' %}{% translate "Open connection setup" %}{% else %}{% translate "Open import options" %}{% endif %}</button>{% endif %}
+    {% if provider_tab != 'import' and not provider_slug %}<button type="button" @click="openModal('{{ import_slug }}')" class="px-4 py-2 rounded-md bg-indigo-600 text-white cursor-pointer">{% if provider_tab == 'connection' %}{% translate "Open connection setup" %}{% else %}{% translate "Open import options" %}{% endif %}</button>{% endif %}
     {% if provider_tab == 'import' and not provider.state.account_saved and import_slug in 'radarr,sonarr,mylar,kapowarr,stremio,kavita,komga,storyteller,pocketcasts,gpodder,lastfm,koito,psn' %}
       <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4 text-sm text-[var(--color-text-muted)]">
         {% translate "Connect this provider before starting an import." %}
@@ -588,10 +575,7 @@
 <form x-show="isWatchlistMode()" method="post" action="{% url 'plex_disable_watchlist' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disable Watchlist Sync" %}
-                </button>
+                {% button _("Disable Watchlist Sync") "danger-solid" "sm" "full" submit=True %}
               </form>
 {% endif %}
             {% endif %}
@@ -601,10 +585,7 @@
             <form method="post" action="{% url 'plex_connect' %}">
               {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-              <button type="submit"
-                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect Plex" %}
-              </button>
+              {% button _("Connect Plex") "primary" "sm" "full" submit=True %}
             </form>
           {% endif %}
         </div>
@@ -1031,10 +1012,7 @@
 <form method="post" action="{% url 'import_stremio' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  {% translate "Sync Now" %}
-                </button>
+                {% button _("Sync Now") submit=True %}
               </form>
 {% endif %}
               <form method="post" action="{% url 'stremio_disconnect' %}">
@@ -1073,10 +1051,7 @@
                     {% translate "Find it in Stremio Web local storage. Required for accounts created with Facebook login." %}
                   </p>
                 </div>
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Connect Stremio" %}
-                </button>
+                {% button _("Connect Stremio") "primary" "sm" "full" submit=True %}
               </form>
               <button type="button"
                       class="text-xs text-[var(--color-link)] hover:text-indigo-200 cursor-pointer"
@@ -1144,17 +1119,13 @@
 <form method="post" action="{% url 'import_audiobookshelf' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
               <form method="post" action="{% url 'audiobookshelf_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
           {% else %}
@@ -1174,9 +1145,7 @@
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        placeholder="{% translate "Audiobookshelf API token" %}">
               </div>
-              <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect Audiobookshelf" %}
-              </button>
+              {% button _("Connect Audiobookshelf") "primary" "sm" "full" submit=True %}
             </form>
           {% endif %}
         </div>
@@ -1252,17 +1221,13 @@
 <form method="post" action="{% url 'import_storyteller' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
               <form method="post" action="{% url 'storyteller_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
           {% elif storyteller_pending %}
@@ -1330,9 +1295,7 @@
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        placeholder="https://storyteller.example.com">
               </div>
-              <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect Storyteller" %}
-              </button>
+              {% button _("Connect Storyteller") "primary" "sm" "full" submit=True %}
             </form>
           {% endif %}
         </div>
@@ -1464,9 +1427,7 @@
               <form method="post" action="{% url 'koreader_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
           {% else %}
@@ -1582,20 +1543,14 @@
 <form method="post" action="{% url 'import_pocketcasts' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
               
               <form method="post" action="{% url 'pocketcasts_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
 
@@ -1625,10 +1580,7 @@
                        required>
               </div>
 
-              <button type="submit"
-                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect Pocket Casts" %}
-              </button>
+              {% button _("Connect Pocket Casts") "primary" "sm" "full" submit=True %}
             </form>
             
             <div class="text-xs text-[var(--color-text-muted)] mt-3 space-y-2">
@@ -1694,20 +1646,14 @@
 <form method="post" action="{% url 'import_gpodder' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
 
               <form method="post" action="{% url 'gpodder_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
           {% else %}
@@ -1754,10 +1700,7 @@
                        placeholder="{% translate "antenna-pod-device" %}">
               </div>
 
-              <button type="submit"
-                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect GPodder" %}
-              </button>
+              {% button _("Connect GPodder") "primary" "sm" "full" submit=True %}
             </form>
           {% endif %}
         </div>
@@ -1858,10 +1801,7 @@
 <form method="post" action="{% url 'poll_lastfm_manual' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
 
@@ -1881,10 +1821,7 @@
               <form method="post" action="{% url 'lastfm_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
 
@@ -1904,10 +1841,7 @@
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          placeholder="{% translate "your_username" %}">
                 </div>
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Connect Last.fm" %}
-                </button>
+                {% button _("Connect Last.fm") "primary" "sm" "full" submit=True %}
               </div>
             </form>
           {% endif %}
@@ -1997,10 +1931,7 @@
 <form method="post" action="{% url 'poll_koito_manual' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Sync now" %}
-                </button>
+                {% button _("Sync now") "primary" "sm" "full" submit=True %}
               </form>
 {% endif %}
 
@@ -2020,10 +1951,7 @@
               <form method="post" action="{% url 'koito_disconnect' %}">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  {% translate "Disconnect" %}
-                </button>
+                {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
               </form>
             </div>
 
@@ -2052,10 +1980,7 @@
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          placeholder="{% translate "Koito API key" %}">
                 </div>
-                <button type="submit"
-                        class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Connect Koito" %}
-                </button>
+                {% button _("Connect Koito") "primary" "sm" "full" submit=True %}
               </div>
             </form>
           {% endif %}
@@ -3110,10 +3035,7 @@
                      placeholder="{% translate "OpenXBL API key" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password">
-              <button type="submit"
-                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect Xbox" %}
-              </button>
+              {% button _("Connect Xbox") "primary" "sm" "full" submit=True %}
             </form>
             <p class="text-xs text-[var(--color-text-muted)]">
               {% translate "Xbox only reports games you have played, not everything you own, and not every title reports hours played." %}
@@ -3178,10 +3100,7 @@
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
               {% include "users/components/game_sync_fields.html" with field_id="psn-existing-playtime-sync" sync_hours=psn_sync_hours new_only=psn_account.import_existing_playtime|yesno:",true" %}
               <div class="flex gap-2">
-                <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  {% translate "Sync Now" %}
-                </button>
+                {% button _("Sync Now") submit=True %}
                 <button type="submit"
                         formaction="{% url 'psn_disconnect' %}"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
@@ -3213,10 +3132,7 @@
                      placeholder="{% translate "PSN NPSSO token" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password">
-              <button type="submit"
-                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% translate "Connect PlayStation" %}
-              </button>
+              {% button _("Connect PlayStation") "primary" "sm" "full" submit=True %}
             </form>
             <p class="text-xs text-[var(--color-text-muted)]">
               {% translate "PSN only reports games you have played, not everything you own. The NPSSO token expires after about two months and then has to be pasted again." %}
@@ -3367,7 +3283,7 @@
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Hardcover API Key" %}</label>
             <input type="password"
                    name="hardcover_api_key"
-                   placeholder="{% translate "Optional — also settable in Providers > Hardcover > Connection" %}"
+                   placeholder="{% translate "Optional: also settable in Providers > Hardcover > Connection" %}"
                    class="w-full py-2 px-3 mb-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    :disabled="standardImportsDisabled()">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"

@@ -8,7 +8,11 @@ change. This incrementally prepares reusable presentation for eventual native iO
 and Android apps and reduces future bulk migration work.
 
 Reuse or extend shared UI components before creating new ones. Keep domain logic,
-permissions and transport in feature adapters. Preserve appearance, behavior,
+permissions and transport in feature adapters. Shared presentation is written with
+`react-native` primitives and theme tokens, takes props only and touches no browser
+API; browser behavior goes in a web adapter, and a component that cannot be written
+that way is registered as web-only with a reason (see
+`docs/architecture/ui-modernization.md`, "From React on the web to native apps"). Preserve appearance, behavior,
 accessibility, responsive states and performance: users should not notice the
 framework migration. Migration does not authorize redesign or feature removal.
 The unit is the reusable component, not every sibling in its template file.
@@ -20,11 +24,65 @@ and retirement conditions. Record browser verification separately from actual iO
 and Android verification. UI plans and completion summaries must name migrated
 components, ledger updates and blockers.
 
-Deferral requires a concrete compatibility blocker, evidence, a reopening condition
-in the component register, and explicit reporting to the user. Task size, trivial
-copy/styling, or pending native verification are not deferral reasons.
+Solve architectural incompatibilities; do not bypass checks or reclassify components.
+If reasonable solutions encounter an external blocker, report evidence and attempts;
+the affected work remains incomplete. Record actual platform verification separately.
+
+## Cross-platform by default
+
+Web, iOS and Android are all first-class. Unless the task names one platform, a UI
+change lands on every applicable surface in the same PR. Never ship web-only or
+native-only by accident; a deliberate carve-out is stated in the PR with its reason.
+"Implemented on all platforms" and "verified on all platforms" are separate claims.
+
+Parity is the default for behaviour, performance and bug fixes, not only for UI. Web
+and native apps operate at parity unless the user asks for a device-specific
+carve-out or a real platform limit forces one. When a problem is found or fixed on
+one platform (a slow flip, a failing request, late artwork, a layout bug), ask the
+same question of the other before calling it done: does it have the same problem,
+and does the same improvement apply? Then apply it, or measure and report why it does
+not. A platform-tuned fix (for example native-only image windowing) must name the
+other platform's status in the summary: same change applied, different change
+applied, or no change needed with evidence. Do not leave the other platform unmeasured
+and silent. Shared components and server changes are the default route to parity.
+
+Every device-specific carve-out gets a short comment at the code that makes it, saying
+why the platforms differ (for example "native mounts only nearby cards; web already
+lazy-loads images"). A reader who is asked or challenged later should find the reason
+next to the code, not only in a PR. Also list the carve-out in the register entry.
+
+- Before editing, trace which component each surface (web adapter, `native-proof/`,
+  and any platform-specific file) actually imports. Do not assume a shared component is
+  active everywhere. `npm run check:page-parity` shows the registry state.
+- Platform-specific appearance is fine. Platform-specific feature loss is not, unless
+  asked for or forced by a real platform limit. No WebViews or web-only fallbacks just to
+  pass a check.
+- Run `scripts/env_capabilities.sh` once per session (add `--bootstrap` on a fresh
+  cloud checkout) to learn what can run here. Do not re-probe; do not install toolchains,
+  boot paid hosted runtimes or change account settings without asking.
+- Capture before and after for every visible change with the strongest evidence the
+  environment offers (`docs/agents/pr_screenshots.md`, `scripts/review_screenshots.py`).
+  Extend those; do not build a second system. Open the images and look at them. On a
+  Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
+  frames (`scripts/native_shots.sh <label>`).
+- The v26.10.29 web release is the visual baseline for React and React Native components.
+  Treat a layout or visual change from it as a regression unless a redesign is documented.
+- Report one evidence level per platform (web, iOS, Android), never a combined pass:
+  1. **Runtime**: the real Expo app ran on a simulator, emulator, device or hosted
+     runtime and screenshots were inspected. On a Mac, if Xcode or an Android SDK is
+     installed, start the simulator rather than treating it as unavailable.
+  2. **Expo Web + logic**: real shared components rendered in Chromium, plus tests of
+     native-only layout and state logic. Native appearance is unverified. A web
+     screenshot is never evidence of iOS or Android rendering.
+  3. **Structural**: builds, platform routing and tests pass; no rendering evidence.
+  4. **Unverified**: say what blocked it and the remaining risk.
+- Reviewers (human, Codex, `/code-review`) treat a UI diff that touches only one
+  surface as a finding unless the PR names the carve-out, and treat a missing evidence
+  level for an applicable platform as a gap to report, not to assume.
 
 ## Operating Principles
+
+When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
 
 Keep it simple. Simple is better than complex.
 Make the smallest maintainable change that solves the actual request.
@@ -333,8 +391,11 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
+- `docs/agents/native_cloud_runtimes.md`: how to get real iOS and Android screenshots: locally with Expo Go, the booted simulators and `scripts/native_shots.sh` (tested), or hosted via a contributor's own Expo account (opt-in; nothing runs in CI).
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
+- `docs/architecture/log-levels.md`: what each log level means, the start/progress/finish lines every long-running process must write so a hang is visible, and what the Settings > Advanced downloads include.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/podcast-plays.md`: what a podcast listen is (`PodcastPlay`), the one service that writes it, how a direct tracker save is carried onto its play, and the API lifecycle.
 - `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
@@ -347,6 +408,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/architecture/local-covers.md`: covers a person uploads, links or picks — where the files live, what is accepted, how they are fetched, who may change and see them.
 - `docs/architecture/media-card.md`: the one media card and its surfaces — what may differ between pages and why, how a page loads the viewer's rating and status, and the test that catches a grid that drifts.
 - `docs/architecture/history-memory.md`: what a History request costs a web worker — the item columns history must not load, which paths are bounded by the response and which are still bounded by the history.
+- `docs/architecture/view-caches.md`: the media list, Home and time-left caches — the one function that clears them, what each kind of change clears, and which write paths must call it.
 - `docs/integrations/nuvio-client-guide.md`: what a third-party tracking client implements, with `api.tests.test_nuvio_conformance` as its runnable half.
 - `docs/integrations/flexget.md`: how a download tool (FlexGet's `floppy_list`, or `curl`) reads lists and reports owned media by provider id, with `api.tests.test_fork_media_collection` as its runnable half.
 - `docs/integrations/wetrakr.md`: sending plays, statuses and ratings out to WeTrakr — what is verified, what is only transcribed from its docs, and how to check it against a real account.
@@ -374,59 +436,32 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 
 ## Incremental UI Modernization
 
-- For every UI change, consult `docs/ui/component-register.md` and its source map;
-  follow `docs/architecture/ui-modernization.md`. Update affected records when
-  components change, move, consolidate or retire; record blockers and verification.
-- **If you touch a UI component, upgrade it.** Every component creation or edit,
-  including copy and styling, must implement/reuse the shared React pattern in the
-  same change. The Connection/Import settings-card pilot is the first authorized browser
-  implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
-  build, fallback and lifecycle pattern. Prefer React Native primitives for shared
-  presentation and explicit web adapters for Django/DOM behavior.
-- AniList's complete provider region is the reference for a full component port:
-  see `docs/ui/provider-pages.md`. When a task calls for the complete component,
-  migrate its content and interactions too; do not stop at a React heading around
-  legacy controls. Keep one framework owner per subtree. Other providers' partial
-  card shells and Django form slots remain explicit, documented migration consumers.
-- **Provider structure is shared across every provider.** All provider headers,
-  media chips, tabs and Overview cards use `frontend/providers/ProviderPage.jsx`
-  and `users.provider_ui.provider_page`. Add capability/state data to that shared
-  model; do not add provider-specific Overview layouts or parallel page shells.
-  When a shared component changes, update its consumers together. Provider-specific
-  behavior belongs in data/action adapters. Unported tab bodies remain separate
-  server-owned siblings until their components are migrated.
-  Metadata is now a shared React tab for every metadata provider, using
-  `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
-  rather than adding provider-specific layouts or credential/source modals.
-- **The migration unit is a reusable component, not a provider or page.** Created or
-  edited fields, buttons, chips, tabs, dialogs and card layouts must reuse or
-  extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
-  data, permissions and transport in the consuming feature. Adopt these components
-  as other UI is reworked without requiring a whole-page port or duplicating an
-  AniList layout. Register bounded islands with the existing loader and runtime.
-- **Layout and responsive redesigns count as component work.** When adjusting a
-  legacy page's grid, cards or filter layout, port those affected components to
-  shared React in the same change. Do not treat a breakpoint/layout request as a
-  CSS-only exemption. Preserve useful server fallbacks and migrate only the owned
-  region; unrelated components can remain legacy.
-- This is authorization for incremental browser components, not a whole-app rewrite,
-  a SPA, a second frontend runtime or native applications. Preserve Django routes,
-  server permissions and existing action contracts. Never serialize stored credentials or raw
-  server HTML as React presentation props. User-entered credentials belong only
-  in current-page form state and its POST body. Native acceptance still requires actual
-  iOS and Android verification; browser adoption does not imply that gate passed.
-- Preserve behavior, appearance, responsive states, accessibility, permissions and
-  performance unless the issue explicitly approves a redesign. Migration alone does
-  not authorize simplification or removal of functionality.
-- Defer modernization only for a concrete compatibility blocker; record evidence
-  and the reopening condition in the component register and report it to the user.
-  Copy/styling changes and task size are not exemptions. Pending native proof is
-  not a blocker for browser adoption.
-- Replace legacy consumers where practical. Document necessary coexistence and its
-  retirement condition. Record web implementation and native verification separately;
-  never claim native compatibility from React syntax or a web build alone.
+- Follow the authoritative contract and checks in `docs/architecture/ui-modernization.md`.
+  Before editing UI, identify its architecture classification, reuse the appropriate
+  shared component, and plan significant conversions around data, platform behavior,
+  dependencies and regression risks. Solve incompatibilities; never add a baseline,
+  suppress checks, substitute WebViews or downgrade a component to avoid the work.
+- Migrate the affected reusable component when touched, preserving appearance,
+  functionality, accessibility, themes, responsive behavior and server permissions.
+  Keep platform integrations in adapters. Keep one owner per subtree and preserve
+  server fallbacks where necessary. Do not serialize credentials or raw server HTML
+  into presentation props.
+- Update `docs/ui/component-register.md`, `docs/ui/source-map.md`, and the
+  architecture registry. Run the architecture, build and relevant regression checks.
+  Report browser, iOS and Android evidence independently; builds do not establish
+  runtime verification. An unresolved external blocker leaves the task incomplete.
+- Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
+- Provider pages use the shared provider model and page components; see
+  `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
+  use its behavior as a migration source, not a universal dependency. See
+  `docs/ui/react-components.md` and `docs/ui/settings-cards.md` for current consumers.
 
 ## Frontend Tooling
+- React UI bundles are committed. After changes to `frontend/`, the UI build
+  script, or npm dependencies, run `npm ci --ignore-scripts`,
+  `npm run build:ui` and `npm run check:ui`. Commit the regenerated
+  `src/static/ui/` files with the source. Never hand-edit hashed bundles or
+  claim completion if the verification fails.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.
@@ -442,6 +477,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 
 Notes:
 - **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
+- **Saved test database:** a local real-migration run replays migrations once, then restores the saved result from `.floppy/` until any migration, the lockfile, settings or the runner changes. The run prints one `[test-db]` line saying which happened. `FLOPPY_TEST_DB_TEMPLATE=0` forces a replay. CI builds the file once per run and its shards restore it; the upgrade, PostgreSQL, image and coverage jobs still replay. See `docs/architecture/test-suite-cost.md`.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a

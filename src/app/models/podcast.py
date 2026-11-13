@@ -1,4 +1,3 @@
-from django.apps import apps
 from django.conf import settings
 from django.core.validators import (
     DecimalValidator,
@@ -74,6 +73,17 @@ class PodcastEpisode(models.Model):
     )
     title = models.CharField(max_length=500)
     slug = models.CharField(max_length=255, blank=True, default="")
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="Episode description from the feed or manual entry",
+    )
+    image = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Episode artwork URL, when it differs from the show image",
+    )
     published = models.DateTimeField(null=True, blank=True)
     duration = models.PositiveIntegerField(
         null=True,
@@ -184,17 +194,8 @@ class Podcast(Media):
 
     @property
     def completed_play_count(self):
-        """Return count of completed plays (excludes in-progress records).
-
-        For podcasts, we only count history records with end_date (completed plays),
-        not in-progress records where end_date is None.
-        """
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-
-        return HistoricalPodcast.objects.filter(
-            id=self.id,
-            end_date__isnull=False,
-        ).count()
+        """Return count of completed plays (excludes in-progress plays)."""
+        return self.plays.filter(end_date__isnull=False).count()
 
     @property
     def formatted_progress(self):
@@ -308,3 +309,80 @@ class PodcastShowTracker(models.Model):
     def status_readable(self):
         """Return the human-readable status."""
         return dict(Status.choices).get(self.status, self.status)
+
+
+class PodcastPlay(models.Model):
+    """One listen of a podcast episode.
+
+    ``Podcast`` is the per-user tracker for an episode (score, notes, current
+    state). A listen is its own row, so editing a listen never adds another
+    one and deleting a listen removes only that one. ``id`` is the
+    ``consumption_id`` the API returns.
+    """
+
+    podcast = models.ForeignKey(
+        Podcast,
+        on_delete=models.CASCADE,
+        related_name="plays",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.COMPLETED.value,
+    )
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    progress = models.PositiveIntegerField(
+        default=0,
+        help_text="Minutes listened.",
+    )
+    played_up_to_seconds = models.PositiveIntegerField(null=True, blank=True)
+    is_end_date_inferred = models.BooleanField(default=False)
+    external_id = models.CharField(max_length=255, null=True, blank=True)
+    entry_source = models.CharField(max_length=50, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Meta options for PodcastPlay."""
+
+        ordering = ["podcast", "-end_date", "-created_at"]
+        indexes = [models.Index(fields=["end_date"], name="app_podplay_end_idx")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["podcast", "external_id"],
+                name="app_podcastplay_unique_podcast_external_id",
+                condition=models.Q(external_id__isnull=False)
+                & ~models.Q(external_id=""),
+            ),
+        ]
+
+    def __str__(self):
+        """Return a description of the play."""
+        return f"{self.podcast} play ({self.end_date})"
+
+    def save(self, *args, **kwargs):
+        """Save the play, then bring its tracker in step (admin, generic API)."""
+        super().save(*args, **kwargs)
+        self._sync_tracker(keep_status=True)
+
+    def delete(self, *args, **kwargs):
+        """Delete the play, then bring its tracker in step."""
+        result = super().delete(*args, **kwargs)
+        self._sync_tracker(keep_status=False)
+        return result
+
+    def _sync_tracker(self, *, keep_status):
+        from app.services import podcast_plays
+
+        if not podcast_plays.in_service_write():
+            podcast_plays.sync_tracker(self.podcast, keep_status=keep_status)
+
+    # The track modal and episode list templates were written for history rows
+    # and read these two attributes; a play answers them the same way.
+    history_user = None
+
+    @property
+    def history_id(self):
+        """Return the play id under the name those templates read."""
+        return self.id

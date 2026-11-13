@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -370,17 +371,35 @@ class EntrypointDataPathTests(SimpleTestCase):
             ),
             encoding="utf-8",
         )
+        if overrides.get("FAKE_UID"):
+            supervisor_config = root / "supervisord.conf"
+            supervisor_config.write_text("[supervisord]\nuser=root\n")
+            script_path.write_text(
+                script_path.read_text(encoding="utf-8")
+                .replace("/etc/supervisord.conf", str(supervisor_config))
+                .replace(
+                    "/tmp/floppy-runtime/supervisord.conf",  # noqa: S108 - matching a script literal
+                    str(root / "runtime-supervisord.conf"),
+                ),
+                encoding="utf-8",
+            )
         script_path.chmod(0o755)
 
         self.write_command(
             fake_bin / "python",
             f"""#!/bin/sh
 if [ "$1" = "-c" ]; then
-    exec {sys.executable} "$@"
+    exec {shlex.quote(sys.executable)} "$@"
 fi
 {{ printf 'python'; printf ' <%s>' "$@"; printf '\n'; }} >> "$FAKE_LOG"
 if [ "$1" = "manage.py" ] && [ "$2" = "sqlite_startup" ] && [ "$#" = "2" ]; then
     exit "${{ADMISSION_STATUS:-0}}"
+fi
+if [ "$1" = "-m" ] && [ "$2" = "config.sqlite_recovery_server" ]; then
+    if [ "${{FAKE_EXIT_ON_PARK:-false}}" = "true" ]; then
+        kill -TERM "$PPID"
+    fi
+    exit 0
 fi
 if [ "$1" = "config/static_collection.py" ]; then
     exit "${{STATIC_COLLECTION_STATUS:-0}}"
@@ -394,15 +413,48 @@ exit 0
         self.write_command(
             fake_bin / "timeout",
             """#!/bin/sh
+case "$*" in
+    *"python manage.py sqlite_startup"*)
+        { printf 'timeout'; printf ' <%s>' "$@"; printf '\\n'; } >> "$FAKE_LOG"
+        ;;
+esac
 case "$1" in -k) shift 2;; esac
 shift
-exec "$@"
+"$@"
+status=$?
+count=0
+if [ -f "$FAKE_TIMEOUT_COUNTER" ]; then
+    read count < "$FAKE_TIMEOUT_COUNTER"
+fi
+count=$((count + 1))
+printf '%s\\n' "$count" > "$FAKE_TIMEOUT_COUNTER"
+if [ -n "${FAKE_TIMEOUT_STATUSES:-}" ]; then
+    old_ifs=$IFS
+    IFS=,
+    set -- $FAKE_TIMEOUT_STATUSES
+    IFS=$old_ifs
+    attempt=1
+    for candidate do
+        if [ "$attempt" -eq "$count" ]; then
+            status=$candidate
+            break
+        fi
+        attempt=$((attempt + 1))
+    done
+fi
+exit "$status"
 """,
         )
         self.write_command(
             fake_bin / "sleep",
             """#!/bin/sh
 exec /bin/sleep 0.05
+""",
+        )
+        self.write_command(
+            fake_bin / "id",
+            """#!/bin/sh
+echo "${FAKE_UID:-0}"
 """,
         )
         self.write_command(
@@ -434,6 +486,7 @@ fi
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
             "PYTHONPATH": str(SRC),
             "FAKE_LOG": str(log_path),
+            "FAKE_TIMEOUT_COUNTER": str(root / "timeout.count"),
             "SECRET": "entrypoint-test-secret",
             "LOG_DIR": str(root / "logs"),
         }
@@ -467,6 +520,152 @@ fi
             self.assertIn("SQLite schema is current", result.stderr)
             self.assertNotIn("<migrate>", commands)
             self.assertIn("supervisord", commands)
+            self.assertIn("timeout <-k> <5> <30>", commands)
+
+    def test_busybox_timeout_143_is_reported_and_retried_once(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data),
+                FAKE_TIMEOUT_STATUSES="143,0",
+                FAKE_EXIT_ON_PARK="true",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("retrying once", result.stderr)
+            self.assertNotIn("integrity check failed", result.stderr)
+            self.assertEqual(commands.count("timeout <"), 2)
+            self.assertIn("<30>", commands)
+
+    def test_gnu_timeout_124_is_retried_and_can_succeed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data),
+                FAKE_TIMEOUT_STATUSES="124,0",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("retrying once", result.stderr)
+            self.assertNotIn("integrity check failed", result.stderr)
+            self.assertEqual(commands.count("timeout <"), 2)
+
+    def test_two_timeouts_park_after_one_retry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data),
+                FAKE_TIMEOUT_STATUSES="143,143",
+                FAKE_EXIT_ON_PARK="true",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("after two attempts", result.stderr)
+            self.assertNotIn("integrity check failed", result.stderr)
+            self.assertEqual(commands.count("timeout <"), 2)
+            self.assertNotIn("<migrate>", commands)
+            self.assertNotIn("supervisord", commands)
+
+    def test_non_timeout_admission_failure_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data),
+                ADMISSION_STATUS="1",
+                FAKE_EXIT_ON_PARK="true",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("integrity check failed", result.stderr)
+            self.assertNotIn("retrying once", result.stderr)
+            self.assertEqual(commands.count("timeout <"), 1)
+            self.assertNotIn("supervisord", commands)
+
+    def test_custom_admission_timeout_covers_initial_and_re_admission(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data),
+                FLOPPY_SQLITE_ADMISSION_TIMEOUT="7",
+                FAKE_TIMEOUT_STATUSES="11,143,0",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("sqlite_startup> <--prepare-migrations>", commands)
+            self.assertEqual(commands.count("timeout <"), 3)
+            self.assertEqual(commands.count("<7>"), 3)
+
+    def test_invalid_admission_timeout_stops_sqlite_startup(self):
+        for timeout_value in ("0", "12seconds"):
+            with self.subTest(timeout_value=timeout_value):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    root = Path(temp_dir).resolve()
+                    data = root / "db"
+                    data.mkdir()
+                    (data / "db.sqlite3").touch()
+                    result, commands = self.run_entrypoint(
+                        root,
+                        FLOPPY_DATA_DIR=str(data),
+                        FLOPPY_SQLITE_ADMISSION_TIMEOUT=timeout_value,
+                    )
+
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+                    self.assertIn(
+                        "FLOPPY_SQLITE_ADMISSION_TIMEOUT", result.stderr
+                    )
+                    self.assertNotIn("timeout <", commands)
+                    self.assertNotIn("supervisord", commands)
+
+    def test_unprivileged_start_reports_unwritable_data_mount(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result, commands = self.run_entrypoint(
+                root,
+                FAKE_UID="1000",
+                FLOPPY_DATA_DIR="/dev/null/blocked",
+                BACKUP_DIR=str(root / "backups"),
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be writable by container UID 1000", result.stderr)
+        self.assertNotIn("groupmod", commands)
+        self.assertNotIn("supervisord", commands)
+
+    def test_unprivileged_start_preserves_identity_without_ownership_repair(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result, commands = self.run_entrypoint(
+                root,
+                FAKE_UID="1000",
+                FLOPPY_DATA_DIR=str(root / "db"),
+                BACKUP_DIR=str(root / "backups"),
+                DB_HOST="fixture",
+            )
+            config = (root / "runtime-supervisord.conf").read_text()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("user=", config)
+        self.assertNotIn("chown", commands)
+        self.assertNotIn("groupmod", commands)
+        self.assertIn("supervisord", commands)
 
     def test_operator_decision_runs_offline_recovery_before_admission(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -507,6 +706,53 @@ fi
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("<collectstatic>", commands)
         self.assertIn("chown <-R> <abc:abc> <--> </floppy/staticfiles>", commands)
+
+    def test_snapshot_directories_are_repaired_recursively(self):
+        """Startup verification writes snapshots as root before the identity
+        switch, so repairing only the directory left those files root-owned
+        and unreadable to PUID on the host (#1850).
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            backups = root / "backups"
+            verification = backups / "verification"
+            verification.mkdir(parents=True)
+            (verification / "db-20260101T000000Z-abcdef01.sqlite3").write_text("copy")
+            database = backups / "database"
+            database.mkdir()
+            result, commands = self.run_entrypoint(
+                root, DB_HOST="fixture", BACKUP_DIR=str(backups)
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for directory in (database, verification):
+            self.assertIn(
+                f"chown <-R> <-h> <abc:abc> <--> <{directory}>", commands
+            )
+
+    def test_sqlite_sidecars_are_repaired(self):
+        """Root-run startup verification publishes these beside the database,
+        so they must be handed to PUID like the database itself (#1901).
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            database = root / "database" / "db.sqlite3"
+            database.parent.mkdir()
+            suffixes = (
+                ".verification.json",
+                ".migration-ready.json",
+                ".integrity.status.json",
+                ".integrity.verified.json",
+            )
+            for suffix in suffixes:
+                Path(f"{database}{suffix}").write_text("{}")
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DB_PATH=str(database)
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for suffix in suffixes:
+            self.assertIn(
+                f"chown <-h> <abc:abc> <--> <{database}{suffix}>", commands
+            )
 
     def test_cache_failure_uses_normal_collection_and_ownership(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n static app_tags user_tags %}
 {% if not setup_guides %}
 {% if not provider_tab or provider_tab == 'connection' %}
@@ -213,7 +214,7 @@
     </div>
 
 {% endif %}
-{% if not provider_tab or provider_tab == 'connection' or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' %}
+{% if not provider_tab or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' or provider_tab == 'connection' and not account_connection %}
     {# Jellyfin push (Floppy -> Jellyfin) #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
@@ -265,7 +266,7 @@
               {% if jellyfin_account.playback_reporting_available %}
                 {% translate "Using Playback Reporting's API (full per-play history)." %}
               {% elif jellyfin_account.playback_reporting_available is False %}
-                {% translate "Playback Reporting's API isn't reachable with this key — using the current-watched-state backfill instead (one event per item)." %}
+                {% translate "Playback Reporting's API isn't reachable with this key, so Floppy is using the current-watched-state backfill instead (one event per item)." %}
               {% else %}
                 {% translate "Not yet run." %}
               {% endif %}
@@ -281,10 +282,7 @@
             <form method="post" action="{% url 'jellyfin_pull_now' %}">
               {% csrf_token %}
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
-              <button type="submit"
-                      class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                {% translate "Import history now" %}
-              </button>
+              {% button _("Import history now") submit=True %}
             </form>
           </div>
           <details class="border-t border-gray-600/50 pt-3">
@@ -309,10 +307,7 @@
                        accept=".tsv,.txt,text/tab-separated-values,text/plain"
                        required
                        class="block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-indigo-700">
-                <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  {% translate "Import / reimport history" %}
-                </button>
+                {% button _("Import / reimport history") submit=True %}
               </form>
             </div>
           </details>
@@ -351,10 +346,7 @@
               {% translate "Instant push after playback events" %}
             </label>
 {% elif jellyfin_account.instant_push_enabled %}<input type="hidden" name="instant_push_enabled" value="1">{% endif %}
-            <button type="submit"
-                    class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-              {% translate "Save Settings" %}
-            </button>
+            {% button _("Save Settings") submit=True %}
           </form>
 {% endif %}
           <div class="flex gap-2">
@@ -362,10 +354,7 @@
             <form method="post" action="{% url 'jellyfin_push_now' %}">
               {% csrf_token %}
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
-              <button type="submit"
-                      class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                {% translate "Sync Now" %}
-              </button>
+              {% button _("Sync Now") submit=True %}
             </form>
 {% endif %}
 {% if not provider_tab or provider_tab == 'connection' %}
@@ -407,10 +396,7 @@
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <div class="flex gap-2">
-                <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  {% translate "Update Jellyfin connection" %}
-                </button>
+                {% button _("Update Jellyfin connection") "primary" "sm" submit=True %}
                 <button type="button"
                         @click="editingJellyfin = false"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
@@ -439,10 +425,7 @@
                    placeholder="{% translate "Jellyfin username (only needed for server-admin keys)" %}"
                    class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="text">
-            <button type="submit"
-                    class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-              {% translate "Connect Jellyfin" %}
-            </button>
+            {% button _("Connect Jellyfin") "primary" "sm" "full" submit=True %}
           </form>
         {% endif %}
       </div>

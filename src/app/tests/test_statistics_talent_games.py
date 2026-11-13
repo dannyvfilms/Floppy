@@ -2,7 +2,9 @@ import datetime
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from app.models import (
@@ -90,6 +92,100 @@ class GamesInTopTalentAggregationTests(TestCase):
             role_type=CreditRoleType.CAST.value,
             role="Hero",
         )
+
+    def test_top_talent_credits_do_not_use_implicit_ordering(self):
+        # Aggregation counts rows using sets and counters: ordering credits
+        # only forces SQLite to materialise and sort a large joined result.
+        with CaptureQueriesContext(connection) as captured:
+            result = _aggregate_top_talent(
+                self.user,
+                None,
+                None,
+                limit=1,
+                schedule_missing_backfill=False,
+            )
+
+        credits_sql = [
+            query["sql"]
+            for query in captured.captured_queries
+            if 'FROM "app_itempersoncredit"' in query["sql"]
+            or 'FROM "app_itemstudiocredit"' in query["sql"]
+        ]
+        self.assertTrue(credits_sql, "Expected at least one credits query")
+        for sql in credits_sql:
+            self.assertNotIn(" ORDER BY ", sql.upper())
+
+        self.assertEqual(result["top_actors"][0]["name"], "Bob Movie Star")
+        self.assertEqual(result["top_actresses"][0]["name"], "Alice Actor")
+        self.assertEqual(result["top_studios"][0]["name"], "Dispatch Studio")
+
+    def test_dense_sqlite_credit_scan_matches_sparse_result(self):
+        if connection.vendor != "sqlite":
+            self.skipTest("SQLite planner optimisation")
+
+        # Dense scan sees this unrelated person's credit but must not count it.
+        unwatched = Item.objects.create(
+            media_id="unwatched-credit-999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Never watched",
+        )
+        stranger = Person.objects.create(
+            source=Sources.TMDB.value,
+            source_person_id="unwatched-999",
+            name="Never Watched Performer",
+            gender=PersonGender.MALE.value,
+        )
+        ItemPersonCredit.objects.create(
+            item=unwatched,
+            person=stranger,
+            role_type=CreditRoleType.CAST.value,
+            role="Lead",
+        )
+
+        with (
+            patch("app.statistics_talent.DENSE_CREDIT_SCAN_MIN_ITEMS", 1),
+            patch("app.statistics_talent.DENSE_CREDIT_SCAN_RATIO", 0.6),
+            CaptureQueriesContext(connection) as dense_queries,
+        ):
+            dense = _aggregate_top_talent(
+                self.user,
+                None,
+                None,
+                schedule_missing_backfill=False,
+            )
+
+        with (
+            patch("app.statistics_talent.DENSE_CREDIT_SCAN_MIN_ITEMS", 100_000),
+            CaptureQueriesContext(connection) as sparse_queries,
+        ):
+            sparse = _aggregate_top_talent(
+                self.user,
+                None,
+                None,
+                schedule_missing_backfill=False,
+            )
+
+        self.assertEqual(dense, sparse)
+        self.assertNotIn(
+            stranger.name,
+            [person["name"] for person in dense["top_actors"]],
+        )
+
+        def joined_person_queries(captured):
+            return [
+                entry["sql"]
+                for entry in captured.captured_queries
+                if 'FROM "app_itempersoncredit"' in entry["sql"]
+                and 'JOIN "app_person"' in entry["sql"]
+            ]
+
+        dense_sql = joined_person_queries(dense_queries)
+        sparse_sql = joined_person_queries(sparse_queries)
+        self.assertEqual(len(dense_sql), 1)
+        self.assertEqual(len(sparse_sql), 1)
+        self.assertNotIn(" WHERE ", dense_sql[0].upper())
+        self.assertIn(" WHERE ", sparse_sql[0].upper())
 
     def test_talent_does_not_materialize_credit_models(self):
         # A person can have thousands of credits and a large biography. Only
@@ -542,3 +638,65 @@ class NoDateEntriesInAllTimeTopTalentTests(TestCase):
             row["name"] for row in data["top_talent"]["by_sort"]["plays"]["top_actors"]
         }
         self.assertIn("Only Undated Movie Actor", actor_names)
+
+
+class PersonCreditBatchingTests(TestCase):
+    """The person-credit fetch batches large item-ID lists (#1855)."""
+
+    def test_credits_are_aggregated_across_id_batches(self):
+        user = get_user_model().objects.create_user(
+            username="talent-batch-tester",
+            password="password123",
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value,
+            source_person_id="batch-1",
+            name="Batch Actor",
+            gender=PersonGender.MALE.value,
+        )
+        played_at = timezone.now()
+        items = Item.objects.bulk_create(
+            [
+                Item(
+                    media_id=f"batch-movie-{offset}",
+                    source=Sources.MANUAL.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Batch Movie {offset}",
+                )
+                for offset in range(501)
+            ]
+        )
+        Movie.objects.bulk_create(
+            [
+                Movie(
+                    user=user,
+                    item=item,
+                    status=Status.COMPLETED.value,
+                    end_date=played_at,
+                )
+                for item in items
+            ]
+        )
+        ItemPersonCredit.objects.bulk_create(
+            [
+                ItemPersonCredit(
+                    item=item,
+                    person=person,
+                    role_type=CreditRoleType.CAST.value,
+                    role="Lead",
+                )
+                for item in items
+            ]
+        )
+
+        result = _aggregate_top_talent(
+            user,
+            None,
+            None,
+            schedule_missing_backfill=False,
+        )
+
+        top_actor = result["top_actors"][0]
+        self.assertEqual(top_actor["name"], "Batch Actor")
+        self.assertEqual(top_actor["plays"], 501)
+        self.assertEqual(top_actor["unique_movies"], 501)

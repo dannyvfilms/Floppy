@@ -4,19 +4,27 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 from types import SimpleNamespace
 
+from django.utils.translation import gettext
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from api.authentication import APIKeyAuthentication, BearerAuthentication
 from app.discover import tab_cache as discover_tab_cache
+from app.discover_presentation import MATCH_LABELS
 from app.discover_views import (
     _discover_hidden_entries,
+    _discover_media_options,
     _discover_response_rows,
+    _get_or_create_discover_item,
     _invalidate_discover_after_action,
     _resolve_discover_media_type_for_user,
 )
 from app.helpers import build_provider_ids, is_item_collected
+from app.home_artwork import refresh_home_artwork
+from app.home_presentation import home_screen_payload, row_presentation
 from app.models import (
     CollectionEntry,
     DiscoverFeedback,
@@ -26,7 +34,13 @@ from app.models import (
     Sources,
 )
 from app.providers import services
-from users.home_screen import build_home_page_groups
+from app.templatetags.app_tags import image_url
+from users.home_screen import (
+    HomeScreenValidationError,
+    build_home_page_groups,
+    build_home_row,
+    toggle_home_row_direction,
+)
 
 from .contract_serializers import (
     DetailErrorSerializer,
@@ -36,6 +50,22 @@ from .helpers import paginate_data, parse_limit_offset
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
+
+
+class HomeBrowserSessionMixin:
+    """Accept the signed-in browser session on the Home presentation endpoints.
+
+    These endpoints back the React Home shelves in the web app, which fetch with
+    the session cookie. ``HasScope`` already treats a session (``request.auth``
+    is ``None``) as full access; without this the session never authenticates
+    and DRF answers 403.
+    """
+
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
 
 
 # /api/v1/collection/status/[item_id]/
@@ -122,11 +152,72 @@ class DiscoverRowsView(DiscoverEnabledMixin, drf_views.APIView):
             show_more=show_more,
             discover_debug=False,
         )
+        status = discover_tab_cache.get_tab_status(
+            request.user.id,
+            media_type,
+            show_more=show_more,
+        ) if media_type != "hidden" else None
         return Response(
             {
                 "media_type": media_type,
                 "show_more": show_more,
-                "rows": [row.to_dict() for row in rows],
+                "loading": bool(status and status["is_refreshing"]),
+                "media_options": _discover_media_options(request.user),
+                "rows": [_discover_row_payload(row) for row in rows],
+            },
+            status=HTTP.OK,
+        )
+
+
+def _discover_row_payload(row):
+    """One row for clients: the cache payload plus the web's match wording."""
+    payload = row.to_dict()
+    label = MATCH_LABELS.get(row.key)
+    payload["match_label"] = str(gettext(label)) if label else ""
+    return payload
+
+
+# /api/v1/discover/status/
+class DiscoverStatusView(DiscoverEnabledMixin, drf_views.APIView):
+    """Rebuild status of a Discover tab (mirrors the web cache-status poll)."""
+
+    @extend_schema(
+        operation_id="getDiscoverStatus",
+        parameters=[
+            OpenApiParameter(
+                name="media_type",
+                type=str,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="show_more",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses={200: dict, 404: DetailErrorSerializer},
+    )
+    def get(self, request):
+        """Report whether the tab is being rebuilt or has just been rebuilt."""
+        media_type = _resolve_discover_media_type_for_user(
+            request.user,
+            request.GET.get("media_type"),
+        )
+        show_more = request.GET.get("show_more") in {"1", "true", "True"}
+        status = discover_tab_cache.get_tab_status(
+            request.user.id,
+            media_type,
+            show_more=show_more,
+        )
+        return Response(
+            {
+                "media_type": media_type,
+                "show_more": show_more,
+                "exists": status["exists"],
+                "is_stale": status["is_stale"],
+                "is_refreshing": status["is_refreshing"],
+                "recently_built": status["recently_built"],
+                "built_at": status["built_at"],
             },
             status=HTTP.OK,
         )
@@ -296,6 +387,11 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
                         "item_id": entry.item_id,
                         "title": entry.item.title,
                         "media_type": entry.item.media_type,
+                        "source": entry.item.source,
+                        "media_id": str(entry.item.media_id),
+                        "image": (
+                            image_url(entry.item.image) if entry.item.image else None
+                        ),
                         "hidden_at": entry.updated_at,
                     }
                     for entry in entries
@@ -305,14 +401,40 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
         )
 
     def post(self, request):
-        """Hide or unhide an item (mirrors discover_toggle_hidden)."""
+        """Hide or unhide an item (mirrors discover_toggle_hidden).
+
+        Accepts either ``item_id`` (an item the caller already tracks) or a
+        provider identity (``source``, ``media_type``, ``media_id``) the way
+        the web dismiss action does: Discover candidates are often untracked,
+        so the item may not exist yet and is created from the identity plus
+        the optional ``title``/``image`` fallbacks without any provider call.
+        """
         action = request.data.get("action")
         if action not in ("hide", "unhide"):
             return Response(
                 {"detail": "action must be 'hide' or 'unhide'."},
                 status=HTTP.BAD_REQUEST,
             )
-        item = Item.objects.filter(id=request.data.get("item_id")).first()
+        item = None
+        if request.data.get("item_id") is not None:
+            item = Item.objects.filter(id=request.data.get("item_id")).first()
+        elif request.data.get("media_id"):
+            media_type = request.data.get("media_type")
+            if media_type not in MediaTypes.values:
+                return Response(
+                    {"detail": "media_type must be a supported media type."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            item = _get_or_create_discover_item(
+                media_type,
+                request.data.get("media_id"),
+                request.data.get("source"),
+                request.data.get("season_number"),
+                {
+                    "fallback_title": str(request.data.get("title") or "").strip(),
+                    "fallback_image": str(request.data.get("image") or "").strip(),
+                },
+            )
         if item is None:
             return Response({"detail": "Item not found."}, status=HTTP.NOT_FOUND)
 
@@ -343,7 +465,7 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
 
 
 # /api/v1/home/
-class HomeView(drf_views.APIView):
+class HomeView(HomeBrowserSessionMixin, drf_views.APIView):
     """The user's home rows — the same groups the web home page renders."""
 
     def get(self, request):
@@ -354,6 +476,18 @@ class HomeView(drf_views.APIView):
             return Response(
                 {"detail": "Invalid limit parameter"},
                 status=HTTP.BAD_REQUEST,
+            )
+        if request.GET.get("presentation") in {"1", "true"}:
+            http_request = getattr(request, "_request", request)
+            deferred = request.GET.get("deferred") in {"1", "true"}
+            return Response(
+                home_screen_payload(
+                    request.user,
+                    http_request,
+                    items_limit,
+                    deferred=deferred,
+                ),
+                status=HTTP.OK,
             )
         groups = build_home_page_groups(request.user, items_limit)
         payload = []
@@ -389,3 +523,107 @@ class HomeView(drf_views.APIView):
                 },
             )
         return Response({"groups": payload}, status=HTTP.OK)
+
+# /api/v1/home/row/[row_id]/
+class HomeRowView(HomeBrowserSessionMixin, drf_views.APIView):
+    """One Home shelf window, for deferred rows and bounded load-more."""
+
+    def get(self, request, row_id):
+        """Return one bounded Home row window."""
+        # The route captures digits as text; the row builders compare ids as
+        # integers, so a text id never matched a row on a continuation (#1873).
+        row_id = int(row_id)
+        try:
+            items_limit = max(1, min(int(request.GET.get("limit", 14)), 50))
+            offset = max(int(request.GET.get("offset", "0")), 0)
+            raw_seed = request.GET.get("seed", "")
+            seed = int(raw_seed) if raw_seed not in (None, "") else 0
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid row window"},
+                status=HTTP.BAD_REQUEST,
+            )
+        if offset:
+            groups = build_home_page_groups(
+                request.user,
+                items_limit,
+                load_row_id=row_id,
+                load_row_offset=offset,
+                load_row_seed=seed,
+                append_only=True,
+                only_row_id=row_id,
+            )
+            row = next(
+                (
+                    row
+                    for group in groups
+                    for row in group["rows"]
+                    if row["row_id"] == row_id
+                ),
+                None,
+            )
+        else:
+            row = build_home_row(request.user, row_id, items_limit)
+        if row is None:
+            return Response({"row": None}, status=HTTP.OK)
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {"row": row_presentation(row, request.user, http_request)},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/home/rows/[row_id]/sort/
+class HomeRowDirectionView(HomeBrowserSessionMixin, drf_views.APIView):
+    """Flip one configured Home row's sort direction."""
+
+    def post(self, request, row_id):
+        """Flip the row's persisted sort direction and return it."""
+        if getattr(request.user, "is_demo", False):
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
+        try:
+            toggle_home_row_direction(request.user, row_id)
+        except HomeScreenValidationError:
+            return Response(
+                {"detail": "Home row not found."},
+                status=HTTP.NOT_FOUND,
+            )
+        row = build_home_row(request.user, row_id, 14, refresh=True)
+        if row is None:
+            return Response({"row": None}, status=HTTP.OK)
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {"row": row_presentation(row, request.user, http_request)},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/home/artwork/
+class HomeArtworkView(HomeBrowserSessionMixin, drf_views.APIView):
+    """Refresh every Home row that still needs cover artwork in one request."""
+
+    def get(self, request):
+        """Refresh the polled rows together and report rows still missing art."""
+        raw_ids = request.GET.get("ids", "")
+        row_ids = {int(part) for part in raw_ids.split(",") if part.strip().isdigit()}
+        raw_pending = request.GET.get("pending", "")
+        rows_pending = raw_pending.isdigit() and int(raw_pending) > 0
+        rows, poll_row_ids, pending = refresh_home_artwork(
+            request.user,
+            row_ids,
+            rows_pending,
+        )
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {
+                "rows": [
+                    row_presentation(row, request.user, http_request) for row in rows
+                ],
+                "pollRowIds": [str(row_id) for row_id in poll_row_ids],
+                "pending": pending,
+            },
+            status=HTTP.OK,
+        )

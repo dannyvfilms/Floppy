@@ -92,6 +92,31 @@ class ProviderIntegrationSectionsTests(TestCase):
         self.assertFalse(self.account.push_watched_enabled)
         self.assertTrue(self.account.pull_history_enabled)
 
+    @patch("integrations.webhooks.jellyfin.jellyfin_template_outdated", return_value=True)
+    def test_connection_tab_uses_shared_cards(self, _outdated):
+        """The Connection tab shows collapsed webhook guides and the shared account card."""
+        response = self.client.get(reverse("provider_detail", args=["jellyfin"]) + "?tab=connection")
+        card = response.context["account_connection"]
+        self.assertTrue(card["connected"] and card["editable"])
+        self.assertEqual(card["title"], "Jellyfin account")
+        self.assertNotIn("stored-key", str(card))
+        guides = response.context["setup_guides"]
+        self.assertEqual(len(guides), 1)
+        self.assertTrue(guides[0]["collapsed"])
+        self.assertEqual([m["title"] for m in guides[0]["methods"]],
+                         ["Official plugin repository", "Unofficial plugin repository"])
+        self.assertEqual(response.context["setup_guides"][0]["badge"]["label"], "Needs update")
+        self.assertNotContains(response, "Jellyfin connection")
+        self.assertNotContains(response, "stored-key")
+
+    def test_jellyfin_guide_documents_kefin_tweaks_rating_flag(self):
+        """The official guide tells KefinTweaks users to omit the Rating field."""
+        response = self.client.get(reverse("provider_detail", args=["jellyfin"]) + "?tab=connection")
+        steps = response.context["setup_guides"][0]["methods"][0]["steps"]
+        text = " ".join(part[1] for step in steps for part in step)
+        self.assertIn("KefinTweaks stores watchlist membership as a rating of 1", text)
+        self.assertIn('"Rating": {{Rating}}', text)
+
     def test_provider_context_does_not_consume_one_time_token(self):
         """Only Access & Tokens may consume a newly generated app secret."""
         request = RequestFactory().get("/settings/providers/jellyfin")

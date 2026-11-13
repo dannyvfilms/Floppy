@@ -6,6 +6,7 @@ from collections import defaultdict
 from django.apps import apps
 from django.conf import settings
 from django.utils import formats
+from django.utils.translation import ngettext
 
 from app import helpers
 from app.history_cache_utils import (
@@ -62,6 +63,11 @@ def _serialize_item(item):
         "original_title": getattr(item, "original_title", None),
         "localized_title": getattr(item, "localized_title", None),
     }
+    # Which library bucket the row belongs to (e.g. anime episodes grouped
+    # under TV), so consumers need no second lookup to route it (#1873).
+    library_media_type = getattr(item, "library_media_type", None)
+    if library_media_type:
+        data["library_media_type"] = library_media_type
     season_number = getattr(item, "season_number", None)
     if season_number is not None:
         data["season_number"] = season_number
@@ -367,6 +373,10 @@ def _build_movie_entry(movie):
         "instance_id": movie.id,
         "entry_key": str(movie.id),
         "entry_source": movie.entry_source,
+        # A grouped movie row stands for the Movie tracker, so instance_id is a
+        # tracker id. A single watch is addressed by its play id on the
+        # per-media history endpoints, never by this value (#1873).
+        "record_type": "movie_tracker",
     }
     _attach_entry_score(entry, movie)
     if genres:
@@ -562,3 +572,111 @@ def _build_music_album_entries(
     if implied_genres:
         entry["implied_genres"] = implied_genres
     return entry
+
+
+def build_listening_session_entry(session):
+    """Build the history entry for one audiobook listening session."""
+    book = session.book
+    item = book.item
+    entry = {
+        "media_type": MediaTypes.BOOK.value,
+        "item": _serialize_item(item),
+        "poster": item.image or settings.IMG_NONE,
+        "title": item.title,
+        "display_title": item.title,
+        "status": book.status,
+        "episode_label": None,
+        "episode_code": None,
+        "played_at_local": _localize_datetime(session.started_at),
+        **_entry_dates(book),
+        "runtime_minutes": session.minutes,
+        "runtime_display": helpers.minutes_to_hhmm(session.minutes),
+        "instance_id": book.id,
+        "entry_key": f"book-session-{session.id}",
+    }
+    if session.position_minutes is not None:
+        entry["position_display"] = helpers.minutes_to_hhmm(session.position_minutes)
+        if item.runtime_minutes:
+            entry["position_total_display"] = helpers.minutes_to_hhmm(
+                item.runtime_minutes,
+            )
+    _attach_entry_score(entry, book)
+    return entry
+
+
+def build_book_page_entries(books, start=None, end=None, history_rows=None):
+    """Build one entry per day a page-based book's progress rose.
+
+    ``books`` are Book rows with ``item`` loaded. The first change-log row of a
+    book is its baseline (an import or a first save), so it dates nothing: a
+    book with a single row, or only a current page, yields no entries. A day
+    with several saves is one entry holding the pages gained and where reading
+    stopped. Audiobooks are skipped: their progress is minutes.
+
+    ``history_rows`` are those books' ``(id, progress, history_date)`` change
+    rows, in ``id, history_date, history_id`` order, when the caller has loaded
+    them for a whole span of days; otherwise they are read here.
+    """
+    books = {
+        book.id: book
+        for book in books
+        if book.item.format != "audiobook"
+    }
+    if not books:
+        return []
+    if history_rows is not None:
+        rows = history_rows
+    else:
+        HistoricalBook = apps.get_model("app", "HistoricalBook")
+        rows = (
+            HistoricalBook.objects.filter(id__in=books, history_type__in=("+", "~"))
+            .order_by("id", "history_date", "history_id")
+            .values_list("id", "progress", "history_date")
+        )
+    previous = {}
+    days = {}
+    for book_id, row_progress, history_date in rows:
+        progress = row_progress or 0
+        before = previous.get(book_id)
+        previous[book_id] = progress
+        if before is None or progress <= before:
+            continue
+        local = _localize_datetime(history_date)
+        if not local:
+            continue
+        day = days.setdefault((book_id, local.date()), {"pages": 0, "at": local})
+        day["pages"] += progress - before
+        day["position"] = progress
+        day["at"] = local
+
+    entries = []
+    for (book_id, _day), day in days.items():
+        if (start and day["at"] < start) or (end and day["at"] >= end):
+            continue
+        book = books[book_id]
+        item = book.item
+        pages = day["pages"]
+        entry = {
+            "media_type": MediaTypes.BOOK.value,
+            "item": _serialize_item(item),
+            "poster": item.image or settings.IMG_NONE,
+            "title": item.title,
+            "display_title": item.title,
+            "status": book.status,
+            "episode_label": None,
+            "episode_code": None,
+            "played_at_local": day["at"],
+            **_entry_dates(book),
+            "runtime_minutes": 0,
+            "runtime_display": ngettext("%(count)d page", "%(count)d pages", pages)
+            % {"count": pages},
+            "position_unit": "page",
+            "position_display": str(day["position"]),
+            "instance_id": book.id,
+            "entry_key": f"book-pages-{book.id}-{day['at'].date().isoformat()}",
+        }
+        if item.number_of_pages:
+            entry["position_total_display"] = str(item.number_of_pages)
+        _attach_entry_score(entry, book)
+        entries.append(entry)
+    return entries

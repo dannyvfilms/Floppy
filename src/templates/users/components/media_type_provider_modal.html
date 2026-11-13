@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n %}
 {% load app_tags %}
 {% comment %}
@@ -134,10 +135,7 @@
             </div>
           {% endif %}
 
-          <button type="submit"
-                  class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-            {% translate "Save" %}
-          </button>
+          {% button _("Save") "primary" "sm" "full" submit=True %}
         </form>
       {% else %}
         <div class="space-y-2">
@@ -161,7 +159,7 @@
             </div>
           {% endfor %}
           <p class="text-xs text-[var(--color-text-muted)]">
-            {% translate "This library doesn't have a switchable default yet — configure a provider above to make it available." %}
+            {% translate "This library doesn't have a switchable default yet. Configure a provider above to make it available." %}
           </p>
         </div>
       {% endif %}

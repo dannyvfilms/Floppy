@@ -2,17 +2,20 @@ import json
 import logging
 from collections import defaultdict
 from datetime import UTC
+from uuid import uuid4
 
 from django.conf import settings
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.translation import gettext, ngettext
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app import helpers
 from app.discover import tab_cache as discover_tab_cache
-from app.models import Item, MediaTypes
+from app.models import Item, MediaTypes, Sources
 from app.templatetags import app_tags
 from app.track_modal_views import _DummyPodcastWrapper, _render_podcast_show_track_modal
 
@@ -42,7 +45,7 @@ def episode_items_by_uuid(show, episodes, *, source, media_type):
                 media_type=media_type,
                 defaults={
                     "title": episode.title,
-                    "image": show.image or settings.IMG_NONE,
+                    "image": episode.image or show.image or settings.IMG_NONE,
                 },
             )
             items[episode.episode_uuid] = item
@@ -67,32 +70,288 @@ def user_podcasts_by_episode(user, show, episodes):
 
 
 def completed_plays_by_podcast_id(podcast_ids, limit=None):
-    """Return ``{podcast_id: [history record, ...]}``, newest completed play first.
+    """Return ``{podcast_id: [PodcastPlay, ...]}``, newest completed play first.
 
-    ``limit`` keeps only that many records per podcast, in SQL, for callers
+    ``limit`` keeps only that many plays per podcast, in SQL, for callers
     that display a few plays of an entry with a long history.
     """
     from django.db.models import F, Window
     from django.db.models.functions import RowNumber
 
-    from app.models import Podcast
+    from app.models import PodcastPlay
 
     by_podcast = defaultdict(list)
     if not podcast_ids:
         return by_podcast
-    records = Podcast.history.filter(id__in=podcast_ids, end_date__isnull=False)
+    plays = PodcastPlay.objects.filter(
+        podcast_id__in=podcast_ids,
+        end_date__isnull=False,
+    )
     if limit is not None:
-        records = records.annotate(
+        plays = plays.annotate(
             play_rank=Window(
                 RowNumber(),
-                partition_by=F("id"),
-                order_by=F("end_date").desc(),
+                partition_by=F("podcast_id"),
+                order_by=[F("end_date").desc(), F("id").desc()],
             ),
         ).filter(play_rank__lte=limit)
-    # history_user is read per record when the play list is rendered.
-    for record in records.select_related("history_user").order_by("-end_date"):
-        by_podcast[record.id].append(record)
+    for play in plays.order_by("-end_date", "-id"):
+        by_podcast[play.podcast_id].append(play)
     return by_podcast
+
+
+def manual_show_for_user_or_404(request, show_id):
+    """Return a manual podcast show the viewer tracks, or 404.
+
+    Provider-backed shows keep their feed-owned catalog, and a manual show is
+    only manageable by someone who has it in their library.
+    """
+    from app.models import PodcastShow
+
+    return get_object_or_404(
+        PodcastShow,
+        id=show_id,
+        source=Sources.MANUAL.value,
+        trackers__user=request.user,
+    )
+
+
+def manual_episode_for_user_or_404(request, episode_id):
+    """Return a manual episode on a show the viewer tracks, or 404."""
+    from app.models import PodcastEpisode
+
+    return get_object_or_404(
+        PodcastEpisode.objects.select_related("show"),
+        id=episode_id,
+        show__source=Sources.MANUAL.value,
+        show__trackers__user=request.user,
+    )
+
+
+def episode_manager_props(request, show):
+    """Return the manual episode manager model for a show, when it applies."""
+    if show.source != Sources.MANUAL.value:
+        return None
+    if not show.trackers.filter(user=request.user).exists():
+        return None
+
+    from django.urls import reverse
+
+    return {
+        "listUrl": reverse("podcast_episodes_manage", args=[show.id]),
+        "addUrl": reverse("podcast_episode_add", args=[show.id]),
+        "csrfToken": get_token(request),
+        "labels": {
+            "trigger": gettext("Manage episodes"),
+            "title": gettext("Manage episodes"),
+            "add": gettext("Add episode"),
+            "edit": gettext("Edit"),
+            "delete": gettext("Delete"),
+            "save": gettext("Save"),
+            "cancel": gettext("Cancel"),
+            "close": gettext("Close"),
+            "back": gettext("Back to episodes"),
+            "loading": gettext("Loading episodes…"),
+            "loadFailed": gettext("Could not load episodes."),
+            "retry": gettext("Try again"),
+            "empty": gettext("No episodes yet."),
+            "deleteConfirm": gettext("Delete this episode?"),
+            "deleteNote": gettext("Its play history stays in your account."),
+            "titleField": gettext("Episode title"),
+            "descriptionField": gettext("Description"),
+            "episodeNumberField": gettext("Episode number"),
+            "seasonNumberField": gettext("Season number"),
+            "publishedField": gettext("Publication date"),
+            "durationField": gettext("Duration"),
+            "durationHelp": gettext("Minutes, mm:ss or h:mm:ss."),
+            "audioField": gettext("Audio URL"),
+            "websiteField": gettext("Website URL"),
+            "imageField": gettext("Artwork URL"),
+            "saveFailed": gettext("Could not save the episode."),
+            "deleteFailed": gettext("Could not delete the episode."),
+        },
+    }
+
+
+def episode_payload(episode):
+    """Serialize one manual episode for the manager."""
+    from django.urls import reverse
+
+    from app.forms import episode_duration_input
+
+    published = episode.published
+    if published and timezone.is_aware(published):
+        published = timezone.localtime(published)
+
+    return {
+        "id": episode.id,
+        "title": episode.title,
+        "description": episode.description or "",
+        "episodeNumber": episode.episode_number,
+        "seasonNumber": episode.season_number,
+        "published": published.strftime("%Y-%m-%dT%H:%M") if published else "",
+        "duration": episode_duration_input(episode.duration),
+        "audioUrl": episode.audio_url or "",
+        "websiteUrl": episode.website_url or "",
+        "imageUrl": episode.image or "",
+        "editUrl": reverse("podcast_episode_edit", args=[episode.id]),
+        "deleteUrl": reverse("podcast_episode_delete", args=[episode.id]),
+    }
+
+
+def _wants_json(request):
+    """Return whether a request asked for the manager's JSON response."""
+    return (
+        request.GET.get("format") == "json"
+        or request.POST.get("format") == "json"
+        or "application/json" in request.headers.get("Accept", "")
+    )
+
+
+def _form_error_payload(form):
+    """Return Django form errors as ``{field: [message, ...]}``."""
+    return {
+        field: [entry["message"] for entry in entries]
+        for field, entries in form.errors.get_json_data().items()
+    }
+
+
+@require_http_methods(["GET"])
+def podcast_episodes_manage(request, show_id):
+    """Show the fallback page, or return the manager's episode list as JSON."""
+    from app.models import PodcastEpisode
+
+    show = manual_show_for_user_or_404(request, show_id)
+    episodes = list(
+        PodcastEpisode.objects.filter(show=show).order_by(
+            "-published",
+            "-episode_number",
+            "id",
+        ),
+    )
+
+    if _wants_json(request):
+        return JsonResponse(
+            {"episodes": [episode_payload(episode) for episode in episodes]},
+        )
+
+    from app.forms import PodcastEpisodeForm
+
+    edit_episode = None
+    episode_id = request.GET.get("episode")
+    if episode_id:
+        edit_episode = manual_episode_for_user_or_404(request, episode_id)
+        if edit_episode.show_id != show.id:
+            edit_episode = None
+    form = PodcastEpisodeForm(instance=edit_episode)
+
+    from django.urls import reverse
+
+    return render(
+        request,
+        "app/podcast_episodes_manage.html",
+        {
+            "show": show,
+            "episodes": episodes,
+            "form": form,
+            "edit_episode": edit_episode,
+            "show_url": reverse(
+                "media_details",
+                kwargs={
+                    "source": show.source,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "media_id": show.podcast_uuid,
+                    "title": app_tags.slug(show.title or "") or "podcast",
+                },
+            ),
+        },
+    )
+
+
+@require_POST
+def podcast_episode_add(request, show_id):
+    """Create a manually managed episode on a manual show."""
+    from app.forms import PodcastEpisodeForm
+
+    show = manual_show_for_user_or_404(request, show_id)
+    form = PodcastEpisodeForm(request.POST)
+
+    if not form.is_valid():
+        if _wants_json(request):
+            return JsonResponse(
+                {"ok": False, "errors": _form_error_payload(form)},
+                status=400,
+            )
+        messages.error(request, gettext("Could not add the episode."))
+        return redirect("podcast_episodes_manage", show_id=show.id)
+
+    episode = form.save(commit=False)
+    episode.show = show
+    episode.episode_uuid = f"manual-{uuid4()}"
+    episode.save()
+
+    if _wants_json(request):
+        return JsonResponse(
+            {"ok": True, "episode": episode_payload(episode)},
+        )
+
+    messages.success(
+        request,
+        gettext("Added %(value_1)s") % {"value_1": episode.title},
+    )
+    return redirect("podcast_episodes_manage", show_id=show.id)
+
+
+@require_POST
+def podcast_episode_edit(request, episode_id):
+    """Update a manually managed episode."""
+    from app.forms import PodcastEpisodeForm
+
+    episode = manual_episode_for_user_or_404(request, episode_id)
+    form = PodcastEpisodeForm(request.POST, instance=episode)
+
+    if not form.is_valid():
+        if _wants_json(request):
+            return JsonResponse(
+                {"ok": False, "errors": _form_error_payload(form)},
+                status=400,
+            )
+        messages.error(request, gettext("Could not update the episode."))
+        return redirect(
+            "podcast_episodes_manage",
+            show_id=episode.show_id,
+        )
+
+    form.save()
+
+    if _wants_json(request):
+        return JsonResponse(
+            {"ok": True, "episode": episode_payload(episode)},
+        )
+
+    messages.success(
+        request,
+        gettext("Saved %(value_1)s") % {"value_1": episode.title},
+    )
+    return redirect("podcast_episodes_manage", show_id=episode.show_id)
+
+
+@require_POST
+def podcast_episode_delete(request, episode_id):
+    """Delete a manually managed episode."""
+    episode = manual_episode_for_user_or_404(request, episode_id)
+    show_id = episode.show_id
+    title = episode.title
+    episode.delete()
+
+    if _wants_json(request):
+        return JsonResponse({"ok": True})
+
+    messages.success(
+        request,
+        gettext("Deleted %(value_1)s") % {"value_1": title},
+    )
+    return redirect("podcast_episodes_manage", show_id=show_id)
 
 
 @require_GET
@@ -140,6 +399,7 @@ def podcast_show_detail(request, show_id):
         "total_episodes": total_episodes,
         "total_listened": total_listened,
         "total_minutes": total_minutes,
+        "episode_manager_props": episode_manager_props(request, show),
     }
     return render(request, "app/podcast_show_detail.html", context)
 
@@ -254,6 +514,7 @@ def podcast_episodes_api(request, show_id):
             class PodcastEpisodeAdapter:
                 def __init__(self, episode):
                     self.title = episode.title
+                    self.description = episode.description or ""
                     self.track_number = episode.episode_number
                     self.duration_formatted = (
                         self._format_duration(episode.duration)
@@ -327,11 +588,14 @@ def podcast_episodes_api(request, show_id):
             episode_list.append(
                 {
                     "title": episode_obj.title,
+                    "description": episode_obj.description or "",
                     "episode_number": episode_obj.episode_number or 0,
-                    "image": show.image or settings.IMG_NONE,
+                    "image": episode_obj.image
+                    or show.image
+                    or settings.IMG_NONE,
                     "air_date": episode_obj.published,
                     "runtime": duration_str,
-                    "overview": "",
+                    "overview": episode_obj.description or "",
                     "website_url": episode_obj.website_url,
                     "history": all_history,
                     "media": enriched["media"] if enriched else None,
@@ -382,6 +646,8 @@ def podcast_episodes_api(request, show_id):
         episode_data = {
             "id": episode_obj.id,
             "title": episode_obj.title,
+            "description": episode_obj.description or "",
+            "image": episode_obj.image or show.image or settings.IMG_NONE,
             "published": episode_obj.published.isoformat()
             if episode_obj.published
             else None,
@@ -446,8 +712,10 @@ def podcast_show_save(request):
             if updated:
                 from app import cache_utils
 
-                cache_utils.clear_media_list_cache_for_user(request.user.id)
-                cache_utils.clear_home_row_cache_for_user(request.user.id)
+                cache_utils.clear_library_view_caches(
+                    request.user.id,
+                    media_types=(MediaTypes.PODCAST.value,),
+                )
 
         if request.headers.get("HX-Request"):
             htmx_trigger = {
@@ -668,8 +936,9 @@ def podcast_save(request):
         all_history = []
         if user_podcast:
             all_history = list(
-                user_podcast.history.filter(end_date__isnull=False).order_by(
-                    "-end_date"
+                user_podcast.plays.filter(end_date__isnull=False).order_by(
+                    "-end_date",
+                    "-id",
                 )[:10]
             )
 

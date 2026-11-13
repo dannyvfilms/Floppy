@@ -1204,12 +1204,16 @@ def _build_detail_person_rows(media_metadata, item=None):
             view_all_text=view_all_text,
         ),
         "crew_row": _build_static_row("detail-crew", "Crew", crew[:20]),
-        "recommendations_row": _build_static_row(
+        "seasons_row": _build_static_row(
+            "detail-seasons", "Seasons", (media_metadata.get("related") or {}).get("seasons") or [],
+            card_width_class="w-44",
+        ),
+        "recommendations_row": {**_build_static_row(
             "detail-recommendations",
             "Recommendations",
             recommendations,
-            card_width_class="w-36",
-        ),
+            card_width_class="w-44",
+        ), "card_surface": "detail_recommendations"},
     }
 
 
@@ -1237,14 +1241,8 @@ def _book_author_keys(item):
     }
 
 
-def build_other_book_formats(user, item):
-    """Return links to the user's other tracked formats of the same book.
-
-    An audiobook and an ebook are separate Items on purpose (their progress
-    units differ), so this only links them. Two Items match when they share an
-    ISBN, or share a title and at least one author. Only the viewer's own
-    tracked books are considered.
-    """
+def _other_book_items(user, item):
+    """Return the viewer's other tracked Items that are the same book."""
     if (
         item is None
         or item.media_type != MediaTypes.BOOK.value
@@ -1262,7 +1260,7 @@ def build_other_book_formats(user, item):
         media_type=MediaTypes.BOOK.value,
         book__user=user,
     ).exclude(pk=item.pk)
-    chips = []
+    matches = []
     for other in candidates.distinct():
         same_isbn = bool(isbns & _book_isbns(other))
         same_work = (
@@ -1270,13 +1268,44 @@ def build_other_book_formats(user, item):
             and title_key == Item._title_comparison_key(other.title)
             and bool(authors & _book_author_keys(other))
         )
-        if not (same_isbn or same_work):
-            continue
-        label = _BOOK_FORMAT_LABELS.get((other.format or "").lower(), "Book")
-        chips.append(
+        if same_isbn or same_work:
+            matches.append(other)
+    return matches
+
+
+def _book_format_label(book_item):
+    return _BOOK_FORMAT_LABELS.get((book_item.format or "").lower(), "Book")
+
+
+def build_book_formats(user, item):
+    """Return the formats of this book the viewer tracks, or [] if only one.
+
+    An audiobook and an ebook are separate Items on purpose (their progress
+    units differ), so this only lists and links them. Two Items match when
+    they share an ISBN, or share a title and at least one author. The current
+    Item has no link. Audiobooks sort last, and when several audiobooks are
+    tracked each is labelled with its narrator so they can be told apart.
+    """
+    others = _other_book_items(user, item)
+    if not others:
+        return []
+
+    items = sorted(
+        [item, *others],
+        key=lambda book: (_book_format_label(book) == "Audiobook", book.pk),
+    )
+    audiobook_count = sum(_book_format_label(book) == "Audiobook" for book in items)
+    formats = []
+    for book in items:
+        label = _book_format_label(book)
+        narrators = ", ".join(book.narrators or [])
+        if label == "Audiobook" and audiobook_count > 1 and narrators:
+            label = f"{label} ({narrators})"
+        formats.append(
             {
                 "label": label,
-                "href": app_tags.media_url(other),
+                "href": None if book.pk == item.pk else app_tags.media_url(book),
             },
         )
-    return chips
+    return formats
+

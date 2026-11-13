@@ -1354,6 +1354,12 @@ class User(AbstractUser):
         choices=StatisticsRangeChoices.choices,
         help_text="Default predefined range for the Statistics page",
     )
+    statistics_default_media_types = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Default media types selected in the Statistics page filter",
+    )
     statistics_compare_mode = models.CharField(
         max_length=20,
         default=StatisticsCompareChoices.PREVIOUS_PERIOD,
@@ -1465,6 +1471,11 @@ class User(AbstractUser):
         default=list,
         blank=True,
         help_text="Provider settings pinned by the user",
+    )
+    sidebar_pins = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Sidebar pins: {'nav': [link keys], 'lists': [{'id', 'name', 'url'}]}",
     )
     book_comic_manga_progress_percentage = models.BooleanField(
         default=False,

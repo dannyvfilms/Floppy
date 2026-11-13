@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from allauth.account.views import SignupView
 from allauth.core import ratelimit
+from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.views import SignupView as SocialSignupView
 from celery import states
 from django.apps import apps
@@ -17,18 +18,22 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import filesizeformat, pluralize
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.formats import date_format
 from django.utils.timesince import timesince
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -47,6 +52,7 @@ from app import (
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
+from app.log_safety import exception_summary
 from app.models import (
     Album,
     AlbumTracker,
@@ -62,7 +68,15 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from config import run_state
-from integrations import exports, mal_sync, plex, seerr_api, stremio_catalog, tasks
+from integrations import (
+    exports,
+    mal_sync,
+    pending_auth,
+    plex,
+    seerr_api,
+    stremio_catalog,
+    tasks,
+)
 from integrations.imports import plex as plex_import
 from integrations.imports import psn as psn_import
 from integrations.imports import trakt as trakt_imports
@@ -81,6 +95,9 @@ from integrations.models import (
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
 from users import cache_management, helpers, release_notes
+from users.advanced_props import about_props as build_about_props
+from users.advanced_props import advanced_props as build_advanced_props
+from users.advanced_props import server_port_props as build_server_port_props
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -145,10 +162,40 @@ class CustomSignupView(SignupView):
     def form_valid(self, form):
         """Catch a race-condition ValidationError instead of letting it 500."""
         try:
-            return super().form_valid(form)
+            response = super().form_valid(form)
         except ValidationError as exc:
             form.add_error("username", exc)
             return self.form_invalid(form)
+        if _wants_native_json(self.request):
+            if not getattr(self, "user", None):
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": "Could not create the account.",
+                        "errors": {},
+                    },
+                    status=400,
+                )
+            return JsonResponse(
+                {"ok": True, "user": {"username": self.user.username}}
+            )
+        return response
+
+    def form_invalid(self, form):
+        """Return field errors as JSON for the native client, HTML otherwise."""
+        if _wants_native_json(self.request):
+            errors = _form_error_payload(form)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": _first_error_message(
+                        errors, "Check the details and try again."
+                    ),
+                    "errors": errors,
+                },
+                status=400,
+            )
+        return super().form_invalid(form)
 
     def get_success_url(self):
         """Send a newly created account into guided setup instead of Home."""
@@ -307,8 +354,9 @@ def _refresh_cached_plex_sections(
         )
     except plex.PlexAuthError:
         return cached_sections, "Plex token expired or revoked. Please reconnect."
-    except Exception as exc:  # pragma: no cover - defensive
-        return cached_sections, f"Could not refresh Plex libraries: {exc}"
+    except Exception as exc:
+        logger.warning("Plex section refresh failed: %s", exception_summary(exc))
+        return cached_sections, "Could not refresh Plex libraries."
 
     return account.sections or [], None
 
@@ -344,6 +392,108 @@ def _build_qr_data_uri(provisioning_uri: str) -> str:
     return f"data:image/png;base64,{encoded_png}"
 
 
+def _wants_native_json(request):
+    """Return True for the authenticated native client's explicit JSON contract."""
+    return request.headers.get("X-Floppy-Client") == "native"
+
+
+def _form_error_payload(form):
+    """Serialize Django form errors without exposing submitted values."""
+    return {
+        ("non_field_errors" if field == "__all__" else field): [
+            str(message) for message in messages
+        ]
+        for field, messages in form.errors.items()
+    }
+
+
+def _first_error_message(errors, default):
+    for field_messages in errors.values():
+        if field_messages:
+            return str(field_messages[0])
+    return default
+
+
+def _social_providers(request):
+    """Return the configured social providers and their server-owned login URLs."""
+    try:
+        providers = get_socialaccount_adapter().list_providers(request)
+    except Exception:
+        logger.exception("Could not list social providers for the native client")
+        return []
+    result = []
+    for provider in providers:
+        try:
+            login_url = provider.get_login_url(request, process="login")
+        except Exception:
+            login_url = ""
+        result.append(
+            {
+                "id": provider.id,
+                "name": provider.name,
+                "loginUrl": login_url,
+            }
+        )
+    return result
+
+
+def _native_account_payload(
+    request, context, *, ok=True, message="", tone="info", errors=None
+):
+    """Build the account-security state the native client renders.
+
+    The payload never includes a submitted password. The TOTP secret and QR
+    are only present while setup is pending, because the account screen has to
+    show them exactly once; callers must keep them in memory.
+    """
+    user = request.user
+    return {
+        "ok": ok,
+        "message": message,
+        "tone": tone,
+        "errors": errors or {},
+        "user": {
+            "username": user.username,
+            "isDemo": user.is_demo,
+            "isLastSuperuser": context["is_last_superuser"],
+            "hasUsablePassword": user.has_usable_password(),
+            "isSuperuser": user.is_superuser,
+        },
+        "authenticator": {
+            "configured": user.has_authenticator_configured,
+            "setup": context["show_authenticator_setup"],
+            "secret": context["authenticator_secret"],
+            "provisioningUri": context["authenticator_uri"],
+            "qrDataUri": context["authenticator_qr_data_uri"],
+            "unusedRecoveryCodes": context["unused_recovery_code_count"],
+        },
+        "freshRecoveryCodes": context["fresh_recovery_codes"] or [],
+        "providers": _social_providers(request),
+        "connectionsUrl": request.build_absolute_uri(
+            reverse("socialaccount_connections")
+        ),
+        "deviceUrl": request.build_absolute_uri(reverse("oauth_device")),
+    }
+
+
+@login_not_required
+@require_GET
+def auth_config(request):
+    """Public auth capabilities and redirect intents for the native client."""
+    return JsonResponse(
+        {
+            "registrationEnabled": bool(settings.REGISTRATION),
+            "socialOnly": bool(settings.SOCIALACCOUNT_ONLY),
+            "firstRun": helpers.is_first_run(),
+            "providers": _social_providers(request),
+            "connectionsUrl": request.build_absolute_uri(
+                reverse("socialaccount_connections")
+            ),
+            "deviceUrl": request.build_absolute_uri(reverse("oauth_device")),
+        }
+    )
+
+
 def _last_active_superuser(user):
     """Return True when ``user`` is the only active superuser left."""
     return (
@@ -354,24 +504,40 @@ def _last_active_superuser(user):
     )
 
 
-def _delete_own_account(request):
+def _delete_own_account(request, native=False):
     """Permanently delete the signed-in user after re-checking their identity."""
     user = request.user
-    if user.is_demo:
-        messages.error(request, "This section is view-only for demo accounts.")
+
+    def refuse(message, *, status=400):
+        if native:
+            return JsonResponse(
+                {"ok": False, "message": message, "tone": "error", "errors": {}},
+                status=status,
+            )
+        messages.error(request, message)
         return redirect("account")
+
+    if user.is_demo:
+        return refuse("This section is view-only for demo accounts.")
     limited = ratelimit.consume_or_429(request, action="reauthenticate")
     if limited is not None:
+        if native:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": "Too many attempts. Wait a moment and try again.",
+                    "tone": "error",
+                    "errors": {},
+                },
+                status=limited.status_code,
+            )
         return limited
     if _last_active_superuser(user):
-        messages.error(
-            request,
-            "You are the only superuser. Promote another account before deleting this one.",
+        return refuse(
+            "You are the only superuser. Promote another account before deleting this one."
         )
-        return redirect("account")
     if request.POST.get("confirm_delete") != "on":
-        messages.error(request, "Tick the box to confirm.")
-        return redirect("account")
+        return refuse("Tick the box to confirm.")
 
     # Accounts without a usable password (third-party sign-in) confirm by
     # typing their username instead.
@@ -383,8 +549,7 @@ def _delete_own_account(request):
         error = "Type your username exactly to confirm."
     if not confirmed:
         logger.warning("Failed account deletion confirmation for user: %s", user.pk)
-        messages.error(request, error)
-        return redirect("account")
+        return refuse(error)
 
     user_id = user.pk
     username = user.username
@@ -395,19 +560,69 @@ def _delete_own_account(request):
         user.delete()
     logout(request)
     logger.info("Account deleted by its owner: %s (id %s)", username, user_id)
-    messages.success(request, "Your account and all its data have been deleted.")
+    message = "Your account and all its data have been deleted."
+    if native:
+        return JsonResponse(
+            {"ok": True, "deleted": True, "message": message, "tone": "success"}
+        )
+    messages.success(request, message)
     return redirect("account_login")
 
 
 @require_http_methods(["GET", "POST"])
 def account(request):
     """Update the user's account and account security settings."""
+    native = _wants_native_json(request)
     user_form = UserUpdateForm(instance=request.user)
     password_form = PasswordChangeForm(user=request.user)
     authenticator_form = AuthenticatorSetupForm(user=request.user)
     recovery_codes_form = RegenerateRecoveryCodesForm(user=request.user)
     fresh_recovery_codes = None
     show_authenticator_setup = not request.user.has_authenticator_configured
+
+    def account_context():
+        authenticator_secret = ""
+        authenticator_uri = ""
+        authenticator_qr_data_uri = ""
+        if show_authenticator_setup and getattr(request, "account_credentials_allowed", True):
+            authenticator_secret = request.user.get_or_create_authenticator_secret()
+            authenticator_uri = request.user.build_totp_uri()
+            authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
+        return {
+            "user_form": user_form,
+            "password_form": password_form,
+            "authenticator_form": authenticator_form,
+            "recovery_codes_form": recovery_codes_form,
+            "authenticator_secret": authenticator_secret,
+            "authenticator_uri": authenticator_uri,
+            "authenticator_qr_data_uri": authenticator_qr_data_uri,
+            "show_authenticator_setup": show_authenticator_setup,
+            "unused_recovery_code_count": request.user.recovery_codes.filter(
+                used_at__isnull=True
+            ).count(),
+            "fresh_recovery_codes": fresh_recovery_codes,
+            "is_last_superuser": _last_active_superuser(request.user),
+        }
+
+    def native_response(
+        *, ok=True, message="", tone="info", errors=None, status=200
+    ):
+        return JsonResponse(
+            _native_account_payload(
+                request,
+                account_context(),
+                ok=ok,
+                message=message,
+                tone=tone,
+                errors=errors,
+            ),
+            status=status,
+        )
+
+    def native_refusal(message, errors=None):
+        return native_response(
+            ok=False, message=message, tone="error", errors=errors, status=400
+        )
 
     if request.method == "POST":
         action = request.POST.get("action", "")
@@ -421,34 +636,48 @@ def account(request):
             # The demo password is public: an authenticator attached to it
             # would let one visitor reset the password for everyone else.
             if request.user.is_demo:
-                messages.error(request, "This section is view-only for demo accounts.")
+                message = "This section is view-only for demo accounts."
+                if native:
+                    return native_refusal(message)
+                messages.error(request, message)
                 return redirect("account")
             limited = ratelimit.consume_or_429(request, action="reauthenticate")
             if limited is not None:
+                if native:
+                    return native_refusal(
+                        "Too many attempts. Wait a moment and try again."
+                    )
                 return limited
             if action != "regenerate_recovery_codes":
                 confirmation = RegenerateRecoveryCodesForm(
                     request.POST, user=request.user
                 )
                 if not confirmation.is_valid():
-                    messages.error(
-                        request,
-                        "Enter your current password to change authenticator recovery.",
+                    message = (
+                        "Enter your current password to change authenticator recovery."
                     )
+                    if native:
+                        return native_refusal(
+                            message, _form_error_payload(confirmation)
+                        )
+                    messages.error(request, message)
                     return redirect("account")
 
         if action == "delete_account":
-            return _delete_own_account(request)
+            return _delete_own_account(request, native=native)
 
         if "username" in request.POST:
             user_form = UserUpdateForm(request.POST, instance=request.user)
 
             if user_form.is_valid():
                 user_form.save()
-                messages.success(request, "Your username has been updated!")
+                message = "Your username has been updated!"
                 logger.info(
                     "Successful username change for user: %s", request.user.username
                 )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
                 return redirect("account")
 
             logger.warning(
@@ -466,10 +695,13 @@ def account(request):
             if password_form.is_valid():
                 user = password_form.save()
                 update_session_auth_hash(request, user)
-                messages.success(request, "Your password has been updated!")
+                message = "Your password has been updated!"
                 logger.info(
                     "Successful password change for user: %s", request.user.username
                 )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
                 return redirect("account")
 
             logger.warning(
@@ -492,9 +724,17 @@ def account(request):
                 )
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 show_authenticator_setup = False
-                messages.success(
-                    request,
-                    "Authenticator app enabled. Save your recovery codes now—if you lose both, you cannot self-recover.",
+                message = (
+                    "Authenticator app enabled. Save your recovery codes now. "
+                    "If you lose both, you cannot self-recover."
+                )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
+            elif native:
+                return native_refusal(
+                    "Check the authenticator code and try again.",
+                    _form_error_payload(authenticator_form),
                 )
 
         elif action == "start_authenticator_setup":
@@ -509,10 +749,12 @@ def account(request):
                 ],
             )
             show_authenticator_setup = True
-            messages.info(
-                request,
-                "Scan and verify a code from your new authenticator app to finish setup.",
+            message = (
+                "Scan and verify a code from your new authenticator app to finish setup."
             )
+            if native:
+                return native_response(message=message, tone="info")
+            messages.info(request, message)
 
         elif action == "disable_authenticator":
             request.user.authenticator_enabled = False
@@ -526,7 +768,10 @@ def account(request):
                 ],
             )
             show_authenticator_setup = True
-            messages.warning(request, "Authenticator app deactivated.")
+            message = "Authenticator app deactivated."
+            if native:
+                return native_response(message=message, tone="warning")
+            messages.warning(request, message)
 
         elif action == "regenerate_recovery_codes":
             recovery_codes_form = RegenerateRecoveryCodesForm(
@@ -534,35 +779,39 @@ def account(request):
             )
             if recovery_codes_form.is_valid():
                 fresh_recovery_codes = request.user.generate_recovery_codes()
-                messages.success(
-                    request,
-                    "Recovery codes regenerated. Store them securely now.",
+                message = "Recovery codes regenerated. Store them securely now."
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
+            elif native:
+                return native_refusal(
+                    "Current password is incorrect.",
+                    _form_error_payload(recovery_codes_form),
                 )
 
-    authenticator_secret = ""
-    authenticator_uri = ""
-    authenticator_qr_data_uri = ""
-    if show_authenticator_setup:
-        authenticator_secret = request.user.get_or_create_authenticator_secret()
-        authenticator_uri = request.user.build_totp_uri()
-        authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
-
-    context = {
-        "user_form": user_form,
-        "password_form": password_form,
-        "authenticator_form": authenticator_form,
-        "recovery_codes_form": recovery_codes_form,
-        "authenticator_secret": authenticator_secret,
-        "authenticator_uri": authenticator_uri,
-        "authenticator_qr_data_uri": authenticator_qr_data_uri,
-        "show_authenticator_setup": show_authenticator_setup,
-        "unused_recovery_code_count": request.user.recovery_codes.filter(
-            used_at__isnull=True
-        ).count(),
-        "fresh_recovery_codes": fresh_recovery_codes,
-        "is_last_superuser": _last_active_superuser(request.user),
-    }
-
+    context = account_context()
+    if native:
+        errors = {}
+        for form in (
+            user_form,
+            password_form,
+            authenticator_form,
+            recovery_codes_form,
+        ):
+            if form.is_bound and form.errors:
+                errors.update(_form_error_payload(form))
+        message = (
+            _first_error_message(errors, "Check the details and try again.")
+            if errors
+            else ""
+        )
+        return native_response(
+            ok=not errors,
+            message=message,
+            tone="error" if errors else "info",
+            errors=errors,
+            status=400 if errors else 200,
+        )
     return render(request, "users/account.html", context)
 
 
@@ -570,6 +819,7 @@ def account(request):
 @require_http_methods(["GET", "POST"])
 def password_recover(request):
     """Recover password using recovery code and optional authenticator app code."""
+    native = _wants_native_json(request)
     form = PasswordRecoveryForm()
 
     if request.method == "POST":
@@ -581,6 +831,15 @@ def password_recover(request):
             key=request.POST.get("username", "").strip().casefold(),
         )
         if limited is not None:
+            if native:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": "Too many attempts. Wait a moment and try again.",
+                        "errors": {},
+                    },
+                    status=limited.status_code,
+                )
             return limited
         form = PasswordRecoveryForm(request.POST)
         if form.is_valid():
@@ -588,12 +847,26 @@ def password_recover(request):
             logger.info(
                 "Successful self-service password recovery for user: %s", user.username
             )
+            if native:
+                return JsonResponse({"ok": True})
             messages.success(
                 request, "Password updated. Sign in with your new password."
             )
             return redirect("account_login")
 
         logger.warning("Failed self-service password recovery attempt")
+        if native:
+            errors = _form_error_payload(form)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": _first_error_message(
+                        errors, "Unable to verify recovery details."
+                    ),
+                    "errors": errors,
+                },
+                status=400,
+            )
 
     return render(request, "users/password_recover.html", {"form": form})
 
@@ -851,7 +1124,7 @@ def sidebar(request):
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             # Mixed Home rows depend on which media types are enabled.
-            cache_utils.clear_home_row_cache_for_user(request.user.id)
+            cache_utils.clear_library_view_caches(request.user.id, cache_utils.HOME_SETTING)
             messages.success(request, "Settings updated successfully.")
         else:
             messages.info(request, "No changes to save.")
@@ -1048,6 +1321,7 @@ def toggle_home_screen_row_direction(request, row_id: int):
             "user": request.user,
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
+            "rails_mount": True,
         },
     )
 
@@ -2115,7 +2389,7 @@ def import_data_context(request):
 
     # Get Storyteller account and any in-progress device login
     storyteller_account = getattr(user, "storyteller_account", None)
-    storyteller_pending = request.session.get("storyteller_pending_auth")
+    storyteller_pending = pending_auth.get("storyteller_pending_auth", request.user.pk)
     koreader_account = getattr(user, "koreader_account", None)
     koreader_link_count = 0
     if koreader_account:
@@ -2407,11 +2681,12 @@ def import_data_plex_status(request):
                 "error": "Plex token expired or revoked. Please reconnect.",
             },
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
+        logger.warning("Plex account check failed: %s", exception_summary(exc))
         return JsonResponse(
             {
                 "state": "error",
-                "error": str(exc),
+                "error": "Could not verify the Plex account.",
             },
         )
 
@@ -2722,6 +2997,348 @@ def mal_export(request):
     return render(request, "users/mal_export.html", mal_export_context(request))
 
 
+def _managed_user_payload(member, current_user):
+    """Serialize one account for the React user-management page."""
+    last_login = member.last_login
+    return {
+        "id": member.pk,
+        "username": member.username,
+        "email": member.email or "",
+        "dateJoined": date_format(
+            timezone.localtime(member.date_joined), "DATETIME_FORMAT"
+        ),
+        "lastLogin": (
+            date_format(timezone.localtime(last_login), "DATETIME_FORMAT")
+            if last_login
+            else ""
+        ),
+        "isActive": member.is_active,
+        "isSuperuser": member.is_superuser,
+        "isDemo": member.is_demo,
+        "isSelf": member.pk == current_user.pk,
+        "canDelete": member.pk != current_user.pk
+        and not _last_active_superuser(member),
+    }
+
+
+def _managed_users_labels():
+    """Return translated copy rendered by the shared component."""
+    return {
+        "accounts": gettext("Accounts"),
+        "overviewTitle": gettext("User accounts"),
+        "overviewCopy": gettext(
+            "Manage the accounts on this Floppy instance. Only superusers can see "
+            "this page."
+        ),
+        "search": gettext("Search users"),
+        "statusFilter": gettext("Status"),
+        "statusAll": gettext("All statuses"),
+        "statusActive": gettext("Active"),
+        "statusInactive": gettext("Inactive"),
+        "roleFilter": gettext("Role"),
+        "roleAll": gettext("All roles"),
+        "roleSuperuser": gettext("Superuser"),
+        "roleUser": gettext("User"),
+        "createTitle": gettext("Add a user"),
+        "createCopy": gettext(
+            "Create an account for someone else on this instance. Leave the "
+            "password blank to create the account without one."
+        ),
+        "username": gettext("Username"),
+        "email": gettext("Email"),
+        "password": gettext("Password"),
+        "passwordHelp": gettext(
+            "Optional. The person can set their own password later."
+        ),
+        "createAction": gettext("Create user"),
+        "createdStatus": gettext("User created."),
+        "empty": gettext("No users match these filters."),
+        "noUsers": gettext("No users have been created yet."),
+        "never": gettext("Never"),
+        "joined": gettext("Joined"),
+        "lastLogin": gettext("Last login"),
+        "active": gettext("Active"),
+        "inactive": gettext("Inactive"),
+        "superuser": gettext("Superuser"),
+        "thisIsYou": gettext("This is you"),
+        "activate": gettext("Activate"),
+        "deactivate": gettext("Deactivate"),
+        "makeSuperuser": gettext("Make superuser"),
+        "removeSuperuser": gettext("Remove superuser"),
+        "resetPassword": gettext("Set password"),
+        "deleteUser": gettext("Delete"),
+        "deleteTitle": gettext("Delete user?"),
+        "deleteCopy": gettext(
+            "This permanently deletes {username} and all of their tracked media, "
+            "history, ratings, lists and settings. This cannot be undone."
+        ),
+        "cancel": gettext("Cancel"),
+        "confirmDelete": gettext("Delete user"),
+        "deleteStatus": gettext("User deleted."),
+        "passwordTitle": gettext("Set a new password"),
+        "passwordCopy": gettext(
+            "Set a new password for {username}. Share it with them securely; they "
+            "should change it after signing in."
+        ),
+        "newPassword": gettext("New password"),
+        "savePassword": gettext("Save password"),
+        "passwordStatus": gettext("Password updated."),
+        "error": gettext("Something went wrong. Try again."),
+        "close": gettext("Close"),
+    }
+
+
+def _managed_users_query():
+    """Return real accounts for the superuser user-management page.
+
+    Test, QA and automation accounts carry ``is_test_account`` and stay out of
+    normal pickers; the management page follows the same exclusion.
+    """
+    return User.objects.filter(is_test_account=False).order_by(
+        "-is_superuser", "username"
+    )
+
+
+def _managed_users_props(request):
+    """Presentation props with no credentials or transport details."""
+    members = _managed_users_query()
+    return {
+        "users": [_managed_user_payload(member, request.user) for member in members],
+        "currentUserId": request.user.pk,
+        "csrfToken": get_token(request),
+        "labels": _managed_users_labels(),
+        "urls": {
+            "create": reverse("create_managed_user"),
+            "update": reverse("update_managed_user", args=[0]).replace("/0/", "/{id}/"),
+            "delete": reverse("delete_managed_user", args=[0]).replace("/0/", "/{id}/"),
+            "password": reverse("set_managed_user_password", args=[0]).replace(
+                "/0/", "/{id}/"
+            ),
+        },
+    }
+
+
+@require_GET
+def manage_users(request):
+    """Render the superuser-only user management settings page."""
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
+    return render(
+        request,
+        "users/manage_users.html",
+        {
+            "users_management": _managed_users_props(request),
+            "managed_users": _managed_users_query(),
+        },
+    )
+
+
+def _managed_users_json_error(message, status=400):
+    """Return a JSON error the React page can display without a redirect."""
+    return JsonResponse({"error": message}, status=status)
+
+
+def _managed_users_json_body(request):
+    """Decode a JSON request body, or return None when it is malformed."""
+    try:
+        return json.loads(request.body or "{}")
+    except (TypeError, ValueError):
+        return None
+
+
+def _managed_users_json_guard(request):
+    """Require a superuser for every account-management write."""
+    if not request.user.is_superuser:
+        return _managed_users_json_error(
+            gettext("Only superusers can manage users."), status=403
+        )
+    return None
+
+
+@require_POST
+def create_managed_user(request):
+    """Create an account on behalf of a superuser."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    username = str(payload.get("username") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    password = str(payload.get("password") or "")
+
+    if not username:
+        return _managed_users_json_error(gettext("Enter a username."))
+    if len(username) > User._meta.get_field("username").max_length:
+        return _managed_users_json_error(gettext("That username is too long."))
+    try:
+        UnicodeUsernameValidator()(username)
+    except ValidationError:
+        return _managed_users_json_error(
+            gettext(
+                "Usernames can only contain letters, numbers and @/./+/-/_ "
+                "characters."
+            )
+        )
+    if User.objects.filter(username__iexact=username).exists():
+        return _managed_users_json_error(
+            gettext("An account with that username already exists.")
+        )
+    if email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            return _managed_users_json_error(gettext("Enter a valid email address."))
+    if password:
+        try:
+            validate_password(password)
+        except ValidationError as error:
+            return _managed_users_json_error(" ".join(error.messages))
+
+    member = User.objects.create_user(
+        username=username, email=email, password=password or None
+    )
+    logger.info(
+        "User account created by superuser %s: %s (id %s)",
+        request.user.pk,
+        member.username,
+        member.pk,
+    )
+    return JsonResponse({"user": _managed_user_payload(member, request.user)})
+
+
+@require_POST
+def update_managed_user(request, user_id):
+    """Change active or superuser status for one account."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    field_map = {
+        "isActive": "is_active",
+        "isSuperuser": "is_superuser",
+    }
+    updates = {
+        field_map[key]: bool(payload[key])
+        for key in field_map
+        if key in payload
+    }
+    if not updates:
+        return _managed_users_json_error(gettext("Nothing to update."))
+
+    if member.pk == request.user.pk:
+        if updates.get("is_active") is False:
+            return _managed_users_json_error(
+                gettext("You cannot deactivate your own account.")
+            )
+        if updates.get("is_superuser") is False:
+            return _managed_users_json_error(
+                gettext("You cannot remove your own superuser access.")
+            )
+    if (
+        member.is_superuser
+        and member.is_active
+        and (
+            updates.get("is_superuser") is False
+            or updates.get("is_active") is False
+        )
+        and _last_active_superuser(member)
+    ):
+        return _managed_users_json_error(
+            gettext("Promote another account before changing the last superuser.")
+        )
+
+    if "is_superuser" in updates:
+        updates["is_staff"] = updates["is_superuser"]
+
+    for field, value in updates.items():
+        setattr(member, field, value)
+    member.save(update_fields=list(updates))
+    logger.info(
+        "User account updated by superuser %s: %s (id %s) fields %s",
+        request.user.pk,
+        member.username,
+        member.pk,
+        sorted(updates),
+    )
+    return JsonResponse({"user": _managed_user_payload(member, request.user)})
+
+
+@require_POST
+def set_managed_user_password(request, user_id):
+    """Replace another account's password without ever disclosing the old one."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    password = str(payload.get("password") or "")
+    if not password:
+        return _managed_users_json_error(gettext("Enter a new password."))
+    try:
+        validate_password(password, user=member)
+    except ValidationError as error:
+        return _managed_users_json_error(" ".join(error.messages))
+
+    member.set_password(password)
+    member.save(update_fields=["password"])
+    logger.info(
+        "Password reset by superuser %s for account %s (id %s)",
+        request.user.pk,
+        member.username,
+        member.pk,
+    )
+    return JsonResponse({"message": gettext("Password updated.")})
+
+
+@require_POST
+def delete_managed_user(request, user_id):
+    """Permanently delete another account and its scheduled work."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    if member.pk == request.user.pk:
+        return _managed_users_json_error(
+            gettext("You cannot delete your own account.")
+        )
+    if _last_active_superuser(member):
+        return _managed_users_json_error(
+            gettext("Promote another account before deleting the last superuser.")
+        )
+
+    member_id = member.pk
+    username = member.username
+    with transaction.atomic(), signals.deleting_account():
+        PeriodicTask.objects.filter(**periodic_task_user_kwargs(member_id)).delete()
+        member.delete()
+    logger.info(
+        "User account deleted by superuser %s: %s (id %s)",
+        request.user.pk,
+        username,
+        member_id,
+    )
+    return JsonResponse({"deleted": member_id})
+
+
+def _wants_json(request):
+    """Return whether the browser adapter asked for an in-place result."""
+    accept = request.headers.get("Accept", "")
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in accept
+    )
+
+
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
@@ -2732,7 +3349,8 @@ def advanced(request):
         "**Describe the issue:**\n\n\n"
         "**Steps to reproduce:**\n\n\n"
         "**Logs:** attach the file downloaded from Settings > Advanced > "
-        "Download Sanitized Logs"
+        "Download Sanitized Logs (administrators) or Download Diagnostic "
+        "Report (everyone else)"
     )
     context = {
         "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
@@ -2747,6 +3365,8 @@ def advanced(request):
             (run_state.read_state() or {}).get("last_unclean_at") or "",
         ),
     }
+    context["advanced_props"] = build_advanced_props(request, context)
+    context["server_port_props"] = build_server_port_props(request)
     return render(request, "users/advanced.html", context)
 
 
@@ -2757,10 +3377,10 @@ def update_image_cache(request):
         return HttpResponse(status=403)
     enabled = request.POST.get("image_caching_enabled") == "1"
     image_cache.set_enabled(enabled)
-    messages.success(
-        request,
-        f"External image caching {'enabled' if enabled else 'disabled'}.",
-    )
+    message = f"External image caching {'enabled' if enabled else 'disabled'}."
+    messages.success(request, message)
+    if _wants_json(request):
+        return JsonResponse({"message": message, "imageEnabled": enabled})
     return redirect("advanced")
 
 
@@ -2770,12 +3390,19 @@ def clear_image_cache(request):
     if not request.user.is_superuser:
         return HttpResponse(status=403)
     summary = image_cache.clear_cache()
-    messages.success(
-        request,
+    message = (
         f"Cleared {summary['removed_count']} cached image"
         f"{' ' if summary['removed_count'] == 1 else 's '}"
-        f"({summary['removed_bytes']} bytes).",
+        f"({summary['removed_bytes']} bytes)."
     )
+    messages.success(request, message)
+    if _wants_json(request):
+        stats = image_cache.cache_stats()
+        return JsonResponse({
+            "message": message,
+            "imageCount": stats["count"],
+            "imageSize": image_cache.format_bytes(stats["bytes"]),
+        })
     return redirect("advanced")
 
 
@@ -2838,6 +3465,27 @@ def export_logs(request):
 
 
 @require_GET
+def export_diagnostics(request):
+    """Return a sanitized diagnostic report any signed-in user may download.
+
+    The full log stays superuser-only; see ``users.diagnostics``.
+    """
+    from users import diagnostics
+
+    log_files = _log_files(Path(settings.LOG_FILE).name)
+    report = diagnostics.build_report(
+        logs_since=_first_log_time(log_files[0]) if log_files else "",
+        last_unclean_exit=parse_datetime(
+            (run_state.read_state() or {}).get("last_unclean_at") or "",
+        ),
+    )
+    filename = f"floppy-diagnostics-{timezone.localtime():%Y%m%d-%H%M%S}.txt"
+    response = HttpResponse(report, content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@require_GET
 def whats_new(request):
     """Render the release notes fragment the About page loads in the background."""
     installed = release_notes.release_tag(settings.VERSION)
@@ -2847,6 +3495,8 @@ def whats_new(request):
         release["newer"] = release_notes.tag_sort_key(
             release["tag"],
         ) > release_notes.tag_sort_key(installed)
+    if request.GET.get("format") == "json":
+        return JsonResponse({"releases": releases or []})
     return render(
         request,
         "users/components/whats_new.html",
@@ -2868,6 +3518,7 @@ def about(request):
             "user": request.user,
             "version": settings.VERSION,
             "commit": settings.COMMIT_SHA_SHORT,
+            "about_props": build_about_props(request),
         },
     )
 
@@ -4219,15 +4870,16 @@ def clear_search_cache(request):
     """Clear all cached search entries."""
     deleted = cache_management.clear_search_cache()
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} search entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} search entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s search entries",
         deleted,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4236,16 +4888,18 @@ def clear_history_cache(request):
     """Clear the requesting user's cached History day/index payloads."""
     deleted = cache_management.clear_history_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} history cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} history cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s history cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4254,16 +4908,18 @@ def clear_statistics_cache(request):
     """Clear the requesting user's cached Statistics page/day payloads."""
     deleted = cache_management.clear_statistics_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} statistics cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} statistics cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s statistics cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4272,16 +4928,18 @@ def clear_discover_cache(request):
     """Clear the requesting user's cached Discover rows/taste profile."""
     deleted = cache_management.clear_discover_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} discover cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} discover cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s discover cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4293,17 +4951,18 @@ def clear_all_caches(request):
     deleted += cache_management.clear_statistics_cache_for_user(request.user.id)
     deleted += cache_management.clear_discover_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
+    message = (
         f"Successfully cleared {deleted} cache entr{pluralize(deleted, 'y,ies')} "
-        "across search, history, statistics, and discover",
+        "across search, history, statistics, and discover"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s total cache entries (all caches) for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4429,14 +5088,13 @@ def saved_view_delete(request, view_id: int):
     if not request.user.is_demo:
         saved_view.delete()
 
-    next_url = request.POST.get("next", "")
-    if not url_has_allowed_host_and_scheme(
-        next_url,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        next_url = saved_view.get_absolute_url().split("?")[0]
-    return redirect(next_url)
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next", ""),
+            saved_view.get_absolute_url().split("?")[0],
+        ),
+    )
 
 
 @login_required

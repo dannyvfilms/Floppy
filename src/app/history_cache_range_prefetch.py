@@ -29,6 +29,7 @@ from app.models import (
     Anime,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     Episode,
     Game,
@@ -38,6 +39,7 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     Track,
     VideoPlay,
 )
@@ -118,6 +120,8 @@ class HistoryRangePrefetch:
         self.videos_by_day = {}
         self.games_by_day = {}
         self.boardgames_by_day = {}
+        self.listening_by_day = {}
+        self.book_pages_by_day = {}
 
         if self._wants(MediaTypes.EPISODE.value):
             self._load_episodes(on_window)
@@ -134,6 +138,8 @@ class HistoryRangePrefetch:
                 self.reading_by_day[media_type] = self._bucket(
                     rows, lambda r: r.end_date or r.start_date,
                 )
+        if self._wants(MediaTypes.BOOK.value):
+            self._load_book_activity()
         if self._wants(MediaTypes.ANIME.value):
             self._load_anime(on_window)
         if self._wants(MediaTypes.MUSIC.value):
@@ -150,6 +156,51 @@ class HistoryRangePrefetch:
             )
             self.videos_by_day = self._bucket(rows, lambda r: r.end_date)
         self._load_games()
+
+    def _load_book_activity(self):
+        """Load listening sessions and page-change days for every book, once."""
+        user, win_start, win_end = self.user, self.win_start, self.win_end
+        sessions = (
+            BookListeningSession.objects.filter(
+                book__user=user, started_at__gte=win_start, started_at__lt=win_end,
+            )
+            .select_related("book__item")
+            .defer(*history_deferred_item_fields("book__item"))
+        )
+        self.listening_by_day = self._bucket(sessions, lambda s: s.started_at)
+
+        HistoricalBook = apps.get_model("app", "HistoricalBook")
+        changes = HistoricalBook.objects.filter(
+            id__in=Book.objects.filter(user=user).values("id"),
+            history_type="~",
+            history_date__gte=win_start,
+            history_date__lt=win_end,
+        ).values_list("id", "history_date")
+        ids_by_day = defaultdict(set)
+        for book_id, changed_at in changes:
+            day = _local_day(changed_at)
+            if day in self.days:
+                ids_by_day[day].add(book_id)
+        every_id = set().union(*ids_by_day.values())
+        if not every_id:
+            return
+        books = {
+            book.id: book
+            for book in Book.objects.filter(user=user, id__in=every_id)
+            .select_related("item")
+            .defer(*history_deferred_item_fields("item"))
+        }
+        rows = list(
+            HistoricalBook.objects.filter(id__in=books, history_type__in=("+", "~"))
+            .order_by("id", "history_date", "history_id")
+            .values_list("id", "progress", "history_date"),
+        )
+        for day, ids in ids_by_day.items():
+            kept = sorted(book_id for book_id in ids if book_id in books)
+            self.book_pages_by_day[day] = (
+                [books[book_id] for book_id in kept],
+                [row for row in rows if row[0] in kept],
+            )
 
     def _load_episodes(self, on_window):
         rows = list(
@@ -279,19 +330,40 @@ class HistoryRangePrefetch:
         album_ids = {r["album_id"] for r in records if r["album_id"]}
         track_ids = {r["track_id"] for r in records if r["track_id"]}
         music_ids = {r["id"] for r in records if r["id"]}
-        self.album_map = {
-            a.id: a
-            for a in Album.objects.filter(id__in=album_ids).select_related("artist")
-        } if album_ids else {}
-        self.track_map = {
-            t.id: t for t in Track.objects.filter(id__in=track_ids)
-        } if track_ids else {}
+
         self.music_map = {
-            m.id: m
-            for m in Music.objects.filter(id__in=music_ids, user=self.user)
-            .select_related("item", "album", "track")
+            music.id: music
+            for music in Music.objects.filter(
+                id__in=music_ids, user=self.user
+            )
+            .select_related("item", "album", "album__artist", "track")
             .defer(*history_deferred_item_fields("item"))
         } if music_ids else {}
+
+        # Prefer current Music relationships over stale snapshots.
+        album_ids.update(
+            music.album_id
+            for music in self.music_map.values()
+            if music.album_id
+        )
+        track_ids.update(
+            music.track_id
+            for music in self.music_map.values()
+            if music.track_id
+        )
+
+        self.album_map = {
+            album.id: album
+            for album in Album.objects.filter(
+                id__in=album_ids
+            ).select_related("artist")
+        } if album_ids else {}
+
+        self.track_map = {
+            track.id: track
+            for track in Track.objects.filter(id__in=track_ids)
+        } if track_ids else {}
+
         self.track_durations = {}
         self.album_scores = {}
         if album_ids:
@@ -312,15 +384,15 @@ class HistoryRangePrefetch:
                     self.album_scores[tracker["album_id"]] = tracker["score"]
 
     def _load_podcasts(self):
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-        owned = models.Q(history_user=self.user) | models.Q(history_user__isnull=True)
         records = list(
-            HistoricalPodcast.objects.filter(
-                owned, end_date__gte=self.win_start, end_date__lt=self.win_end,
-            ).values_list("id", "start_date", "end_date", "history_id", named=True),
+            PodcastPlay.objects.filter(
+                podcast__user=self.user,
+                end_date__gte=self.win_start,
+                end_date__lt=self.win_end,
+            ).values_list("podcast_id", "start_date", "end_date", "id", named=True),
         )
         self.podcasts_by_day = self._bucket(records, lambda r: r.end_date)
-        ids = list({r.id for r in records})
+        ids = list({r.podcast_id for r in records})
         self.podcast_lookup = {}
         self.podcast_counts = {}
         if ids:
@@ -331,12 +403,11 @@ class HistoryRangePrefetch:
                 .defer(*history_deferred_item_fields("item"))
             }
             self.podcast_counts = {
-                row["id"]: row["play_count"]
-                for row in HistoricalPodcast.objects.filter(
-                    id__in=ids, end_date__isnull=False,
+                row["podcast_id"]: row["play_count"]
+                for row in PodcastPlay.objects.filter(
+                    podcast_id__in=ids, end_date__isnull=False,
                 )
-                .filter(owned)
-                .values("id")
+                .values("podcast_id")
                 .annotate(play_count=models.Count("id"))
             }
 
@@ -394,6 +465,14 @@ class HistoryRangePrefetch:
     def reading(self, media_type, day):
         """Rows for ``day``."""
         return self.reading_by_day.get(media_type, {}).get(day, [])
+
+    def listening_sessions(self, day):
+        """Audiobook listening sessions that started on ``day``."""
+        return self.listening_by_day.get(day, [])
+
+    def book_pages(self, day):
+        """``(books, change rows)`` for page-based books whose progress rose on ``day``."""
+        return self.book_pages_by_day.get(day, ([], []))
 
     def anime(self, day):
         """Rows for ``day``."""

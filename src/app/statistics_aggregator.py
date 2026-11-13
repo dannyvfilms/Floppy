@@ -5,6 +5,7 @@ import heapq
 import itertools
 import logging
 import random as _random
+import time
 from collections import Counter, defaultdict
 from datetime import date as date_type
 from datetime import datetime, timedelta
@@ -487,6 +488,16 @@ def _has_dateless_movie_or_episode_activity(user) -> bool:
     ).exists()
 
 
+def _listening_payload(minutes):
+    """Audiobook listening time for a range, kept apart from page counts."""
+    if not minutes:
+        return None
+    return {
+        "minutes": minutes,
+        "formatted": helpers.minutes_to_hhmm(minutes),
+    }
+
+
 def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finished"):
     return {
         "units": {"total": 0, "per_year": 0, "per_month": 0, "per_day": 0},
@@ -504,6 +515,7 @@ def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finishe
         "completed_length_chart": {"labels": [], "datasets": []},
         "release_chart": {"labels": [], "datasets": []},
         "completed_lengths": [],
+        "listening": None,
         "has_data": False,
         "unit_name": unit_name,
         "unit_label": f"{unit_name}s Read",
@@ -629,6 +641,34 @@ def _build_combined_hours_charts(day_minutes_by_type, hour_minutes):
     return combined_hours_charts
 
 
+class _PhaseClock:
+    """Wall and CPU time per phase of one range aggregate.
+
+    Costs two clock reads per phase. ``timings`` is the caller's dict; with
+    none the clock records nothing.
+    """
+
+    __slots__ = ("_cpu", "_wall", "timings")
+
+    def __init__(self, timings):
+        self.timings = timings
+        self._wall = time.monotonic()
+        self._cpu = time.process_time()
+
+    def mark(self, phase):
+        if self.timings is None:
+            return
+        wall = time.monotonic()
+        cpu = time.process_time()
+        timings = self.timings
+        wall_key = f"{phase}_ms"
+        cpu_key = f"{phase}_cpu_ms"
+        timings[wall_key] = timings.get(wall_key, 0.0) + (wall - self._wall) * 1000
+        timings[cpu_key] = timings.get(cpu_key, 0.0) + (cpu - self._cpu) * 1000
+        self._wall = wall
+        self._cpu = cpu
+
+
 def _aggregate_statistics_from_days(
     user,
     day_list,
@@ -637,7 +677,20 @@ def _aggregate_statistics_from_days(
     build_missing=False,
     credit_backfill_hints: int = 0,
     prebuilt_days=None,
+    timings: dict | None = None,
+    pass_memo: dict | None = None,
+    build_days=None,
 ):
+    """Build one range's statistics from its cached day payloads.
+
+    ``pass_memo`` is an in-memory dict the caller keeps for one sync pass so
+    its ranges share lookups that do not depend on the range (History index
+    and days). It is never cached or published. ``build_days(days)`` builds
+    and caches a batch of missing days and returns their credit hints; with it
+    a missing day is found by the read that would have fetched it anyway.
+    """
+    clock = _PhaseClock(timings)
+    history_memo = {} if pass_memo is None else pass_memo
     is_all_time_query = start_date is None and end_date is None
     items_by_type = defaultdict(dict)
     top_played_by_type = defaultdict(dict)
@@ -648,6 +701,7 @@ def _aggregate_statistics_from_days(
     weekday_hour_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     day_play_counts = defaultdict(dict)
     day_minutes_by_type = defaultdict(dict)
+    listening_minutes_total = 0
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
@@ -756,6 +810,18 @@ def _aggregate_statistics_from_days(
         key_map = {day: _day_cache_key(user.id, day) for day in chunk}
         fetch_keys = [key_map[day] for day in chunk if day not in prebuilt_days]
         cached = cache.get_many(fetch_keys) if fetch_keys else {}
+        if build_days is not None:
+            absent = [
+                day
+                for day in chunk
+                if day not in prebuilt_days and key_map[day] not in cached
+            ]
+            if absent:
+                credit_backfill_hints += int(build_days(absent) or 0)
+                cached.update(cache.get_many([key_map[day] for day in absent]))
+        clock.mark("day_fetch")
+        if timings is not None:
+            timings["days_decoded"] = timings.get("days_decoded", 0) + len(cached)
         for day in chunk:
             cache_key = key_map[day]
             day_stats = prebuilt_days.get(day) or cached.pop(cache_key, None)
@@ -846,6 +912,9 @@ def _aggregate_statistics_from_days(
                 day_stats.get("totals", {}).get("minutes_by_type", {}).items()
             ):
                 minutes_by_type[media_type] += minutes or 0
+            listening_minutes_total += (
+                day_stats.get("totals", {}).get("listening_minutes") or 0
+            )
             for media_type, plays in (
                 day_stats.get("totals", {}).get("plays_by_type", {}).items()
             ):
@@ -1035,6 +1104,7 @@ def _aggregate_statistics_from_days(
             activity_counts[day] = activity_total
             if by_type:
                 activity_counts_by_type[day] = by_type
+        clock.mark("day_merge")
 
     active_types = list(getattr(user, "get_active_media_types", list)())
     if not active_types:
@@ -1116,6 +1186,7 @@ def _aggregate_statistics_from_days(
 
             items_by_type[media_type][row["item_id"]] = existing
 
+    clock.mark("undated")
     media_count = {"total": 0}
     for media_type in active_types:
         if media_type == MediaTypes.SEASON.value:
@@ -1252,23 +1323,34 @@ def _aggregate_statistics_from_days(
         )
 
     media_map = _fetch_media_objects(set(media_refs))
+    # The overall list and the per-type lists mostly name the same rows.
+    # Annotate each row once (the annotation re-reads the row and looks up
+    # its progress total) and let both lists share the result.
+    annotated_refs = [ref for ref in dict.fromkeys(media_refs) if media_map.get(ref)]
+    annotated_map = dict(
+        zip(
+            annotated_refs,
+            stats._annotate_top_rated_media([media_map[ref] for ref in annotated_refs]),
+            strict=True,
+        )
+    )
     top_rated_media = [
-        media_map.get((meta.get("media_type"), meta.get("media_id")))
-        for meta in top_rated_meta
+        annotated_map[ref]
+        for ref in (
+            (meta.get("media_type"), meta.get("media_id")) for meta in top_rated_meta
+        )
+        if ref in annotated_map
     ]
-    top_rated_media = [media for media in top_rated_media if media]
-    top_rated_media = stats._annotate_top_rated_media(top_rated_media)
 
     top_rated_by_type_media = {}
     for media_type, metas in top_rated_by_type.items():
-        media_list = [
-            media_map.get((meta.get("media_type"), meta.get("media_id")))
-            for meta in metas
+        top_rated_by_type_media[media_type] = [
+            annotated_map[ref]
+            for ref in (
+                (meta.get("media_type"), meta.get("media_id")) for meta in metas
+            )
+            if ref in annotated_map
         ]
-        media_list = [media for media in media_list if media]
-        top_rated_by_type_media[media_type] = stats._annotate_top_rated_media(
-            media_list
-        )
 
     top_rated_score_map = {}
     for meta in top_rated_meta:
@@ -1312,6 +1394,7 @@ def _aggregate_statistics_from_days(
         "scale_max": score_scale_max,
     }
 
+    clock.mark("top_rated")
     top_played = {}
     target_media_types = ["movie", "tv", "game", "boardgame", "anime", "music"]
     media_refs = []
@@ -1357,6 +1440,7 @@ def _aggregate_statistics_from_days(
             )
         top_played[media_type] = enriched
 
+    clock.mark("top_played")
     hours_per_media_type = {}
     for media_type, total_minutes in minutes_by_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
@@ -1620,6 +1704,7 @@ def _aggregate_statistics_from_days(
         "has_data": plays_by_type.get(MediaTypes.VIDEO.value, 0) > 0,
     }
 
+    clock.mark("charts")
     game_hours_by_year = defaultdict(float)
     game_hours_by_month = defaultdict(float)
     game_day_minutes = day_minutes_by_type.get(MediaTypes.GAME.value, {})
@@ -1828,6 +1913,8 @@ def _aggregate_statistics_from_days(
         or bool(top_played_by_type.get(MediaTypes.BOARDGAME.value)),
     }
 
+    clock.mark("games")
+
     def _build_cached_reading_consumption(media_type):
         unit_name = config.get_unit(media_type, short=False) or "Unit"
         chart_label = f"{unit_name}s Read"
@@ -1860,12 +1947,31 @@ def _aggregate_statistics_from_days(
         range_filter = stats._reading_entry_range_filter(start_date, end_date)
         if range_filter is not None:
             completed_queryset = completed_queryset.filter(range_filter)
-        completed_queryset = completed_queryset.select_related("item")
-        for entry in completed_queryset.iterator(chunk_size=500):
+        # Only these columns are read. Loading the tracker and its item as
+        # models built two instances, wide item columns included, per row.
+        completed_rows = completed_queryset.values_list(
+            "item_id",
+            "progress",
+            "start_date",
+            "end_date",
+            "created_at",
+            "item__format",
+            "item__number_of_pages",
+            named=True,
+        )
+        for entry in completed_rows.iterator(chunk_size=500):
             if not stats._reading_entry_in_range(entry, start_date, end_date):
                 continue
+            # An audiobook's progress is minutes, so its length is not a page
+            # count and stays out of the page-length distribution.
+            is_audiobook = (
+                media_type == MediaTypes.BOOK.value
+                and entry.item__format == "audiobook"
+            )
             completed_length = (
-                entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
+                0
+                if is_audiobook
+                else entry.progress or entry.item__number_of_pages or 0
             )
             if completed_length > 0:
                 completed_lengths.append(completed_length)
@@ -1884,8 +1990,15 @@ def _aggregate_statistics_from_days(
             if meta.get("item_id")
         ]
         top_entries = list(top_played_by_type.get(media_type, {}).values())
+        listening_minutes = (
+            listening_minutes_total if media_type == MediaTypes.BOOK.value else 0
+        )
         has_any_reading_data = bool(
-            unit_total or completion_total or item_ids or top_entries
+            unit_total
+            or completion_total
+            or item_ids
+            or top_entries
+            or listening_minutes
         )
         if not has_any_reading_data:
             return _empty_reading_consumption(
@@ -2023,7 +2136,8 @@ def _aggregate_statistics_from_days(
             "completed_length_chart": completed_length_chart,
             "release_chart": release_chart,
             "completed_lengths": completed_lengths,
-            "has_data": unit_total > 0 or completion_total > 0,
+            "listening": _listening_payload(listening_minutes),
+            "has_data": unit_total > 0 or completion_total > 0 or listening_minutes > 0,
             "unit_name": unit_name,
             "unit_label": chart_label,
             "completion_label": completion_label,
@@ -2051,6 +2165,7 @@ def _aggregate_statistics_from_days(
             minutes_by_type.get(media_type)
             or items_by_type.get(media_type)
             or top_played_by_type.get(media_type)
+            or (media_type == MediaTypes.BOOK.value and listening_minutes_total)
         )
     }
     book_consumption = (
@@ -2069,22 +2184,30 @@ def _aggregate_statistics_from_days(
         else _empty_reading_consumption("Page", "Manga Finished")
     )
 
+    clock.mark("reading")
     first_play = None
     last_play = None
     first_highlight_day, last_highlight_day = _get_range_history_boundary_days(
         user,
         start_date,
         end_date,
+        history_memo,
     )
     if first_highlight_day and last_highlight_day:
-        first_day_payload = _get_history_day_payload(user, first_highlight_day)
-        last_day_payload = _get_history_day_payload(user, last_highlight_day)
+        first_day_payload = _get_history_day_payload(
+            user, first_highlight_day, history_memo
+        )
+        last_day_payload = _get_history_day_payload(
+            user, last_highlight_day, history_memo
+        )
         first_play = _select_history_entry_for_day(
             first_day_payload, pick_earliest=True
         )
         last_play = _select_history_entry_for_day(last_day_payload, pick_latest=True)
 
-    today_in_user_history, today_in_user_history_year = _get_today_history_entries(user)
+    today_in_user_history, today_in_user_history_year = _get_today_history_entries(
+        user, memo=history_memo
+    )
     today_in_history, today_in_history_year = _get_today_release_entry(user)
     today = timezone.localdate()
     history_highlights = {
@@ -2108,10 +2231,10 @@ def _aggregate_statistics_from_days(
             continue
         _first_day = date_type.fromisoformat(_active_days[0])
         _last_day = date_type.fromisoformat(_active_days[-1])
-        _first_payload = _get_history_day_payload(user, _first_day)
-        _last_payload = _get_history_day_payload(user, _last_day)
+        _first_payload = _get_history_day_payload(user, _first_day, history_memo)
+        _last_payload = _get_history_day_payload(user, _last_day, history_memo)
         _type_today_user_h, _type_today_user_year = _get_today_history_entries(
-            user, media_type_filter=_mt
+            user, media_type_filter=_mt, memo=history_memo
         )
         _type_today_h, _type_today_year = _get_today_release_entry(
             user, media_type_filter=_mt
@@ -2133,6 +2256,7 @@ def _aggregate_statistics_from_days(
             "today_day": today.day,
         }
 
+    clock.mark("highlights")
     # Per-media-type average scores (uses items_by_type already in memory)
     _average_score_by_type = {}
     _score_count_by_type = {}
@@ -2223,6 +2347,7 @@ def _aggregate_statistics_from_days(
             "streak_end_day": _end_epoch_day,
         }
 
+    clock.mark("summary")
     has_movie_tv_activity = bool(
         plays_by_type.get(MediaTypes.MOVIE.value, 0)
         or plays_by_type.get(MediaTypes.TV.value, 0)
@@ -2251,6 +2376,7 @@ def _aggregate_statistics_from_days(
         )
     )
 
+    clock.mark("top_talent")
     weekday_hour_chart_data = _build_weekday_hour_charts(weekday_hour_counts)
 
     combined_hours_charts = _build_combined_hours_charts(
@@ -2490,6 +2616,7 @@ def _aggregate_statistics_from_days(
         "bonuses": [b for b in [games_bonus, reading_bonus] if b],
         "has_data": _all_total_minutes > 0,
     }
+    clock.mark("finish_other")
 
     return {
         "media_count": media_count,

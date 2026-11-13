@@ -8,6 +8,7 @@ from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
@@ -24,6 +25,7 @@ from django_celery_results.models import TaskResult
 from app import credits as credit_helpers
 from app import history_cache, statistics_cache
 from app.discover import tab_cache as discover_tab_cache
+from app.history_cache_utils import HISTORY_LOGGING_STYLES
 from app.history_entry_builders import flat_anime_episode_watches
 from app.models import (
     TV,
@@ -32,9 +34,11 @@ from app.models import (
     ArtistTracker,
     BoardGame,
     Book,
+    BookListeningSession,
     CollectionEntry,
     Comic,
     ComicIssue,
+    DeletedEntry,
     DeletedMedia,
     DiscoverFeedback,
     DiscoverFeedbackType,
@@ -51,12 +55,15 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     PodcastShowTracker,
     Season,
     Sources,
     Status,
+    Video,
     VideoPlay,
 )
+from app.services import podcast_plays
 from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
@@ -76,6 +83,16 @@ def fence_overwrite_tracking_writes(sender, instance, **kwargs):
         and instance._meta.model_name in TRACKING_MODELS
     ):
         guard_instances([instance])
+
+
+@receiver(post_save)
+def refresh_entry_source_suggestions(sender, instance, **kwargs):
+    """Offer a newly typed source in the tracking modal straight away."""
+    if kwargs.get("raw") or not getattr(instance, "entry_source", ""):
+        return
+    from app import entry_sources
+
+    entry_sources.note_saved_source(instance)
 
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
@@ -382,13 +399,9 @@ def clear_media_list_cache_on_collection_change(sender, instance, **kwargs):
     ):
         return
 
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-    )
+    from app.cache_utils import clear_library_view_caches
 
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
+    clear_library_view_caches(user_id)
 
 
 @receiver([post_save, post_delete], sender=ArtistTracker)
@@ -407,13 +420,9 @@ def clear_home_row_cache_on_music_podcast_tracker_change(sender, instance, **kwa
     ):
         return
 
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-    )
+    from app.cache_utils import clear_library_view_caches
 
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
+    clear_library_view_caches(user_id)
 
 
 @receiver([post_save, post_delete], sender=ItemTag)
@@ -521,7 +530,7 @@ def _invalidate_history_for_media_change(
         return
 
     invalidate_kwargs = {"force": True} if force else {}
-    history_cache.invalidate_history_days(
+    rebuild_styles = history_cache.invalidate_history_days(
         user_id,
         day_keys=normalized_day_keys,
         logging_styles=logging_styles,
@@ -532,7 +541,7 @@ def _invalidate_history_for_media_change(
     if not prioritized:
         return
 
-    for logging_style in logging_styles or ("sessions", "repeats"):
+    for logging_style in rebuild_styles:
         history_cache.schedule_history_refresh(
             user_id,
             logging_style,
@@ -544,21 +553,9 @@ def _invalidate_history_for_media_change(
         )
 
 
-def _clear_media_runtime_caches(user_id: int, changed_media_type: str) -> None:
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-        clear_time_left_cache_for_user,
-    )
-
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
-    if changed_media_type in (
-        MediaTypes.EPISODE.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.TV.value,
-    ):
-        clear_time_left_cache_for_user(user_id)
+def _history_specs(day_keys):
+    """Invalidate ``day_keys`` in both logging styles (only the user's is rebuilt)."""
+    return [(day_keys, HISTORY_LOGGING_STYLES)]
 
 
 def _handle_media_cache_change(
@@ -582,12 +579,10 @@ def _handle_media_cache_change(
         return
 
     if clear_runtime_caches:
-        _clear_media_runtime_caches(user_id, changed_media_type)
-        # A concurrent reader can re-cache pre-write state before the save
-        # commits, so clear again once it does.
-        transaction.on_commit(
-            lambda: _clear_media_runtime_caches(user_id, changed_media_type),
-        )
+        from app.cache_utils import clear_library_view_caches
+
+        # Clears now and, inside a transaction, again once it commits.
+        clear_library_view_caches(user_id, media_types=(changed_media_type,))
 
     active_context = discover_tab_cache.get_active_context(user_id)
     targets = discover_tab_cache.invalidate_for_media_change(
@@ -697,8 +692,13 @@ def close_resume_point_on_watched(sender, instance, **kwargs):
     if not user_id or not item_id:
         return
     from api.fork_views_playback import complete_playback_progress
+    from app import live_playback
 
-    complete_playback_progress(user_id, item_id)
+    complete_playback_progress(
+        user_id,
+        item_id,
+        event_at=live_playback.current_webhook_event_at(),
+    )
 
 
 # Same top-level, importer-tracked media types as helpers.get_existing_media()
@@ -730,6 +730,38 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
         media_type=item.media_type,
         source=item.source,
         media_id=item.media_id,
+    )
+
+
+@receiver(post_delete, sender=TV)
+@receiver(post_delete, sender=Season)
+@receiver(post_delete, sender=Anime)
+@receiver(post_delete, sender=Movie)
+@receiver(post_delete, sender=Manga)
+@receiver(post_delete, sender=Book)
+@receiver(post_delete, sender=Comic)
+@receiver(post_delete, sender=ComicIssue)
+@receiver(post_delete, sender=Game)
+@receiver(post_delete, sender=BoardGame)
+@receiver(post_delete, sender=Music)
+@receiver(post_delete, sender=Podcast)
+@receiver(post_delete, sender=Video)
+def record_deleted_entry(sender, instance, **kwargs):
+    """Log the deletion for the library change feed (unlike the importer tombstone)."""
+    if kwargs.get("raw") or _ACCOUNT_BEING_DELETED.get():
+        return
+    try:
+        user_id = instance.user_id
+        item = instance.item
+    except ObjectDoesNotExist:  # the owner or item is going away with it
+        return
+    DeletedEntry.objects.update_or_create(
+        user_id=user_id,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
+        season_number=item.season_number,
+        defaults={"deleted_at": timezone.now()},
     )
 
 
@@ -806,7 +838,7 @@ def flush_media_change_side_effects(
     ]
     history_specs = []
     if normalized_history_day_keys:
-        history_specs.append((normalized_history_day_keys, ("sessions", "repeats")))
+        history_specs.extend(_history_specs(normalized_history_day_keys))
 
     _handle_media_cache_change(
         owner.id,
@@ -880,15 +912,17 @@ def invalidate_discover_for_credit_item(item):
 
 def _invalidate_episode_history_changes(changes, runtime_user_ids=()):
     """Invalidate committed Episode history and runtime caches by owner."""
+    from app.cache_utils import clear_library_view_caches
+
     for user_id in runtime_user_ids:
-        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.EPISODE.value,))
 
     for user_id, day_keys in changes.items():
         _handle_media_cache_change(
             user_id,
             MediaTypes.EPISODE.value,
             reason="episode_change",
-            history_specs=[(day_keys, ("sessions", "repeats"))],
+            history_specs=_history_specs(day_keys),
             statistics_day_values=day_keys,
             force_history_days=True,
             clear_runtime_caches=False,
@@ -1104,7 +1138,7 @@ def refresh_history_cache_on_movie_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.MOVIE.value,
         reason="movie_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=_history_specs([day_key] if day_key else []),
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1183,22 +1217,32 @@ def schedule_credits_backfill_on_movie_play(sender, instance, **kwargs):
 
 @receiver([post_save, post_delete], sender=Music)
 def refresh_history_cache_on_music_change(sender, instance, **kwargs):
-    """Schedule history cache refresh when music activity changes.
-
-    We schedule a refresh but don't delete the cache immediately,
-    so users can see the old data with a notification while refresh happens.
-    """
+    """Schedule history cache refresh after the music write commits."""
     if kwargs.get("raw"):
         return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
+
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
-    _handle_media_cache_change(
-        user_id,
-        MediaTypes.MUSIC.value,
-        reason="music_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
-        statistics_day_values=[day_key] if day_key else [],
-        history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    history_dates_may_have_moved = _history_dates_may_have_moved(instance, kwargs)
+
+    def _refresh_after_commit():
+        _handle_media_cache_change(
+            user_id,
+            MediaTypes.MUSIC.value,
+            reason="music_change",
+            history_specs=_history_specs([day_key] if day_key else []),
+            statistics_day_values=[day_key] if day_key else [],
+            history_dates_may_have_moved=history_dates_may_have_moved,
+        )
+
+    transaction.on_commit(
+        _refresh_after_commit,
+        using=kwargs.get("using"),
     )
 
 
@@ -1213,7 +1257,7 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         return
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
-    history_specs = [([day_key] if day_key else [], ("sessions", "repeats"))]
+    history_specs = _history_specs([day_key] if day_key else [])
     update_fields = kwargs.get("update_fields")
     if not day_key and (
         kwargs.get("created")
@@ -1234,6 +1278,84 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
     )
 
 
+@receiver(post_save, sender=Podcast)
+def keep_podcast_plays_in_step(sender, instance, created, **kwargs):
+    """Make a direct save of a podcast tracker move or create its play.
+
+    The web form, importers and webhooks write the tracker. A play is a
+    listen, so the tracker's dates and status are carried onto the play that
+    describes it. Writes made by the play service itself are skipped.
+    """
+    if kwargs.get("raw") or podcast_plays.in_service_write():
+        return
+    previous_end_date = None if created else instance.tracker.previous("end_date")
+    podcast_plays.apply_tracker_edit(instance, previous_end_date)
+
+
+@receiver(pre_save, sender=PodcastPlay)
+def remember_podcast_play_end_date(sender, instance, **kwargs):
+    """Keep the persisted end date so a moved play also refreshes its old day."""
+    if kwargs.get("raw") or not instance.pk:
+        return
+    instance._previous_end_date = (
+        sender.objects.filter(pk=instance.pk).values_list("end_date", flat=True).first()
+    )
+
+
+@receiver([post_save, post_delete], sender=PodcastPlay)
+def refresh_history_cache_on_podcast_play_change(sender, instance, **kwargs):
+    """Refresh the History and Statistics days a podcast listen lands on.
+
+    The tracker's own save only covers its newest play, so a change to an
+    older play needs its days refreshed here.
+    """
+    if kwargs.get("raw"):
+        return
+    user_id = getattr(instance.podcast, "user_id", None)
+    day_keys = {
+        history_cache.history_day_key(value)
+        for value in (
+            instance.end_date,
+            instance.__dict__.pop("_previous_end_date", None),
+        )
+        if value
+    }
+    day_keys.discard(None)
+    if not day_keys:
+        return
+    ordered = sorted(day_keys)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.PODCAST.value,
+        reason="podcast_play_change",
+        history_specs=_history_specs(ordered),
+        statistics_day_values=ordered,
+    )
+
+
+@receiver([post_save, post_delete], sender=BookListeningSession)
+def refresh_history_cache_on_book_listening_session_change(
+    sender,
+    instance,
+    **kwargs,
+):
+    """Rebuild the history day a listening session lands on."""
+    if kwargs.get("raw"):
+        return
+    try:
+        user_id = instance.book.user_id
+    except Book.DoesNotExist:
+        return
+    day_key = history_cache.history_day_key(instance.started_at)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.BOOK.value,
+        reason="book_listening_session_change",
+        history_specs=_history_specs([day_key] if day_key else []),
+        statistics_day_values=[day_key] if day_key else [],
+    )
+
+
 @receiver([post_save, post_delete], sender=VideoPlay)
 def refresh_history_cache_on_video_play_change(sender, instance, **kwargs):
     """Schedule history cache refresh when a video play is saved or removed."""
@@ -1244,7 +1366,7 @@ def refresh_history_cache_on_video_play_change(sender, instance, **kwargs):
         instance.video.user_id,
         MediaTypes.VIDEO.value,
         reason="video_play_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        history_specs=_history_specs([day_key] if day_key else []),
         statistics_day_values=[day_key] if day_key else [],
     )
 
@@ -1270,15 +1392,9 @@ def clear_time_left_cache_on_tv_delete(sender, instance, **kwargs):
     """Clear time_left cache when TV show is deleted."""
     user_id = getattr(instance, "user_id", None)
     if user_id:
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-            clear_time_left_cache_for_user,
-        )
+        from app.cache_utils import clear_library_view_caches
 
-        clear_time_left_cache_for_user(user_id)
-        clear_media_list_cache_for_user(user_id)
-        clear_home_row_cache_for_user(user_id)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.TV.value,))
         logger.debug(
             "Cleared time_left cache for user %s after deleting TV show: %s",
             user_id,
@@ -1307,15 +1423,9 @@ def clear_time_left_cache_on_season_delete(sender, instance, **kwargs):
     """Clear time_left cache when Season is deleted."""
     user_id = getattr(instance, "user_id", None)
     if user_id:
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-            clear_time_left_cache_for_user,
-        )
+        from app.cache_utils import clear_library_view_caches
 
-        clear_time_left_cache_for_user(user_id)
-        clear_media_list_cache_for_user(user_id)
-        clear_home_row_cache_for_user(user_id)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.SEASON.value,))
         logger.debug(
             "Cleared time_left cache for user %s after deleting Season: %s",
             user_id,
@@ -1353,7 +1463,7 @@ def refresh_statistics_cache_on_anime_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.ANIME.value,
         reason="anime_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=history_dates_may_have_moved,
     )
@@ -1401,7 +1511,7 @@ def refresh_statistics_cache_on_manga_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.MANGA.value,
         reason="manga_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1419,11 +1529,16 @@ def refresh_statistics_cache_on_book_change(sender, instance, **kwargs):
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
+    # A progress save is dated now in the change log, which History reads for
+    # page-based books, so today's day is rebuilt too.
+    today_key = history_cache.history_day_key(timezone.now())
+    if today_key and today_key not in history_day_keys:
+        history_day_keys = [*history_day_keys, today_key]
     _handle_media_cache_change(
         user_id,
         MediaTypes.BOOK.value,
         reason="book_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1445,7 +1560,7 @@ def refresh_statistics_cache_on_comic_change(sender, instance, **kwargs):
         user_id,
         MediaTypes.COMIC.value,
         reason="comic_change",
-        history_specs=[(history_day_keys, ("sessions", "repeats"))],
+        history_specs=_history_specs(history_day_keys),
         statistics_day_values=day_keys,
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
     )
@@ -1551,39 +1666,16 @@ def schedule_runtime_backfill_on_item_save(
 
     # Check if runtime_minutes was actually updated (not just saving the same value)
     runtime_updated = (
-        update_fields is None or "runtime_minutes" in update_fields
-    ) and instance.media_type == MediaTypes.EPISODE.value
+        not created
+        and (update_fields is None or "runtime_minutes" in update_fields)
+        and instance.media_type == MediaTypes.EPISODE.value
+    )
 
-    # Invalidate time_left cache for all users tracking this show/season when runtime changes
+    # Every user tracking this show or one of its seasons sees the new runtime.
     if runtime_updated:
-        from app.cache_utils import clear_time_left_cache_for_user
-        from app.models import BasicMedia
+        from app.cache_utils import EPISODE_DETAILS, clear_show_view_caches
 
-        # Get all users who track this show or season
-        tracking_users = (
-            BasicMedia.objects.filter(
-                item__media_id=instance.media_id,
-                item__source=instance.source,
-                item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
-            )
-            .values_list("user_id", flat=True)
-            .distinct()
-        )
-
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-        )
-
-        for user_id in tracking_users:
-            clear_time_left_cache_for_user(user_id)
-            clear_media_list_cache_for_user(user_id)
-            clear_home_row_cache_for_user(user_id)
-            logger.debug(
-                "Cleared time_left cache for user %s due to runtime update on %s",
-                user_id,
-                instance,
-            )
+        clear_show_view_caches(instance.media_id, instance.source, EPISODE_DETAILS)
 
     if (
         instance.runtime_minutes is not None

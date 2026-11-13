@@ -38,6 +38,7 @@ from app.models import (
     Video,
 )
 from app.templatetags import app_tags
+from app.tests.card_props import card_models
 from events.models import Event
 
 
@@ -537,7 +538,12 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["media_list"].paginator.count, 1)
-        self.assertContains(response, "Rick Astley · 3:33")
+        lines = [
+            " · ".join(part["text"] for part in line["parts"])
+            for model in card_models(response.content)
+            for line in model["lines"]
+        ]
+        self.assertIn("Rick Astley · 3:33", lines)
         self.assertContains(response, 'class="media-grid media-grid-video"')
 
     def test_season_media_list_with_status_filter_does_not_500(self):
@@ -1667,8 +1673,8 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-status-label="no-status"')
-        self.assertContains(response, "No Status")
+        chips = [m["statusChip"] for m in card_models(response.content)]
+        self.assertIn("no-status", [chip and chip["kind"] for chip in chips])
 
     def test_no_status_card_add_to_tracker_opens_modal(self):
         """Regression for #1376: the card sent instance_id="None" and the modal 500ed."""
@@ -3728,12 +3734,11 @@ class MediaListViewTests(TestCase):
             html=False,
         )
         grid_html = grid_page.content.decode()
-        # x-cloak has to be on the modal so it can't flash before Alpine
-        # initialises, but it need not be the very next attribute: #1016
-        # inserted @mousedown.self between the two on the track modal, and an
-        # adjacency-pinned regex turned that into a red suite on latest.
-        self.assertRegex(grid_html, r'x-show="trackOpen"[^>]*\sx-cloak\b')
-        self.assertRegex(grid_html, r'x-show="listsOpen"[^>]*\sx-cloak\b')
+        # Grid cards open their track and lists popups from the shared React
+        # host, so the page no longer carries a hidden popup per card.
+        self.assertContains(grid_page, "data-media-card-root")
+        self.assertNotContains(grid_page, 'x-show="trackOpen"')
+        self.assertNotContains(grid_page, 'x-show="listsOpen"')
 
         first_page = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])
@@ -4594,6 +4599,21 @@ class GameGroupingViewTests(TestCase):
 
         self.assertEqual(response.context["current_group_by"], "item")
         self.assertEqual(response.context["media_groups"], [])
+
+    def test_group_drilldown_keeps_the_library_alphabet_symbol(self):
+        """The alphabet rail samples the library, including games outside a group."""
+        self._game(1, "Éclair", franchise=("10", "First"))
+        self._game(2, "Ωmega", franchise=("20", "Second"))
+
+        response = self.client.get(
+            self.url, {"group_by": "franchise", "group": "id:20"},
+        )
+
+        self.assertEqual(response.context["alphabet_other_initial"], "É")
+        self.assertEqual(
+            [entry.item.title for entry in response.context["media_list"]],
+            ["Ωmega"],
+        )
 
 
 class MediaListStatusCaseTests(TestCase):

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load app_tags %}
 {% load user_tags %}
@@ -71,12 +72,12 @@
       {# Type badges (like genre pills on Season) #}
       <div class="flex flex-wrap gap-2 mb-6">
         {% if album.release_type %}
-          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{{ album.release_type }}</span>
+          {% badge album.release_type "md" "rose" %}
         {% else %}
-          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{% translate "Album" %}</span>
+          {% badge _("Album") "md" "rose" %}
         {% endif %}
         {% if album.release_date %}
-          <span class="px-3 py-1 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
+          {% badge album.release_date|date:"Y" "md" "neutral" %}
         {% endif %}
         {# Collection metadata chips (aggregated from tracks) #}
         {% if collection_metadata.has_collection %}
@@ -99,7 +100,7 @@
             </span>
           {% endif %}
           {% if collection_metadata.media_type %}
-            <span class="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm">{{ collection_metadata.media_type|title }}</span>
+            {% badge collection_metadata.media_type|title "md" "indigo" %}
           {% endif %}
         {% endif %}
       </div>
@@ -327,24 +328,12 @@
 
                         {% if track_data.music %}
                           {# Lists button #}
-                          <div x-data="{ listsOpen: false }">
+                          <div>
                             <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
                                     title="{% translate "Add to custom lists" %}"
-                                    hx-get="{% url 'lists_modal' track_data.music.item.source 'music' track_data.music.item.media_id %}?return_url={{ request.get_full_path|urlencode }}"
-                                    hx-target="#lists-modal-{{ track_data.track.id }}"
-                                    hx-trigger="click once"
-                                    @click="listsOpen = true">
+                                    {% lists_modal_click track_data.music.item request.get_full_path %}>
                               {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                             </button>
-                            <div x-show="listsOpen"
-                            @mousedown.self="listsOpen = false"
-                                 x-cloak
-                                 @keydown.escape.window="listsOpen = false"
-                                 class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                              <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-                                <div id="lists-modal-{{ track_data.track.id }}"></div>
-                              </div>
-                            </div>
                           </div>
 
                           {# History button #}

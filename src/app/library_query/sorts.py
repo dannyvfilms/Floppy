@@ -81,6 +81,10 @@ class SortDef:
     # expensive subquery is computed once per row. It must order exactly like
     # ``batch_values``, which still serves queries a Python filter scans.
     sql_order: Callable[[TypeContext, int, str], tuple | None] | None = None
+    # The Python value reads nothing from a show's tracker row beyond what
+    # ``app.tv_show_facts.TrackedShow`` carries, so a scan need not hydrate
+    # seasons and plays to compute it. Other media types are unaffected.
+    tv_facts: bool = False
 
 
 def _field(name: str):
@@ -140,13 +144,18 @@ def _latest_score(ctx: TypeContext, seed: int):
     return latest_value(ctx, "score", Q(score__isnull=False))
 
 
-def _latest_created(ctx: TypeContext, seed: int):
+def _first_created(ctx: TypeContext, seed: int):
+    """Order by when the item was first tracked, not its latest row.
+
+    A rewatch adds a newer tracker row; Date Added must stay the earliest one,
+    matching the media list's ``aggregated_created_at``.
+    """
     subqueries = [
         Subquery(
             source.item_rows(ctx.user)
             .order_by()
             .values("item_id")
-            .annotate(value=Max("created_at"))
+            .annotate(value=Min("created_at"))
             .values("value")[:1],
         )
         for source in ctx.sources
@@ -329,7 +338,7 @@ SORTS: tuple[SortDef, ...] = (
     SortDef(("id", "itemid", "mediaid"), sql=_field("media_id")),
     SortDef(("source",), sql=_field("source")),
     SortDef(("type",), sql=_field("media_type")),
-    SortDef(("date_added", "added", "created_at"), sql=_latest_created, tracker=True),
+    SortDef(("date_added", "added", "created_at"), sql=_first_created, tracker=True),
     SortDef(("start_date", "started"), sql=_tracker_aggregate("start_date"), tracker=True),
     SortDef(("end_date", "ended"), sql=_tracker_aggregate("end_date"), tracker=True),
     SortDef(("last_watched",), sql=_tracker_aggregate("last_watched"), tracker=True),

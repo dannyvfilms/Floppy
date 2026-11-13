@@ -1,6 +1,7 @@
 # FORK: tests for the advanced list API endpoints — smart rules,
 # collaborators, reorder, recommendations, and activity.
 from http import HTTPStatus as HTTP  # noqa: N814
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -39,6 +40,36 @@ class SmartRulesTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertTrue(response.json()["is_smart"])
+
+    def test_get_rules_includes_normalized_rules_and_options(self):
+        """GET returns the editor's rules, and the options endpoint its choices."""
+        rules = self.call_api(
+            "get",
+            "api_list_smart_rules",
+            args=(self.smart_list.id,),
+            headers=self.auth_headers,
+        ).json()
+        self.assertEqual(rules["rules"]["media_types"], [MediaTypes.MOVIE.value])
+        options = self.call_api(
+            "get",
+            "api_list_smart_rule_options",
+            args=(self.smart_list.id,),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(options.status_code, HTTP.OK)
+        self.assertIn("genres", options.json()["options"])
+        self.assertTrue(options.json()["media_types"])
+
+    def test_options_rejected_for_regular_list(self):
+        """A list that is not smart has no rule options."""
+        regular = CustomList.objects.create(name="Plain", owner=self.user1)
+        response = self.call_api(
+            "get",
+            "api_list_smart_rule_options",
+            args=(regular.id,),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
     def test_put_rules_syncs_membership(self):
         """PUT normalizes rules and syncs items into the list."""
@@ -629,6 +660,16 @@ class RecommendationTests(FloppyApiTestCase):
             },
             headers=headers or self.auth_headers2,
         )
+
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed lookup answers with the fixed detail only."""
+        with patch(
+            "api.fork_views_lists.get_or_create_recommendation_item",
+            side_effect=RuntimeError("secret /srv/private/path"),
+        ):
+            response = self._submit()
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        self.assertEqual(response.json(), {"detail": "Could not resolve item."})
 
     def test_submit_list_and_approve(self):
         """A recommendation can be submitted, listed, and approved."""

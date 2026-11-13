@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import time
 from datetime import UTC
 
@@ -51,7 +52,7 @@ from app.detail_builders import (
     _build_series_graph_data,
     _build_stored_season_scores_graph,
     _build_trakt_popularity_context,
-    build_other_book_formats,
+    build_book_formats,
 )
 from app.detail_related import (
     drop_recommendations_if_hidden,
@@ -283,6 +284,97 @@ def youtube_player(request):
     )
     response["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+def _detail_skeleton_heights(
+    media_metadata,
+    media_type,
+    *,
+    studios_count=0,
+    has_collection_data=False,
+    has_details=False,
+    genres_count=0,
+):
+    """Estimate the deferred secondary fragment's height for its skeleton.
+
+    The shell cannot render the fragment (it is deliberately deferred), so the
+    placeholder reserves the section's settled height from the same metadata
+    the fragment will use. The constants follow the detail grid's card sizes;
+    they only need to keep content below from jumping while the fragment loads.
+    """
+    related = media_metadata.get("related") or {}
+    seasons = len(related.get("seasons") or [])
+    recommendations = len(related.get("recommendations") or [])
+    related_items = sum(
+        len(items)
+        for name, items in related.items()
+        if name not in ("seasons", "recommendations") and isinstance(items, list)
+    )
+    cast = min(len(media_metadata.get("cast") or []), 20)
+    crew = min(len(media_metadata.get("crew") or []), 20)
+    detail_rows = len(media_metadata.get("details") or {}) if has_details else 0
+
+    def sidebar(mobile):
+        total = 0
+        if detail_rows:
+            total += 72 + detail_rows * 64 if mobile else 44 + 32 + detail_rows * 20
+        else:
+            total += 100
+        if genres_count:
+            rows = max(1, math.ceil(genres_count / (4 if mobile else 2)))
+            total += 68 + 56 + (rows - 1) * 32 if mobile else 68 + 32 + rows * 32
+        if studios_count:
+            total += 68 + 56 + studios_count * 16 if mobile else 68 + 32 + studios_count * 20
+        if mobile and has_collection_data and media_type in ("tv", "season"):
+            total += 200
+        else:
+            total += 124
+        return total
+
+    def section(rows, card_height, columns, gap):
+        if not rows:
+            return 0
+        grid_rows = math.ceil(rows / columns)
+        return 44 + grid_rows * card_height + (grid_rows - 1) * gap
+
+    def main(mobile):
+        card_height = 162 if mobile else 233
+        columns = 3 if mobile else 5
+        gap = 12 if mobile else 16
+        heights = [
+            section(related_items, card_height, columns, gap),
+            section(seasons, card_height, columns, gap),
+            240 if cast else 0,
+            240 if crew else 0,
+            207 if mobile and recommendations else 264 if recommendations else 0,
+        ]
+        heights = [height for height in heights if height]
+        return sum(heights) + 32 * (len(heights) - 1) + (32 if heights else 0)
+
+    has_section_data = any((related_items, seasons, cast, crew, recommendations))
+    if not has_section_data:
+        # The shell's metadata does not include the provider's related/cast/crew
+        # payloads (they are fetched for the deferred fragment), so reserve the
+        # settled height of the sections those payloads normally produce.
+        defaults = {
+            "movie": (1246, 2251),
+            "tv": (1495, 2288),
+            "anime": (1495, 2288),
+            "season": (1000, 1800),
+            "game": (1200, 2200),
+            "boardgame": (1200, 2200),
+            "book": (484, 460),
+            "comic": (484, 460),
+            "manga": (484, 460),
+            "music": (224, 272),
+        }
+        desktop, mobile = defaults.get(media_type, (620, 620))
+        return {"desktop": desktop, "mobile": mobile}
+
+    promoted = 97 if media_type in ("movie", "tv", "anime") else 0
+    desktop = max(sidebar(False), main(False)) + promoted
+    mobile = sidebar(True) + 24 + main(True) + (promoted if media_type in ("movie", "tv", "anime") else 0)
+    return {"desktop": desktop, "mobile": mobile}
 
 
 @login_not_required
@@ -661,6 +753,7 @@ def media_details(
 
                     def __init__(self, episode):
                         self.title = episode.title
+                        self.description = episode.description or ""
                         self.track_number = episode.episode_number
                         self.duration_formatted = (
                             self._format_duration(episode.duration)
@@ -809,11 +902,14 @@ def media_details(
                 episode_list.append(
                     {
                         "title": episode_obj.title,
+                        "description": episode_obj.description or "",
                         "episode_number": episode_obj.episode_number or 0,
-                        "image": show.image or settings.IMG_NONE,  # Use show image
+                        "image": episode_obj.image
+                        or show.image
+                        or settings.IMG_NONE,
                         "air_date": episode_obj.published,
                         "runtime": duration_str,
-                        "overview": "",  # Podcast episodes don't have descriptions from API
+                        "overview": episode_obj.description or "",
                         "website_url": episode_obj.website_url,
                         "history": episode_history,
                         "media": episode_media,
@@ -903,6 +999,11 @@ def media_details(
                 "user_medias": user_podcasts,  # Episodes user has listened to
                 "podcast_show": show,
                 "podcast_tracker": tracker,
+                "episode_manager_props": (
+                    None
+                    if public_view
+                    else podcast_views.episode_manager_props(request, show)
+                ),
                 "episodes": episode_list,  # Use episode_list with adapter objects
                 "paginated_episodes": episode_list,  # For fragment compatibility
                 "total_episodes": total_episodes_count,
@@ -1882,6 +1983,18 @@ def media_details(
             pass
 
     has_collection_data = bool(collection_entries) or collection_entry is not None
+    detail_skeleton_heights = (
+        _detail_skeleton_heights(
+            media_metadata,
+            media_type,
+            studios_count=len(studios_linked or []),
+            has_collection_data=has_collection_data,
+            has_details=bool(media_metadata.get("details")),
+            genres_count=len(media_metadata.get("genres") or []),
+        )
+        if defer_detail_secondary
+        else {"desktop": 0, "mobile": 0}
+    )
 
     if media_type in [
         MediaTypes.TV.value,
@@ -2093,14 +2206,16 @@ def media_details(
             }
             carousel_supported = True
 
+    book_formats = (
+        [] if public_view else build_book_formats(request.user, detail_item)
+    )
     context = {
         "user": request.user,
         "media": media_metadata,
         "media_type": media_type,
         "match_item": detail_item,
-        "other_book_formats": (
-            [] if public_view else build_other_book_formats(request.user, detail_item)
-        ),
+        "book_formats": book_formats,
+        "book_formats_replaces": "format" if book_formats else "",
         "authors_linked": authors_linked,
         "issue_extra_details": (
             _issue_extra_details(media_metadata, authors_linked)
@@ -2228,6 +2343,8 @@ def media_details(
         "detail_return_url": detail_return_url,
         "detail_secondary_fragment_url": detail_secondary_fragment_url,
         "defer_detail_secondary": defer_detail_secondary,
+        "detail_secondary_skeleton_desktop": detail_skeleton_heights["desktop"],
+        "detail_secondary_skeleton_mobile": detail_skeleton_heights["mobile"],
         "render_secondary_only": render_secondary_only,
         "carousel_supported": carousel_supported,
         "initial_carousel": initial_carousel,

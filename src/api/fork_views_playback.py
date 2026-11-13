@@ -13,10 +13,12 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 import app.providers.tmdb
-from app import live_playback
+from app import checkin, checkin_session, live_playback
 from app.helpers import build_provider_ids
 from app.models import (
     Item,
@@ -33,7 +35,10 @@ from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import has_full_account_access
 
+from .authentication import APIKeyAuthentication, BearerAuthentication
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -72,7 +77,7 @@ def resolve_show_tmdb_id(media_type, ids):
     """Resolve an `ids` object to a TMDB movie/show id, or None.
 
     Tries the ids we've already persisted before falling back to a single
-    network `find()` — unlike the live-playback card this feeds a durable
+    network `find()` calls — unlike the live-playback card this feeds a durable
     write, so it must not guess.
     """
     if ids.get("tmdb"):
@@ -92,21 +97,17 @@ def resolve_show_tmdb_id(media_type, ids):
         if known:
             return known.media_id
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    if not ext_id:
-        return None
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    find_response = app.providers.tmdb.find(ext_id, ext_type)
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _find_existing_item(media_type, tmdb_id, season_number, episode_number):
@@ -167,24 +168,58 @@ def _resolve_podcast(user, ids):
     )
 
 
-def complete_playback_progress(user_id, item_id):
-    """Close the resume point of an item that has just become watched."""
-    open_rows = PlaybackProgress.objects.filter(
-        user_id=user_id,
-        item_id=item_id,
-        completed=False,
-    ).select_related("user", "item")
-    for progress in open_rows:
-        with transaction.atomic():
-            progress.completed = True
-            progress.save(update_fields=["completed", "updated_at"])
-            record_progress_change(
-                progress.user,
-                progress.item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=True,
+def complete_playback_progress(user_id, item_id, *, event_at=None):
+    """Close the resume point of an item that has just become watched.
+
+    ``event_at`` is the receipt time of the webhook that marked it watched, and
+    orders the closure as ``upsert_playback_progress`` orders a write: one older
+    than ``last_event_at`` is dropped without saving, and an applied one
+    advances the clock, so an older pause processed later cannot reopen it.
+    Without it (UI, API) an open row closes and its clock is left alone.
+    """
+    if event_at is None:
+        open_rows = PlaybackProgress.objects.filter(
+            user_id=user_id,
+            item_id=item_id,
+            completed=False,
+        ).select_related("user", "item")
+        for progress in open_rows:
+            with transaction.atomic():
+                progress.completed = True
+                progress.save(update_fields=["completed", "updated_at"])
+                record_progress_change(
+                    progress.user,
+                    progress.item,
+                    position_seconds=progress.position_seconds,
+                    duration_seconds=progress.duration_seconds,
+                    completed=True,
+                )
+        return
+
+    event_time = datetime.fromtimestamp(event_at, tz=UTC)
+    with state_transaction(user_id):
+        progress = (
+            PlaybackProgress.objects.select_for_update()
+            .filter(user_id=user_id, item_id=item_id)
+            .first()
+        )
+        if progress is None:
+            return
+        if progress.last_event_at and event_time < progress.last_event_at:
+            logger.info(
+                "Dropping out-of-order playback completion: event_at=%s "
+                "last_event_at=%s",
+                event_at,
+                progress.last_event_at,
             )
+            return
+        progress.last_event_at = event_time
+        # An already closed row only moves its clock, which is not a change.
+        update_fields = ["last_event_at"]
+        if not progress.completed:
+            progress.completed = True
+            update_fields += ["completed", "updated_at"]
+        progress.save(update_fields=update_fields)
 
 
 def upsert_playback_progress(
@@ -206,11 +241,20 @@ def upsert_playback_progress(
     intentionally omits one field.  The row lock keeps those field-specific
     updates from becoming a stale read-modify-write race.
 
-    ``event_at`` is when the source event happened. An older event processed
-    after a newer one (a queued play overtaking a scrobble) must not overwrite
-    the newer row, so the stale write is dropped.
+    ``event_at`` is when the source event was received, in epoch seconds with
+    its fraction. An older event processed after a newer one (a queued play
+    overtaking a scrobble) must not overwrite the newer row, so a write older
+    than ``last_event_at`` is dropped without saving; an equal time applies in
+    processing order. A row with no ``last_event_at`` (created before it
+    existed, or only ever written without ``event_at``) has an unknown clock,
+    so the next event applies and starts it. Writes without ``event_at`` (API,
+    UI) always apply and leave the clock alone: they have no receipt time
+    comparable to a webhook's.
     """
     position = 0 if position_seconds is None else position_seconds
+    event_time = (
+        None if event_at is None else datetime.fromtimestamp(event_at, tz=UTC)
+    )
     with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
@@ -219,23 +263,24 @@ def upsert_playback_progress(
                 "position_seconds": position,
                 "duration_seconds": duration_seconds,
                 "completed": completed,
+                "last_event_at": event_time,
             },
         )
         if created:
             return progress
 
-        if event_at is not None and progress.updated_at > datetime.fromtimestamp(
-            event_at,
-            tz=UTC,
-        ):
-            logger.info(
-                "Dropping out-of-order playback progress: event_at=%s row_updated_at=%s",
-                event_at,
-                progress.updated_at,
-            )
-            return progress
-
         update_fields = []
+        if event_time is not None:
+            if progress.last_event_at and event_time < progress.last_event_at:
+                logger.info(
+                    "Dropping out-of-order playback progress: event_at=%s "
+                    "last_event_at=%s",
+                    event_at,
+                    progress.last_event_at,
+                )
+                return progress
+            progress.last_event_at = event_time
+
         if not preserve_position:
             progress.position_seconds = position
             update_fields.append("position_seconds")
@@ -253,7 +298,13 @@ def upsert_playback_progress(
             update_fields.append("completed")
 
         if update_fields:
-            progress.save(update_fields=[*update_fields, "updated_at"])
+            update_fields.append("updated_at")
+        if event_time is not None:
+            # A clock-only change is not a progress change, so it leaves
+            # ``updated_at`` alone.
+            update_fields.append("last_event_at")
+        if update_fields:
+            progress.save(update_fields=update_fields)
     return progress
 
 
@@ -688,9 +739,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=True,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -763,7 +813,6 @@ class PlaybackProgressView(drf_views.APIView):
 
         return _execute()
 
-
     def _clear(self, request):
         """Delete the stored position for the identified media."""
         data = request.data
@@ -793,9 +842,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=False,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -803,10 +851,21 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # A position is bucket-agnostic, but the same provider media can have
+        # an Item row per library bucket and a check-in may have saved against
+        # any of them, so clear every one or the delete can succeed and leave
+        # the position behind (#1873).
+        same_media = Item.objects.filter(
+            source=item.source,
+            media_id=item.media_id,
+            media_type=item.media_type,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+        )
         with state_transaction(request.user.pk):
             PlaybackProgress.objects.filter(
                 user=request.user,
-                item=item,
+                item__in=same_media,
             ).delete()
         return Response(status=HTTP.NO_CONTENT)
 
@@ -903,6 +962,15 @@ def build_now_playing_payload(user):
 class NowPlayingView(drf_views.APIView):
     """Read-only snapshot of the user's active playback (from scrobble/webhook state)."""
 
+    # Home-style endpoint: the Expo app authenticates with the signed-in
+    # browser session, the same way the web Home endpoints do. Without
+    # SessionAuthentication here DRF answers 403 for that session.
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
+
     @extend_schema(
         description=(
             "Return the user's current playback, sourced from the same live "
@@ -917,3 +985,151 @@ class NowPlayingView(drf_views.APIView):
         if payload is None:
             return Response({"active": False}, status=HTTP.OK)
         return Response(payload, status=HTTP.OK)
+
+
+class FirstPartyCredential(BasePermission):
+    """A browser session or the Floppy app's own full-access Bearer token.
+
+    Playback controls are user actions, not a capability for integration
+    tokens: scoped tokens and the legacy account key are refused.
+    """
+
+    def has_permission(self, request, view):
+        """Allow a session login or a first-party full-account token."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if isinstance(request.successful_authenticator, SessionAuthentication):
+            return True
+        return has_full_account_access(request.auth)
+
+
+class HomePlaybackCardsView(drf_views.APIView):
+    """Home playback cards and their native check-in controls."""
+
+    # A session (CSRF enforced by SessionAuthentication) or the built-in
+    # app's Bearer device token; see FirstPartyCredential.
+    authentication_classes = (BearerAuthentication, SessionAuthentication)
+    permission_classes = (IsAuthenticated, FirstPartyCredential)
+
+    @extend_schema(
+        description="Return the signed-in user's active Home playback cards.",
+        responses={200: {"type": "object", "properties": {
+            "cards": {"type": "array", "items": {"type": "object"}},
+        }}},
+    )
+    def get(self, request):
+        """Project all active slots without returning check-in tokens."""
+        cards = []
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            card = live_playback.build_home_playback_card(request.user, slot=slot)
+            if not state or not card:
+                continue
+            source = state.get("source") or Sources.TMDB.value
+            media_type = state.get("media_type")
+            media_id = state.get("media_id")
+            identity = {
+                "source": source,
+                "media_type": media_type,
+                "media_id": str(media_id),
+            }
+            cards.append({
+                "id": f"{source}-{media_type}-{media_id}",
+                **identity,
+                "title": card["title"],
+                "subtitle": card["subtitle"],
+                "episode_code": card["episode_code"],
+                "episode_title": card["episode_title"],
+                "image": card["image"],
+                "status": card["status"],
+                "stale_after_seconds": (
+                    live_playback.PLAYBACK_PAUSE_STALE_SECONDS
+                    if card["status"] in (
+                        live_playback.PLAYBACK_STATUS_PAUSED,
+                        live_playback.PLAYBACK_STATUS_STOPPED,
+                    )
+                    else live_playback.PLAYBACK_HARD_STALE_SECONDS
+                ),
+                "url": card["details_url"],
+                "progress_percent": card["progress_percent"],
+                "offset_seconds": card["offset_seconds"],
+                "duration_seconds": card["duration_seconds"],
+                "updated_at": datetime.fromtimestamp(
+                    card["updated_at_ts"], tz=UTC,
+                ).isoformat(),
+                "actions": (
+                    ["pause", "finish"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "pause"
+                    else ["stop", "cancel"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "stop"
+                    else []
+                ),
+            })
+        return Response({"cards": cards}, status=HTTP.OK)
+
+    @extend_schema(
+        description=(
+            "Stop or cancel a current Home check-in. The server resolves the "
+            "check-in from the supplied card identity; no check-in token is exposed."
+        ),
+        request={
+            "application/json": {
+                "type": "object",
+                "required": ["source", "media_type", "media_id", "action"],
+                "properties": {
+                    "source": {"type": "string"},
+                    "media_type": {"type": "string"},
+                    "media_id": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["pause", "finish", "stop", "cancel"],
+                    },
+                },
+            },
+        },
+        responses={204: None, 400: _DETAIL_SCHEMA, 502: _DETAIL_SCHEMA},
+    )
+    def post(self, request):
+        """Run a current card action after resolving its server-owned control."""
+        source = request.data.get("source")
+        media_type = request.data.get("media_type")
+        media_id = str(request.data.get("media_id", ""))
+        action = request.data.get("action")
+        if not all((source, media_type, media_id)) or action not in (
+            "pause", "finish", "stop", "cancel",
+        ):
+            return Response({"detail": "Invalid playback action."}, status=HTTP.BAD_REQUEST)
+
+        control = None
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            if not state or (
+                (state.get("source") or Sources.TMDB.value) != source
+                or state.get("media_type") != media_type
+                or str(state.get("media_id")) != media_id
+            ):
+                continue
+            control = checkin.card_control(request.user.id, state)
+            break
+        if control is None:
+            return Response({"detail": "This check-in is no longer active."}, status=HTTP.BAD_REQUEST)
+
+        try:
+            if action == "stop" and control["action"] == "stop":
+                checkin_session.stop(request.user, source, media_type, media_id)
+            elif action == "cancel" and control["action"] == "stop":
+                checkin_session.cancel(request.user, source, media_type, media_id)
+            elif action == "pause" and control["action"] == "pause":
+                checkin.pause(request.user, media_type, media_id)
+            elif action == "finish" and control["action"] == "pause":
+                checkin.finish(request.user, media_type, media_id)
+            else:
+                return Response({"detail": "Unsupported check-in action."}, status=HTTP.BAD_REQUEST)
+        except checkin.CheckInError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
+        except Exception:
+            logger.exception("Native playback action failed")
+            return Response({"detail": "Playback action failed."}, status=HTTP.BAD_GATEWAY)
+        return Response(status=HTTP.NO_CONTENT)

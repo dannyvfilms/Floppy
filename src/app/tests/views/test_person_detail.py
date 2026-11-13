@@ -29,6 +29,7 @@ from app.models import (
     Status,
     Studio,
 )
+from app.tests.card_props import card_models
 from users.card_metadata import ABSORBED_PREFERENCE_FIELDS, apply_absorbed_preference
 from users.models import DateFormatChoices
 
@@ -300,11 +301,18 @@ class PersonDetailViewTests(TestCase):
         self.assertContains(response, "Tracked Movie")
         self.assertContains(response, "Other Show")
         self.assertContains(response, "?person_source=tmdb&amp;person_id=123")
-        self.assertContains(response, "media-card-line-dormant")
+        self.assertTrue(
+            any(
+                line.get("dormant")
+                for model in card_models(response.content)
+                for line in model["lines"]
+            )
+        )
         # Tracked and untracked credits both get the shared card's hover actions;
         # only the tracked one has the viewer's status chip (#1534).
-        self.assertContains(response, 'class="media-card-overlay', count=3)
-        self.assertContains(response, 'class="media-status-chip', count=2)
+        models = card_models(response.content)
+        self.assertEqual(sum(1 for m in models if m["actions"]), 3)
+        self.assertEqual(sum(1 for m in models if m["statusChip"]), 2)
         self.assertNotContains(response, "Tracked Titles")
 
     @patch("app.providers.tmdb.person")
@@ -1363,3 +1371,56 @@ class PersonDetailViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    @patch("app.providers.tmdb.person")
+    def test_person_detail_json_contract_shapes_the_native_profile(self, mock_person):
+        mock_person.return_value = {
+            "person_id": "123",
+            "source": Sources.TMDB.value,
+            "name": "Jane Star",
+            "image": "http://example.com/jane.jpg",
+            "biography": "Test bio.",
+            "known_for_department": "Acting",
+            "gender": "female",
+            "birth_date": "1990-01-01",
+            "death_date": None,
+            "place_of_birth": "Los Angeles",
+            "filmography": [
+                {
+                    "media_id": "900",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "title": "Untracked Movie",
+                    "image": "http://example.com/untracked.jpg",
+                    "year": 2024,
+                    "credit_type": "cast",
+                    "role": "Lead",
+                    "department": "Acting",
+                },
+            ],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "person_id": "123",
+                    "name": "jane-star",
+                },
+            )
+            + "?format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["kind"], "person")
+        self.assertEqual(payload["person"]["name"], "Jane Star")
+        self.assertEqual(payload["personId"], "123")
+        self.assertEqual(len(payload["filmography"]), 1)
+        credit = payload["filmography"][0]
+        self.assertEqual(credit["title"], "Untracked Movie")
+        self.assertEqual(credit["mediaTypeLabel"], "Movie")
+        self.assertEqual(credit["role"], "Lead")
+        self.assertFalse(credit["watched"])
+        self.assertIn("/details/tmdb/movie/900/", credit["href"])
