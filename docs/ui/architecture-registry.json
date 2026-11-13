@@ -1866,17 +1866,18 @@
         "CollectionEntryGroup",
         "CollectionEpisodeList",
         "CollectionEpisodeToggle",
+        "CollectionShowMore",
         "CollectionSectionHeading"
       ],
       "register": "OWNERSHIP",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Earlier CollectionContextCard rendering was inspected in the PWA on a physical Duo. The episode-based resolution and missing episode updates are not browser verified; the browser provider was unavailable. The Django modal retains its editing forms."
+          "evidence": "Earlier CollectionContextCard rendering was inspected in the PWA on a physical Duo. The user confirmed the collection show-more collapsed state in the PWA; final show-less spacing and episode-based resolution updates have not been independently verified; the browser provider was unavailable. The Django modal retains its editing forms."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "The detail sheet and missing episode row were inspected on a physical Duo. The expanded episode-based resolution breakdown and copy editing remain unverified."
+          "evidence": "The detail sheet and missing episode row were inspected on a physical Duo; the shared show-more extraction has not been rechecked. The expanded episode-based resolution breakdown and copy editing remain unverified."
         },
         "android": {
           "status": "unverified",

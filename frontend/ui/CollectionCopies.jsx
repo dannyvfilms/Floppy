@@ -92,16 +92,28 @@ function CollectionSection({ title, palette, variant = 'native', children }) {
 }
 
 // Both collection cards use one surface; web retains its compact dialog treatment.
-function CollectionCardSurface({ children, palette, variant = 'native', padded = true, contentRef }) {
+function CollectionCardSurface({ children, footer, palette, variant = 'native', padded = true, contentRef }) {
   return <View style={[styles.collectionSurface, padded && styles.collectionSurfacePadded,
     variant === 'web' && styles.collectionSurfaceWeb,
     { backgroundColor: palette.surface, borderColor: palette.border }]}>
-    <View ref={contentRef} style={padded ? styles.collectionSurfaceContent : variant === 'web' ? styles.entryGroupWebContent : undefined}>{children}</View>
+    <View ref={contentRef} style={padded ? styles.collectionSurfaceContent : variant === 'web'
+      ? [styles.entryGroupWebContent, footer && { paddingBottom: 0 }] : undefined}>{children}</View>
+    {footer}
   </View>;
 }
 
-export function CollectionEntryGroup({ children, contentRef, palette: suppliedPalette, variant = 'native' }) {
-  return <CollectionCardSurface palette={mergePalette(suppliedPalette)} variant={variant} padded={false} contentRef={contentRef}>{children}</CollectionCardSurface>;
+export function CollectionEntryGroup({ children, footer, contentRef, palette: suppliedPalette, variant = 'native' }) {
+  return <CollectionCardSurface palette={mergePalette(suppliedPalette)} variant={variant} padded={false} contentRef={contentRef} footer={footer}>{children}</CollectionCardSurface>;
+}
+
+export function CollectionShowMore({ expanded, onPress, remaining, palette: suppliedPalette, variant = 'native' }) {
+  const palette = mergePalette(suppliedPalette);
+  return <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
+    onPress={onPress} style={[styles.copyMore,
+      // Web's server-rendered final row has no bottom margin; the other rows do.
+      variant === 'web' && expanded && { paddingTop: 24 }]}>
+    <Text style={[styles.contextMore, { color: palette.accent }]}>{expanded ? 'Show less' : `Show ${remaining} more`}</Text>
+  </Pressable>;
 }
 
 export function collectionSeasonEpisodes(episodes = []) {
@@ -180,10 +192,8 @@ export function CollectionCopySummary({ copies = [], labels: suppliedLabels, pal
     {(showAll || !initialLimit ? copies : copies.slice(0, initialLimit)).map((copy, index) => <CopyRow key={copy.id} copy={copy} labels={labels} palette={palette}
       separator={index > 0} canMutate={canMutate} onEdit={onEdit} onRemove={onRemove}
       expanded={expandedIds.includes(copy.id)} onToggle={() => setExpandedIds(current => current.includes(copy.id) ? current.filter(id => id !== copy.id) : [...current, copy.id])} />)}
-    {initialLimit && copies.length > initialLimit ? <Pressable accessibilityRole="button"
-      onPress={() => setShowAll(value => !value)} style={styles.copyMore}>
-      <Text style={[styles.contextMore, { color: palette.accent }]}>{showAll ? 'Show less' : `Show ${copies.length - initialLimit} more`}</Text>
-    </Pressable> : null}
+    {initialLimit && copies.length > initialLimit ? <CollectionShowMore expanded={showAll}
+      onPress={() => setShowAll(value => !value)} remaining={copies.length - initialLimit} palette={palette} /> : null}
   </CollectionEntryGroup>;
 }
 

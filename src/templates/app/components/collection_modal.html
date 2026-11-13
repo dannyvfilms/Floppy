@@ -7,7 +7,7 @@
   {% if not collection_tab %}
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-[var(--color-text)] line-clamp-1">
-        {% translate "Collection Entry" %}
+        {{ item.title }}
       </h2>
       <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
               @click="collectionOpen = false">
@@ -16,39 +16,65 @@
     </div>
   {% endif %}
 
-  <div class="space-y-6">
+  <div class="space-y-6" x-data="{ activeCollectionEdits: 0 }" @collection-edit="activeCollectionEdits += $event.detail">
+    {% if collection_context_props %}
+      <div x-show="activeCollectionEdits === 0">
+      {% with item_id=item.id|stringformat:"s" %}{% if collection_tab %}{% with context_id="collection-context-tab-"|add:item_id %}
+        {{ collection_context_props|json_script:context_id }}
+        <div data-collection-context-root data-props-id="{{ context_id }}"></div>
+      {% endwith %}{% else %}{% with context_id="collection-context-"|add:item_id %}
+        {{ collection_context_props|json_script:context_id }}
+        <div data-collection-context-root data-props-id="{{ context_id }}"></div>
+      {% endwith %}{% endif %}{% endwith %}
+      </div>
+    {% endif %}
     {% if season_audit_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Seasons" %}</h3>
-        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-64 overflow-y-auto'">
+        <div data-collection-section-heading class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]" style="margin-bottom: 10px">{% translate "Collected Seasons" %}</div>
+        <div class="pr-1">
+          {% with item_id=item.id|stringformat:"s" %}{% with group_id="collection-group-season-"|add:item_id %}
+            {{ collection_context_props|json_script:group_id }}
+            <div class="rounded-md border border-gray-700 bg-[var(--color-surface-muted)] p-3" data-collection-entry-group-root data-props-id="{{ group_id }}">
           {% for season_audit_entry in season_audit_entries %}
             {% url 'collection_remove_season' season_audit_entry.season_item_id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=season_audit_entry.collection_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=season_audit_entry.display_title entry_source_labels=season_audit_entry.source_labels entry_quality_label=season_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=season_audit_entry.edit_form edit_title=season_audit_entry.edit_title edit_form_id=season_audit_entry.edit_form_id edit_collection_fields=season_audit_entry.edit_collection_fields update_url=season_audit_entry.edit_update_url edit_without_custom_fields=True %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=season_audit_entry.collection_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False flat_list=True is_last=forloop.last episode_season=season_audit_entry.season_number entry_title=season_audit_entry.display_title entry_source_labels=season_audit_entry.source_labels entry_quality_label=season_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=season_audit_entry.edit_form edit_title=season_audit_entry.edit_title edit_form_id=season_audit_entry.edit_form_id edit_collection_fields=season_audit_entry.edit_collection_fields update_url=season_audit_entry.edit_update_url edit_without_custom_fields=True %}
           {% endfor %}
+            </div>
+          {% endwith %}{% endwith %}
         </div>
       </div>
     {% endif %}
 
     {% if episode_audit_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Episodes" %}</h3>
-        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-64 overflow-y-auto'">
+        <div data-collection-section-heading class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]" style="margin-bottom: 10px">{% translate "Collected Episodes" %}</div>
+        <div class="pr-1">
+          {% with item_id=item.id|stringformat:"s" %}{% with group_id="collection-group-episode-"|add:item_id %}
+            {{ collection_context_props|json_script:group_id }}
+            <div class="rounded-md border border-gray-700 bg-[var(--color-surface-muted)] p-3" data-collection-entry-group-root data-props-id="{{ group_id }}">
           {% for episode_audit_entry in episode_audit_entries %}
             {% url 'collection_remove' episode_audit_entry.entry.id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=episode_audit_entry.entry media_type=episode_audit_entry.entry.item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=episode_audit_entry.title entry_source_labels=episode_audit_entry.source_labels entry_quality_label=episode_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=episode_audit_entry.entry.edit_form edit_form_id=episode_audit_entry.entry.edit_form_id update_url=episode_audit_entry.entry.edit_update_url edit_without_custom_fields=True %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=episode_audit_entry.entry media_type=episode_audit_entry.entry.item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False flat_list=True is_last=forloop.last entry_title=episode_audit_entry.title entry_source_labels=episode_audit_entry.source_labels entry_quality_label=episode_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=episode_audit_entry.entry.edit_form edit_form_id=episode_audit_entry.entry.edit_form_id update_url=episode_audit_entry.entry.edit_update_url edit_without_custom_fields=True %}
           {% endfor %}
+            </div>
+          {% endwith %}{% endwith %}
         </div>
       </div>
     {% endif %}
 
     {% if visible_existing_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Existing Entries" %}</h3>
-        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-52 overflow-y-auto'">
+        <div data-collection-section-heading class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]" style="margin-bottom: 10px">{% translate "Existing Entries" %}</div>
+        <div class="pr-1">
+          {% with item_id=item.id|stringformat:"s" %}{% with group_id="collection-group-existing-"|add:item_id %}
+            {{ collection_context_props|json_script:group_id }}
+            <div class="rounded-md border border-gray-700 bg-[var(--color-surface-muted)] p-3" data-collection-entry-group-root data-props-id="{{ group_id }}">
           {% for existing_entry in visible_existing_entries %}
             {% url 'collection_remove' existing_entry.id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=existing_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True entry_quality_label="" edit_form=existing_entry.edit_form edit_form_id=existing_entry.edit_form_id edit_id_prefix=existing_entry.edit_id_prefix update_url=existing_entry.edit_update_url edit_custom_field_values=existing_entry.custom_field_values %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=existing_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True flat_list=True is_last=forloop.last entry_quality_label="" edit_form=existing_entry.edit_form edit_form_id=existing_entry.edit_form_id edit_id_prefix=existing_entry.edit_id_prefix update_url=existing_entry.edit_update_url edit_custom_field_values=existing_entry.custom_field_values %}
           {% endfor %}
+            </div>
+          {% endwith %}{% endwith %}
         </div>
       </div>
     {% endif %}

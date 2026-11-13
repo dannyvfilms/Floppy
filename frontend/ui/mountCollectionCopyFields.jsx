@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { mountRoot } from '../settings/root';
-import { CollectionContextCard, CollectionCopyEditor, CollectionEntryGroup, CollectionEpisodeList, CollectionEpisodeToggle, CollectionSectionHeading, collectionSeasonEpisodes } from './CollectionCopies';
+import { CollectionContextCard, CollectionCopyEditor, CollectionEntryGroup, CollectionEpisodeList, CollectionEpisodeToggle, CollectionSectionHeading, CollectionShowMore, collectionSeasonEpisodes } from './CollectionCopies';
 
 const palette = {
   text: 'var(--color-text)',
@@ -87,7 +87,17 @@ function WebSeasonDisclosure({ episodes, toggleHost }) {
 // shared card; the server remains responsible for edit and delete operations.
 function EntryGroupAdapter({ nodes, props }) {
   const slot = useRef(null);
+  const [showAll, setShowAll] = useState(false);
+  const entries = nodes.filter(node => node.nodeType === Node.ELEMENT_NODE);
+  const limit = 5;
   useLayoutEffect(() => { slot.current.append(...nodes); }, [nodes]);
+  useLayoutEffect(() => {
+    entries.forEach((entry, index) => {
+      entry.style.display = !showAll && index >= limit ? 'none' : '';
+      entry.style.borderBottomWidth = !showAll && index === limit - 1 ? '0' : '';
+    });
+    return () => entries.forEach(entry => { entry.style.display = ''; entry.style.borderBottomWidth = ''; });
+  }, [nodes, showAll]);
   useEffect(() => {
     const placeholders = [...slot.current.querySelectorAll('[data-collection-season-disclosure]')];
     if (!placeholders.length || !props.url) return undefined;
@@ -105,7 +115,9 @@ function EntryGroupAdapter({ nodes, props }) {
       .catch(error => { if (error.name !== 'AbortError') console.error('Collection episode details could not load', error); });
     return () => { controller.abort(); dispose.forEach(unmount => unmount()); };
   }, [props.url]);
-  return <CollectionEntryGroup palette={palette} variant="web" contentRef={slot} />;
+  return <CollectionEntryGroup palette={palette} variant="web" contentRef={slot}
+    footer={entries.length > limit ? <CollectionShowMore expanded={showAll} onPress={() => setShowAll(value => !value)}
+      remaining={entries.length - limit} palette={palette} variant="web" /> : null} />;
 }
 
 export function mountCollectionEntryGroup(host, props) {
