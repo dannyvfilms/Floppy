@@ -763,7 +763,8 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
         ).exclude(season_number=0)
     )
 
-    # Use metadata episode count if provided (matches Details pane), otherwise count from Items
+    # Provider totals can lag the episode records used by the season audit.
+    # Never use a total smaller than that same locally known episode set.
     # Guard against providers handing back an episode list instead of a count:
     # a non-numeric value would be rendered verbatim by the Collection panel.
     if isinstance(metadata_episode_count, bool) or not isinstance(
@@ -771,10 +772,7 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
         int,
     ):
         metadata_episode_count = None
-    if metadata_episode_count is not None:
-        total_episodes = metadata_episode_count
-    else:
-        total_episodes = len(all_episode_items)
+    total_episodes = max(metadata_episode_count or 0, len(all_episode_items))
 
     # Get collection entries for all seasons and episodes
     season_item_ids = [item.id for item in all_season_items]

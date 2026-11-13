@@ -1521,6 +1521,7 @@ def _build_collection_season_audit_entries(user, item):
             {
                 "collection_entry": collection_entry,
                 "season_item_id": season_item.id,
+                "season_number": season_number,
                 "title": season_title,
                 "display_title": f"{season_title}: {progress_value}",
                 "progress_label": _format_collection_progress(
@@ -1934,7 +1935,18 @@ def build_collection_modal_context(
     )
     collection_fields = getattr(form, "collection_fields", [])
 
+    context_args = [media_type, source, media_id]
+    context_route = "api_media_collection_entries"
+    if item.media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
+        context_args = [MediaTypes.TV.value, source, media_id, item.season_number]
+        context_route = "api_media_season_collection_entries"
+        if item.media_type == MediaTypes.EPISODE.value:
+            context_args.append(item.episode_number)
+            context_route = "api_media_episode_collection_entries"
+    context_props = {"url": reverse(context_route, args=context_args)}
+
     return {
+        "collection_context_props": context_props,
         "item": item,
         "entry": existing_entry,
         "existing_entries": existing_entries,

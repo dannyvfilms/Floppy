@@ -10,6 +10,7 @@ from django.db.models import Case, F, Max, Min, Q, When
 from django.db.models.functions import Coalesce, Greatest
 from django.templatetags.static import static
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -1068,6 +1069,82 @@ def _collection_stats(request, tracked_type, lookup):
     return None
 
 
+def _collection_episode_resolution_counts(user, item, stats):
+    """Classify the same covered episodes used by the collection totals.
+
+    A recorded episode uses its latest copy; broader entries cover episodes
+    according to the existing show/season collection fallback rules.
+    """
+    identity = {"media_id": item.media_id, "source": item.source}
+    episodes = Item.objects.filter(media_type=MediaTypes.EPISODE.value, **identity)
+    if item.media_type == MediaTypes.SEASON.value:
+        episodes = episodes.filter(season_number=item.season_number)
+    else:
+        episodes = episodes.exclude(season_number=0)
+    episode_rows = list(episodes.values("id", "season_number"))
+    ids = [row["id"] for row in episode_rows]
+    episode_copies = CollectionEntry.objects.filter(
+        user=user, item_id__in=ids,
+    ).order_by("item_id", "-collected_at", "-id").values("item_id", "resolution")
+    latest = {}
+    for entry in episode_copies:
+        latest.setdefault(entry["item_id"], entry["resolution"] or "")
+
+    seasons = CollectionEntry.objects.filter(
+        user=user, item__media_type=MediaTypes.SEASON.value, **{
+            f"item__{key}": value for key, value in identity.items()
+        },
+    )
+    if item.media_type == MediaTypes.SEASON.value:
+        seasons = seasons.filter(item=item)
+    seasons = seasons.order_by("item__season_number", "-collected_at", "-id").values(
+        "item__season_number", "resolution",
+    )
+    season_resolutions = {}
+    for entry in seasons:
+        season_resolutions.setdefault(entry["item__season_number"], entry["resolution"] or "")
+
+    granular_entries = CollectionEntry.objects.filter(
+        user=user, item__media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+        **{f"item__{key}": value for key, value in identity.items()},
+    )
+    if item.media_type != MediaTypes.SEASON.value:
+        granular_entries = granular_entries.exclude(item__season_number=0)
+    granular = granular_entries.exists()
+    parent = item if item.media_type != MediaTypes.SEASON.value else None
+    if parent is None:
+        from app.helpers import _resolve_show_item_for_season
+
+        parent = _resolve_show_item_for_season(item)
+    show_entry = None if granular or parent is None else CollectionEntry.objects.filter(
+        user=user, item=parent,
+    ).order_by("-collected_at", "-id").values("resolution").first()
+
+    counts = {}
+    for episode in episode_rows:
+        episode_id = episode["id"]
+        season = episode["season_number"]
+        if episode_id in latest:
+            resolution = latest[episode_id]
+        elif season in season_resolutions and (
+            item.media_type != MediaTypes.SEASON.value or not latest
+        ):
+            resolution = season_resolutions[season]
+        elif show_entry is not None:
+            resolution = show_entry["resolution"] or ""
+        else:
+            continue
+        counts[resolution] = counts.get(resolution, 0) + 1
+
+    # Metadata can report more episodes than are represented by local Items.
+    # Broader coverage can include those episodes without per-episode details.
+    unclassified = max(0, stats["collected_episodes"] - sum(counts.values()))
+    if unclassified:
+        resolution = (show_entry or {}).get("resolution") or ""
+        counts[resolution] = counts.get(resolution, 0) + unclassified
+    return [{"resolution": resolution, "count": count} for resolution, count in counts.items()]
+
+
 def _collection_entries(request, tracked_type, **lookup):
     item_ids = Item.objects.filter(media_type=tracked_type, **lookup).values("id")
     entries = (
@@ -1082,13 +1159,127 @@ def _collection_entries(request, tracked_type, **lookup):
             serializer_class=CollectionEntrySerializer,
         ),
     }
+    # Include descendant copies in the context without changing the editable
+    # entries above, which are scoped to the exact item.
+    context_items = Item.objects.filter(media_type=tracked_type, **lookup)
+    if tracked_type in (MediaTypes.TV.value, MediaTypes.ANIME.value, MediaTypes.SEASON.value):
+        bucket = tracked_type if tracked_type != MediaTypes.SEASON.value else MediaTypes.TV.value
+        child_lookup = {key: value for key, value in lookup.items() if key != "episode_number"}
+        context_items = Item.objects.filter(
+            **child_lookup,
+            # Older child rows use their own type as the library bucket.
+            library_media_type__in=[bucket, MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+            media_type__in=([MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
+                            if tracked_type == MediaTypes.SEASON.value else
+                            [tracked_type, MediaTypes.SEASON.value, MediaTypes.EPISODE.value]),
+        )
+    payload["context_copies"] = list(
+        CollectionEntry.objects.filter(user=request.user, item__in=context_items)
+        .order_by("item_id", "id")
+        .values("id", "item_id", "item__title", "item__media_type", "item__season_number",
+                "item__episode_number", "resolution", "media_type", "hdr", "is_3d",
+                "audio_codec", "audio_channels", "bitrate", "purchase_price",
+                "purchase_location", "collected_at")
+    )
+    from app.collection_views import (
+        _build_collection_episode_audit_entries,
+        _build_collection_season_audit_entries,
+    )
+
+    item = Item.objects.filter(media_type=tracked_type, **lookup).first()
+    if item and tracked_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
+        rows = _build_collection_season_audit_entries(request.user, item)
+        season_numbers = dict(Item.objects.filter(
+            id__in=[row["season_item_id"] for row in rows],
+        ).values_list("id", "season_number"))
+        episodes_by_season = {}
+        resolutions_by_item = {}
+        for copy in payload["context_copies"]:
+            if copy["item__media_type"] == MediaTypes.EPISODE.value:
+                resolutions_by_item.setdefault(copy["item_id"], []).append(copy["resolution"] or "")
+        episodes = Item.objects.filter(
+            media_type=MediaTypes.EPISODE.value, media_id=item.media_id, source=item.source,
+            season_number__in=season_numbers.values(),
+        ).order_by("season_number", "episode_number", "id").values(
+            "id", "title", "season_number", "episode_number",
+        )
+        for episode in episodes:
+            episode["resolutions"] = resolutions_by_item.get(episode["id"], [])
+            episodes_by_season.setdefault(episode["season_number"], []).append(episode)
+        payload["audit_kind"] = "seasons"
+        payload["audit_entries"] = [
+            {
+                "id": row["season_item_id"],
+                "title": row["display_title"],
+                "source_labels": row["source_labels"],
+                "quality_label": row["quality_label"],
+                "metadata": row["collection_entry"],
+                "season_number": season_numbers.get(row["season_item_id"]),
+                "episodes": episodes_by_season.get(season_numbers.get(row["season_item_id"]), []),
+            }
+            for row in rows
+        ]
+    elif item and tracked_type == MediaTypes.SEASON.value:
+        rows = _build_collection_episode_audit_entries(request.user, item)
+        payload["audit_kind"] = "episodes"
+        payload["audit_entries"] = [
+            {"id": row["entry"].id, "title": row["title"],
+             "source_labels": row["source_labels"], "quality_label": row["quality_label"]}
+            for row in rows
+        ]
     stats = _collection_stats(request, tracked_type, lookup)
     if stats is not None:
         payload["stats"] = stats
+        if item is not None:
+            payload["resolution_counts"] = _collection_episode_resolution_counts(request.user, item, stats)
     return Response(
         payload,
         status=HTTP.OK,
     )
+
+
+class CollectionSeasonAuditView(drf_views.APIView):
+    """Apply a season audit action to the caller's collected episodes."""
+
+    def _entries(self, request, season_id):
+        season = Item.objects.filter(id=season_id, media_type=MediaTypes.SEASON.value).first()
+        if not season:
+            return CollectionEntry.objects.none()
+        return CollectionEntry.objects.filter(
+            user=request.user, item__media_id=season.media_id, item__source=season.source,
+            item__media_type=MediaTypes.EPISODE.value, item__season_number=season.season_number,
+        )
+
+    @extend_schema(operation_id="updateCollectionSeasonAudit", request=OpenApiTypes.OBJECT,
+                   responses={200: OpenApiTypes.OBJECT})
+    def patch(self, request, season_id):
+        """Apply validated, changed copy fields to every episode in this season."""
+        from app.collection_views import _COLLECTION_ENTRY_COPY_FIELDS
+        from app.forms import CollectionEntryForm
+
+        entries = self._entries(request, season_id)
+        first = entries.select_related("item").first()
+        if not first:
+            return Response({"detail": "No collected episodes found."}, status=HTTP.NOT_FOUND)
+        changed = {key: value for key, value in request.data.items() if key in _COLLECTION_ENTRY_COPY_FIELDS}
+        if not changed:
+            return Response({"detail": "No supported fields to update."}, status=HTTP.BAD_REQUEST)
+        data = {name: first.serializable_value(name) for name in CollectionEntryForm.Meta.fields}
+        data.update(changed)
+        form = CollectionEntryForm(data, instance=first, user=request.user,
+                                   collection_media_type=first.item.media_type)
+        if not form.is_valid():
+            return Response({"detail": "Invalid collection data.", "errors": form.errors}, status=HTTP.BAD_REQUEST)
+        entries.update(**{name: form.cleaned_data[name] for name in changed}, updated_at=timezone.now())
+        return Response({"updated": True})
+
+    @extend_schema(operation_id="deleteCollectionSeasonAudit", responses={204: None})
+    def delete(self, request, season_id):
+        """Remove the caller's episode copies represented by this season row."""
+        deleted, _ = self._entries(request, season_id).delete()
+        if not deleted:
+            return Response({"detail": "No collected episodes found."}, status=HTTP.NOT_FOUND)
+        return Response(status=HTTP.NO_CONTENT)
 
 
 # /api/v1/media/[type]/[source]/[id]/collection/entries/

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
 import WindowedRail from './WindowedRail';
@@ -7,7 +7,7 @@ import { Icon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
-import { CollectionCopyDialog } from '../../../frontend/ui/CollectionCopies';
+import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
@@ -41,6 +41,7 @@ import { mergeScoreChips } from '../data/detailTransportCore';
 import {
   collectionAddressFor,
   copyFieldsFor,
+  copyValuesFromCopy,
   createCollectionTransport,
   emptyCopyValues,
 } from '../data/collectionTransport';
@@ -703,14 +704,26 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   }, [loadEpisodes]);
 
   function openCopyDialog(target = identity, itemTitle = title) {
-    setCopy({ open: true, target, title: itemTitle, values: emptyCopyValues(copyFieldsFor(target.mediaType)), errors: {}, busy: false });
+    setCopy({ open: true, target, title: itemTitle, context: null, values: emptyCopyValues(copyFieldsFor(target.mediaType)), errors: {}, busy: false });
+    loadCollectionEntries(target).then(loaded => {
+      setCopy(current => current.open && current.target === target ? { ...current, context: loaded.context } : current);
+    }).catch(() => {
+      setCopy(current => current.open && current.target === target ? { ...current, context: { error: true } } : current);
+    });
   }
 
   async function saveCopy() {
     if (copy.busy) return;
     setCopy(current => ({ ...current, busy: true, errors: {} }));
     try {
-      await createCollectionTransport().addCopy({ address: collectionAddressForIdentity(copy.target), values: copy.values });
+      const transport = createCollectionTransport();
+      if (copy.editingId && copy.editingKind === 'season') {
+        await transport.updateSeason({ seasonId: copy.editingId, values: copy.values, initial: copy.initialValues });
+      } else if (copy.editingId) {
+        await transport.updateCopy({ entryId: copy.editingId, values: copy.values, initial: copy.initialValues });
+      } else {
+        await transport.addCopy({ address: collectionAddressForIdentity(copy.target), values: copy.values });
+      }
       const loaded = await loadCollectionEntries(identity);
       setCollection({ status: 'ready', ...loaded, error: '' });
       setCopy({ open: false, values: {}, errors: {}, busy: false });
@@ -719,6 +732,60 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       setCopy(current => ({ ...current, busy: false, errors: { form: cause?.message || 'The copy could not be saved.' } }));
     }
   }
+
+  function editCollectionCopy(entry) {
+    const values = copyValuesFromCopy(entry);
+    setCopy(current => ({ ...current, editingId: entry.id, editingKind: entry.kind, editingLabel: entry.label, values, initialValues: values, errors: {} }));
+  }
+
+  function removeCollectionCopy(entry) {
+    Alert.alert(entry.kind === 'season' ? 'Remove season?' : 'Remove copy?', entry.kind === 'season' ? 'This removes all collected episode entries for this season.' : 'This removes the selected collection entry.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setCopy(current => ({ ...current, busy: true, errors: {} }));
+        try {
+          const transport = createCollectionTransport();
+          if (entry.kind === 'season') await transport.removeSeason({ seasonId: entry.id });
+          else await transport.removeCopy({ entryId: entry.id });
+          const [parent, target] = await Promise.all([loadCollectionEntries(identity), loadCollectionEntries(copy.target)]);
+          setCollection({ status: 'ready', ...parent, error: '' });
+          setCopy(current => ({ ...current, context: target.context, busy: false,
+            ...(current.editingId === entry.id ? { editingId: null, values: emptyCopyValues(copyFieldsFor(current.target.mediaType)), initialValues: {} } : {}) }));
+          reload();
+        } catch (cause) {
+          setCopy(current => ({ ...current, busy: false, errors: { form: cause?.message || 'The copy could not be removed.' } }));
+        }
+      } },
+    ]);
+  }
+
+  const rawCopies = copy.context?.copies || [];
+  const mapCopy = entry => ({
+    id: String(entry.id),
+    label: entry.item__season_number == null ? (entry.item__title || 'Copy')
+      : `S${String(entry.item__season_number).padStart(2, '0')}${entry.item__episode_number == null ? '' : `E${String(entry.item__episode_number).padStart(2, '0')}`} · ${entry.item__title}`,
+    mediaType: entry.media_type || '', resolution: entry.resolution || '', hdr: entry.hdr || '',
+    is3d: !!entry.is_3d, audioCodec: entry.audio_codec || '', audioChannels: entry.audio_channels || '',
+    bitrate: entry.bitrate == null ? '' : String(entry.bitrate),
+    purchasePrice: entry.purchase_price == null ? '' : String(entry.purchase_price),
+    purchaseLocation: entry.purchase_location || '', collectedAt: (entry.collected_at || '').slice(0, 10),
+  });
+  const auditKind = copy.context?.auditKind;
+  const auditRows = copy.context?.auditEntries || [];
+  const collectionCopies = auditKind === 'seasons' && auditRows.length
+    ? auditRows.map(row => {
+      const metadata = row.metadata || {};
+      const episodes = collectionSeasonEpisodes(row.episodes || []);
+      return { ...mapCopy(metadata), id: String(row.id), kind: 'season', label: row.title,
+        sourceLabels: row.source_labels, qualityLabel: row.quality_label, collectedAt: '', episodes };
+    })
+    : auditKind === 'episodes' && auditRows.length
+      ? auditRows.map(row => {
+        const raw = rawCopies.find(entry => entry.id === row.id);
+        return raw ? { ...mapCopy(raw), label: row.title, sourceLabels: row.source_labels, qualityLabel: row.quality_label } : null;
+      }).filter(Boolean)
+      : rawCopies.filter(entry => entry.item__media_type === copy.target?.mediaType).map(mapCopy);
+
 
   if (!enabled) return { enabled: false };
 
@@ -1061,12 +1128,20 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     <AdaptivePresentationSheet isPresented={copy.open}
       onDismiss={() => setCopy(current => ({ ...current, open: false }))}
       onClose={() => setCopy(current => ({ ...current, open: false }))}
-      title="Collection Entry" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+      title={copy.editingId ? `Edit ${copy.editingLabel || copy.title}` : copy.title} titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <CollectionCopyDialog
       embedded
       visible={copy.open}
       item={copy.open ? { title: copy.title, mediaType: copy.target?.mediaType } : null}
-      fields={copyFieldsFor(copy.target?.mediaType)}
+      context={copy.editingId ? undefined : copy.context}
+      showExisting={collectionCopies.length > 0 && !copy.editingId}
+      labels={{ existing: auditKind === 'seasons' && auditRows.length ? 'Collected seasons' : auditKind === 'episodes' && auditRows.length ? 'Collected episodes' : 'Collected items' }}
+      copies={collectionCopies}
+      copyLimit={5}
+      editingId={copy.editingId}
+      onEdit={editCollectionCopy}
+      onRemove={removeCollectionCopy}
+      fields={copyFieldsFor(copy.target?.mediaType).filter(field => copy.editingKind !== 'season' || !['purchasePrice', 'purchaseLocation', 'collectedAt'].includes(field.name))}
       values={copy.values}
       errors={copy.errors}
       palette={palette}

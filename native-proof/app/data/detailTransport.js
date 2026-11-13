@@ -114,6 +114,7 @@ export async function loadCollectionEntries(identity) {
   }
   return {
     counts,
+    context: { stats, copies: payload?.context_copies || [], auditKind: payload?.audit_kind, auditEntries: payload?.audit_entries || [], resolutionCounts: payload?.resolution_counts },
     entries: resultList(payload).map(entry => ({
       id: String(entry.id),
       title: [entry.media_type, entry.resolution, entry.hdr, entry.is_3d ? '3D' : '']

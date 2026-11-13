@@ -1861,17 +1861,22 @@
         "CollectionCopySummary",
         "CollectionCopyEditor",
         "CollectionSeasonCascade",
-        "CollectionCopyDialog"
+        "CollectionCopyDialog",
+        "CollectionContextCard",
+        "CollectionEntryGroup",
+        "CollectionEpisodeList",
+        "CollectionEpisodeToggle",
+        "CollectionSectionHeading"
       ],
       "register": "OWNERSHIP",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared copy summary, medium-field editor and duplicate dialog are compiled by the UI build and Expo web export; the Django collection modal and its HTMX forms remain the browser owner."
+          "evidence": "Earlier CollectionContextCard rendering was inspected in the PWA on a physical Duo. The episode-based resolution and missing episode updates are not browser verified; the browser provider was unavailable. The Django modal retains its editing forms."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Collection screen; copy add/edit/remove, medium fields and the season cascade were not exercised on a simulator or device."
+          "evidence": "The detail sheet and missing episode row were inspected on a physical Duo. The expanded episode-based resolution breakdown and copy editing remain unverified."
         },
         "android": {
           "status": "unverified",
@@ -3938,6 +3943,15 @@
         }
       }
     },
+    "frontend/ui/sectionSpacing.js": {
+      "components": ["sectionSpacing"],
+      "register": "HOME",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Shared responsive spacing; web rendering not yet checked."},
+        "ios": {"status": "unverified", "evidence": "Shared responsive spacing; Duo check pending."},
+        "android": {"status": "unverified", "evidence": "Android rendering not yet checked."}
+      }
+    },
     "frontend/ui/fetchGate.js": {
       "components": [
         "createFetchGate"
@@ -5416,7 +5430,7 @@
     },
     "frontend/ui/mountCollectionCopyFields.jsx": {
       "register": "OWNERSHIP",
-      "purpose": "Browser adapter for the shared collection copy editor inside the server-owned add and inline edit forms: keep medium-field values in React and mirror them into the enclosing Django form so ownership, validation, redirects and no-JS fallback stay server-owned."
+      "purpose": "Browser adapter for the shared collection copy editor inside the server-owned add and inline edit forms: keep medium-field values in React and mirror them into the enclosing Django form so ownership, validation, redirects and no-JS fallback stay server-owned. Mount the read-only shared CollectionContextCard using the authenticated collection entries endpoint and host server-owned edit forms inside CollectionEntryGroup."
     },
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",

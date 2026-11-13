@@ -281,6 +281,8 @@ test('remote actions address the documented endpoints', async () => {
   await actions.load({ limit: 100, offset: 100 });
   await actions.updateCopy({ entryId: 7, values: { hdr: 'HDR10', format: 'Blu-ray' }, initial: { hdr: '', format: 'Blu-ray' } });
   await actions.removeCopy({ entryId: 7 });
+  await actions.updateSeason({ seasonId: 9, values: { hdr: 'HDR10' }, initial: { hdr: '' } });
+  await actions.removeSeason({ seasonId: 9 });
   await actions.addCopy({
     address: { path: '/api/v1/media/movie/tmdb/1/collection/', query: undefined },
     values: { format: 'Blu-ray' },
@@ -290,6 +292,8 @@ test('remote actions address the documented endpoints', async () => {
     { path: '/api/v1/collection/', options: { query: { limit: 100, offset: 100 } } },
     { path: '/api/v1/collection/7/', options: { method: 'PATCH', body: { hdr: 'HDR10' } } },
     { path: '/api/v1/collection/7/', options: { method: 'DELETE' } },
+    { path: '/api/v1/collection/seasons/9/', options: { method: 'PATCH', body: { hdr: 'HDR10' } } },
+    { path: '/api/v1/collection/seasons/9/', options: { method: 'DELETE' } },
     {
       path: '/api/v1/media/movie/tmdb/1/collection/',
       options: { method: 'PUT', query: undefined, body: { media_type: 'Blu-ray' } },
