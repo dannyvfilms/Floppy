@@ -2697,6 +2697,16 @@ html.light .theme-toggle-icon-moon {
     filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
   }
 
+  /* A season's logo stands in for its title, so it links to the show like the
+     title does. The link takes the logo's box so the clickable area matches. */
+  .detail-carousel-overview-logo-link {
+    display: block;
+    width: min(40%, 32rem);
+  }
+
+  .detail-carousel-overview-logo-link > .detail-carousel-overview-logo {
+    width: 100%;
+  }
 
   .detail-carousel-strip-wrap {
     grid-area: strip;

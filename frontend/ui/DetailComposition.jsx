@@ -66,7 +66,7 @@ function Artwork({ artwork, palette, title, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>{frame}</Pressable>;
 }
 
-export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork }) {
+export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, onOpenTitle }) {
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const { width } = useWindowDimensions();
@@ -79,7 +79,10 @@ export function DetailHeader({ model, labels, palette, showArtwork = false, onPr
     <View style={styles.headerBody}>
       {model?.subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{model.subtitle}</Text> : null}
       <View style={styles.titleRow}>
-        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>
+        {/* A season's title is its show's name and opens the show, like the web title link. */}
+        {onOpenTitle ? <Pressable accessibilityRole="link" onPress={onOpenTitle}>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>
+        </Pressable> : <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>}
         <AltTitle text={model?.altTitle} label={text.altTitle} palette={colors} />
       </View>
       {model?.publicView ? <View style={styles.publicBadge}>
@@ -143,7 +146,7 @@ export function DetailHero({ model, palette, onOpenVideo }) {
   </View>;
 }
 
-export function DetailMobileHero({ model, palette, onOpenItem, actions }) {
+export function DetailMobileHero({ model, palette, onOpenItem, onOpenTitle, actions }) {
   const colors = resolvePalette(palette);
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const { width } = useWindowDimensions();
@@ -158,7 +161,11 @@ export function DetailMobileHero({ model, palette, onOpenItem, actions }) {
       style={[styles.mobileHeroImage, { height: Math.max(230, width * 0.83) }]} accessible={false} />
     <CardScrim style={StyleSheet.absoluteFill} />
     <View style={[styles.mobileHeroContent, { paddingTop: Math.max(120, width * 0.32) }]}>
-      {logo ? <Image source={{ uri: logo }} resizeMode="contain" style={styles.mobileHeroLogo}
+      {onOpenTitle ? <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpenTitle}
+        style={logo ? styles.mobileHeroLogoLink : null}>
+        {logo ? <Image source={{ uri: logo }} resizeMode="contain" style={[styles.mobileHeroLogo, styles.mobileHeroLogoLinked]}
+          accessible={false} /> : <Text accessibilityRole="header" style={styles.mobileHeroTitle}>{model.title}</Text>}
+      </Pressable> : logo ? <Image source={{ uri: logo }} resizeMode="contain" style={styles.mobileHeroLogo}
         accessibilityLabel={`${model.title} logo`} /> :
         <Text accessibilityRole="header" style={styles.mobileHeroTitle}>{model.title}</Text>}
       {model.seasonLabel ? <View style={styles.seasonSelector}>
@@ -290,6 +297,8 @@ const styles = StyleSheet.create({
   mobileHeroContent: { alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingBottom: 22 },
   mobileHeroActions: { alignSelf: 'stretch' },
   mobileHeroLogo: { width: '66%', height: 96 },
+  mobileHeroLogoLink: { width: '66%', alignItems: 'center' },
+  mobileHeroLogoLinked: { width: '100%' },
   mobileHeroTitle: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   mobileHeroMeta: { color: '#fff', fontSize: 14, textAlign: 'center', textShadowColor: '#000', textShadowRadius: 4 },
   seasonSelector: { alignItems: 'center', zIndex: 2 },
