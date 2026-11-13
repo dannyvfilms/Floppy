@@ -688,6 +688,12 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             # The scan's candidate queryset defers this blob; the tracker rows
             # must not bring it back through their own select_related.
             rows = rows.defer("item__watch_providers")
+        if media_type == MediaTypes.SEASON.value:
+            # The season graph joins each row's show item, and with it a copy
+            # of the show's provider blob per season. Ranking never reads the
+            # show's providers (the provider filter reads the season's own),
+            # so leave it in the database, as episode rows already do.
+            rows = rows.defer("related_tv__item__watch_providers")
         # Progress and derived status read episodes and seasons; fetch them
         # once for the batch instead of once per row. Ranking only reads the
         # compact episode fields: runtime comes from the bulk runtime index
