@@ -23,14 +23,20 @@ passed end to end. The independent
 [Coverage workflow](https://github.com/dannyvfilms/Floppy/actions/runs/43325180826)
 also completed successfully.
 
-**Not yet proven:** the live negative case for direct pushes; a squash
-merge and a merge while the PR branch is behind `latest`; an end-to-end
-scratch-repository exercise with the reuse variable enabled and the
-three shards skipped. Unit tests cover the decision paths, but do not
-replace those live exercises. Keep `REUSE_PR_TEST_RESULTS` unset until
-those cases are checked and the maintainer approves the 72-hour age
-limit and trust assumptions in #1917. Track outstanding validation
-in [#1918](https://github.com/dannyvfilms/Floppy/issues/1918).
+**Live direct-push negative case:** A documentation-only direct push
+([Docker Image run 43352328375](https://github.com/dannyvfilms/Floppy/actions/runs/43352328375))
+correctly reported `Decision: run` with the reason
+`no pull request is associated with this commit`, so the full gate
+was selected. The run's eventual completion is tracked separately.
+
+**Still not proven:** a squash merge and a merge while the PR branch
+is behind `latest`; an end-to-end scratch-repository exercise with
+the reuse variable enabled and the three shards skipped. Unit tests
+cover the decision paths, but do not replace those live exercises.
+Keep `REUSE_PR_TEST_RESULTS` unset until those cases are checked and
+the maintainer approves the 72-hour age limit and trust assumptions
+in #1917. Track outstanding validation in
+[#1918](https://github.com/dannyvfilms/Floppy/issues/1918).
 
 This is a *correctness* observation, not a before/after speed
 benchmark: collect controlled CI medians and an enabled-vs-disabled
