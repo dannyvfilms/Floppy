@@ -1,11 +1,7 @@
 import React from 'react';
-import { ActionMenu } from '../../../frontend/ui/controls/Menu';
-import { Icon } from '../../../frontend/ui/Icon';
-import { actionIcons } from '../../../frontend/ui/actionIcons';
+import { SettingsMenu } from '../../../frontend/ui/SettingsMenu';
 
-// The media list settings gear, as the web header shows it.
+// The media list settings gear: the shared SettingsMenu on the standard dropdown, as the web header shows it.
 export default function LibrarySettingsGear({ items, palette }) {
-  return <ActionMenu label="View settings" palette={palette} testID="library-settings"
-    icon={<Icon spec={actionIcons.settings} size={18} color={palette.textSecondary} />}
-    items={items} />;
+  return <SettingsMenu label="View settings" palette={palette} items={items} testID="library-settings" />;
 }

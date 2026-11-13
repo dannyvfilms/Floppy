@@ -624,6 +624,26 @@
         }
       }
     },
+    "frontend/ui/SettingsMenu.jsx": {
+      "components": [
+        "SettingsMenu"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by frontend/ui/mountSettingsMenu.jsx on the media list; the gear menu opened and rendered in Chromium."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised on a device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
     "frontend/ui/DropdownMenu.jsx": {
       "components": [
         "DropdownMenu"
@@ -5359,6 +5379,10 @@
     "frontend/ui/mountParentPicker.jsx": {
       "register": "SEARCH",
       "purpose": "Django/browser integration for the shared parent picker on the create-entry form."
+    },
+    "frontend/ui/mountSettingsMenu.jsx": {
+      "register": "FILTERS",
+      "purpose": "Django/browser integration for the media list settings menu: reads the page Alpine scope (layout, save, share, select) and the entry-grouping form when the menu opens."
     },
     "frontend/ui/mountSpinner.jsx": {
       "register": "SPINNER",

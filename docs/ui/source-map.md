@@ -290,6 +290,7 @@ Status: `Web Migrated`
 Status: `Partial / coexisting`
 
 - `frontend/ui/FilterBar.jsx`
+- `frontend/ui/SettingsMenu.jsx`
 - `native-proof/app/screens/LibraryScreen.jsx`
 - `native-proof/app/data/libraryTransportCore.js`
 
@@ -1432,6 +1433,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountDeviceApproval.jsx`
 - `frontend/ui/mountDeviceConnect.jsx`
 - `frontend/ui/mountFilterBar.jsx`
+- `frontend/ui/mountSettingsMenu.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `frontend/ui/mountHome.jsx`
 - `frontend/ui/mountLibraryPage.jsx`

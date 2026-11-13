@@ -3587,21 +3587,14 @@ class MediaListViewTests(TestCase):
         self.assertNotIn(movie_item.id, movie_ids)
 
     def test_media_list_layout_toggle_uses_shared_filter_serializer(self):
-        """Grid/table links should reuse the shared serializer instead of manual query strings."""
+        """The settings menu island switches layout through the page's shared serializer, not a query string of its own."""
         response = self.client.get(reverse("medialist", args=[MediaTypes.MOVIE.value]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            ":href=\"layoutHref(layout === 'grid' ? 'table' : 'grid')\"",
-        )
+        self.assertContains(response, "data-settings-menu-root")
         self.assertContains(
             response,
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
-        )
-        self.assertContains(
-            response,
-            '@click="$el.href = layoutHref(layout === \'grid\' ? \'table\' : \'grid\'); open = false"',
         )
         self.assertNotContains(
             response, "layout = layout === 'grid' ? 'table' : 'grid'"

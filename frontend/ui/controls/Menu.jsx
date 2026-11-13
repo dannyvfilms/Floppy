@@ -120,7 +120,7 @@ export function ActionMenu({
             {items.map((item, index) => {
               const key = `${item.key || item.label || 'item'}-${index}`;
               if (item.separator) {
-                return <View key={key} accessibilityRole="none" style={[styles.separator, { backgroundColor: colors.border }]} />;
+                return <View key={key} accessibilityRole="none" style={[styles.separator, { backgroundColor: colors.textMuted, opacity: 0.4 }]} />;
               }
               if (item.heading) {
                 return <Text key={key} accessibilityRole="header" style={[styles.heading, { color: colors.textMuted }]}>{item.heading}</Text>;

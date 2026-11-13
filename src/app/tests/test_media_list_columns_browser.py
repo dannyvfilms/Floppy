@@ -41,7 +41,7 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             all_buttons.last.click()
             expect(page.get_by_text("Finished", exact=True)).to_be_visible()
             page.get_by_role("button", name="View settings").first.click()
-            page.get_by_role("link", name="Grid View").first.click()  # names the current view; it switches to the table
+            page.get_by_role("menuitem", name="Grid View").first.click()  # names the current view; it switches to the table
             table = page.get_by_role("table")
             expect(table).to_contain_text("Finished")
             expect(table).to_contain_text("Playing")
