@@ -5,6 +5,7 @@ import { DetailView } from '../../../frontend/pages/DetailView';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import WindowedRail from '../surfaces/WindowedRail';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
+import { useDevicePose } from '../data/useDevicePose';
 import { Screen } from '../components/Screen';
 import { createDetailModelForItem, loadDetailModel } from '../surfaces/DetailSlot';
 import { useDetailFeatures } from '../surfaces/DetailFeatures';
@@ -17,11 +18,13 @@ import { palette } from '../theme';
 export default function DetailScreen({ params, onBack, navigate }) {
   const viewportWindow = useWindowDimensions();
   const mobileGridLayout = useMobileGridLayout();
+  // The device pose (closed, open or partial; vertical or horizontal), for laying Media Details out per pose.
+  const pose = useDevicePose();
   const insets = useSafeAreaInsets();
   const shellLayout = useContext(ShellLayoutContext);
   const heroViewport = { width: shellLayout?.width || viewportWindow.width - insets.left - insets.right,
     height: shellLayout?.height || viewportWindow.height - insets.top - insets.bottom,
-    headerHeight: shellLayout?.headerHeight || 0, insets,
+    headerHeight: shellLayout?.headerHeight || 0, insets, pose,
     gutters: horizontalContentPadding(insets, 22) };
   const item = useMemo(
     () => params?.item || (params?.href ? { href: params.href } : null),

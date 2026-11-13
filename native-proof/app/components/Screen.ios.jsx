@@ -1,5 +1,5 @@
 import React from 'react';
-import { useHinge } from 'expo-hinge';
+import { useDevicePose } from '../data/useDevicePose';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Screen as SharedScreen } from './Screen.jsx';
@@ -13,9 +13,9 @@ export { Section } from './Screen.jsx';
 // in other iPhone Duo apps. The content padding gives the rail's width back, so nothing moves.
 export function Screen({ contentStyle, ...props }) {
   const insets = useSafeAreaInsets();
-  const hinge = useHinge();
+  const pose = useDevicePose();
   const railEdge = useVerticalBarEdgeIOS();
-  const underRail = Boolean(hinge || railEdge);
+  const underRail = Boolean(pose.hasHinge || railEdge);
   return <SharedScreen {...props}
     scrollStyle={underRail ? { marginLeft: -insets.left, marginRight: -insets.right } : undefined}
     contentStyle={[underRail

@@ -292,6 +292,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/FilterBar.jsx`
 - `frontend/ui/SettingsMenu.jsx`
 - `frontend/ui/keyboardOverlapContext.js`
+- `frontend/ui/devicePose.js`, `frontend/settings/pose.web.js`, `native-proof/app/data/useDevicePose.js`, `native-proof/app/components/PoseBadge.jsx` (device poses; see `docs/architecture/device-poses.md`)
 - `native-proof/app/screens/LibraryScreen.jsx`
 - `native-proof/app/data/libraryTransportCore.js`
 

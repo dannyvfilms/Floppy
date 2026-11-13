@@ -328,3 +328,10 @@ html:is(.glass, .custom) .ui-button.ui-button-tone-surface:not(:hover) { backgro
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/* Device pose readout (frontend/settings/pose.web.js sets the attributes; ?pose=debug turns it on). */
+html[data-pose-debug]::after {
+  content: attr(data-pose) " " attr(data-pose-size);
+  position: fixed; left: 8px; bottom: 8px; z-index: 99999; padding: 2px 8px; border-radius: 6px;
+  font: 600 11px/1.6 ui-monospace, monospace; color: #fff; background: rgba(0, 0, 0, 0.7); pointer-events: none;
+}

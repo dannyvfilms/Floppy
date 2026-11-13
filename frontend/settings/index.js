@@ -11,11 +11,13 @@ import './island-reveal.css';
 import '../providers/provider-page.css';
 import React from 'react';
 import { setIconRenderer } from '../ui/Icon';
+import { watchDevicePose } from './pose.web';
 import { Icon as WebIcon } from '../ui/IconRenderer.web.jsx';
 
 // Shared components render icons through this adapter, so universal files do
 // not import a browser-only SVG implementation.
 setIconRenderer((spec, options) => React.createElement(WebIcon, { spec, ...options }));
+watchDevicePose();
 
 // One small loader on every page; React/RNW are fetched only when a card appears.
 const roots = new Map();

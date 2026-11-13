@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useHinge } from 'expo-hinge';
+import { useDevicePose } from '../data/useDevicePose';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { configureSidebarListPins, getSidebarListPins, removeSidebarListPin, subscribeSidebarListPins } from '../data/sidebarListPins';
@@ -159,7 +159,7 @@ export default function ShellSlot({
   const [pinned, setPinned] = useState([]);
   const [detailViewport, setDetailViewport] = useState({ width: 0, height: 0 });
   const [detailHeaderHeight, setDetailHeaderHeight] = useState(64);
-  const hinge = useHinge();
+  const pose = useDevicePose();
   const railEdge = useVerticalBarEdgeIOS();
   const insets = useSafeAreaInsets();
 
@@ -254,7 +254,7 @@ export default function ShellSlot({
   };
 
   const navigationPadding = horizontalContentPadding(insets, 16);
-  const adaptivePalette = Platform.OS === 'ios' && (hinge || railEdge)
+  const adaptivePalette = Platform.OS === 'ios' && (pose.hasHinge || railEdge)
     ? { ...shellPalette, navRowHeight: 44, navContentPaddingTop: 25,
       navContentPaddingLeft: navigationPadding.paddingLeft,
       navContentPaddingRight: navigationPadding.paddingRight,

@@ -3240,6 +3240,12 @@ html.light .theme-toggle-icon-moon {
 }
 
 /* https://tailwindcss.com/docs/upgrade-guide#hover-styles-on-mobile */
+/* Device poses (docs/architecture/device-poses.md). The web has no hinge, so a pose is the window's size: one small
+   screen is closed, a window with room for two screens is open. Same thresholds as frontend/ui/devicePose.js. */
+@custom-variant pose-closed (@media (max-width: 599.98px), (max-height: 599.98px));
+@custom-variant pose-open (@media (min-width: 600px) and (min-height: 600px));
+@custom-variant pose-vertical (@media (orientation: portrait));
+@custom-variant pose-horizontal (@media (orientation: landscape));
 @custom-variant hover-tap (&:hover);
 @custom-variant parent-hover-tap (.hover-tap:hover &);
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Stack } from 'expo-router';
-import { useHinge } from 'expo-hinge';
+import { useDevicePose } from '../data/useDevicePose';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import LibrarySettingsGear from './LibrarySettingsGear';
 
@@ -8,9 +8,9 @@ import LibrarySettingsGear from './LibrarySettingsGear';
 // There the settings are one system Liquid Glass button at the bottom of the rail; otherwise the
 // in-page gear. The menu takes the same items either way: `{ label, onSelect }` rows and `{ heading }` groups.
 export default function LibrarySettings({ items, palette }) {
-  const hinge = useHinge();
+  const pose = useDevicePose();
   const railEdge = useVerticalBarEdgeIOS();
-  if (!hinge && !railEdge) return <LibrarySettingsGear items={items} palette={palette} />;
+  if (!pose.hasHinge && !railEdge) return <LibrarySettingsGear items={items} palette={palette} />;
   // A divider or a heading starts a new inline section; iOS draws a separator between inline menus.
   const rows = [{ actions: [] }];
   items.forEach(item => {

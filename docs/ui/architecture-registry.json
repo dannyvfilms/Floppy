@@ -3976,6 +3976,28 @@
         }
       }
     },
+    "frontend/ui/devicePose.js": {
+      "components": [
+        "resolvePose",
+        "poseValue",
+        "isPose"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Unit tests cover every pose and the no-hinge size rule; the PWA reads it through frontend/settings/pose.web.js."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Unit tests only; not yet read on the Duo hardware."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
     "frontend/ui/dropdownMetrics.js": {
       "components": [
         "DROPDOWN"
@@ -5707,6 +5729,10 @@
     "frontend/ui/keyboardOverlap.web.js": {
       "register": "SEARCH",
       "purpose": "Browser adapter that reports how far the on-screen keyboard covers the page, from the visual viewport, for the Search suggestion window."
+    },
+    "frontend/settings/pose.web.js": {
+      "register": "DETAIL",
+      "purpose": "Browser adapter that writes the PWA device pose (data-pose on <html>) from the window size and keeps it current on resize and rotation."
     }
   }
 }
