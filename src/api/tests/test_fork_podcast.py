@@ -72,6 +72,78 @@ class ShowTrackerTests(PodcastApiTestCase):
         self.assertEqual(payload["listened_count"], 0)
         self.assertEqual(payload["episode_count"], self.show.episodes.count())
 
+    def test_show_payloads_never_expose_a_feed_url(self):
+        """A private feed one user imported is unreachable for another."""
+        secret_url = "https://feeds.example.com/private/secret-token-abc123.xml"
+        self.show.rss_feed_url = secret_url
+        self.show.save(update_fields=["rss_feed_url"])
+        PodcastShowTracker.objects.create(user=self.user1, show=self.show)
+
+        responses = [
+            self.call_api(
+                "get",
+                "api_podcast_show_detail",
+                args=(self.show.id,),
+                headers=self.auth_headers2,
+            ),
+            self.call_api(
+                "patch",
+                "api_podcast_show_detail",
+                args=(self.show.id,),
+                payload={"status": Status.PLANNING.value},
+                headers=self.auth_headers2,
+            ),
+            self.call_api(
+                "get",
+                "api_podcast_shows",
+                headers=self.auth_headers2,
+            ),
+        ]
+        PodcastShowTracker.objects.filter(user=self.user2).delete()
+        responses.append(
+            self.call_api(
+                "post",
+                "api_podcast_shows",
+                payload={"show_id": self.show.id},
+                headers=self.auth_headers2,
+            ),
+        )
+
+        for response in responses:
+            self.assertIn(response.status_code, (HTTP.OK, HTTP.CREATED))
+            body = response.content.decode()
+            self.assertNotIn("secret-token-abc123", body)
+            self.assertNotIn("rss_feed_url", body)
+
+    def test_generic_media_detail_never_exposes_a_feed_url(self):
+        """The generic media route resolves the shared show without its feed."""
+        self._metadata_patcher.stop()  # use the real catalog lookup
+        self.show.rss_feed_url = (
+            "https://feeds.example.com/private/path-secret-abc123/feed.xml"
+            "?token=query-secret-xyz789"
+        )
+        self.show.save(update_fields=["rss_feed_url"])
+        PodcastShowTracker.objects.create(user=self.user1, show=self.show)
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=("podcast", self.show.source, self.show.podcast_uuid),
+            headers=self.auth_headers2,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.content.decode()
+        self.assertNotIn("rss_feed_url", body)
+        self.assertNotIn("path-secret-abc123", body)
+        self.assertNotIn("query-secret-xyz789", body)
+        payload = response.json()
+        self.assertEqual(payload["title"], "Test Show")
+        self.assertEqual(payload["details"]["show_uuid"], "show-uuid-1")
+        self.assertEqual(
+            payload["details"]["website_url"], "https://example.com/show"
+        )
+
     def test_track_list_patch_delete(self):
         """Full tracker lifecycle."""
         created = self.call_api(
@@ -287,6 +359,35 @@ class PodcastLookupTests(PodcastApiTestCase):
 
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertEqual(response.json()["show_id"], imported.id)
+
+    @patch("integrations.podcast_rss.fetch_episodes_from_rss")
+    @patch("app.providers.pocketcasts.lookup_by_itunes_id")
+    def test_lookup_returns_the_public_feed_not_a_stored_private_one(
+        self,
+        mock_lookup,
+        mock_episodes,
+    ):
+        """A preview reports iTunes' public feed, never the imported show's."""
+        mock_lookup.return_value = dict(self.ITUNES_DATA)
+        mock_episodes.return_value = []
+        imported = PodcastShow.objects.create(
+            podcast_uuid="itunes:999888",
+            title="Unimported Show",
+            rss_feed_url="https://example.com/private/secret-token-abc123.xml",
+        )
+
+        response = self.call_api(
+            "get",
+            "api_podcast_lookup",
+            args=("999888",),
+            headers=self.auth_headers2,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        self.assertEqual(payload["show_id"], imported.id)
+        self.assertEqual(payload["rss_feed_url"], "https://example.com/feed.xml")
+        self.assertNotIn("secret-token-abc123", response.content.decode())
 
     @patch("integrations.podcast_rss.fetch_episodes_from_rss")
     @patch("integrations.podcast_rss.fetch_show_metadata_from_rss")
