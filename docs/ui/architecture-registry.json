@@ -625,12 +625,23 @@
       }
     },
     "frontend/ui/DropdownMenu.jsx": {
-      "components": ["DropdownMenu"],
+      "components": [
+        "DropdownMenu"
+      ],
       "register": "FORM-CONTROLS",
       "verification": {
-        "web": { "status": "unverified", "evidence": "Shared sidebar menu presentation builds; browser runtime regression remains pending." },
-        "ios": { "status": "unverified", "evidence": "Physical Duo showed the Collection Format menu and the user selected a value. Sidebar and multi-select regression remain pending." },
-        "android": { "status": "unverified", "evidence": "Android runtime has not been exercised." }
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared sidebar menu presentation builds; browser runtime regression remains pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Physical Duo showed the Collection Format menu and the user selected a value. Sidebar and multi-select regression remain pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Android runtime has not been exercised."
+        }
       }
     },
     "frontend/ui/SelectField.jsx": {
@@ -3675,6 +3686,51 @@
           "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
         }
       }
+    },
+    "frontend/ui/MarkdownPreview.jsx": {
+      "components": [
+        "MarkdownPreview"
+      ],
+      "register": "NOTES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Browser surfaces resolve MarkdownPreview.web.jsx through the same import; no browser rendering pass in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared React Native markdown preview compiled by the Expo export through the native notes slot; no simulator interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared React Native markdown preview compiled by the Expo export through the native notes slot; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/MusicParts.jsx": {
+      "components": [
+        "MusicDetailHero",
+        "MusicDetailLayout",
+        "ArtistPage",
+        "AlbumPage",
+        "TrackPage",
+        "ShowPage"
+      ],
+      "register": "MUSIC",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered in the browser; the web music pages still use the existing islands."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native music screens; no simulator interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native music screens; no emulator interaction pass."
+        }
+      }
     }
   },
   "legacy": {},
@@ -3872,7 +3928,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
@@ -3945,12 +4001,23 @@
       }
     },
     "frontend/ui/sectionSpacing.js": {
-      "components": ["sectionSpacing"],
+      "components": [
+        "sectionSpacing"
+      ],
       "register": "HOME",
       "verification": {
-        "web": {"status": "unverified", "evidence": "Shared responsive spacing; web rendering not yet checked."},
-        "ios": {"status": "unverified", "evidence": "Shared responsive spacing; Duo check pending."},
-        "android": {"status": "unverified", "evidence": "Android rendering not yet checked."}
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared responsive spacing; web rendering not yet checked."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared responsive spacing; Duo check pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Android rendering not yet checked."
+        }
       }
     },
     "frontend/ui/fetchGate.js": {
