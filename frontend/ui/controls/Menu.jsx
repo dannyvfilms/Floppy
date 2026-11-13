@@ -29,7 +29,6 @@ export function ActionMenu({
   items = [],
   empty,
   disabled = false,
-  align = 'start',
   secondary = true,
   icon,
   palette = {},
@@ -94,8 +93,7 @@ export function ActionMenu({
       statusBarTranslucent
       onRequestClose={close}>
       <View style={[styles.overlay, compact ? styles.overlayCompact : styles.overlayWide,
-        { backgroundColor: colors.overlay },
-        !compact && { alignItems: align === 'end' ? 'flex-end' : 'flex-start' }]}>
+        { backgroundColor: colors.overlay }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={closeLabel}
@@ -206,7 +204,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   overlay: { flex: 1 },
   overlayCompact: { justifyContent: 'flex-end' },
-  overlayWide: { justifyContent: 'center', padding: 24 },
+  overlayWide: { justifyContent: 'center', alignItems: 'center', padding: 24 },
   backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   sheet: { overflow: 'hidden', borderWidth: 1 },
   sheetCompact: {
