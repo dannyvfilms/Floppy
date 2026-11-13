@@ -11,19 +11,23 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils.dateparse import parse_datetime
 
 from app.models import (
     TV,
     DeletedMedia,
+    Episode,
     Item,
     MediaTypes,
+    Movie,
     Season,
     Sources,
     Status,
 )
-from integrations.imports import helpers, stremio
+from integrations.imports import helpers, stremio, trakt_collection
 from integrations.imports.trakt import TraktImporter
 from integrations.models import StremioAccount
+from integrations.tasks._media_imports import import_media
 from integrations.tests.imports.test_stremio import (
     encode_watched_bitfield,
     fake_tmdb_find,
@@ -244,6 +248,59 @@ class StremioImportRespectsUserStatusTests(TestCase):
                 season_two = tv.seasons.get(item__season_number=2)
                 self.assertEqual(season_two.status, status)
 
+    def test_planned_season_under_held_show_stays_planned(self):
+        """A season the user only planned must not start when Stremio has plays."""
+        for status in HELD_STATUSES:
+            with self.subTest(status=status):
+                TV.objects.filter(user=self.user).delete()
+                tv = _tracked_show(self.user, status)
+                season_item, _ = Item.objects.get_or_create(
+                    media_id=SHOW_ID,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.SEASON.value,
+                    season_number=2,
+                    defaults={"title": "Breaking Bad"},
+                )
+                Season.objects.create(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv,
+                    status=Status.PLANNING.value,
+                )
+
+                self._run({f"{SHOW_IMDB}:1:1", f"{SHOW_IMDB}:2:1"})
+
+                tv.refresh_from_db()
+                self.assertEqual(tv.status, status)
+                self.assertEqual(
+                    tv.seasons.get(item__season_number=2).status,
+                    Status.PLANNING.value,
+                )
+
+    def test_planned_season_of_an_open_show_still_starts(self):
+        """The same plays do start a planned season of a show still being watched."""
+        tv = _tracked_show(self.user, Status.IN_PROGRESS.value)
+        season_item = Item.objects.create(
+            media_id=SHOW_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=2,
+            title="Breaking Bad",
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+
+        self._run({f"{SHOW_IMDB}:1:1", f"{SHOW_IMDB}:2:1"})
+
+        self.assertEqual(
+            tv.seasons.get(item__season_number=2).status,
+            Status.IN_PROGRESS.value,
+        )
+
 
 class TraktImportRespectsUserStatusTests(TestCase):
     """A recurring Trakt import in New mode."""
@@ -346,3 +403,153 @@ class ModelRecomputeRespectsUserStatusTests(TestCase):
                     status,
                 )
 
+
+
+MOVIE_ID = "603"
+
+
+class _PlainTraktImporter(TraktImporter):
+    """Runs Trakt's stages in-process, without the durable run bookkeeping."""
+
+
+def _trakt_feed(new_watch=False, *, on_watchlist=True):
+    show = {"title": "Breaking Bad", "ids": {"tmdb": int(SHOW_ID)}}
+    movie = {"title": "The Matrix", "ids": {"tmdb": int(MOVIE_ID)}}
+    watched_at = "2026-01-01T00:00:00.000Z"
+    history = [
+        {
+            "type": "episode",
+            "episode": {"season": 1, "number": 1, "title": "E1"},
+            "show": show,
+            "watched_at": watched_at,
+        },
+        {"type": "movie", "movie": movie, "watched_at": watched_at},
+    ]
+    if new_watch:
+        history.append(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 2, "title": "E2"},
+                "show": show,
+                "watched_at": "2026-02-01T00:00:00.000Z",
+            },
+        )
+    watchlist = (
+        [
+            {"type": "show", "show": show, "listed_at": watched_at},
+            {"type": "movie", "movie": movie, "listed_at": watched_at},
+        ]
+        if on_watchlist
+        else []
+    )
+
+    def paginated(_importer, endpoint, *_args, **_kwargs):
+        if "history" in endpoint:
+            return history
+        return watchlist if "watchlist" in endpoint else []
+
+    return paginated
+
+
+def _trakt_metadata(media_type, *_args, **_kwargs):
+    if media_type == MediaTypes.TV.value:
+        return {
+            "title": "Breaking Bad",
+            "image": "",
+            "last_episode_season": 5,
+            "max_progress": 10,
+        }
+    if media_type == MediaTypes.MOVIE.value:
+        return {"title": "The Matrix", "image": "", "max_progress": 1}
+    return {
+        "title": "Breaking Bad",
+        "image": "",
+        "episodes": [{"episode_number": n, "still_path": None} for n in (1, 2)],
+        "max_progress": 2,
+    }
+
+
+class TraktOverwriteTests(TestCase):
+    """A Trakt Overwrite import must rebuild a show with every play (#1133)."""
+
+    def setUp(self):
+        """Create a user."""
+        self.user = get_user_model().objects.create_user(username="u", password="p")
+
+    def _track(self, status):
+        """Track the show (with one watched episode) and the movie."""
+        tv = _tracked_show(self.user, status)
+        episode_item = Item.objects.create(
+            media_id=SHOW_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Breaking Bad",
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=tv.seasons.get(),
+            end_date=parse_datetime("2026-01-01T00:00:00Z"),
+        )
+        movie_item = Item.objects.create(
+            media_id=MOVIE_ID,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        Movie.objects.create(item=movie_item, user=self.user, status=status)
+        return tv
+
+    def _sync(self, mode, *, new_watch=False, on_watchlist=True):
+        """Run a Trakt sync the way the Celery task does; return the mode it saw."""
+        seen = []
+
+        def importer(_identifier, user, run_mode, **_kwargs):
+            seen.append(run_mode)
+            with (
+                patch.object(
+                    _PlainTraktImporter,
+                    "_get_paginated_data",
+                    autospec=True,
+                    side_effect=_trakt_feed(new_watch, on_watchlist=on_watchlist),
+                ),
+                patch.object(_PlainTraktImporter, "_make_api_request", return_value={}),
+                patch.object(
+                    _PlainTraktImporter,
+                    "_get_metadata",
+                    side_effect=_trakt_metadata,
+                ),
+                patch("app.providers.trakt.is_configured", return_value=False),
+            ):
+                _PlainTraktImporter("u", user, run_mode).import_data()
+            return {}, ""
+
+        import_media(importer, None, self.user.id, mode)
+        return seen[0]
+
+    def test_a_real_deletion_still_blocks_the_sync(self):
+        """Deleting a show by hand keeps it deleted, as before."""
+        self._track(Status.COMPLETED.value).delete()
+        self.assertTrue(DeletedMedia.objects.filter(user=self.user).exists())
+
+        self._sync("new")
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+    def test_overwrite_import_rebuilds_a_show_with_every_play(self):
+        """Overwrite replaces the show; plays it already had must come back too."""
+        self._track(Status.COMPLETED.value)
+
+        self._sync("overwrite", new_watch=True, on_watchlist=False)
+
+        self.assertEqual(
+            sorted(
+                Episode.objects.values_list(
+                    "item__season_number",
+                    "item__episode_number",
+                ),
+            ),
+            [(1, 1), (1, 2)],
+        )
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
