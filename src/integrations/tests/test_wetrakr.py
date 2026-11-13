@@ -208,6 +208,28 @@ class ErrorReadingTests(TestCase):
                 self.assertNotIsInstance(caught.exception, wetrakr_api.WeTrakrAuthError)
 
 
+class BundledKeyTests(TestCase):
+    """The app-owned WeTrakr key ships by default and can still be replaced."""
+
+    def test_the_bundled_key_is_the_default_and_is_what_a_user_resolves(self):
+        from django.conf import settings
+
+        from app.providers import credentials
+
+        bundled = settings.SHARED_DEFAULT_CREDENTIALS["WETRAKR_CLIENT_ID"]
+        self.assertTrue(bundled)
+        self.assertEqual(settings.WETRAKR_CLIENT_ID, bundled)
+        user = get_user_model().objects.create_user(username="bundled", password="x")
+        self.assertEqual(wetrakr_api.client_id_for(user), bundled)
+        field = credentials.get_spec("wetrakr").fields[0]
+        self.assertEqual(credentials.default_value(field), bundled)
+
+    def test_an_instance_key_replaces_the_bundled_one(self):
+        user = get_user_model().objects.create_user(username="own", password="x")
+        with self.settings(WETRAKR_CLIENT_ID="instance-key"):
+            self.assertEqual(wetrakr_api.client_id_for(user), "instance-key")
+
+
 class DeviceFlowTests(TestCase):
     def _poll(self, *responses):
         with patch(
