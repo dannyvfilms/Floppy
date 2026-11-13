@@ -51,7 +51,7 @@ function DropdownMenuContent({ onClose, children, palette, closeLabel, anchor, e
 // draw it, so their size, spacing, colours and hover match. The row owns its colours (text, muted detail and
 // the surface-muted hover/selected background) and reads them from the caller's palette; a caller only adds
 // `danger` for a destructive row. `icon` is an already-rendered node (each platform supplies its own glyph).
-export function DropdownItem({ label, icon, detail, selected = false, disabled = false, danger = false, onPress, palette,
+export function DropdownItem({ label, icon, detail, chevron = false, checked = false, selected = false, disabled = false, danger = false, onPress, palette,
   numberOfLines, accessibilityRole = 'menuitem', testID }) {
   const color = danger ? palette.danger : palette.textSecondary;
   return <Pressable accessibilityRole={accessibilityRole} accessibilityLabel={label}
@@ -61,7 +61,35 @@ export function DropdownItem({ label, icon, detail, selected = false, disabled =
     {icon || null}
     <Text numberOfLines={numberOfLines} style={[styles.itemText, { color }]}>{label}</Text>
     {detail ? <Text style={[styles.itemDetail, { color: palette.textMuted }]}>{detail}</Text> : null}
+    {checked ? <Text accessible={false} style={[styles.itemDetail, { color: palette.accent || palette.textSecondary }]}>✓</Text> : null}
+    {chevron ? <Text accessible={false} style={[styles.chevron, { color: palette.textMuted }]}>›</Text> : null}
   </Pressable>;
+}
+
+// The first row of a level one deeper than the menu's root: it names the level and goes back up. A menu
+// goes a level deeper with a `chevron` row (a multi-select, say) whose press swaps the menu's rows for that
+// level's rows, led by this one.
+export function DropdownBackItem({ label, onPress, palette }) {
+  return <DropdownItem label={label} accessibilityRole="button" onPress={onPress} palette={palette}
+    icon={<Text accessible={false} style={[styles.back, { color: palette.textMuted }]}>‹</Text>} />;
+}
+
+// The quiet rule between groups of rows: the collection Summary divider (muted text colour at 40%).
+export function DropdownSeparator({ palette }) {
+  return <View accessibilityRole="none" style={[styles.separator, { backgroundColor: palette.textMuted }]} />;
+}
+
+// A labelled text field inside a menu level (a search box, a range's From and To).
+export function DropdownField({ label, palette, ...input }) {
+  return <View style={styles.field}>
+    {label ? <Text style={[styles.fieldLabel, { color: palette.textMuted }]}>{label}</Text> : null}
+    <TextInput accessibilityLabel={input.accessibilityLabel || label} placeholderTextColor={palette.textMuted}
+      {...input} style={[styles.input, { color: palette.text, borderColor: palette.border, backgroundColor: palette.background || palette.surfaceStrong }]} />
+  </View>;
+}
+
+export function DropdownHeading({ children, palette }) {
+  return <Text accessibilityRole="header" style={[styles.heading, { color: palette.textMuted }]}>{children}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -69,6 +97,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
   itemText: { flexShrink: 1, fontSize: DROPDOWN.fontSize },
   itemDetail: { marginLeft: 'auto', fontSize: 12 },
+  chevron: { fontSize: 16, lineHeight: 18 },
+  field: { gap: 4, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: 4 },
+  fieldLabel: { fontSize: 12 },
+  input: { minHeight: 36, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, fontSize: DROPDOWN.fontSize },
+  back: { fontSize: 18, lineHeight: 18, width: 16, textAlign: 'center' },
+  separator: { height: 1, opacity: 0.4, marginVertical: 4 },
+  heading: { fontSize: 12, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: 8 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   menu: { width: DROPDOWN.width, borderRadius: DROPDOWN.radius, borderWidth: 1, paddingVertical: DROPDOWN.paddingVertical },
   popover: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,

@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { DropdownItem, DropdownMenu } from './DropdownMenu';
-import { DROPDOWN } from './dropdownMetrics';
+import { DropdownHeading, DropdownItem, DropdownMenu, DropdownSeparator } from './DropdownMenu';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
 
@@ -45,14 +44,8 @@ export function SettingsMenu({ label = 'View settings', items, palette, closeLab
     <DropdownMenu open={open} anchor={anchor} palette={colors} closeLabel={closeLabel}
       estimatedHeight={rows.length * 40 + 8} onClose={() => setOpen(false)}>
       {rows.map((row, index) => {
-        if (row.separator) {
-          return <View key={`separator-${index}`} accessibilityRole="none"
-            style={[styles.separator, { backgroundColor: colors.textMuted }]} />;
-        }
-        if (row.heading) {
-          return <Text key={`heading-${row.heading}`} accessibilityRole="header"
-            style={[styles.heading, { color: colors.textMuted }]}>{row.heading}</Text>;
-        }
+        if (row.separator) return <DropdownSeparator key={`separator-${index}`} palette={colors} />;
+        if (row.heading) return <DropdownHeading key={`heading-${row.heading}`} palette={colors}>{row.heading}</DropdownHeading>;
         return <DropdownItem key={row.key || row.label} label={row.label} detail={row.detail} disabled={row.disabled}
           onPress={() => { setOpen(false); row.onSelect?.(); }}
           palette={colors}
@@ -64,7 +57,4 @@ export function SettingsMenu({ label = 'View settings', items, palette, closeLab
 
 const styles = StyleSheet.create({
   trigger: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 6 },
-  heading: { fontSize: 12, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: 8 },
-  // Same quiet rule as the collection Summary divider: muted text colour at 40%.
-  separator: { height: 1, opacity: 0.4, marginVertical: 4 },
 });

@@ -253,7 +253,7 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
 - `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
 - `native-proof/app/surfaces/LibraryGrid.jsx`
 - `native-proof/app/surfaces/LibraryBulkActions.jsx`
@@ -291,6 +291,7 @@ Status: `Partial / coexisting`
 
 - `frontend/ui/FilterBar.jsx`
 - `frontend/ui/SettingsMenu.jsx`
+- `frontend/ui/keyboardOverlapContext.js`
 - `native-proof/app/screens/LibraryScreen.jsx`
 - `native-proof/app/data/libraryTransportCore.js`
 

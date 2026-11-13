@@ -15,12 +15,18 @@ export function toggleDropdownSelection(selected, value) {
   return selected.includes(value) ? selected.filter(entry => entry !== value) : [...selected, value];
 }
 
-export function dropdownPlacement(anchor, bounds, estimatedHeight = 112) {
+// Under the trigger with right edges aligned; when that would push the menu past the left edge of the
+// screen (a trigger near the left), its left edge aligns with the trigger instead and is kept on screen.
+// Flips above the trigger when there is no room below.
+export function dropdownPlacement(anchor, bounds, estimatedHeight = 112, width = DROPDOWN.width) {
   const x = anchor.x - bounds.x;
   const y = anchor.y - bounds.y;
-  const right = Math.max(8, bounds.width - x - anchor.width);
+  const triggerRight = x + anchor.width;
+  const horizontal = triggerRight - width >= 8
+    ? { right: Math.max(8, bounds.width - triggerRight) }
+    : { left: Math.min(Math.max(8, x), Math.max(8, bounds.width - width - 8)) };
   const below = y + anchor.height + 4;
   return below + Math.min(estimatedHeight, bounds.height - 16) > bounds.height - 8
-    ? { right, bottom: Math.max(8, bounds.height - y + 4) }
-    : { right, top: below };
+    ? { ...horizontal, bottom: Math.max(8, bounds.height - y + 4) }
+    : { ...horizontal, top: below };
 }
