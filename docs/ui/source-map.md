@@ -238,6 +238,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
 - `src/templates/app/components/derived_tv_rating_detail.html`
 - `src/templates/app/components/detail_episode_rating_chip.html`
+- `src/templates/app/components/detail_seasons_row.html`
 - `src/templates/app/components/detail_row_rating_button.html`
 - `src/templates/app/components/detail_score_and_actions.html`
 - `src/templates/app/components/detail_score_chip.html`
@@ -664,6 +665,7 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/podcast_show_detail.html`
 - `frontend/pages/MusicView.jsx`
 - `frontend/ui/MusicAlbumCard.jsx`
+- `frontend/ui/MusicParts.jsx`
 - `frontend/ui/MusicRelationCard.jsx`
 - `frontend/ui/mountMusicAlbums.jsx`
 - `frontend/ui/mountMusicRelations.jsx`
@@ -1330,6 +1332,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ListsForm.web.jsx`
 - `frontend/ui/MarkdownNotes.jsx`
 - `frontend/ui/MarkdownPreview.native.jsx`
+- `frontend/ui/MarkdownPreview.jsx`
 - `frontend/ui/MarkdownPreview.web.jsx`
 - `frontend/ui/MediaCard.native.jsx`
 - `frontend/ui/MediaCardActionHost.jsx`
