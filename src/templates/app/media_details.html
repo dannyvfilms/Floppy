@@ -49,7 +49,7 @@
           </div>
 
           <div class="detail-carousel-grid__header flex flex-col md:flex-row md:flex-wrap md:items-center {% if media_type == MediaTypes.VIDEO.value %}md:justify-start{% else %}md:justify-between{% endif %} gap-4">
-            <div class="detail-carousel-grid__title min-w-0{% if media_type != MediaTypes.VIDEO.value %} flex-1 md:basis-64{% endif %}"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview.logo_url %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
+            <div class="detail-carousel-grid__title min-w-0{% if media_type != MediaTypes.VIDEO.value %} flex-1 md:basis-64{% endif %}"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview.logo_url %}{% if carousel_logo_url %}<a href="{{ carousel_logo_url }}" class="detail-carousel-overview-logo-link">{% endif %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% if carousel_logo_url %}</a>{% endif %}{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             <div class="detail-carousel-grid__actions max-w-full shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
           </div>
           <div class="detail-carousel-grid__chips">{% include "app/components/detail_score_chips.html" %}</div>

@@ -8291,6 +8291,13 @@ html.light .theme-toggle-icon-moon {
     object-position: left center;
     filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
   }
+  .detail-carousel-overview-logo-link {
+    display: block;
+    width: min(40%, 32rem);
+  }
+  .detail-carousel-overview-logo-link > .detail-carousel-overview-logo {
+    width: 100%;
+  }
   .detail-carousel-strip-wrap {
     grid-area: strip;
     position: relative;
