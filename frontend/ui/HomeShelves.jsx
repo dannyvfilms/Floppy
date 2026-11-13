@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'r
 import { MediaCard } from './MediaCard.jsx';
 import { Rail } from './Rail';
 import { createFetchGate } from './fetchGate.js';
+import { sectionSpacing } from './sectionSpacing.js';
 
 // Web and native shelves must pick the same card width. Web computes it from
 // the phone breakpoint in mountHome; native passes the same value from here.
@@ -215,7 +216,7 @@ export function HomeShelves({
   const palette = mergePalette(suppliedPalette);
   // Release separates media-type groups by 1rem on phones and 2rem from `sm`.
   const viewport = useWindowDimensions();
-  const sectionGap = viewport.width >= 640 ? 32 : 16;
+  const sectionGap = sectionSpacing(viewport.width);
   const [loadedRows, setLoadedRows] = useState({});
   const [rowPatches, setRowPatches] = useState({});
   const [pendingRows, setPendingRows] = useState({});

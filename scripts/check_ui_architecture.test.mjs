@@ -19,6 +19,13 @@ test('data layers may fetch but cannot render or access browser globals', () => 
   assert.ok(inspectUniversal('export function load(){return <div/>}', 'client.js', { logic: true, dataLayer: true }).length);
 });
 
+test('native alpha masks stay in the reviewed native presentation adapter', () => {
+  const source = "import React from 'react'; import {View} from 'react-native'; import MaskedView from '@react-native-masked-view/masked-view'; export function A(){return <MaskedView maskElement={<View/>}><View/></MaskedView>}";
+  assert.deepEqual(inspectUniversal(source, 'art.native.jsx', { nativeAdapter: true }), []);
+  assert.match(inspectUniversal(source, 'art.jsx').join(), /unapproved import/);
+  assert.match(inspectUniversal(source.replace('@react-native-masked-view/masked-view', '@react-native-masked-view/unknown'), 'art.native.jsx', { nativeAdapter: true }).join(), /unapproved native dependency/);
+});
+
 test('rejects DOM, browser APIs, transport, CSS and web dependencies', () => {
   for (const fragment of ['<div/>', '<View className="p-2"/>', '<View href="/"/>', 'document.title', 'window.location', 'fetch("/api")', 'React.createElement("div")', 'require("axios")', '<Text style={{fontSize: "1rem"}}/>', '"{% csrf_token %}"']) {
     assert.ok(inspectUniversal(`${native}\n${fragment};`).length, fragment);

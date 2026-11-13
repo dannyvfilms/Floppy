@@ -8,6 +8,7 @@ from django.test.utils import CaptureQueriesContext
 from api.serializers import EpisodeSerializer
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 from app.providers import services
+from integrations.models import IntegrationToken
 from lists.models import CustomListItem
 
 from .base import FloppyApiTestCase
@@ -1401,6 +1402,7 @@ class MediaSeasonTests(FloppyApiTestCase):
                 for number in range(1, 21)
             ],
         }
+        item_counts = set()
         for limit in (1, 3, 20):
             with (
                 self.subTest(limit=limit),
@@ -1425,8 +1427,12 @@ class MediaSeasonTests(FloppyApiTestCase):
                 for query in queries
                 if 'FROM "lists_customlistitem"' in query["sql"]
             ]
-            self.assertEqual(len(item_queries), 1, item_queries)
+            # The season endpoint also reads the viewer's rating previews and
+            # tracked season, so Item is queried a fixed few times per page.
+            # What matters is that the count does not grow with the page size.
+            item_counts.add(len(item_queries))
             self.assertEqual(len(membership_queries), 1, membership_queries)
+        self.assertEqual(len(item_counts), 1, item_counts)
 
     @patch("api.views.services.get_media_metadata")
     def test_season_episodes_memberships_use_bucket_and_lowest_item_id(
@@ -2366,3 +2372,28 @@ class EpisodeSerializerAirDateTests(FloppyApiTestCase):
         self.assertTrue(
             str(result["item"]["release_datetime"]).startswith("2023-01-22"),
         )
+    @patch("api.views.services.get_media_metadata")
+    def test_episode_card_rating_scale_and_write_capabilities(self, metadata):
+        episode = self.episode_medias[0]
+        Episode.objects.filter(pk=episode.pk).update(score=8)
+        item = episode.item
+        metadata.return_value = {"episodes": [{"episode_number": item.episode_number,
+            "season_number": item.season_number, "show_id": item.media_id, "name": "Episode"}]}
+        self.user1.rating_scale = "5"
+        self.user1.save(update_fields=["rating_scale"])
+        args = ("tv", item.source, item.media_id, item.season_number)
+        body = self.call_api("get", "api_media_season_episodes", args=args, headers=self.auth_headers).json()["results"][0]
+        self.assertEqual((body["score"], body["display_score"], body["scale_max"]), (8, 4, 5))
+        self.assertTrue(body["can_rate"])
+        self.assertTrue(body["can_watch"])
+        self.assertTrue(body["can_collect"])
+        self.user1.rating_scale = "0"
+        self.user1.save(update_fields=["rating_scale"])
+        body = self.call_api("get", "api_media_season_episodes", args=args, headers=self.auth_headers).json()["results"][0]
+        self.assertFalse(body["can_rate"])
+        self.assertIsNone(body["display_score"])
+        self.assertTrue(body["can_watch"])
+        _token, raw = IntegrationToken.generate(user=self.user1, name="Reader", scopes=["watchlist:read"])
+        body = self.call_api("get", "api_media_season_episodes", args=args, headers={"HTTP_AUTHORIZATION": f"Bearer {raw}"}).json()["results"][0]
+        for field in ("can_rate", "can_watch", "can_collect", "can_list"):
+            self.assertFalse(body[field])

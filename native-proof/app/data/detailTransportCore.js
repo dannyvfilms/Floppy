@@ -136,7 +136,8 @@ export function episodeActionPath(identity, action) {
   return `/api/v1/media/tv/${encodeURIComponent(identity.source)}`
     + `/${encodeURIComponent(identity.mediaId)}`
     + `/${encodeURIComponent(identity.seasonNumber)}`
-    + `/episodes/${encodeURIComponent(identity.episodeNumber)}/${action}/`;
+    + `/episodes/${encodeURIComponent(identity.episodeNumber)}/${action}/`
+    + (identity.libraryMediaType === 'anime' ? '?library_media_type=anime' : '');
 }
 
 function episodeIdentity(identity, seasonNumber, episodeNumber) {
@@ -146,6 +147,7 @@ function episodeIdentity(identity, seasonNumber, episodeNumber) {
     mediaId: identity.mediaId,
     seasonNumber: Number(seasonNumber),
     episodeNumber: Number(episodeNumber),
+    ...(identity.libraryMediaType ? { libraryMediaType: identity.libraryMediaType } : {}),
   };
 }
 
@@ -229,6 +231,7 @@ export function episodesFromPayload(payload, identity, seasonNumber) {
     const item = row.item || {};
     const number = row.display_episode_number ?? item.episode_number;
     const watched = Boolean(row.watched || row.end_date) || statusLabel(row.status) === 'Completed';
+    const scaleMax = Number(row.scale_max || row.scaleMax || payload?.scale_max) || 10;
     return {
       key: `episode-${item.source || identity.source}-${item.season_number ?? seasonNumber}-${item.episode_number}`,
       number,
@@ -244,11 +247,15 @@ export function episodesFromPayload(payload, identity, seasonNumber) {
       playsLabel: watched ? '1\u00d7 watched' : '',
       runtime: episodeRuntime(row.runtime ?? item.runtime_minutes),
       watched,
-      score: row.score == null ? null : Number(row.score),
+      score: Object.hasOwn(row, 'display_score') ? row.display_score
+        : row.score == null ? null : Number(row.score) * scaleMax / 10,
+      scaleMax,
+      canWatch: row.can_watch !== false,
+      canCollect: Boolean(row.can_collect),
       canRate: row.can_rate !== false,
       canList: row.can_list !== false,
       history: { summary: watchedSummary(row) },
-      identity: episodeIdentity({ source: item.source || identity.source, mediaId: item.media_id || identity.mediaId }, item.season_number ?? seasonNumber, item.episode_number),
+      identity: episodeIdentity({ ...identity, source: item.source || identity.source, mediaId: item.media_id || identity.mediaId }, item.season_number ?? seasonNumber, item.episode_number),
       href: item.url || '',
     };
   });
@@ -286,6 +293,28 @@ export function trackingFromState(state, detail) {
     endDate: dateLabel(consumption.end_date),
     notes: String(consumption.notes || ''),
   };
+}
+
+/** Bounded repeat entries, with exact instance identities for editing. */
+export function trackingEntriesFromPayload(payload = {}) {
+  const entries = (payload.tracking_entries || []).map(entry => {
+    const scaleMax = Number(entry.scale_max) || 10;
+    const score = entry.display_score;
+    const progress = entry.formatted_progress ?? entry.completed_episode_count ?? entry.progress;
+    return {
+      id: String(entry.id),
+      scoreLabel: score == null ? '' : `${score}${scaleMax === 5 ? '/5' : ''}`,
+      statusLabel: statusLabel(entry.status),
+      progressLabel: progress == null ? '' : `${progress}${entry.max_progress ? `/${entry.max_progress}` : ''}`,
+      startedLabel: formatUserDate(entry.start_date),
+      finishedLabel: formatUserDate(entry.end_date),
+      notes: entry.notes || '',
+      editable: Boolean(entry.can_edit),
+      identity: { ...entry.identity, mediaType: entry.media_type || entry.identity?.detailType || entry.identity?.mediaType,
+        ...(entry.identity?.mediaType === 'anime' ? { libraryMediaType: 'anime' } : {}) },
+    };
+  });
+  return { entries, count: payload.tracking_entries_count ?? entries.length, hasMore: Boolean(payload.tracking_entries_has_more) };
 }
 
 /** Notes written on any play, newest first, as the web "Your Notes" section. */
@@ -377,6 +406,33 @@ export function activityLineWithWatched(line, watched) {
   if (!watched) return line || '';
   const progress = String(line || '').replace(/^Progress:\s*/, '');
   return progress ? `${watched} (${progress})` : watched;
+}
+
+/** The phone hero subtitle, in the same order as detail_activity_subtitle.html. */
+export function detailHeaderText(activity, details = {}) {
+  const metadata = details || {};
+  const mobileMeta = [
+    yearOf(metadata.year || metadata.start_year || metadata.release_date || metadata.first_air_date),
+    metadata.runtime,
+  ].filter(hasValue).join(' · ');
+  if (!activity) return { activityText: '', mobileMeta };
+
+  const primary = String(activity.primary_text || '').trim();
+  const duration = String(activity.duration_text || '').replace(/ (watched|played|listened|read)\b/g, '').trim();
+  const body = duration ? activityLineWithWatched(primary, duration) : primary;
+  const start = formatUserDate(activity.date_start);
+  const end = formatUserDate(activity.date_end);
+  const dates = start && end
+    ? (activity.collapse_same_day || start === end ? start : `${start} - ${end}`)
+    : start || end;
+  if (!body && !dates) return { activityText: '', mobileMeta };
+
+  // With duration, web puts year/runtime beside that duration and before dates.
+  // Without it, year/runtime follows the primary text and date range.
+  const activityText = duration
+    ? [[body, mobileMeta].filter(Boolean).join(' · '), dates].filter(Boolean).join(' • ')
+    : [[body, dates].filter(Boolean).join(' • '), mobileMeta].filter(Boolean).join(' · ');
+  return { activityText, mobileMeta: '' };
 }
 
 function activityDates(rows, label = dateLabel) {

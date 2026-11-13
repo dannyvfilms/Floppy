@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import IntegrityError
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Subquery
 from django.db.utils import OperationalError
 from django.utils.timezone import datetime, localdate, make_aware
 
@@ -3169,6 +3169,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
         # FORK: the web season cards print the provider's overview, air date and
         # runtime, and whether the viewer owns a copy; the stored item has none.
         collected_numbers = set()
+        ratings_by_number = {}
         if episode_numbers:
             owned = set(
                 CollectionEntry.objects.filter(
@@ -3178,12 +3179,41 @@ class MediaSeasonEpisodesView(drf_views.APIView):
             collected_numbers = {
                 number for number, item_id in item_ids_by_number.items() if item_id in owned
             }
+            rating_rows = Episode.ratings.filter(
+                related_season__user=user, item_id=OuterRef("pk"), rating_only=True,
+            ).order_by("-scored_at", "-pk")
+            ratings_by_number = {
+                item.episode_number: item.preview_score
+                for item in Item.objects.filter(pk__in=item_ids_by_number.values()).annotate(
+                    preview_score=Subquery(rating_rows.values("score")[:1]),
+                ).only("episode_number") if item.preview_score is not None
+            }
+        token = request.auth
+        can_write = not hasattr(token, "has_scope") or token.has_scope("watchlist:write")
+        can_list = not hasattr(token, "has_scope") or token.has_scope("lists:write")
+        tracked_season = BasicMedia.objects.get_serie_seasons(
+            user, media_id, source, season_numbers=[season_number],
+            library_media_type=request.query_params.get("library_media_type"),
+            annotate_progress=False,
+        ).exists()
         for row in paginated["results"]:
-            provider = provider_rows.get((row.get("item") or {}).get("episode_number")) or {}
+            number = (row.get("item") or {}).get("episode_number")
+            provider = provider_rows.get(number) or {}
             row["overview"] = provider.get("overview") or provider.get("synopsis") or ""
             row["air_date"] = provider.get("air_date") or ""
             row["runtime"] = provider.get("runtime")
-            row["collected"] = (row.get("item") or {}).get("episode_number") in collected_numbers
+            row["collected"] = number in collected_numbers
+            tracked = tracked_by_number.get(number)
+            score = getattr(tracked, "score", None)
+            if score is None:
+                score = ratings_by_number.get(number)
+            row["score"] = float(score) if score is not None else None
+            row["display_score"] = float(user.scale_score_for_display(score)) if user.ratings_enabled and score is not None else None
+            row["scale_max"] = user.rating_scale_max
+            row["can_rate"] = bool(can_write and user.ratings_enabled and (tracked_season or tracked or number in ratings_by_number))
+            row["can_watch"] = can_write
+            row["can_collect"] = can_write
+            row["can_list"] = can_list and bool(row.get("item"))
         paginated["media_type_status"] = get_media_type_availability(
             user,
             request.query_params.get("library_media_type") or media_type,

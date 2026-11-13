@@ -1,15 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking } from 'react-native';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Linking, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DetailView } from '../../../frontend/pages/DetailView';
+import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import WindowedRail from '../surfaces/WindowedRail';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { Screen } from '../components/Screen';
 import { createDetailModelForItem, loadDetailModel } from '../surfaces/DetailSlot';
 import { useDetailFeatures } from '../surfaces/DetailFeatures';
-import { setShellPageType } from '../surfaces/shellContext';
+import { setShellPageType, ShellLayoutContext } from '../surfaces/shellContext';
+import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { getActiveAuthSession } from '../data/authSession';
 import { formatUserDate } from '../data/userDate';
 import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack, navigate }) {
+  const viewportWindow = useWindowDimensions();
+  const mobileGridLayout = useMobileGridLayout();
+  const insets = useSafeAreaInsets();
+  const shellLayout = useContext(ShellLayoutContext);
+  const heroViewport = { width: shellLayout?.width || viewportWindow.width - insets.left - insets.right,
+    height: shellLayout?.height || viewportWindow.height - insets.top - insets.bottom,
+    headerHeight: shellLayout?.headerHeight || 0, insets,
+    gutters: horizontalContentPadding(insets, 22) };
   const item = useMemo(
     () => params?.item || (params?.href ? { href: params.href } : null),
     [params?.item, params?.href],
@@ -160,7 +173,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     setError('');
     try {
       await request(`/api/v1/media/tv/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.mediaId)}/${encodeURIComponent(identity.seasonNumber)}/episodes/${encodeURIComponent(identity.episodeNumber)}/score/`, {
-        method: 'PATCH', json: { score },
+        method: 'PATCH', json: { score: score == null ? null : score * 10 / (child.scaleMax || 10) },
       });
       setModel(await loadDetailModel(item, { publicView: params?.publicView }));
     } catch (cause) {
@@ -183,7 +196,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     setError('');
     try {
       await request(path, {
-        method: 'PATCH', json: { score },
+        method: 'PATCH', json: { score: score == null ? null : Number(score) * 10 / (model.viewerRating?.scaleMax || 10) },
       });
       setModel(await loadDetailModel(item, { publicView: params?.publicView }));
     } catch (cause) {
@@ -201,6 +214,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     navigate,
     onOpenItem: openDetail,
     onOpenExternal: openExternal,
+    shelfWidth: shelfCardWidth(viewportWindow.width, mobileGridLayout),
   });
 
   // The header search follows the page like the web header: a film page searches Movies.
@@ -238,9 +252,13 @@ export default function DetailScreen({ params, onBack, navigate }) {
     });
   }
 
-  return <Screen onBack={onBack} chrome={false}>
+  return <Screen onBack={onBack} chrome={false} artworkBleed
+    contentStyle={{ paddingTop: heroViewport.headerHeight }}>
     <DetailView
       model={viewModel}
+      heroViewport={heroViewport}
+      shelfCardWidth={shelfCardWidth(viewportWindow.width, mobileGridLayout)}
+      railComponent={WindowedRail}
       labels={model.labels}
       palette={palette}
       loading={loading}
@@ -259,6 +277,10 @@ export default function DetailScreen({ params, onBack, navigate }) {
       actionsSlot={features.actionsSlot}
       scoreSlot={features.headerSlot || features.scoreSlot
         ? <>{features.headerSlot}{features.scoreSlot}</> : null}
+      sectionSlots={features.sectionSlots}
+      childSlots={features.childSlots}
+      noticeSlot={features.noticeSlot}
+      ratingInScoreRow={features.ratingInScoreRow}
       sectionsSlot={features.sectionsSlot}
       childrenSlot={features.childrenSlot}
     >{features.overlays}</DetailView>

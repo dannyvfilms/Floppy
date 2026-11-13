@@ -27,9 +27,9 @@ export function loadDatePreferences(request) {
       .then(([info, prefs]) => {
         setDatePreferences({
           timeZone: info.status === 'fulfilled' ? info.value?.timezone : undefined,
-          dateFormat: prefs.status === 'fulfilled' ? prefs.value?.date_format : undefined,
+          dateFormat: prefs.status === 'fulfilled' ? (prefs.value?.preferences?.date_format || prefs.value?.date_format) : undefined,
         });
-        if (info.status === 'rejected' && prefs.status === 'rejected') loading = null;
+        if (info.status === 'rejected' || prefs.status === 'rejected') loading = null;
       });
   }
   return loading;

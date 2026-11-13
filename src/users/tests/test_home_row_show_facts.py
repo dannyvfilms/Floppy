@@ -302,4 +302,3 @@ class FactsOptInTests(ShowFactsLibrary):
                 with self.subTest(sort=sort_key, progress=progress):
                     query = self.query(sort_key, progress=progress)
                     self.assertEqual(self.scan_modes(query), {False})
-

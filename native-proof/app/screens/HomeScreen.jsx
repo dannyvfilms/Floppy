@@ -10,13 +10,11 @@ import {
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
-import { enrichServerCard, routeCardHref } from '../data/serverCardCore';
+import { routeCardHref } from '../data/serverCardCore';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
-import HomeProgress from '../surfaces/HomeProgress';
-import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
 import { playbackDetailItem } from '../data/playbackTransport';
 import { libraryParamsForRowUrl } from '../data/homeRowDestinationCore';
@@ -26,7 +24,7 @@ export const surface = {
   status: 'ported',
   title: 'Home shelves, deferred groups and cover refresh',
   where: 'Home screen shelves, media-type sections, deferred rows and coalesced artwork polling',
-  note: 'The native Home screen composes the Now Playing card and the shared HomeShelves rails. Every shelf card renders through the shared media card host (MediaCardSlot), so Track, Lists and rating work in place and the quick progress changer writes through /api/v1/media/{type}/{source}/{id}/progress/. Signed-out users never reach this screen (the app shows the sign-in screen), so it carries no sample content. Loading, empty, error with retry, deferred-skeleton, sort, load-more and cover refresh states come from homeTransport. Browser, iOS and Android runtime passes were not run.',
+  note: 'The native Home screen composes the Now Playing card and the shared HomeShelves rails. Shelf cards use the shared MediaCard presentation and the reviewed detail navigation. The recovered presentation has no separate per-card host, progress row or floating settings control. Signed-out users never reach this screen (the app shows the sign-in screen), so it carries no sample content. Loading, empty, error with retry, deferred-skeleton, sort, load-more and cover refresh states come from homeTransport. Platform verification is recorded in the UI register.',
 };
 
 const PAGE_LIMIT = 14;
@@ -39,10 +37,7 @@ const emptyModel = () => ({
   labels: {},
 });
 
-// The web page body starts 24px below the header.
-const pageTop = { paddingTop: 24 };
-
-export default function HomeScreen({ navigate, onOpenTab }) {
+export default function HomeScreen({ navigate }) {
   const { width } = useWindowDimensions();
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
@@ -116,21 +111,9 @@ export default function HomeScreen({ navigate, onOpenTab }) {
     if (!routeCardHref(card?.href, navigate)) navigate?.('Detail', { item: card });
   }, [navigate]);
 
-  // Each shelf card is its own one-card host, so Track, Lists and rating open
-  // in place exactly like the Library grid, never a Detail navigation.
-  const renderCard = useCallback(item => <View style={{ width: itemWidth }}><MediaCardSlot
-    gridLayout="library"
-    cardWidth={itemWidth}
-    items={[{ key: String(item.id), model: enrichServerCard(item.card) }]}
-    onOpenDetail={() => openCard(item.card)}
-    onOpenLink={href => { if (!routeCardHref(href, navigate)) openCard(item.card); }} /></View>,
-  [navigate, openCard, itemWidth]);
-
-  const renderProgress = useCallback((progress, item) => <HomeProgress
-    progress={progress}
-    identity={enrichServerCard(item.card)?.identity} />, []);
-
-  return <Screen chrome={false} contentStyle={pageTop}>
+  // Restore the reviewed Expo composition: shared shelf cards own their sizing.
+  // Web retains its existing in-place controls; the approved native shelf opens Detail.
+  return <Screen chrome={false}>
     <HomeView
       notice={serverMode ? null : <View style={[styles.signedOut, { borderColor: palette.border }]}>
         <Text style={[styles.signedOutText, { color: palette.textSecondary }]}>Sign in to your Floppy server to see Home.</Text>
@@ -146,14 +129,13 @@ export default function HomeScreen({ navigate, onOpenTab }) {
       readOnly={model.readOnly}
       itemWidth={itemWidth}
       railComponent={WindowedRail}
-      renderCard={renderCard}
-      renderProgress={renderProgress}
       renderActionIcon={action => action.icon ? <Icon spec={action.icon} color={palette.accentContrast} size={18} /> : null}
       loading={loading}
       error={error}
       onRetry={() => setAttempt(current => current + 1)}
-      onOpenCard={(item) => openCard(item?.card)}
-      onOpenSettings={onOpenTab ? () => onOpenTab('settings') : undefined}
+      onOpenCard={item => openCard(item?.card)}
+      onOpenLink={(_href, item) => openCard(item?.card)}
+      onAction={(_action, item) => openCard(item?.card)}
       canOpenRowTitle={href => !!libraryParamsForRowUrl(href)}
       onOpenRowTitle={(href, _row) => {
         const target = libraryParamsForRowUrl(href);

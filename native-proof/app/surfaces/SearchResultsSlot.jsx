@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import WindowedRail from './WindowedRail';
 import { SearchResults } from '../../../frontend/ui/SearchResults';
 import { mergeSearchRowPage, onlineRowParams, searchRowParams } from '../../../frontend/ui/searchRows';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { createSearchTransport } from '../data/searchTransport';
-import { enrichServerCard, musicCreateFromHref, routeCardHref } from '../data/serverCardCore';
+import { musicCreateFromHref, routeCardHref } from '../data/serverCardCore';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette } from '../theme';
-import MediaCardSlot from './MediaCardSlot';
 
 export const surface = {
   id: 'SEARCH-RESULTS',
@@ -84,21 +83,13 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     if (!navigate || !routeCardHref(card?.href, navigate)) onOpenDetail?.(card);
   }, [onOpenDetail, navigate, transport]);
 
-  // Each result is its own one-card host, so Track, Lists and rating open in place as on Home.
-  const renderCard = useCallback(item => <View style={{ width: itemWidth }}><MediaCardSlot
-    gridLayout="library"
-    cardWidth={itemWidth}
-    items={[{ key: String(item.id), model: enrichServerCard(item.card) }]}
-    onOpenDetail={() => openCard(item)}
-    onOpenLink={href => { if (!navigate || !routeCardHref(href, navigate)) openCard(item); }} /></View>,
-  [navigate, openCard, itemWidth]);
-
+  // The reviewed Expo results use the shared shelf card, rather than a Library grid host.
+  // Web keeps its existing card adapter and in-place actions.
   return <SearchResults
     {...view.props}
     state={creating ? 'loading' : view.state}
     palette={palette}
     itemWidth={itemWidth}
-    renderCard={renderCard}
     onOpenCard={openCard}
     onOpenLink={(_href, item) => openCard(item)}
     onAction={(_action, item) => openCard(item)}
