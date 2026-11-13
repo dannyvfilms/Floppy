@@ -571,6 +571,18 @@ class LibraryQueryExecutor:
             # A tracker value computed in Python reads the aggregated row.
             needs.add(filter_registry.NEEDS_MEDIA)
         requested_direction = self.query.sort.direction
+        # Shows are attached as facts, not as hydrated trackers, when every
+        # reader of the tracker row in this scan says facts are all it reads.
+        show_facts = (
+            filter_registry.NEEDS_RUNTIME not in needs
+            and (sql_sort or not with_sort or self.sort.tv_facts)
+            and all(
+                definition.tv_facts
+                for ctx in self.contexts
+                for definition in self._predicates(ctx)
+                if filter_registry.NEEDS_MEDIA in definition.needs
+            )
+        )
 
         rows = []
         iterator = queryset.iterator(chunk_size=self.batch_size)
@@ -579,7 +591,7 @@ class LibraryQueryExecutor:
             if not batch:
                 break
             if filter_registry.NEEDS_MEDIA in needs:
-                _attach_media(self.user, batch, needs)
+                _attach_media(self.user, batch, needs, show_facts=show_facts)
             for ctx in self.contexts:
                 for definition in self._predicates(ctx):
                     if definition.prepare is not None:
@@ -663,8 +675,20 @@ def _context_for(item, contexts_by_type):
     return None
 
 
-def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
-    """Load each candidate's aggregated tracker row, for this batch only."""
+def _attach_media(
+    user,
+    batch: list[Candidate],
+    needs: set[str],
+    *,
+    show_facts: bool = False,
+) -> None:
+    """Load each candidate's aggregated tracker row, for this batch only.
+
+    With ``show_facts``, a show gets an ``app.tv_show_facts.TrackedShow``
+    instead: its numbers come from grouped rows, so no season, play or event
+    is loaded for it. Only a scan whose sort and filters all declare
+    ``tv_facts`` may ask for that.
+    """
     from django.apps import apps
 
     from app.models import BasicMedia
@@ -680,6 +704,15 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             for candidate in candidates:
                 candidate.media = latest.get(candidate.item.pk)
             continue
+        if show_facts and media_type == MediaTypes.TV.value:
+            from app.tv_show_facts import annotate_released_progress, tracked_shows
+
+            shows = tracked_shows(user, [candidate.item for candidate in candidates])
+            for candidate in candidates:
+                candidate.media = shows.get(candidate.item.pk)
+            if filter_registry.NEEDS_MAX_PROGRESS in needs:
+                annotate_released_progress(list(shows.values()))
+            continue
         rows = model.objects.filter(
             user=user,
             item_id__in=[candidate.item.pk for candidate in candidates],
@@ -688,6 +721,12 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             # The scan's candidate queryset defers this blob; the tracker rows
             # must not bring it back through their own select_related.
             rows = rows.defer("item__watch_providers")
+        if media_type == MediaTypes.SEASON.value:
+            # The season graph joins each row's show item, and with it a copy
+            # of the show's provider blob per season. Ranking never reads the
+            # show's providers (the provider filter reads the season's own),
+            # so leave it in the database, as episode rows already do.
+            rows = rows.defer("related_tv__item__watch_providers")
         # Progress and derived status read episodes and seasons; fetch them
         # once for the batch instead of once per row. Ranking only reads the
         # compact episode fields: runtime comes from the bulk runtime index

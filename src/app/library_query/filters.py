@@ -88,6 +88,9 @@ class FilterDef:
     # Runs once per scan batch before ``predicate``, for bulk annotation that
     # only some candidates need.
     prepare: Callable[[list, FilterValues, TypeContext], None] | None = None
+    # The predicate reads nothing from a show's tracker row beyond what
+    # ``app.tv_show_facts.TrackedShow`` carries (see ``SortDef.tv_facts``).
+    tv_facts: bool = False
 
 
 def _norm(value) -> str:
@@ -670,6 +673,7 @@ FILTERS: tuple[FilterDef, ...] = (
         lambda v: v.progress in ("caught_up", "not_caught_up"),
         predicate=_progress_predicate,
         needs=frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS}),
+        tv_facts=True,
     ),
 )
 
