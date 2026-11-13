@@ -582,3 +582,68 @@ class LargeTvBatchTests(LibraryQueryTestCase):
         self.assertEqual(len(episodes), len(with_items) + 1)
         with self.assertNumQueries(0):
             self.assertTrue(all(episode.item.episode_number == 1 for episode in with_items))
+
+
+class SeasonScanShowBlobTests(LibraryQueryTestCase):
+    """A season scan leaves each show's provider blob in the database."""
+
+    def test_season_rows_do_not_decode_their_shows_provider_blob(self):
+        """Every season row joins its show; the show's watch providers stay unread."""
+        from django.db import models
+
+        from app.library_query import filters as filter_registry
+
+        blob = {
+            f"R{region:03d}": {"flatrate": [{"provider_name": f"P{region}-{k}"} for k in range(16)]}
+            for region in range(96)
+        }
+        show = Item.objects.create(
+            media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.TV.value,
+            title="Wide Show", image="x", watch_providers=blob,
+        )
+        tv = TV.objects.create(item=show, user=self.user, status=Status.COMPLETED.value)
+        season_items = [
+            Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.SEASON.value,
+                season_number=number, title="Wide Show", image="x",
+            )
+            for number in (1, 2, 3)
+        ]
+        seasons = Season.objects.bulk_create(
+            Season(item=item, related_tv=tv, user=self.user, status=Status.COMPLETED.value)
+            for item in season_items
+        )
+        for season in seasons:
+            episode = Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.EPISODE.value,
+                season_number=season.item.season_number, episode_number=1, title="Wide Show", image="x",
+                # The provider is unreachable in tests, so the season's episode
+                # count comes from its released episodes.
+                release_datetime=self.now - timedelta(days=30),
+            )
+            Episode.objects.create(item=episode, related_season=season, status=Status.COMPLETED.value, end_date=self.now)
+
+        decoded = []
+        original = models.JSONField.from_db_value
+
+        def counting(field, value, expression, conn):
+            if isinstance(value, (str, bytes)):
+                decoded.append(len(value))
+            return original(field, value, expression, conn)
+
+        batch = [executor_module.Candidate(item) for item in season_items]
+        with mock.patch.object(models.JSONField, "from_db_value", counting):
+            executor_module._attach_media(
+                self.user, batch, {filter_registry.NEEDS_MEDIA, filter_registry.NEEDS_MAX_PROGRESS},
+            )
+
+        self.assertGreater(len(str(blob)), 40_000)
+        self.assertLess(sum(decoded), 10_000)
+        for candidate in batch:
+            show_item = candidate.media.related_tv.item
+            self.assertIn("watch_providers", show_item.get_deferred_fields())
+            self.assertEqual(show_item.title, "Wide Show")
+            self.assertEqual(candidate.media.max_progress, 1)
+            self.assertEqual(
+                filter_registry.season_effective_status(candidate.media), Status.COMPLETED.value,
+            )
