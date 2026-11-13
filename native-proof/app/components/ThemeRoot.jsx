@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { createSettingsTransport } from '../data/settingsTransport';
+import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
+import { KeyboardOverlapContext } from '../../../frontend/ui/keyboardOverlapContext';
 import { applyPlatformTheme } from '../themeColor';
 import { applyServerTheme, restoreStoredTheme } from '../themeSync';
 import { getTheme, setSystemScheme, subscribeTheme } from '../themeState';
@@ -33,5 +35,6 @@ export default function ThemeRoot({ children }) {
     return () => { active = false; off(); };
   }, []);
 
-  return <React.Fragment>{children}</React.Fragment>;
+  // Menus size themselves to what the keyboard leaves visible, like the Search suggestions.
+  return <KeyboardOverlapContext.Provider value={useKeyboardOverlap}>{children}</KeyboardOverlapContext.Provider>;
 }

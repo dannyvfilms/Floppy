@@ -3956,6 +3956,26 @@
         }
       }
     },
+    "frontend/ui/keyboardOverlapContext.js": {
+      "components": [
+        "KeyboardOverlapContext"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Provided by the web mountRoot; not exercised with a keyboard."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Provided by ThemeRoot; user accepted dropdown animation on a physical Duo, but recording was not inspected."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
     "frontend/ui/dropdownMetrics.js": {
       "components": [
         "DROPDOWN"
