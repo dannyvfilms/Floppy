@@ -1269,6 +1269,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Native readiness: `Primitives` for the shared controls; browser adapters stay per-platform.
 - Purpose/usage: Bulk selection actions, toolbar and background job dock.
 - Native presentation: `BulkActionBar.native.jsx` adds `onSelectAll`, `selectAllDisabled` and `selecting` (the web file already had them). Consumer: native `ListDetailScreen`. Native readiness stays `Primitives`. Verification: Browser: not run (bundle compile and node/Django tests only). iOS: Not verified. Android: Not verified.
+- Web `BulkActionBar` icon sizing: the Status, List and More ActionMenu triggers now take the same 2.5rem box, 6px radius and 1rem glyph as the Collection and Tag buttons (`controls.css`). Browser: screenshot of the select-items bar after the change. iOS/Android: no change needed (native renders every action at one `Icon` size and one 40pt box); not run.
+- Web alphabet rail (`alphabet.css`, 768px and up): the rail is 24px wide, centred in the page's right gutter and `.alphabet-surface` no longer reserves 2rem, so Movies/list grids get the same width as History (6 columns at a 1500px window, 183px cards, where it had dropped to 5). Browser: measured at 1500px. iOS/Android: not applicable (web-only rail); not run.
 
 ### CONTROL-KIT — Shared control kit
 
