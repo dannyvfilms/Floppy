@@ -189,6 +189,10 @@ export default function ShellSlot({
     auth.request('/api/v1/user/navigation/')
       .then(model => {
         if (cancelled) return;
+        // A host that is not a Floppy server (for example Metro's own dev page) answers with HTML.
+        if (!model || !Array.isArray(model.primary) || !Array.isArray(model.pinKeys)) {
+          throw new Error('This address did not return a Floppy navigation menu.');
+        }
         setServerModel(absoluteLogo(model, auth.serverUrl));
         setModelSession(auth);
         setNavError(null);

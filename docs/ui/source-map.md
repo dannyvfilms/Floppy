@@ -1133,6 +1133,7 @@ Native device sign-in uses the first-party Floppy app client and a full-access t
 - `src/templates/users/password_recover.html`
 - `frontend/auth/AuthEntrance.jsx`
 - `native-proof/app/screens/ListDetailScreen.jsx` (native list detail with the media type breakdown popover; consumers of `FilterBar`, `ListResults`, `BulkActionBar`, `ListMembership`)
+- `native-proof/app/screens/LibraryScreen.jsx`, `native-proof/app/surfaces/LibraryBulkActions.jsx` (native Library header, settings gear `ActionMenu` and `FilterBar variant="toolbar" showClear={false}`; `showClear` is the new `FilterBar` prop that hides the inline Clear button, whose reset stays in the Filters sheet)
 - `native-proof/app/surfaces/shellContext.js` (open page's media type for the header search), `native-proof/app/data/userDate.js` (+ `userDate.test.mjs`) (server time zone and user date format), `native-proof/app/data/accountDisplay.js` (display preferences from `/api/v1/user/preferences/`)
 - `native-proof/app/screens/AuthScreen.jsx`
 - `native-proof/app/data/serverDiscovery.native.js`

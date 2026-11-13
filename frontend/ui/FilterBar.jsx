@@ -218,6 +218,7 @@ export function FilterBar({
   disabled = false,
   resultCount,
   variant = 'full',
+  showClear = true,
   trailing = null,
   onChange,
   onClear,
@@ -357,7 +358,7 @@ export function FilterBar({
         onPress={() => openRange(ranges[0])}
         styles={styles} /> : null}
 
-      {count > 0 ? <Pressable
+      {showClear && count > 0 ? <Pressable
         accessibilityRole="button"
         accessibilityLabel={copy.clearAll}
         accessibilityState={{ disabled: isDisabled }}
