@@ -687,7 +687,7 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
 - `src/templates/app/components/game_lengths_section.html`
-- `src/templates/app/components/person_card_inline.html`
+- `src/templates/app/components/person_card_inline.html` (consumers: media detail and episode detail cast/crew rails; links fall back to the page `source` when there is no `media`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
 - `src/templates/app/components/person_media_strip_card.html`
