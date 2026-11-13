@@ -5,15 +5,14 @@ import { getActiveAuthSession } from '../data/authSession';
 import { LibraryPageView } from '../../../frontend/pages/LibraryPageView';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
 import { Button } from '../../../frontend/ui/Button';
-import { ActionMenu } from '../../../frontend/ui/controls/Menu';
-import { Icon } from '../../../frontend/ui/Icon';
-import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { Screen } from '../components/Screen';
 import { createLibraryTransport, mediaRowsFromPayload } from '../data/libraryTransport';
 import { FILTER_MODES, libraryFilterSections, libraryQuery } from '../data/libraryTransportCore';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { palette, radius, spacing } from '../theme';
 import LibraryGrid from '../surfaces/LibraryGrid';
 import LibraryBulkActions from '../surfaces/LibraryBulkActions';
+import LibrarySettings from '../surfaces/LibrarySettings';
 import TableSlot from '../surfaces/TableSlot';
 
 const MEDIA_TYPE_LABELS = {
@@ -540,21 +539,27 @@ function LibraryPage({ params, navigate }) {
   const showRail = isServer && windowWidth >= RAIL_MIN_WIDTH && Boolean(mediaType) && mediaType !== 'all';
   const allSelected = rows.length > 0 && !hasMore && selectedRows.length >= rows.length;
 
-  // The web settings gear: view layout, share, save and select, one menu.
-  const settingsItems = [
-    ...(filters.view === 'table'
-      ? [{ label: 'Grid View', onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'grid' }) }]
-      : [{ label: 'Table View', onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'table' }) }]),
-    ...(hasPreferences ? [
-      { label: 'Share View', onSelect: shareView },
-      { label: 'Save View', onSelect: () => setNamingView(true) },
-      ...(savedViews.length ? [{ heading: 'Saved views' },
-        ...savedViews.map(view => ({ key: `view-${view.id}`, label: view.name,
-          onSelect: () => changeFilter({ type: 'savedView', value: String(view.id) }) }))] : []),
-    ] : []),
+  // The web settings gear: view layout, share, save and select, one menu. `icon` is the shared glyph
+  // (header menu) and `symbol` the SF Symbol the iOS rail menu draws; the label names the current view.
+  const viewItem = filters.view === 'table'
+    ? { label: 'Table View', icon: actionIcons.table, symbol: 'tablecells',
+      onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'grid' }) }
+    : { label: 'Grid View', icon: actionIcons.grid, symbol: 'square.grid.2x2',
+      onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'table' }) };
+  // Below the divider the actions are in alphabetical order (Save, Select, Share), then saved views by name.
+  const belowView = [
+    ...(hasPreferences ? [{ label: 'Save View', icon: actionIcons.save, symbol: 'square.and.arrow.down',
+      onSelect: () => setNamingView(true) }] : []),
     ...(!entitySubview ? [{ label: selectionMode ? 'Cancel Select' : 'Select Items',
+      icon: actionIcons.circleCheck, symbol: 'checkmark.circle',
       onSelect: () => { setSelectionMode(value => !value); setSelectedRows([]); } }] : []),
+    ...(hasPreferences ? [{ label: 'Share View', icon: actionIcons.share, symbol: 'square.and.arrow.up',
+      onSelect: shareView }] : []),
+    ...(hasPreferences && savedViews.length ? [{ heading: 'Saved views' },
+      ...[...savedViews].sort((a, b) => a.name.localeCompare(b.name)).map(view => ({ key: `view-${view.id}`,
+        label: view.name, onSelect: () => changeFilter({ type: 'savedView', value: String(view.id) }) }))] : []),
   ];
+  const settingsItems = [viewItem, ...(belowView.length ? [{ separator: true }, ...belowView] : [])];
 
   const state = loading
     ? 'loading'
@@ -583,10 +588,8 @@ function LibraryPage({ params, navigate }) {
         : { title: 'Nothing here yet', body: 'Track something and it will appear in this library.' }}
       onRetry={() => setReloadToken(current => current + 1)}
       onEmptyAction={() => navigate('Discover')}
-      headerActions={hasPreferences || !entitySubview ? <ActionMenu
-        label="View settings" palette={palette} testID="library-settings"
-        icon={<Icon spec={actionIcons.settings} size={18} color={palette.textSecondary} />}
-        items={settingsItems} /> : null}
+      headerActions={hasPreferences || !entitySubview
+        ? <LibrarySettings items={settingsItems} palette={palette} /> : null}
       filterForm={namingView ? <View style={styles.savedViews}>
         <View style={styles.saveViewRow}>
           <TextInput value={savedViewName} onChangeText={setSavedViewName} placeholder="Name this view"
