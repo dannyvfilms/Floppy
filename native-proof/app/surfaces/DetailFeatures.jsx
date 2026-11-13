@@ -1,14 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
+import WindowedRail from './WindowedRail';
 import { Icon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
-import { CollectionCopyDialog } from '../../../frontend/ui/CollectionCopies';
+import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
-import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
+import { RatingChip } from '../../../frontend/ui/RatingChip';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import { TagAssignmentDialog } from '../../../frontend/ui/TagManagement';
 import { TrackDialog } from '../../../frontend/ui/TrackDialog';
@@ -28,9 +31,9 @@ import {
   DetailIssueCards,
   DetailLoading,
   DetailNotesBlock,
-  DetailRelatedGrid,
   DetailScoreRow,
 } from '../../../frontend/ui/DetailPage';
+import { DetailTrackingHistory } from '../../../frontend/ui/DetailSecondary';
 import { DetailEpisodeHeader } from '../../../frontend/ui/DetailEpisode';
 import { ArtworkPicker, EditionPicker } from '../../../frontend/ui/ArtworkPicker';
 import { pickCoverImage } from '../data/imagePicker';
@@ -38,6 +41,7 @@ import { mergeScoreChips } from '../data/detailTransportCore';
 import {
   collectionAddressFor,
   copyFieldsFor,
+  copyValuesFromCopy,
   createCollectionTransport,
   emptyCopyValues,
 } from '../data/collectionTransport';
@@ -61,6 +65,7 @@ import {
   saveEdition,
   saveEntryNotes,
   syncMetadata,
+  watchEpisode,
 } from '../data/detailTransport';
 import {
   createTag,
@@ -75,6 +80,7 @@ import {
   setDiscoverHidden,
   setTags,
   toggleList,
+  unwatchEpisode,
 } from './mediaCardTransport';
 import { badgePalette, mediaCardPalette, palette as themePalette, progressDetailPalette, ratingPalette, spacing } from '../theme';
 
@@ -144,7 +150,6 @@ const listLabels = {
 // and always for games (app/track_actions.py).
 const ADD_ENTRY_ALWAYS = new Set(['game', 'boardgame']);
 const ADD_ENTRY_WHEN_COMPLETED = new Set(['movie', 'anime', 'book', 'comic']);
-const READING_TYPES = new Set(['book', 'manga', 'comic']);
 
 function renderRating({ value, label, scaleMax, palette: ratingColors, onSelect }) {
   return <RatingStars scaleMax={scaleMax} value={value} label={label}
@@ -165,6 +170,7 @@ export function featureIdentity(model) {
     mediaId: String(mediaId),
     ...(season != null ? { seasonNumber: Number(season) } : {}),
     ...(episode != null ? { episodeNumber: Number(episode) } : {}),
+    ...(key.library_media_type || key.libraryMediaType || key.parent_media_type === 'anime' ? { libraryMediaType: key.library_media_type || key.libraryMediaType || 'anime' } : {}),
   };
 }
 
@@ -181,6 +187,15 @@ function collectionAddressForIdentity(target) {
     season_number: target.seasonNumber,
     episode_number: target.episodeNumber,
   });
+}
+
+function MediaCardActionHost({ open, action, palette: colors, onClose, children }) {
+  return <AdaptivePresentationSheet isPresented={!!open} onDismiss={onClose} onClose={onClose}
+    title={action?.title} titleColor={colors?.text} containerColor={themePalette.sidebar}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+      {children}
+    </ScrollView>
+  </AdaptivePresentationSheet>;
 }
 
 function NotesDialog({ open, note, busy, error, onSave, onClose }) {
@@ -337,7 +352,9 @@ function SeerrDialog({ open, state, busy, error, onRequest, onClose }) {
  * @param version bumps when the screen reloaded the page model
  * @param refresh reloads the page model after a write
  */
-export function useDetailFeatures({ model, ready, version, refresh, navigate, onOpenItem, onOpenExternal }) {
+export function useDetailFeatures({ model, ready, version, refresh, navigate, onOpenItem, onOpenExternal, shelfWidth }) {
+  const { width } = useWindowDimensions();
+  const [ratingOpen, setRatingOpen] = useState(false);
   const identityKey = JSON.stringify(featureIdentity(model));
   const identity = useMemo(() => JSON.parse(identityKey), [identityKey]);
   const enabled = Boolean(identity && ready && !model?.publicView);
@@ -425,16 +442,17 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   const episodesRef = useRef(episodes);
   episodesRef.current = episodes;
   const loadEpisodes = useCallback(async (more = false) => {
-    if (!enabled || !isAnime) return;
+    if (!enabled || (!isAnime && !isSeason)) return;
     if (more && episodesRef.current.status === 'loading') return;
     setEpisodes(current => ({ ...current, status: more || !current.rows.length ? 'loading' : 'ready', error: '' }));
     try {
-      const next = await loadAnimeEpisodes(identity, more ? episodesRef.current.loadMore?.querystring : '');
-      setEpisodes(current => ({ ...current, rows: more ? [...current.rows, ...next.rows] : next.rows, loadMore: next.loadMore, status: 'ready', error: '' }));
+      const next = isSeason ? await loadSeasonEpisodes(identity, identity.seasonNumber, { withPage: true, offset: more ? episodesRef.current.loadMore?.offset || 0 : 0 })
+        : await loadAnimeEpisodes(identity, more ? episodesRef.current.loadMore?.querystring : '');
+      setEpisodes(current => ({ ...current, rows: more ? [...current.rows, ...next.rows] : next.rows, loadMore: next.loadMore, total: next.total, status: 'ready', error: '' }));
     } catch (cause) {
       setEpisodes(current => ({ ...current, status: 'error', error: cause?.message || 'Episodes could not be loaded.' }));
     }
-  }, [enabled, identity, isAnime]);
+  }, [enabled, identity, isAnime, isSeason, stamp]);
   useEffect(() => { loadEpisodes(); }, [loadEpisodes]);
 
   // A comic volume lists its issues, twenty at a time.
@@ -647,12 +665,12 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
 
   const removePlay = useCallback(async entry => {
     try {
-      await deleteHistoryEntry(identity, entry.id);
+      await deleteHistoryEntry(dialog.target || identity, entry.id);
       reload();
     } catch (cause) {
       setNotice(cause?.message || 'The play could not be removed.');
     }
-  }, [identity, reload]);
+  }, [dialog.target, identity, reload]);
 
   const sendSeerr = useCallback(async seasons => {
     setDialog(current => ({ ...current, busy: true, error: '' }));
@@ -678,7 +696,7 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
 
   const rateEpisode = useCallback(async (child, score) => {
     try {
-      await saveScore(child.identity, score);
+      await saveScore(child.identity, score == null ? null : score * 10 / (child.scaleMax || 10));
       loadEpisodes();
     } catch (cause) {
       setEpisodes(current => ({ ...current, error: cause?.message || 'The score could not be saved.' }));
@@ -686,21 +704,88 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   }, [loadEpisodes]);
 
   function openCopyDialog(target = identity, itemTitle = title) {
-    setCopy({ open: true, target, title: itemTitle, values: emptyCopyValues(copyFieldsFor(target.mediaType)), errors: {}, busy: false });
+    setCopy({ open: true, target, title: itemTitle, context: null, values: emptyCopyValues(copyFieldsFor(target.mediaType)), errors: {}, busy: false });
+    loadCollectionEntries(target).then(loaded => {
+      setCopy(current => current.open && current.target === target ? { ...current, context: loaded.context } : current);
+    }).catch(() => {
+      setCopy(current => current.open && current.target === target ? { ...current, context: { error: true } } : current);
+    });
   }
 
   async function saveCopy() {
     if (copy.busy) return;
     setCopy(current => ({ ...current, busy: true, errors: {} }));
     try {
-      await createCollectionTransport().addCopy({ address: collectionAddressForIdentity(copy.target), values: copy.values });
+      const transport = createCollectionTransport();
+      if (copy.editingId && copy.editingKind === 'season') {
+        await transport.updateSeason({ seasonId: copy.editingId, values: copy.values, initial: copy.initialValues });
+      } else if (copy.editingId) {
+        await transport.updateCopy({ entryId: copy.editingId, values: copy.values, initial: copy.initialValues });
+      } else {
+        await transport.addCopy({ address: collectionAddressForIdentity(copy.target), values: copy.values });
+      }
       const loaded = await loadCollectionEntries(identity);
       setCollection({ status: 'ready', ...loaded, error: '' });
       setCopy({ open: false, values: {}, errors: {}, busy: false });
+      reload();
     } catch (cause) {
       setCopy(current => ({ ...current, busy: false, errors: { form: cause?.message || 'The copy could not be saved.' } }));
     }
   }
+
+  function editCollectionCopy(entry) {
+    const values = copyValuesFromCopy(entry);
+    setCopy(current => ({ ...current, editingId: entry.id, editingKind: entry.kind, editingLabel: entry.label, values, initialValues: values, errors: {} }));
+  }
+
+  function removeCollectionCopy(entry) {
+    Alert.alert(entry.kind === 'season' ? 'Remove season?' : 'Remove copy?', entry.kind === 'season' ? 'This removes all collected episode entries for this season.' : 'This removes the selected collection entry.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        setCopy(current => ({ ...current, busy: true, errors: {} }));
+        try {
+          const transport = createCollectionTransport();
+          if (entry.kind === 'season') await transport.removeSeason({ seasonId: entry.id });
+          else await transport.removeCopy({ entryId: entry.id });
+          const [parent, target] = await Promise.all([loadCollectionEntries(identity), loadCollectionEntries(copy.target)]);
+          setCollection({ status: 'ready', ...parent, error: '' });
+          setCopy(current => ({ ...current, context: target.context, busy: false,
+            ...(current.editingId === entry.id ? { editingId: null, values: emptyCopyValues(copyFieldsFor(current.target.mediaType)), initialValues: {} } : {}) }));
+          reload();
+        } catch (cause) {
+          setCopy(current => ({ ...current, busy: false, errors: { form: cause?.message || 'The copy could not be removed.' } }));
+        }
+      } },
+    ]);
+  }
+
+  const rawCopies = copy.context?.copies || [];
+  const mapCopy = entry => ({
+    id: String(entry.id),
+    label: entry.item__season_number == null ? (entry.item__title || 'Copy')
+      : `S${String(entry.item__season_number).padStart(2, '0')}${entry.item__episode_number == null ? '' : `E${String(entry.item__episode_number).padStart(2, '0')}`} · ${entry.item__title}`,
+    mediaType: entry.media_type || '', resolution: entry.resolution || '', hdr: entry.hdr || '',
+    is3d: !!entry.is_3d, audioCodec: entry.audio_codec || '', audioChannels: entry.audio_channels || '',
+    bitrate: entry.bitrate == null ? '' : String(entry.bitrate),
+    purchasePrice: entry.purchase_price == null ? '' : String(entry.purchase_price),
+    purchaseLocation: entry.purchase_location || '', collectedAt: (entry.collected_at || '').slice(0, 10),
+  });
+  const auditKind = copy.context?.auditKind;
+  const auditRows = copy.context?.auditEntries || [];
+  const collectionCopies = auditKind === 'seasons' && auditRows.length
+    ? auditRows.map(row => {
+      const metadata = row.metadata || {};
+      const episodes = collectionSeasonEpisodes(row.episodes || []);
+      return { ...mapCopy(metadata), id: String(row.id), kind: 'season', label: row.title,
+        sourceLabels: row.source_labels, qualityLabel: row.quality_label, collectedAt: '', episodes };
+    })
+    : auditKind === 'episodes' && auditRows.length
+      ? auditRows.map(row => {
+        const raw = rawCopies.find(entry => entry.id === row.id);
+        return raw ? { ...mapCopy(raw), label: row.title, sourceLabels: row.source_labels, qualityLabel: row.quality_label } : null;
+      }).filter(Boolean)
+      : rawCopies.filter(entry => entry.item__media_type === copy.target?.mediaType).map(mapCopy);
+
 
   if (!enabled) return { enabled: false };
 
@@ -732,21 +817,35 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   const trackRest = trackActions.slice(1);
   const openKind = kind => () => setDialog({ ...NO_DIALOG, kind });
   const historyItem = { key: 'history', label: 'View history', icon: 'history', onPress: openKind('history') };
-  const readingType = READING_TYPES.has(identity.mediaType);
   const canPickCover = tracking.tracked && tracking.catalogItemId && !isEpisode;
-  const moreItems = [
-    identity.source !== 'manual' ? { key: 'sync', label: 'Sync metadata', icon: 'sync', onPress: runSync } : null,
+  // Keep cover/edition tools available without displacing the PWA's quick actions.
+  const extraItems = [
     canPickCover ? { key: 'cover', label: 'Change cover', icon: 'image', onPress: openKind('cover') } : null,
     canPickCover && identity.source === 'hardcover' && identity.mediaType === 'book'
       ? { key: 'edition', label: 'Edition', icon: 'book', onPress: openKind('edition') } : null,
-    seerr.available ? { key: 'seerr', label: 'Request in Seerr', icon: 'listAdd', onPress: () => setDialog({ ...NO_DIALOG, kind: 'seerr', data: seerr.state }) } : null,
   ].filter(Boolean);
-  const sourceItem = tracking.sourceUrl && !readingType ? {
+  const linkSections = model?.linkSections?.filter(section => section.entries?.some(entry => entry.url)) || [];
+  const links = linkSections.length ? linkSections : tracking.sourceUrl
+    ? [{ title: 'Source', entries: [{ label: tracking.sourceName || 'Source', url: tracking.sourceUrl }] }]
+    : [];
+  const sourceItem = links.length ? {
     key: 'source',
-    label: tracking.sourceName ? `Open on ${tracking.sourceName}` : 'Open source',
+    label: 'Links',
     icon: 'link',
-    onPress: () => onOpenExternal?.(tracking.sourceUrl),
+    onPress: openKind('links'),
   } : null;
+  const quickItems = [
+    sourceItem,
+    { key: 'tags', label: 'Tags', icon: 'tag', onPress: () => openTags() },
+    { key: 'notes', label: 'Notes', icon: 'page', onPress: () => openNotes() },
+    { key: 'lists', label: 'Add to list', icon: 'listAdd', onPress: () => openLists() },
+    seerr.available ? { key: 'seerr', label: 'Request in Seerr', icon: 'download', onPress: () => setDialog({ ...NO_DIALOG, kind: 'seerr', data: seerr.state }) } : null,
+    historyItem,
+    identity.source !== 'manual' ? { key: 'sync', label: 'Sync metadata', icon: 'sync', onPress: runSync } : null,
+  ].filter(Boolean);
+  // PWA keeps four quick actions plus More below 400px; wider screens expose them.
+  const overflowItems = width < 400 && quickItems.length > 5 ? quickItems.slice(4) : [];
+  const moreItems = [...overflowItems, ...extraItems];
 
   const actions = isEpisode ? {
     primary: {
@@ -777,15 +876,8 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
           : null)
       : offersNewEntry ? { label: `Edit entry, ${status}`, onPress: () => openTrack(false) } : null,
     quick: [
-      sourceItem,
-      { key: 'tags', label: 'Tags', icon: 'tag', onPress: () => openTags() },
-      { key: 'notes', label: 'Notes', icon: 'page', onPress: () => openNotes() },
-      { key: 'lists', label: 'Add to list', icon: 'listAdd', onPress: () => openLists() },
-      // The web keeps history beside the other buttons, and folds it into the
-      // "more" menu together with Sync metadata and Seerr when those exist.
-      ...(readingType ? [historyItem, moreItems.find(item => item.key === 'sync')] : [
-        moreItems.length ? { key: 'more', label: 'More', icon: 'ellipsis', onPress: openKind('more') } : historyItem,
-      ]),
+      ...(overflowItems.length ? quickItems.slice(0, 4) : quickItems),
+      moreItems.length ? { key: 'more', label: 'More', icon: 'ellipsis', onPress: openKind('more') } : null,
     ].filter(Boolean),
   };
 
@@ -795,9 +887,31 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     value: row.rating == null ? '-' : Number(row.rating).toFixed(1),
     count: row.count == null ? '' : `${Number(row.count).toLocaleString('en-US')} ${Number(row.count) === 1 ? 'vote' : 'votes'}`,
     graph: 'provider',
+    logo: row.logo_src || row.logo || model?.scoreChips?.find(chip => chip.key === 'provider')?.logo_src || '',
   })), scores);
+  const viewerRating = model?.viewerRating;
+  const ratingSlot = viewerRating?.editable ? <RatingChip
+    value={viewerRating.value}
+    scaleMax={viewerRating.scaleMax || 10}
+    displayValue={viewerRating.displayValue}
+    cardDisplayValue={viewerRating.cardDisplayValue ?? (viewerRating.value == null ? null : Number(viewerRating.value).toFixed(1))}
+    derived={viewerRating.derived}
+    layout={isEpisode ? 'pill' : 'card'}
+    palette={ratingPalette}
+    renderStar={RatingStarIcon}
+    open={ratingOpen}
+    onOpenChange={setRatingOpen}
+    onSelect={async score => {
+      try {
+        await saveScore(identity, score == null ? null : score * 10 / (viewerRating.scaleMax || 10));
+        reload();
+      } catch (cause) {
+        setNotice(cause?.message || 'The rating could not be saved.');
+      }
+    }} /> : null;
   const progressSlot = progress.data ? <ProgressCard
     model={progress.data.card}
+    variant="detail"
     labels={progress.data.model?.labels}
     palette={progressDetailPalette}
     onOpen={() => setProgress(current => ({ ...current, open: true }))} /> : null;
@@ -807,7 +921,7 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
   const openChild = child => {
     const target = child.identity || {};
     const seasoned = target.mediaType === 'season' || target.mediaType === 'episode';
-    onOpenItem?.({ identity: seasoned ? { ...target, mediaType: 'tv', detailType: target.mediaType } : target });
+    onOpenItem?.({ identity: seasoned ? { ...target, mediaType: target.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: target.mediaType } : target });
   };
 
   const collectionAddress = collectionAddressForIdentity(identity);
@@ -836,51 +950,68 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     } : null}
     labels={{ selectEpisode: 'Select episode', previousEpisode: 'Previous episode', nextEpisode: 'Next episode' }}
     palette={palette}
-    onOpenSeason={() => onOpenItem?.({ identity: { mediaType: 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
+    onOpenSeason={() => onOpenItem?.({ identity: { mediaType: identity.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
   /> : null;
-  const sectionsSlot = <>
-    {isEpisode ? null : <DetailBlock title="Collection" palette={palette}
+  const collectionSlot = isEpisode ? null : <DetailBlock title="Collection" palette={palette}
       action={collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null}>
       {collection.status === 'loading' ? <DetailLoading text="Loading" palette={palette} /> : null}
       {collection.status === 'error' ? <DetailEmpty text={collection.error} palette={palette} /> : null}
       {collection.status === 'ready' ? <DetailCollectionBlock counts={collection.counts}
         entries={collection.entries} empty="No collection data available" palette={palette} /> : null}
-    </DetailBlock>}
-    <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
-      onEdit={openNotes} palette={palette} />
-    {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
-  </>;
+    </DetailBlock>;
+  const notesSlot = tracking.notes.length ? <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
+    onEdit={openNotes} palette={palette} /> : null;
+  const noticeSlot = notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null;
+  const historySlot = ['tv', 'season'].includes(identity.mediaType) && model.trackingEntries?.count > 1
+    ? <DetailTrackingHistory entries={model.trackingEntries.entries.slice(1)} count={model.trackingEntries.count}
+      hasMore={model.trackingEntries.hasMore} title="History" repeatsLabel="Repeats"
+      onEdit={entry => openTrack(false, entry.identity)}
+      onOpenHistory={() => setDialog({ ...NO_DIALOG, kind: 'history' })} palette={palette} /> : null;
+  const sectionSlots = { collection: collectionSlot, notes: notesSlot, history: historySlot };
+  const sectionsSlot = <>{collectionSlot}{notesSlot}{noticeSlot}</>;
 
   const sortedEpisodes = [...episodes.rows]
     .sort((left, right) => (episodes.order === 'desc' ? -1 : 1) * ((Number(left.number) || 0) - (Number(right.number) || 0)))
-    .map(row => ({ ...row, actions: [{ key: 'track', label: 'Track Episode' }] }));
+    .map(row => ({ ...row, actions: isAnime ? [{ key: 'track', label: 'Track Episode' }] : [
+      row.canWatch ? { key: row.watched ? 'unwatch' : 'watch', label: row.watched ? 'Mark unwatched' : 'Mark watched' } : null,
+      row.canCollect ? { key: 'collection', label: row.collected ? 'Collected' : 'Uncollected' } : null,
+      row.canList ? { key: 'lists', label: 'Add to list' } : null,
+      { key: 'history', label: 'View history' },
+    ].filter(Boolean) }));
   // The web show page lists its seasons as titled poster cards, like its related grids.
   const seasonCards = identity.mediaType === 'tv' ? (model?.children?.seasons || []).map(season => ({
     key: season.key,
     title: season.number === 0 ? 'Specials' : `Season ${season.number}`,
     image: season.image?.src || '',
+    date: season.dateLabel,
+    card: season.card,
     identity: season.identity,
   })) : [];
-  const childrenSlot = seasonCards.length ? <DetailRelatedGrid title="Seasons" items={seasonCards} palette={palette}
-    onOpen={openChild} />
-    : isComic && (issues.rows.length || issues.status === 'loading') ? <DetailIssueCards
+  const seasonsSlot = seasonCards.length ? <WindowedRail title="Seasons" items={seasonCards}
+    itemWidth={shelfWidth} palette={palette}
+    renderItem={season => <MediaCard width={shelfWidth} palette={palette.mediaCard || palette}
+      model={{ ...season.card, title: season.title, image: { src: season.image },
+        lines: season.date ? [{ parts: [{ text: String(season.date).slice(0, 4) }] }] : [] }}
+      onOpen={() => openChild(season)} onOpenLink={href => onOpenItem?.({ href })} />} /> : null;
+  const issuesSlot = isComic && (issues.rows.length || issues.status === 'loading') ? <DetailIssueCards
     rows={issues.rows} total={issues.total} loading={issues.status === 'loading'} error={issues.error}
     layout={issues.layout} onLayout={layout => setIssues(current => ({ ...current, layout }))}
     onOpen={openChild} onTrack={issue => openTrack(false, issue.identity)}
     onLists={issue => openLists(issue.identity, issue.title)}
     onMore={() => loadMoreIssues(false)} palette={palette} />
-    : isAnime && (episodes.rows.length || episodes.error) ? <View style={styles.children}>
+    : null;
+  const episodesSlot = (isAnime || isSeason) && (episodes.rows.length || episodes.error) ? <View style={styles.children}>
       {episodes.error ? <View style={styles.errorRow}>
         <Text style={[styles.dialogText, { color: palette.danger }]}>{episodes.error}</Text>
         <Button label="Try again" tone="surface" palette={palette.button} onPress={() => loadEpisodes()} />
       </View> : null}
       <DetailEpisodeCards
-        nativeAnime
+        nativeAnime={isAnime}
         loadMore={episodes.loadMore}
         onMore={() => loadEpisodes(true)}
         loadingMore={episodes.status === 'loading'}
         title="Episodes"
-        count={sortedEpisodes.length}
+        count={episodes.total || sortedEpisodes.length}
         order={episodes.order}
         orderLabel={episodes.order === 'desc' ? 'Newest first' : 'Oldest first'}
         onOrderChange={() => setEpisodes(current => ({ ...current, order: current.order === 'asc' ? 'desc' : 'asc' }))}
@@ -889,13 +1020,35 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
         palette={palette}
         renderRating={renderRating}
         onOpen={openChild}
-        onAction={(key, child) => openTrack(false, child.identity)}
+        onAction={async (key, child) => {
+          if (key === 'track') { openTrack(false, child.identity); return; }
+          if (key === 'lists') { openLists(child.identity, child.title); return; }
+          if (key === 'collection') { openCopyDialog(child.identity, child.title); return; }
+          if (key === 'history') {
+            setDialog({ ...NO_DIALOG, kind: 'history', target: child.identity });
+            return;
+          }
+          if (!['watch', 'unwatch'].includes(key)) return;
+          try {
+            await (key === 'unwatch' ? unwatchEpisode(child.identity) : watchEpisode(child.identity));
+            reload();
+          } catch (cause) {
+            setEpisodes(current => ({ ...current, error: cause?.message || 'The episode could not be updated.' }));
+          }
+        }}
         onRate={rateEpisode} />
     </View> : null;
 
+  const childSlots = { seasons: seasonsSlot, issues: issuesSlot, episodes: episodesSlot };
+  const childrenSlot = seasonsSlot || issuesSlot || episodesSlot;
+
   const overlays = <>
+    <AdaptivePresentationSheet isPresented={track.open} onDismiss={() => setTrack(EMPTY_TRACK)}
+      onClose={() => setTrack(EMPTY_TRACK)} title="Tracking" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
     <TrackDialog
       open={track.open}
+      embedded
       model={track.status === 'ready' ? track.model : null}
       values={track.values}
       status={track.status}
@@ -917,8 +1070,14 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
         reload();
       }}
       onDiscoverToggle={(itemId, hidden) => setDiscoverHidden(itemId, hidden)} />
+    </View>
+    </AdaptivePresentationSheet>
+    <AdaptivePresentationSheet isPresented={dialog.kind === 'tags'} onDismiss={closeDialog}
+      onClose={closeDialog} title="Tags" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+    <View style={{ flex: 1, paddingHorizontal: 16 }}>
     <TagAssignmentDialog
       open={dialog.kind === 'tags'}
+      embedded showClose={false}
       item={{ title }}
       tags={dialog.kind === 'tags' ? dialog.data || [] : []}
       palette={formPalette}
@@ -927,6 +1086,20 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       onToggle={toggleDialogTag}
       onCreate={createDialogTag}
       onClose={closeDialog} />
+    </View>
+    </AdaptivePresentationSheet>
+    <MediaCardActionHost open={dialog.kind === 'links'} action={{ title: 'Links' }} palette={formPalette} onClose={closeDialog}>
+      {links.map(section => <View key={section.title} style={{ marginBottom: 16 }}>
+        <Text style={{ color: formPalette.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>{section.title}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {section.entries.filter(entry => entry.url).map(entry => <Pressable key={entry.url} accessibilityRole="link"
+            onPress={() => { closeDialog(); onOpenExternal?.(entry.url); }}
+            style={{ backgroundColor: palette.surfaceStrong, borderColor: palette.border, borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: formPalette.text }}>{entry.label}</Text>
+          </Pressable>)}
+        </View>
+      </View>)}
+    </MediaCardActionHost>
     <MediaCardActionHost open={dialog.kind === 'lists'} action={{ title: 'Lists' }} palette={formPalette} onClose={closeDialog}>
       {dialog.kind === 'lists' && dialog.data ? <ListsForm
         model={dialog.data.model}
@@ -952,10 +1125,23 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       onClose={() => setProgress(current => ({ ...current, open: false }))}
       onOpenSeason={href => { setProgress(current => ({ ...current, open: false })); navigate?.('Detail', { href }); }}
       onOpenEpisode={href => { setProgress(current => ({ ...current, open: false })); navigate?.('Detail', { href }); }} /> : null}
+    <AdaptivePresentationSheet isPresented={copy.open}
+      onDismiss={() => setCopy(current => ({ ...current, open: false }))}
+      onClose={() => setCopy(current => ({ ...current, open: false }))}
+      title={copy.editingId ? `Edit ${copy.editingLabel || copy.title}` : copy.title} titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <CollectionCopyDialog
+      embedded
       visible={copy.open}
       item={copy.open ? { title: copy.title, mediaType: copy.target?.mediaType } : null}
-      fields={copyFieldsFor(copy.target?.mediaType)}
+      context={copy.editingId ? undefined : copy.context}
+      showExisting={collectionCopies.length > 0 && !copy.editingId}
+      labels={{ existing: auditKind === 'seasons' && auditRows.length ? 'Collected seasons' : auditKind === 'episodes' && auditRows.length ? 'Collected episodes' : 'Collected items' }}
+      copies={collectionCopies}
+      copyLimit={5}
+      editingId={copy.editingId}
+      onEdit={editCollectionCopy}
+      onRemove={removeCollectionCopy}
+      fields={copyFieldsFor(copy.target?.mediaType).filter(field => copy.editingKind !== 'season' || !['purchasePrice', 'purchaseLocation', 'collectedAt'].includes(field.name))}
       values={copy.values}
       errors={copy.errors}
       palette={palette}
@@ -968,8 +1154,9 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
         errors: { ...current.errors, [name]: '' },
       }))}
       onSave={saveCopy} />
+    </AdaptivePresentationSheet>
     <MediaCardActionHost open={dialog.kind === 'more'} action={{ title }} palette={palette} onClose={closeDialog}>
-      {[historyItem, ...moreItems].map(item => <Pressable key={item.key} accessibilityRole="button"
+      {moreItems.map(item => <Pressable key={item.key} accessibilityRole="button"
         onPress={() => { closeDialog(); item.onPress(); }} style={styles.moreRow}>
         <Icon spec={actionIcons[item.icon]} size={16} color={palette.textSecondary} />
         <Text style={[styles.dialogText, { color: palette.text }]}>{item.label}</Text>
@@ -987,7 +1174,7 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       onSaved={() => { closeDialog(); reload(); }} onClose={closeDialog} />
     <NotesDialog open={dialog.kind === 'notes'} note={dialog.data} busy={dialog.busy}
       error={dialog.kind === 'notes' ? dialog.error : ''} onSave={saveNotes} onClose={closeDialog} />
-    <PlaysDialog open={dialog.kind === 'history'} identity={identity} entries={tracking.history}
+    <PlaysDialog open={dialog.kind === 'history'} identity={dialog.target || identity} entries={dialog.target ? [] : tracking.history}
       onRemove={removePlay} onClose={closeDialog} />
     <SeerrDialog open={dialog.kind === 'seerr'} state={dialog.kind === 'seerr' ? dialog.data : null}
       busy={dialog.busy} error={dialog.kind === 'seerr' ? dialog.error : ''}
@@ -998,10 +1185,14 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     enabled: true,
     pageType: isSeason ? 'tv' : isEpisode ? null : identity.mediaType,
     headerSlot,
-    actionsSlot: <DetailActionBar primary={actions.primary} edit={actions.edit} quick={actions.quick} palette={palette} />,
-    scoreSlot: chips.length || progressSlot
+    actionsSlot: <DetailActionBar primary={actions.primary} edit={actions.edit} quick={actions.quick} palette={palette} inlineAt={isEpisode ? 640 : 768} />,
+    ratingInScoreRow: Boolean(ratingSlot),
+    scoreSlot: chips.length || progressSlot || ratingSlot
       ? <DetailScoreRow chips={chips} graphs={scores.graphs} onOpenLink={onOpenExternal}
-        progressSlot={progressSlot} palette={palette} compact={isEpisode} /> : null,
+        progressSlot={progressSlot} palette={palette} compact={isEpisode}>{ratingSlot}</DetailScoreRow> : null,
+    sectionSlots,
+    childSlots,
+    noticeSlot,
     sectionsSlot,
     childrenSlot,
     overlays,

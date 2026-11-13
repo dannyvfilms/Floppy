@@ -34,6 +34,10 @@ whether a status is true; the register header says how to check that, and
 
 ## SHELL
 
+Restored adapter evidence: **web — Runtime**, PWA Home and Sidebar inspected beside Expo; browser source is unchanged. **iOS — Runtime**, Home, Sidebar, Search and populated library/provider Search Results inspected in Expo Go on the Duo. **Android — Runtime for Search preview only**, screenshot inspected; full Home, Sidebar and Search Results rendering remains unverified, with platform bundle and transport checks only. These checks do not establish complete interaction, theme or accessibility parity.
+
+`native-proof/app/surfaces/ShellSlot.jsx` → shared `Sidebar` and native drawer; direct flex layout, guided setup separate from navigation. The Expo adapter mounts the shared `Sidebar` directly in the drawer, preserving its full-height flex layout and the reviewed navigation spacing. Guided setup remains separate from the drawer; no setup banner is inserted above its rows. Account-backed pins, loading/retry, sign-out errors and onboarding remain adapter-owned. Shared Sidebar ownership stays fully React-owned with the existing coexisting web fallback and retirement conditions.
+
 Sidebar retains the accepted text metrics and anchored menu presentation while platform keyboard/menu-layer behavior stays in adapters. Account-backed pins and the legacy local-storage adoption path remain. Ownership and fallback retirement conditions are unchanged; the integration does not establish new iOS or Android runtime acceptance.
 
 The saved-view/sidebar fallback adapter loads before Alpine and also registers immediately when Alpine is already running, preserving its once guard. Browser regression coverage checks script order, late real-fallback insertion and Explore toggling without page errors. Shared Sidebar remains React-owned with the same coexisting server fallback and retirement conditions; actual iOS/Android runtime was not reverified by this browser bootstrap fix.
@@ -87,6 +91,12 @@ build artifacts. The Python composition tag is documented in the register.
 ## FORM-CONTROLS
 
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
+- `frontend/ui/DropdownMenu.jsx` (`FORM-CONTROLS` shared anchored presentation, consumed by Sidebar and the opt-in SelectField popover; web and Android runtime regression unverified)
+- `native-proof/app/components/AdaptivePresentationSheet.jsx`, `native-proof/app/components/SheetCloseButton.jsx`, `native-proof/app/components/SheetCloseButton.ios.jsx`, `native-proof/app/components/SheetHost.jsx`, `native-proof/app/components/SheetHost.ios.jsx`, `native-proof/app/components/useSheetInsets.js`, `native-proof/app/components/useSheetInsets.ios.js` (Expo UI sheet adapter and platform close controls; iOS applies a reduced horizontal safe-area inset to content while the close control can occupy the Duo rail; Detail actions consume it, while other modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
+- Detail Collection uses the shared embedded `CollectionCopyDialog` inside `AdaptivePresentationSheet`; Collection screen and web dialog consumers remain. `DropdownMenu` supplies the sidebar and optional `SelectField` popover; multi-select is opt-in. The native modal host isolates registration from active-entry updates and sheets host nested dialogs locally. These remain partial/coexisting until remaining consumers migrate; Duo opened the Collection sheet and selected Format, while browser, Android and multi-select runtime remain unverified.
+- `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
+- `AdaptivePresentationSheet.jsx` centers the title and close control together in the lowered header row across Expo surfaces. The revised row was inspected on a physical Duo; Android and web rendering remain unverified.
+- `native-proof/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
 
 Status: `Partial / coexisting`
 
@@ -363,6 +373,8 @@ Status: `Partial / coexisting`
 
 ## SEARCH
 
+`native-proof/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `native-proof/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `native-proof/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` uses the default shared shelf card presentation instead of nesting a Library grid host inside each result; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Deliberate platform difference: the restored native shelf card opens Detail while the browser retains its existing in-place actions.
+
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
@@ -387,6 +399,11 @@ Status: `Partial / coexisting`
 
 ## RAILS
 
+`Rail` reduces the bottom space below cards by 4px for its Home, Search, detail
+and other consumers on web and Expo; consecutive detail rails use Home's 12px
+section gap. Existing partial/coexisting ownership and
+server fallback retirement conditions are unchanged; Android runtime is unverified.
+
 Rail retains optional per-item width and card windowing APIs. Native Home/Search use WindowedRail to mount nearby cards; web retains its established DOM/image lazy-loading behavior. This native-specific mount policy is documented beside WindowedRail and is not a visual redesign. Existing ownership, web consumers and retirement conditions remain.
 
 Status: `Legacy`
@@ -397,9 +414,11 @@ Status: `Legacy`
 
 ## HOME
 
-Home retains the existing quick progress actions on web and Expo. Both adapters supply the shared progress renderer; card widths, shelf geometry and styling keep the accepted Home presentation.
+`native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
 
-HomeView forwards the shared card/progress renderers and row-title callbacks, retaining the existing quick actions on both platforms. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
+Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
+
+HomeView forwards optional card/progress renderers and row-title callbacks; the web supplies its progress renderer and Expo uses the default reviewed cards. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
 
 Status: `Partial / coexisting`
 
@@ -436,6 +455,43 @@ Status: `Legacy`
 - `src/templates/app/discover.html`
 
 ## DETAIL
+
+Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
+`DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
+sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
+`DetailRelated` for people, recommendations and related grids. Expo detail cast,
+crew, seasons and recommendation rails use Home's responsive card width and windowed
+rail, with `MediaCard` for people as well as media. Web detail cast and crew use
+the web media card; seasons and recommendations use Home's mounted rail and media
+cards. Ownership remains partial/coexisting until the web detail shell migrates.
+The Duo PWA and Expo Go rendered the changed rows; Android runtime is unverified.
+Detail season card indicators are projected by the detail API using the Home card
+rules; the web season cards use the Home card surface. Detail recommendations use
+the Home card surface without the alternative-title control. The web rail owns
+the item width once mounted, so its embedded cards fill the rail item.
+Episode cast and crew also mount the shared people rail over a server fallback;
+the episode template remains partially owned until its remaining sections migrate.
+The Expo detail adapter omits its Notes slot when there are no notes, avoiding an
+empty section gap. Browser and Android verification for that state is separate.
+`DetailScoreRow` places the viewer rating beside provider scores; `ProgressCard` has an opt-in
+detail presentation. Native metadata adapters preserve server formatting and
+viewer rating preferences. `DetailBackdrop` and its layout logic anchor sharp
+artwork and clearlogos to the inner content strip. Intentional native carve-out:
+artwork extends underneath the search bar and into the side rail; the PWA keeps
+its search divider. Search overlay and overflow are enabled only for Details.
+`ProviderLogo` renders native SVG sources in its native adapter. Shared components
+remain props-only; permissions, requests and dialogs stay in feature adapters.
+PWA secondary templates remain server-owned; ownership is partial/coexisting.
+Retire those consumers only after shared web mounting preserves all section
+preferences, responsive states and interactions. Genre/link modal contents remain
+deferred. Current revision evidence: web — unverified comparison; iOS — pending
+simulator comparison; Android — pending emulator comparison. Builds and logic tests
+do not establish native appearance or complete page parity.
+
+- `frontend/ui/DetailBackdrop.jsx`, `frontend/ui/DetailBackdrop.native.jsx`, `frontend/ui/DetailBackdrop.web.jsx`, `frontend/ui/detailHeroLayout.js` (inner-area hero geometry and platform image gradients).
+- `frontend/ui/ProviderLogo.jsx`, `frontend/ui/ProviderLogo.native.jsx`, `frontend/ui/ProviderLogo.web.jsx` (provider logo presentation).
+- `frontend/ui/DetailSecondary.jsx`, `frontend/ui/detailSecondaryModel.js` (ordered metadata and secondary-section composition).
+- `scripts/detailHeroLayout.test.mjs`, `scripts/detailSecondaryModel.test.mjs` (geometry and safe projection regression checks).
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
@@ -1433,3 +1489,7 @@ Status: `Partial / coexisting`
 ## CONTROL-KIT
 
 Status: `Partial / coexisting`
+
+- Collection detail Summary, CollectionEntryGroup, CollectionEpisodeList, CollectionEpisodeToggle, CollectionShowMore and CollectionSectionHeading: shared props-only `CollectionContextCard` in `CollectionCopyDialog`, used by the Expo detail sheet and the web Collection dialog through a browser adapter. Status: partial/coexisting; web retains its server-owned editing controls inside the shared group; the native Collection screen and detail sheet use the same group for copies; detail shows season audit rows and read-only episode disclosures including missing locally known episodes; web and Expo initially show five collection rows with the shared show-more control; the web footer compensates for its server-rendered final row’s different margin and keeps the collapsed and expanded spacing consistent, with a consistent divider position and season edits and removal through the collection API. Resolution breakdown, completion and the Missing row use episode coverage; the latest copy determines each episode’s resolution, and specials are excluded from show totals. A secondary disclosure groups copies by season and episode with titles and comma-separated resolutions, initially limiting the list to five rows when an item has multiple copies. PWA: earlier Summary inspected on a physical Duo; grouped entry card and edit interactions not runtime verified. Desktop browser: not verified. iOS: grouped entries, expanded episodes including a Missing row, and 68-of-69 summary inspected on a physical Duo; save and remove not runtime verified. Android: not verified.
+
+- `frontend/ui/sectionSpacing.js`: `sectionSpacing` shares Home shelf and Collection section gaps across viewport sizes. Web, iOS and Android: pure shared layout rule; runtime verification follows its consumers.

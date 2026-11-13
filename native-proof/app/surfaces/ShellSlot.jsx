@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHinge } from 'expo-hinge';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
@@ -15,7 +15,7 @@ import { Shell } from '../../../frontend/ui/Shell';
 import { Sidebar } from '../../../frontend/ui/Sidebar';
 import { renderNativeIcon } from '../iconRenderer';
 import SearchSlot from './SearchSlot';
-import { getShellPageType, subscribeShellPageType } from './shellContext';
+import { getShellPageType, subscribeShellPageType, ShellLayoutContext } from './shellContext';
 import NativeShell from './NativeShell';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { palette, radius } from '../theme';
@@ -25,7 +25,7 @@ export const surface = {
   title: 'Application shell and navigation',
   where: 'Signed-in top bar, public header and mobile navigation',
   status: 'in_progress',
-  note: 'The native shell mirrors the web compact layout: a top bar with the menu button and global search, and a navigation drawer built from /api/v1/user/navigation/, the same sidebar model the web template renders, including icons, order and saved views. While it loads the drawer shows a loading state, and a failed load shows the matching error with Retry; there is no placeholder navigation. A "Finish setting up Floppy" row and the setup wizard follow the web onboarding state. The persistent desktop sidebar is not ported.',
+  note: 'The native shell mirrors the web compact layout: a top bar with the menu button and global search, and a navigation drawer built from /api/v1/user/navigation/, the same sidebar model the web template renders, including icons, order and saved views. While it loads the drawer shows a loading state, and a failed load shows the matching error with Retry; there is no placeholder navigation. The setup wizard follows the web onboarding state without adding a row to the reviewed drawer. The persistent desktop sidebar is not ported.',
 };
 
 const labels = {
@@ -130,6 +130,7 @@ function absoluteLogo(model, serverUrl) {
 
 export default function ShellSlot({
   standalone = false,
+  overlaySearch = false,
   active = 'home',
   activeHref = '/',
   canGoBack = false,
@@ -148,7 +149,7 @@ export default function ShellSlot({
   const [navError, setNavError] = useState(null);
   const [navAttempt, setNavAttempt] = useState(0);
   const [signOutError, setSignOutError] = useState('');
-  const [onboarding, setOnboarding] = useState(null);
+  const [, setOnboarding] = useState(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [pageType, setPageType] = useState(getShellPageType);
@@ -156,6 +157,8 @@ export default function ShellSlot({
   // The web remembers the last searched type for pages with no type of their own.
   const [lastSubmittedType, setLastSubmittedType] = useState(null);
   const [pinned, setPinned] = useState([]);
+  const [detailViewport, setDetailViewport] = useState({ width: 0, height: 0 });
+  const [detailHeaderHeight, setDetailHeaderHeight] = useState(64);
   const hinge = useHinge();
   const railEdge = useVerticalBarEdgeIOS();
   const insets = useSafeAreaInsets();
@@ -252,15 +255,9 @@ export default function ShellSlot({
       navContentPaddingRight: navigationPadding.paddingRight,
       navFontSize: 17, navIconSize: 22 }
     : shellPalette;
-  const offer = onboardingOffer(onboarding);
   const navPage = navError ? errorPageFor(navError) : null;
-  const sidebar = <View style={styles.sidebarStack}>
-    {offer.banner && !wizardOpen ? (
-      <Pressable accessibilityRole="button" accessibilityLabel="Finish setting up Floppy"
-        onPress={() => { setOpen(false); setWizardOpen(true); }} style={styles.setupRow}>
-        <Text style={styles.setupText}>Finish setting up Floppy</Text>
-      </Pressable>
-    ) : null}
+  // Keep Sidebar directly in the drawer so its flex layout fills the reviewed canvas.
+  const sidebar = <>
     {navStatus === 'loading' ? (
       <Text accessibilityLiveRegion="polite" style={styles.navStatus}>Loading navigation…</Text>
     ) : null}
@@ -285,7 +282,7 @@ export default function ShellSlot({
       }}
       showLogo={false} /> : null}
     {signOutError ? <Text accessibilityRole="alert" style={styles.navErrorText}>{signOutError}</Text> : null}
-  </View>;
+  </>;
   const content = wizardOpen
     ? <OnboardingScreen onFinish={closeWizard} onBack={closeWizard} />
     : <ErrorBoundary resetKey={activeHref} onGoHome={() => onNavigate?.('home')}>{children}</ErrorBoundary>;
@@ -305,14 +302,14 @@ export default function ShellSlot({
   if (wizardOpen || standalone) return content;
 
   if (Platform.OS === 'ios') {
-    return <NativeShell open={open} onToggle={() => setOpen(value => !value)}
+    return <NativeShell open={open} onToggle={() => setOpen(value => !value)} overlaySearch={overlaySearch}
       sidebar={sidebar} search={search} labels={labels} palette={shellPalette}
       canGoBack={canGoBack} onBack={() => { setOpen(false); onBack?.(); }}>
       {content}
     </NativeShell>;
   }
 
-  return <><Shell
+  const shell = <Shell
     open={open}
     onToggleMenu={() => setOpen(value => !value)}
     onCloseMenu={() => setOpen(false)}
@@ -326,11 +323,19 @@ export default function ShellSlot({
     palette={shellPalette}
   >
     {sidebar}
-  </Shell>{content}</>;
+  </Shell>;
+  if (!overlaySearch) return <>{shell}{content}</>;
+  // Android also lets detail artwork continue under search; other pages keep the reviewed shell.
+  return <View style={{ flex: 1 }} onLayout={event => setDetailViewport(event.nativeEvent.layout)}>
+    <ShellLayoutContext.Provider value={{ ...detailViewport, insets, headerHeight: detailHeaderHeight }}>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30 }}
+        onLayout={event => setDetailHeaderHeight(event.nativeEvent.layout.height)}>{shell}</View>
+      {content}
+    </ShellLayoutContext.Provider>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  sidebarStack: { gap: 12 },
   navStatus: { color: palette.textMuted, fontSize: 13, lineHeight: 19 },
   navError: {
     borderWidth: 1,
@@ -341,11 +346,4 @@ const styles = StyleSheet.create({
   },
   navErrorTitle: { color: palette.danger, fontSize: 13, fontWeight: '700' },
   navErrorText: { color: palette.textSecondary, fontSize: 12, lineHeight: 17 },
-  setupRow: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: 12,
-    borderColor: palette.accent,
-  },
-  setupText: { color: palette.text, fontSize: 13, fontWeight: '600' },
 });

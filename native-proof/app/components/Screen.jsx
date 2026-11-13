@@ -2,11 +2,12 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, floating }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, floating, artworkBleed = false }) {
   const body = scroll
-    ? <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+    ? <ScrollView style={artworkBleed ? styles.bleed : undefined}
+      contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
     : <View style={[styles.content, contentStyle]}>{children}</View>;
-  return <View style={styles.screen}>
+  return <View style={[styles.screen, artworkBleed && styles.bleed]}>
     {chrome && (title || subtitle || onBack) ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>
         <Text style={[styles.backText, { color: palette.accent }]}>Back</Text>
@@ -23,6 +24,7 @@ export function Screen({ title, subtitle, children, scroll = true, onBack, chrom
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0 },
+  bleed: { overflow: 'visible' },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm },
   heading: { gap: 2 },
   title: { color: palette.text, fontSize: 28, fontWeight: '700' },

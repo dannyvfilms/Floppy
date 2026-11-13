@@ -1,6 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { MarkdownPreview } from './MarkdownPreview';
 import { Icon } from './Icon';
+import { ProviderLogo } from './ProviderLogo';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
 
@@ -9,23 +11,25 @@ import { actionIcons } from './actionIcons';
 // related grid, comic issue cards and anime episode cards. Props only: the screen
 // adapter owns every request, dialog and permission, and passes colors in `palette`.
 
-function QuickButton({ item, palette }) {
+function QuickButton({ item, palette, inline }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={item.label} onPress={item.onPress}
     disabled={item.disabled}
-    style={({ pressed }) => [styles.quick, {
-      backgroundColor: pressed ? palette.surfaceMuted : palette.surfaceStrong,
-      borderColor: item.active ? palette.accent : palette.border,
+    style={({ pressed }) => [styles.quick, inline ? styles.quickInline : null, {
+      backgroundColor: pressed ? palette.surfaceMuted : palette.surface,
+      borderColor: item.active ? palette.accent : (palette.surfaceBorder || palette.border),
       opacity: item.disabled ? 0.5 : 1,
     }]}>
-    <Icon spec={actionIcons[item.icon]} size={20} color={item.active ? palette.accent : palette.text} />
+    <Icon spec={actionIcons[item.icon]} size={16} color={item.active ? palette.accent : palette.text} />
   </Pressable>;
 }
 
-export function DetailActionBar({ primary, edit, quick = [], palette }) {
-  return <View style={styles.actionBar}>
-    {primary ? <View style={styles.primaryRow}>
+export function DetailActionBar({ primary, edit, quick = [], palette, inlineAt = 768 }) {
+  const { width } = useWindowDimensions();
+  const inline = width >= inlineAt;
+  return <View style={[styles.actionBar, inline ? styles.actionBarInline : null]}>
+    {primary ? <View style={[styles.primaryRow, inline ? styles.primaryRowInline : null]}>
       <Pressable accessibilityRole="button" onPress={primary.onPress} disabled={primary.disabled}
-        style={({ pressed }) => [styles.primary, edit ? styles.primaryJoined : null, {
+        style={({ pressed }) => [styles.primary, inline ? { flex: 0 } : null, edit ? styles.primaryJoined : null, {
           backgroundColor: pressed ? palette.accent : palette.accentStrong,
           opacity: primary.disabled ? 0.6 : 1,
         }]}>
@@ -41,7 +45,7 @@ export function DetailActionBar({ primary, edit, quick = [], palette }) {
       </Pressable> : null}
     </View> : null}
     {quick.length ? <View style={styles.quickRow}>
-      {quick.map(item => <QuickButton key={item.key} item={item} palette={palette} />)}
+      {quick.map(item => <QuickButton key={item.key} item={item} palette={palette} inline={inline} />)}
     </View> : null}
   </View>;
 }
@@ -53,7 +57,7 @@ function ScoreChip({ chip, palette, onPress, compact }) {
     const pillStyle = [styles.scorePill, { backgroundColor: accent ? accent.fill : palette.surface, borderColor: accent ? accent.border : palette.border }];
     const pillBody = <>
       <View style={[styles.scorePillLogo, accent ? { borderColor: accent.border, backgroundColor: accent.fill } : null]}>
-        {chip.logo ? <Image source={{ uri: chip.logo }} resizeMode="contain" style={styles.scoreLogoImage} accessible={false} />
+        {chip.logo ? <ProviderLogo source={chip.logo} style={styles.scoreLogoImage} />
           : <Text style={[styles.scoreBrand, { color: palette.text }]}>{String(chip.label).slice(0, 4).toUpperCase()}</Text>}
       </View>
       <Text style={[styles.scorePillText, { color: palette.text }]}>{chip.value}</Text>
@@ -64,7 +68,7 @@ function ScoreChip({ chip, palette, onPress, compact }) {
   }
   const body = <>
     <View style={[styles.scoreLogo, accent ? { borderColor: accent.border, backgroundColor: accent.fill } : null]}>
-      {chip.logo ? <Image source={{ uri: chip.logo }} resizeMode="contain" style={styles.scoreLogoImage} accessible={false} />
+      {chip.logo ? <ProviderLogo source={chip.logo} style={styles.scoreLogoImage} />
         : <Text style={[styles.scoreBrand, { color: palette.text }]}>{String(chip.label).slice(0, 4).toUpperCase()}</Text>}
     </View>
     <View style={styles.scoreText}>
@@ -81,16 +85,15 @@ function ScoreChip({ chip, palette, onPress, compact }) {
 }
 
 export function DetailScoreRow({ children, chips = [], progressSlot, palette, graphs, graphTitle = 'Series Graph', onOpenLink, ratingWide = false, compact = false }) {
-  const { width } = useWindowDimensions();
   const [graphKey, setGraphKey] = React.useState('');
   if (!children && !chips.length && !progressSlot) return null;
   // The web row scrolls sideways: progress card, then each source's card, then the viewer's rating.
   return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scoreScroll}>
-    {progressSlot ? <View style={{ width: Math.max(240, width - 34) }}>{progressSlot}</View> : null}
+    {progressSlot ? <View style={{ width: 2 * SCORE_CARD_WIDTH + 8 }}>{progressSlot}</View> : null}
     {chips.map(chip => <ScoreChip key={chip.key} chip={chip} palette={palette} compact={compact}
       onPress={chip.graph && graphs?.[chip.graph] ? () => setGraphKey(chip.graph)
         : (chip.url && onOpenLink ? () => onOpenLink(chip.url) : null)} />)}
-    {children ? <View style={{ width: ratingWide ? 340 : 166 }}>{children}</View> : null}
+    {children ? <View style={compact ? null : { width: ratingWide ? 2 * SCORE_CARD_WIDTH + 8 : SCORE_CARD_WIDTH }}>{children}</View> : null}
     <DetailSeriesGraph graph={graphs?.[graphKey]} title={graphTitle} palette={palette} onClose={() => setGraphKey('')} />
   </ScrollView>;
 }
@@ -134,6 +137,9 @@ export function DetailSeriesGraph({ graph, title, palette, onClose }) {
 }
 
 const PHONE_HERO_MAX = 768;
+// PWA phone score cards use a fixed 375px baseline, with progress spanning two cards.
+const SCORE_CARD_HEIGHT = 375 / 4;
+const SCORE_CARD_WIDTH = SCORE_CARD_HEIGHT * 16 / 9;
 
 export function DetailBlock({ title, action, palette, children }) {
   return <View style={styles.block}>
@@ -168,7 +174,7 @@ export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
     {notes.map(note => <View key={note.id} style={styles.noteGroup}>
       <Text style={[styles.noteDate, { color: palette.textMuted }]}>{note.date}</Text>
       <View style={[styles.note, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        <Text style={[styles.noteText, { color: palette.textSecondary }]}>{note.text}</Text>
+        <View style={{ flex: 1 }}><MarkdownPreview markdown={note.text} palette={palette} /></View>
         {onEdit ? <Pressable accessibilityRole="button" accessibilityLabel={editLabel}
           onPress={() => onEdit(note)} style={styles.noteEdit}>
           <Icon spec={actionIcons.edit} size={16} color={palette.textSecondary} />
@@ -265,7 +271,7 @@ function EpisodeCard({ episode, palette, labels, renderRating, onOpen, onAction,
         {renderRating({
           value: episode.score,
           label: labels.rate,
-          scaleMax: 10,
+          scaleMax: episode.scaleMax || 10,
           palette: palette.rating,
           onSelect: score => { setRating(false); onRate?.(episode, score); },
         })}
@@ -284,7 +290,7 @@ function EpisodeCard({ episode, palette, labels, renderRating, onOpen, onAction,
           style={pill}><Text style={[styles.linkText, { color: palette.text }]}>{episode.collected ? 'Collected' : 'Uncollected'}</Text></Pressable> : null}
         {circle('lists', palette.success)}
         {circle('history', palette.warning)}
-        {!nativeAnime && episode.canRate && (episode.watched || episode.score != null) ? <Pressable accessibilityRole="button" accessibilityLabel={labels.rate}
+        {!nativeAnime && episode.canRate ? <Pressable accessibilityRole="button" accessibilityLabel={labels.rate}
           accessibilityState={{ expanded: rating }} onPress={() => setRating(value => !value)}
           style={[styles.episodeAction, { backgroundColor: palette.surfaceStrong }]}>
           <Icon spec={actionIcons.star} size={18} color={episode.score == null ? palette.textSecondary : palette.warning} />
@@ -321,7 +327,7 @@ export function DetailEpisodeCards({ title, count, order, orderLabel, onOrderCha
       {episodes.map(episode => <EpisodeCard key={episode.key} episode={episode} palette={palette} labels={labels}
         nativeAnime={nativeAnime} list={layout === 'list'}
         renderRating={renderRating} onOpen={onOpen} onAction={onAction} onRate={onRate} />)}
-      {nativeAnime && loadMore ? <Pressable accessibilityRole="button" disabled={loadingMore} onPress={onMore}
+      {loadMore ? <Pressable accessibilityRole="button" disabled={loadingMore} onPress={onMore}
         style={[styles.linkButton, { alignSelf: 'center', backgroundColor: palette.surfaceStrong }]}>
         <Text style={[styles.linkText, { color: palette.text }]}>{loadingMore ? 'Loading…' : `Show ${loadMore.label}`}</Text>
       </Pressable> : null}
@@ -435,21 +441,24 @@ const styles = StyleSheet.create({
   parent: { fontSize: 13, fontWeight: '600' },
   title: { fontSize: 24, lineHeight: 30, fontWeight: '700', flexShrink: 1 },
   activity: { fontSize: 13, lineHeight: 18 },
-  actionBar: { gap: 10 },
+  actionBar: { gap: 12 },
+  actionBarInline: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  primaryRowInline: { flexShrink: 0 },
   primaryRow: { flexDirection: 'row' },
-  primary: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingHorizontal: 12 },
+  primary: { flex: 1, minHeight: 48, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingHorizontal: 16 },
   primaryJoined: { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
-  primaryText: { fontSize: 15, fontWeight: '600' },
-  edit: { width: 48, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 8, borderBottomRightRadius: 8, borderLeftWidth: 1 },
+  primaryText: { fontSize: 16, fontWeight: '500' },
+  edit: { width: 48, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 12, borderBottomRightRadius: 12, borderLeftWidth: 1 },
   quickRow: { flexDirection: 'row', gap: 8 },
-  quick: { flex: 1, minHeight: 44, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  quick: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  quickInline: { flex: 0, width: 44 },
   quickGlyph: { fontSize: 18, fontWeight: '600' },
   linkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   linkButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   linkText: { fontSize: 13, fontWeight: '500' },
   scoreScroll: { gap: 8, alignItems: 'center', paddingRight: 16 },
   scoreRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  scoreChip: { width: 166, height: 94, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 12 },
+  scoreChip: { width: SCORE_CARD_WIDTH, height: SCORE_CARD_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 12 },
   scoreLogo: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   scoreLogoImage: { width: 14, height: 14 },
   scorePill: { height: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 16, paddingRight: 12 },

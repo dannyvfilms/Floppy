@@ -404,6 +404,11 @@ urlpatterns = [
         name="api_collection_fields",
     ),
     re_path(
+        r"^collection/seasons/(?P<season_id>\d+)/?$",
+        fork_views_detail.CollectionSeasonAuditView.as_view(),
+        name="api_collection_season_audit",
+    ),
+    re_path(
         r"^collection/(?P<entry_id>\d+)/?$",
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",

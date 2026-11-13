@@ -278,6 +278,11 @@ function classifyFailure(response, data, session) {
     return fail(AUTH_ERROR_CODES.EXPIRED, 'The saved session has expired. Sign in again.', { status: response.status });
   }
   if (response.status === 403) {
+    // DRF's session authentication reports a missing/expired cookie as 403.
+    // A permission denial must keep the session; only this auth error expires it.
+    if (session?.authType === 'session' && detail === 'Authentication credentials were not provided.') {
+      return fail(AUTH_ERROR_CODES.EXPIRED, 'The saved session has expired. Sign in again.', { status: response.status });
+    }
     if (isCsrfFailure(data)) {
       return fail(AUTH_ERROR_CODES.CSRF, 'The security token expired. Try the request again.', { status: response.status });
     }
