@@ -229,7 +229,8 @@ export default function ShellSlot({
 
   const model = serverModel ? markActive(withGlyphs(serverModel), activeHref) : null;
   const routeMediaType = activeHref.match(/^\/medialist\/([^/?#]+)/)?.[1];
-  const searchType = pageType || routeMediaType || lastSubmittedType || serverModel?.lastSearchType || 'all';
+  // The type the user last picked wins on every screen (as on web); the page's own type is only the fallback.
+  const searchType = lastSubmittedType || serverModel?.lastSearchType || pageType || routeMediaType || 'all';
   const pins = {
     pinned,
     pinnedLists: listPins,
@@ -290,6 +291,7 @@ export default function ShellSlot({
     key={searchType}
     expanded
     initialMediaType={searchType}
+    onTypeChange={setLastSubmittedType}
     dismissSignal={dismissSignal}
     onOpenSearch={params => {
       setDismissSignal(value => value + 1);

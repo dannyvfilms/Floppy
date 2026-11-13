@@ -139,6 +139,7 @@ export function GlobalSearch({
   onLoadSuggestions,
   useKeyboardOverlap = noKeyboardOverlap,
   onSubmit,
+  onTypeChange,
   onSelectSuggestion,
   onBarcodeRequest,
 }) {
@@ -266,6 +267,7 @@ export function GlobalSearch({
 
   function selectType(next) {
     setType(next);
+    onTypeChange?.(next.value);
     setMenuOpen(false);
     setActiveIndex(-1);
     if (trimmed) submit(query, next.value);
