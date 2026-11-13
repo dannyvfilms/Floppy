@@ -3249,10 +3249,16 @@ class PlexHistoryImporter:
     ):
         """Update completion status for season and TV show if applicable."""
         if episode_number == helpers.season_last_episode_number(season_metadata):
-            season_obj.status = Status.COMPLETED.value
+            # A dropped or paused show stays off the shelf (#1133).
+            if season_obj.status not in app.models.USER_HELD_STATUSES:
+                season_obj.status = Status.COMPLETED.value
 
             last_season = tv_metadata.get("last_episode_season")
-            if last_season and last_season == season_number:
+            if (
+                last_season
+                and last_season == season_number
+                and tv_obj.status not in app.models.USER_HELD_STATUSES
+            ):
                 tv_obj.status = Status.COMPLETED.value
 
     def _build_metadata(self, entry: dict) -> dict:
