@@ -454,6 +454,10 @@ Shared MediaCard preserves the accepted status-specific icon shapes and colors, 
 
 - Native presentation: `MediaCard` row layout accepts `model.rowSplit` and `model.rowWidth` (native search list only) to put title and actions on one line like the web list rows. Web unchanged. Verification: browser (Expo web) only; iOS and Android not verified.
 
+### HISTORY — background refresh indicator
+
+`HistoryFeed` shows a background refresh as a small spinner beside the month label instead of the "Refreshing history in background..." banner (web and Expo share it; the refresh-failed notice stays). Expo `HistoryScreen` keeps the last loaded pages per signed-in session and shows them at once on a revisit while the fresh copy loads. On web the month header is server-rendered, so the spinner lives in `history.html` (cleared by the cache poller's new `onStop` hook) and its month and year links use `hx-boost`, swapping the page in place instead of a full reload (Back still does a full load, as with other boosted pages). Browser and Expo logic only; iOS and Android runtime unverified.
+
 ### SEARCH — Global autocomplete, results and barcode input
 
 Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` uses the default shared shelf card presentation instead of nesting a Library grid host inside each result; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Deliberate platform difference: the restored native shelf card opens Detail while the browser retains its existing in-place actions.
