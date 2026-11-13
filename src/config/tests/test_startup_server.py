@@ -70,4 +70,7 @@ class StartupServerTests(SimpleTestCase):
         self.process.send_signal(signal.SIGTERM)
         self.assertEqual(self.process.wait(timeout=10), 0)
         with socket.socket() as sock:
+            # Real listeners (gunicorn) set SO_REUSEADDR; without it the readiness
+            # probe's TIME_WAIT connection can make this bind fail spuriously.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("", self.port))
