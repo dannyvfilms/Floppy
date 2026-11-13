@@ -42,6 +42,12 @@ logger = logging.getLogger(__name__)
 # queue until the next enqueue.
 SCHEDULED_MARKER_TTL = 30
 
+# How long a running drain keeps the queue claimed. A batch waits on provider
+# calls for far longer than SCHEDULED_MARKER_TTL, and letting the claim lapse
+# mid-batch lets a concurrent enqueue start a second drain: two drains writing
+# at once only add contention against SQLite's single writer.
+DRAIN_CLAIM_TTL = 15 * 60
+
 # Keep only queue descriptors, never import-sized sets of item IDs. There are
 # currently seven queues; unexpected callers beyond this bound schedule normally.
 MAX_DEFERRED_DRAINS = 16
@@ -169,8 +175,9 @@ def take(
 ) -> tuple[list, bool]:
     """Pop up to batch_size members. Returns (batch, more_remaining).
 
-    Clears the scheduled marker as it goes, so a subsequent enqueue can schedule
-    the next drain.
+    Extends the queue's claim for the length of a batch, so an enqueue that
+    lands while the batch runs does not schedule a second drain. ``drain()``
+    releases the claim when the batch is finished.
     """
     client = _client()
     if client is None:
@@ -180,7 +187,7 @@ def take(
     try:
         raw = client.spop(queue_key, batch_size) or []
         remaining = client.scard(queue_key)
-        client.delete(scheduled_key)
+        client.set(scheduled_key, 1, ex=DRAIN_CLAIM_TTL)
     except redis.RedisError as error:
         logger.debug("Backfill queue %s unavailable: %s", queue_key, error)
         return [], False
@@ -192,6 +199,59 @@ def take(
 
     batch = [_decode(value, coerce) for value in raw]
     return [member for member in batch if member is not None], bool(remaining)
+
+
+def release(
+    queue_key: str,
+    scheduled_key: str,
+    drain_task,
+    countdown: int = 10,
+    drain_kwargs: dict | None = None,
+) -> None:
+    """Drop the queue claim and queue the next drain if work is still waiting.
+
+    The claim is dropped before the depth check: an enqueue that lands between
+    the two schedules its own drain, so dropping the claim can never strand
+    work. Conversely, losing the race only costs a duplicate drain, which is
+    idempotent.
+    """
+    client = _client()
+    if client is None:
+        return
+
+    raw_queue, raw_scheduled = namespaced(queue_key), namespaced(scheduled_key)
+    try:
+        client.delete(raw_scheduled)
+        remaining = int(client.scard(raw_queue))
+    except redis.RedisError:
+        # Better a duplicate drain than a queue that stops being drained.
+        remaining = 1
+    if remaining:
+        reschedule(scheduled_key, drain_task, countdown, drain_kwargs)
+
+
+@contextlib.contextmanager
+def drain(
+    queue_key: str,
+    scheduled_key: str,
+    batch_size: int,
+    *,
+    drain_task,
+    countdown: int = 10,
+    coerce: Callable[[str], object] = int,
+    drain_kwargs: dict | None = None,
+):
+    """Pop one batch and hold the queue claim until it has been processed.
+
+    Continuations are scheduled after the batch, never before it: scheduling
+    the next drain while its predecessor is still fetching metadata is how two
+    drains of the same queue used to run at once.
+    """
+    batch, _more_remaining = take(queue_key, scheduled_key, batch_size, coerce=coerce)
+    try:
+        yield batch
+    finally:
+        release(queue_key, scheduled_key, drain_task, countdown, drain_kwargs)
 
 
 def reschedule(

@@ -13,10 +13,9 @@
       {% if person.person_id and person.name %}
         <a href="{% url 'person_detail' source=media.source person_id=person.person_id name=person.name|slug %}">
       {% endif %}
-      <img alt="{{ person.name|default:'Unknown Person' }}"
-           class="media-card-poster lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-           data-src="{{ person.image|default:IMG_NONE|image_url }}"
-           src="{{ IMG_NONE }}">
+      <img loading="lazy" decoding="sync" alt="{{ person.name|default:'Unknown Person' }}"
+           class="media-card-poster w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
+           src="{{ person.image|default:IMG_NONE|image_url }}">
       {% if person.person_id and person.name %}</a>{% endif %}
       {% if person.episode_count %}
         <span class="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity

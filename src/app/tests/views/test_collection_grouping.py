@@ -63,6 +63,31 @@ class CollectionGroupingTest(TestCase):
         response = self.client.get(self.url, {"group": "type"})
         self.assertEqual(self._rows(response), ["collection-game", "collection-movie"])
 
+    def test_row_order_keeps_disabled_type_position(self):
+        """A type turned off in the sidebar keeps its saved place in the rows."""
+        season_item = Item.objects.create(
+            media_id="season-row",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season Row",
+            image="http://example.com/x.jpg",
+            season_number=1,
+        )
+        CollectionEntry.objects.create(user=self.user, item=season_item)
+        self.user.season_enabled = False
+        self.user.home_screen_media_type_order = [
+            MediaTypes.SEASON.value,
+            MediaTypes.MOVIE.value,
+        ]
+        self.user.save(
+            update_fields=["season_enabled", "home_screen_media_type_order"],
+        )
+        response = self.client.get(self.url, {"group": "type"})
+        self.assertEqual(
+            self._rows(response),
+            ["collection-season", "collection-movie", "collection-game"],
+        )
+
     def test_rows_use_selected_sort(self):
         """Cards inside a row follow the chosen sort."""
         response = self.client.get(

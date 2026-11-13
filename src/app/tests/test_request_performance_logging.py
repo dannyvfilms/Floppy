@@ -45,6 +45,20 @@ class RequestPerformanceLoggingMiddlewareTests(TestCase):
 
     @override_settings(
         PERF_LOG_ENABLED=True,
+        PERF_LOG_SLOW_REQUEST_MS=0,
+        PERF_LOG_QUERY_COUNT_THRESHOLD=10_000,
+    )
+    def test_slow_request_carries_only_a_genuine_nginx_request_id(self):
+        """The id joins Nginx's access log; a client cannot inject text through it."""
+        nginx_id = "0123456789abcdef0123456789abcdef"
+        for header, expected in ((nginx_id, nginx_id), ("evil rid=1\nforged", "-"), ("", "-")):
+            with self.subTest(header=header), self.assertLogs("app.middleware", level="INFO") as logs:
+                middleware = RequestPerformanceLoggingMiddleware(lambda _r: HttpResponse("ok"))
+                middleware(self.factory.get("/test-path", HTTP_X_REQUEST_ID=header))
+            self.assertTrue(logs.output[0].endswith(f" rid={expected}"), logs.output[0])
+
+    @override_settings(
+        PERF_LOG_ENABLED=True,
         PERF_LOG_SLOW_REQUEST_MS=10_000,
         PERF_LOG_QUERY_COUNT_THRESHOLD=1,
     )
@@ -206,7 +220,7 @@ class RequestTimingBreakdownTests(TestCase):
             response["Server-Timing"],
             r"^total;dur=\d+, cpu;dur=[\d.]+, db;dur=[\d.]+, provider;dur=[\d.]+, "
             r"cache;dur=[\d.]+, broker;dur=[\d.]+, db_connect;dur=[\d.]+, "
-            r"render;dur=[\d.]+, unclassified;dur=[\d.]+$",
+            r"render;dur=[\d.]+, unclassified;dur=[\d.]+, queries;desc=\"\d+\"$",
         )
 
         anonymous_response, _line = self._run(lambda _request: HttpResponse("ok"))

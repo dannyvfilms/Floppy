@@ -1,0 +1,12 @@
+{% load app_tags %}
+{% with plays=episode|rating_plays %}
+  {% firstof current_instance.id episode.rating_season_id as rating_season_id %}
+  {% if rating_season_id and not public_view %}
+    {% url 'update_episode_score' rating_season_id episode.episode_number as rate_url %}
+    {% if plays %}
+      {% include "app/components/media_card_rating.html" with rating_value=plays.0.score rating_media_type=MediaTypes.EPISODE.value %}
+    {% else %}
+      {% include "app/components/media_card_rating.html" with rating_value=episode.unwatched_score rating_media_type=MediaTypes.EPISODE.value %}
+    {% endif %}
+  {% endif %}
+{% endwith %}

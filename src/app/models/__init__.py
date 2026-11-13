@@ -9,6 +9,7 @@ from app.models.choices import (
     Sources,
     Status,
 )
+from app.models.consumption_batch import ConsumptionBatchItem
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
@@ -57,6 +58,7 @@ from app.models.media import (
     BasicMedia,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     ComicIssue,
     Game,
@@ -80,6 +82,7 @@ from app.models.playback import PlaybackProgress
 from app.models.podcast import (
     Podcast,
     PodcastEpisode,
+    PodcastPlay,
     PodcastShow,
     PodcastShowTracker,
 )
@@ -91,12 +94,13 @@ from app.models.provider_credential import (
     InstanceProviderCredential,
     UserProviderCredential,
 )
+from app.models.rewatch import RewatchCancellation
 from app.models.statistics import (
     StatisticsDirtyDay,
     StatisticsSnapshot,
     StatisticsSyncState,
 )
-from app.models.tombstone import DeletedMedia
+from app.models.tombstone import DeletedEntry, DeletedMedia
 from app.models.tv import (
     TV,
     Episode,
@@ -104,6 +108,7 @@ from app.models.tv import (
     Season,
 )
 from app.models.video import Video, VideoPlay
+from app.models.video_game_tag import VideoGameLink, VideoGameTag
 from app.models.watch_state import (
     WatchState,
     WatchStateChange,
@@ -134,6 +139,7 @@ __all__ = [
     "BasicMedia",
     "BoardGame",
     "Book",
+    "BookListeningSession",
     "CollectionEntry",
     "CollectionEntrySource",
     "CollectionField",
@@ -142,7 +148,9 @@ __all__ = [
     "CollectionFieldType",
     "Comic",
     "ComicIssue",
+    "ConsumptionBatchItem",
     "CreditRoleType",
+    "DeletedEntry",
     "DeletedMedia",
     "DiscoverApiCache",
     "DiscoverFeedback",
@@ -177,12 +185,14 @@ __all__ = [
     "PlaybackProgress",
     "Podcast",
     "PodcastEpisode",
+    "PodcastPlay",
     "PodcastShow",
     "PodcastShowTracker",
     "ProgressChange",
     "ProgressChangeKind",
     "ProviderMetadataStatus",
     "RewatchAlreadyCompleteError",
+    "RewatchCancellation",
     "Season",
     "Sources",
     "StatisticsDirtyDay",
@@ -194,6 +204,8 @@ __all__ = [
     "Track",
     "UserProviderCredential",
     "Video",
+    "VideoGameLink",
+    "VideoGameTag",
     "VideoPlay",
     "WatchState",
     "WatchStateChange",

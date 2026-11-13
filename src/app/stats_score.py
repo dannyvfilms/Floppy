@@ -377,9 +377,18 @@ def _annotate_top_rated_media(top_rated_media):
 
         prefetched_media_map = {media.id: media for media in queryset}
 
-        # Replace original instances with enhanced ones
+        # Replace original instances with enhanced ones, keeping any route
+        # override (e.g. grouped anime fetched as a TV row) that was set on
+        # the original instance so links keep using the anime route.
         for i, media in enumerate(top_rated_media):
             if media.item.media_type == media_type:
-                top_rated_media[i] = prefetched_media_map[media.id]
+                replacement = prefetched_media_map[media.id]
+                route_media_type = getattr(media, "route_media_type", None) or (
+                    getattr(media.item, "route_media_type", None)
+                )
+                if route_media_type:
+                    replacement.route_media_type = route_media_type
+                    replacement.item.route_media_type = route_media_type
+                top_rated_media[i] = replacement
 
     return top_rated_media

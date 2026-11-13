@@ -11,12 +11,38 @@ from __future__ import annotations
 
 import multiprocessing
 import unittest
+from io import StringIO
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
 from config import test_runner
 from config.test_runner import ResilientParallelTestSuite
+
+
+class RunnerTimingTests(SimpleTestCase):
+    def test_durations_report_modules_without_changing_results(self):
+        stream = StringIO()
+        runner = test_runner.ResilientDiscoverRunner(
+            durations=5, logger=None, verbosity=1
+        )
+        with patch("sys.stderr", stream), patch("sys.stdout", stream):
+            result = runner.run_suite(unittest.TestSuite([_PassingTest()]))
+        self.assertTrue(result.wasSuccessful())
+        self.assertEqual(result.testsRun, 1)
+        self.assertIn("Slowest test modules", stream.getvalue())
+        self.assertIn(__name__, stream.getvalue())
+        self.assertNotIn("<unattributed>", stream.getvalue())
+
+    def test_serial_default_and_parallel_opt_in_are_preserved(self):
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(
+                test_runner.ResilientDiscoverRunner(parallel=4).parallel, 1
+            )
+        with patch.dict("os.environ", {"FLOPPY_TEST_PARALLEL": "2"}):
+            self.assertEqual(
+                test_runner.ResilientDiscoverRunner(parallel=4).parallel, 2
+            )
 
 
 class _PassingTest(unittest.TestCase):

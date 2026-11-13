@@ -5,7 +5,12 @@
     {% for tv in results %}
       <button type="button"
               class="w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
-              onclick="document.getElementById('parent-tv-input').value = '{{ tv.item.title }}'; document.getElementById('parent-tv-id').value = '{{ tv.id }}'; document.getElementById('parent-tv-results').innerHTML = '';">
+              data-parent-picker-option
+              data-parent-picker-input="parent-tv-input"
+              data-parent-picker-hidden="parent-tv-id"
+              data-parent-picker-results="parent-tv-results"
+              data-parent-picker-value="{{ tv.id }}"
+              data-parent-picker-label="{{ tv.item.title }}">
         {{ tv.item.title }}
       </button>
     {% endfor %}

@@ -137,7 +137,7 @@ class ImportRunProvenanceTests(TestCase):
                 self.assertIsNone(backfill_queue._deferred_drains.get())
 
     @patch("app.statistics_cache.invalidate_all_statistics_days")
-    @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
+    @patch("app.history_cache.invalidate_history_cache")
     @patch("events.tasks.reload_calendar.delay")
     def test_unchanged_import_preserves_caches(self, calendar, invalidate, refresh):
         def importer(*args):
@@ -161,7 +161,7 @@ class ImportRunProvenanceTests(TestCase):
         self.assertEqual(run.failed_count, 2)
 
     @patch("app.statistics_cache.invalidate_all_statistics_days")
-    @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
+    @patch("app.history_cache.invalidate_history_cache")
     @patch("events.tasks.reload_calendar.delay")
     def test_updated_import_refreshes_caches(self, calendar, invalidate, refresh):
         def importer(*args):

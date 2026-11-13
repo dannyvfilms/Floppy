@@ -199,7 +199,7 @@ class AffectedTestsSelectionTests(SimpleTestCase):
         self.assertEqual(mode, MODE_LABELS)
         self.assertEqual(labels, ["app.tests.test_services"])
 
-    def test_measured_lines_with_no_test_do_not_run_the_app(self):
+    def test_measured_lines_with_no_test_fall_back_to_the_app(self):
         mode, labels, notes = select(
             ["src/app/models/music.py"],
             repo=self.repo,
@@ -211,9 +211,21 @@ class AffectedTestsSelectionTests(SimpleTestCase):
             },
             coverage_index={"src/app/models/music.py": {1: set()}},
         )
-        self.assertEqual(mode, MODE_NONE)
-        self.assertEqual(labels, [])
+        self.assertEqual(mode, MODE_LABELS)
+        self.assertEqual(labels, ["app"])
         self.assertIn("src/app/models/music.py", notes[0])
+
+    def test_uncovered_lines_still_run_known_importers(self):
+        mode, labels, _notes = select(
+            ["src/app/services.py"],
+            repo=self.repo,
+            line_map={"src/app/services.py": ("src/app/services.py", {99})},
+            coverage_index={
+                "src/app/services.py": {1: {"app.tests.test_media"}},
+            },
+        )
+        self.assertEqual(mode, MODE_LABELS)
+        self.assertEqual(labels, ["app.tests.test_services"])
 
     def test_template_stays_full_when_a_map_is_present(self):
         mode, _labels, _notes = select(

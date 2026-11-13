@@ -11,6 +11,7 @@ and completed-cycle count rather than as a single number.
 import argparse
 import json
 import statistics
+from itertools import pairwise
 from pathlib import Path
 
 MIB = 1024 * 1024
@@ -71,17 +72,25 @@ def series(samples):
     """Return one PSS series per role, splitting roles that mix process kinds."""
     tracks = {}
     for sample in samples:
-        for role, budget in sample["roles"].items():
-            if role in SPLIT_ROLES:
-                continue
-            tracks.setdefault(role, []).append((sample["at"], budget.get("pss_kib")))
+        by_role = {}
         for process in sample["processes"]:
-            if process["role"] not in SPLIT_ROLES:
-                continue
-            # Keyed by pid so a recycled child starts a new series rather than
-            # being averaged into the one it replaced.
-            key = f"{process['role']}#pid{process['pid']}"
-            tracks.setdefault(key, []).append((sample["at"], process.get("pss_kib")))
+            by_role.setdefault(process["role"], []).append(process)
+        for role, budget in sample["roles"].items():
+            members = by_role.get(role, [])
+            if role in SPLIT_ROLES:
+                groups = [([process], process.get("pss_kib")) for process in members]
+            else:
+                groups = [(members, budget.get("pss_kib"))]
+            for processes, value in groups:
+                # A reused PID is a new lifetime. Aggregate roles also restart
+                # when membership changes, so replacement cannot become aging.
+                identity = ",".join(
+                    f"{process['pid']}:{process.get('start_ticks', 'unknown')}"
+                    for process in sorted(processes, key=lambda item: item["pid"])
+                )
+                boot = sample.get("resource_scope", {}).get("boot_id") or "unknown-boot"
+                key = f"{role}#{boot}:{identity or 'unknown-members'}"
+                tracks.setdefault(key, []).append((sample["at"], value))
     return tracks
 
 
@@ -103,9 +112,7 @@ def trend(points, warmup_seconds=WARMUP_SECONDS):
     quarter = max(1, len(warm) // 4)
     early = statistics.median(value for _, value in warm[:quarter])
     late = statistics.median(value for _, value in warm[-quarter:])
-    drift = (
-        (late - early) / span_hours if span_hours >= MIN_DRIFT_SPAN_HOURS else None
-    )
+    drift = (late - early) / span_hours if span_hours >= MIN_DRIFT_SPAN_HOURS else None
     return {
         "samples": len(measured),
         "warm_samples": len(warm),
@@ -117,6 +124,149 @@ def trend(points, warmup_seconds=WARMUP_SECONDS):
         "early_mib": round(early, 1),
         "late_mib": round(late, 1),
         "drift_mib_per_hour": round(drift, 1) if drift is not None else None,
+    }
+
+
+def resource_delta(before, after):
+    """Compare cumulative counters, retaining unknown ownership and resets."""
+    reasons = []
+    before_boot = before.get("resource_scope", {}).get("boot_id")
+    after_boot = after.get("resource_scope", {}).get("boot_id")
+    same_boot = before_boot is not None and before_boot == after_boot
+    if not same_boot:
+        reasons.append("boot identity missing or changed")
+
+    def delta(first, last, scale=1):
+        if not same_boot or first is None or last is None:
+            return None
+        if last < first:
+            reasons.append("cumulative counter reset")
+            return None
+        return (last - first) / scale
+
+    ticks = before.get("clock_ticks_per_second")
+    global_before = before.get("global", {})
+    global_after = after.get("global", {})
+    first_cpu = global_before.get("cpu_ticks")
+    last_cpu = global_after.get("cpu_ticks")
+    global_cpu = None
+    global_total = None
+    if (
+        first_cpu
+        and last_cpu
+        and ticks
+        and ticks == after.get("clock_ticks_per_second")
+        and first_cpu.keys() == last_cpu.keys()
+    ):
+        global_total = delta(sum(first_cpu.values()), sum(last_cpu.values()), ticks)
+        global_cpu = delta(
+            sum(
+                value
+                for key, value in first_cpu.items()
+                if key not in {"idle", "iowait"}
+            ),
+            sum(
+                value
+                for key, value in last_cpu.items()
+                if key not in {"idle", "iowait"}
+            ),
+            ticks,
+        )
+    pressure = {}
+    for scope, first, last in (
+        ("global", global_before.get("pressure", {}), global_after.get("pressure", {})),
+        ("cgroup", before.get("cgroup_pressure", {}), after.get("cgroup_pressure", {})),
+    ):
+        pressure[scope] = {}
+        for kind in ("cpu", "memory", "io"):
+            first_pressure = first.get(kind) or {}
+            last_pressure = last.get(kind) or {}
+            pressure[scope][kind] = {
+                level: delta(
+                    first_pressure.get(level, {}).get("total"),
+                    last_pressure.get(level, {}).get("total"),
+                    1_000_000,
+                )
+                for level in ("some", "full")
+            }
+    return {
+        "global_busy_cpu_seconds": global_cpu,
+        "global_total_cpu_seconds": global_total,
+        "cgroup_cpu_seconds": delta(
+            before.get("cpu_usage_usec"), after.get("cpu_usage_usec"), 1_000_000
+        ),
+        "pressure_stall_seconds": pressure,
+        "external_cpu_seconds": None,
+        "scope": "global Linux VM and visible cgroup; ownership/continuous lifetime requires runner receipts",
+        "counter_warnings": sorted(set(reasons)),
+    }
+
+
+def exposure_summary(samples):
+    """Keep absent old clocks unknown and expose gaps without assuming idle."""
+    intervals = []
+    for previous, current in pairwise(samples):
+        start = previous.get("exposure", {}).get("start", {})
+        end = current.get("exposure", {}).get("start", {})
+        if any(
+            start.get(key) is None or end.get(key) is None
+            for key in (
+                "wall_seconds",
+                "monotonic_seconds",
+            )
+        ):
+            continue
+        wall = end["wall_seconds"] - start["wall_seconds"]
+        monotonic = end["monotonic_seconds"] - start["monotonic_seconds"]
+        intervals.append(
+            {
+                "wall_seconds": wall,
+                "monotonic_seconds": monotonic,
+                "wall_minus_monotonic_seconds": wall - monotonic,
+                "boottime_minus_monotonic_seconds": (
+                    end["boottime_seconds"] - start["boottime_seconds"] - monotonic
+                    if start.get("boottime_seconds") is not None
+                    and end.get("boottime_seconds") is not None
+                    else None
+                ),
+            }
+        )
+    collector = []
+    for sample in samples:
+        exposure = sample.get("exposure", {})
+        start_cpu = exposure.get("start", {}).get("collector_cpu_seconds")
+        end_cpu = exposure.get("end", {}).get("collector_cpu_seconds")
+        collector.append(
+            end_cpu - start_cpu
+            if start_cpu is not None and end_cpu is not None and end_cpu >= start_cpu
+            else None
+        )
+    return {
+        "resource_delta": resource_delta(samples[0], samples[-1]) if samples else None,
+        "clocked_intervals": len(intervals),
+        "missing_clock_intervals": max(0, len(samples) - 1 - len(intervals)),
+        "max_wall_gap_seconds": max(
+            (item["wall_seconds"] for item in intervals), default=None
+        ),
+        "max_absolute_wall_monotonic_difference_seconds": max(
+            (abs(item["wall_minus_monotonic_seconds"]) for item in intervals),
+            default=None,
+        ),
+        "max_suspend_exposure_seconds": max(
+            (
+                item["boottime_minus_monotonic_seconds"]
+                for item in intervals
+                if item["boottime_minus_monotonic_seconds"] is not None
+            ),
+            default=None,
+        ),
+        "sampler_capture_cpu_seconds": (
+            sum(collector)
+            if collector and all(value is not None for value in collector)
+            else None
+        ),
+        "collector_scope": "capture CPU deltas; excludes interpreter startup/import, docker exec/client, shell and exit",
+        "growth_cause": "unknown; counters alone cannot distinguish GC, CoW and cache growth",
     }
 
 
@@ -134,6 +284,10 @@ def main():
     span = (samples[-1]["at"] - samples[0]["at"]) / 3600
 
     print(f"samples={len(samples)} span={span:.2f}h cycles_completed={len(done)}")
+    print("exposure=" + json.dumps(exposure_summary(samples), sort_keys=True))
+    print(
+        f"unusable_sample_files={len(list((arguments.directory / 'samples').glob('*.json'))) - len(samples)} (retained on disk)"
+    )
     first, last = samples[0], samples[-1]
     for label, sample in (("first", first), ("last", last)):
         harness = sum(

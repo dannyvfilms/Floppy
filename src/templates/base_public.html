@@ -32,9 +32,12 @@
     {% endblock extra_head %}
 
     <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'ui/settings-islands.css' %}{% get_static_file_mtime 'ui/settings-islands.css' %}">
+    <script type="module" src="{% static 'ui/settings-islands.js' %}{% get_static_file_mtime 'ui/settings-islands.js' %}"></script>
 
     <script src="{% javascript_catalog_url %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script src="{% static 'js/artwork-loading.js' %}{% get_static_file_mtime 'js/artwork-loading.js' %}"></script>
     <script>
       // Boosted navigation: never serve history entries from the local
       // snapshot cache; back/forward instead does a normal full page load.
@@ -59,34 +62,38 @@
   </head>
 
   <body>
+    {% block alphabet_filter %}{% endblock alphabet_filter %}
+    {% include "app/components/ui_asset_refresh.html" %}
     {% block body %}
       <div class="min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)] flex flex-col">
         {# Simple header for public pages #}
         <header class="bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
           <div class="container mx-auto px-4">
-            <div class="h-16 flex items-center justify-between">
-              <h1 class="flex items-center">
-                {% if user.is_authenticated and user.logo_style == 'monochrome' %}
-                  <img src="{% static 'img/floppy-logo-white.png' %}"
+            {% shell_topbar_react public=True as shell_topbar %}{% if shell_topbar.props %}{{ shell_topbar.props|json_script:shell_topbar.id }}{% endif %}<div data-shell-root data-props-id="{{ shell_topbar.id }}">
+              <div class="h-16 flex items-center justify-between">
+                <h1 class="flex items-center">
+                  {% if user.is_authenticated and user.logo_style == 'monochrome' %}
+                    <img src="{% static 'img/floppy-logo-white.png' %}"
+                         alt="Floppy"
+                         width="158"
+                         height="48"
+                         class="h-9 w-[158px] object-cover object-center">
+                  {% else %}
+                  <img src="{% static 'img/floppy-logo.png' %}"
+                       srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
                        alt="Floppy"
                        width="158"
                        height="48"
-                       class="h-9 w-[158px] object-cover object-center">
-                {% else %}
-                <img src="{% static 'img/floppy-logo.png' %}"
-                     srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
-                     alt="Floppy"
-                     width="158"
-                     height="48"
-                     class="h-9 w-auto">
+                       class="h-9 w-auto">
+                  {% endif %}
+                </h1>
+                {% if REGISTRATION %}
+                  <a href="{% url 'account_login' %}"
+                     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
+                    {% translate "Sign In" %}
+                  </a>
                 {% endif %}
-              </h1>
-              {% if REGISTRATION %}
-                <a href="{% url 'account_login' %}"
-                   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
-                  {% translate "Sign In" %}
-                </a>
-              {% endif %}
+              </div>
             </div>
           </div>
         </header>

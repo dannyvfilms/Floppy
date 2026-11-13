@@ -2,7 +2,11 @@
 {% load i18n %}
 {% load app_tags %}
 {# Partial template for album grid - used by artist detail and async cover prefetch #}
-<div{% if grid_id %} id="{{ grid_id }}"{% endif %} class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+{% music_albums_react all_albums as albums_react %}
+{{ albums_react.props|json_script:albums_react.id }}
+<div{% if grid_id %} id="{{ grid_id }}"{% endif %}
+     data-music-albums-root data-props-id="{{ albums_react.id }}" x-ignore
+     class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
   {% for album in all_albums %}
     <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}"
          data-media-type="music">
@@ -10,12 +14,11 @@
         <a href="{{ album|music_album_url }}">
           {# Cover art #}
           {% if album.image and album.image != IMG_NONE %}
-            <img id="album-cover-{{ album.id }}"
+            <img loading="lazy" decoding="sync" id="album-cover-{{ album.id }}"
                  hx-preserve
                  alt="{{ album.title }}"
-                 class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                 data-src="{{ album.image|image_url }}"
-                 src="{{ IMG_NONE }}">
+                 class="media-card-poster w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
+                 src="{{ album.image|image_url }}">
           {% else %}
             <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
               {% icon 'music' is_active=False extra_classes="w-12 h-12 text-gray-600" %}

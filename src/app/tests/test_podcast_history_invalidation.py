@@ -39,6 +39,18 @@ class PodcastHistoryInvalidationTests(TestCase):
         mock_invalidate_all.assert_not_called()
         mock_invalidate_days.assert_not_called()
 
+    def test_full_save_of_an_unfinished_podcast_with_a_start_date_skips_the_wipe(
+        self, mock_invalidate_all, mock_invalidate_days
+    ):
+        """The Pocket Casts poll saves in-progress podcasts without update_fields."""
+        Podcast.objects.filter(pk=self.podcast.pk).update(start_date=timezone.now())
+        self.podcast.refresh_from_db()
+        self.podcast.progress = 9
+        self.podcast.save()
+
+        mock_invalidate_all.assert_not_called()
+        mock_invalidate_days.assert_not_called()
+
     def test_completion_invalidates_only_its_day(
         self, mock_invalidate_all, mock_invalidate_days
     ):

@@ -2,7 +2,23 @@
   "name": "release",
   "private": true,
   "devDependencies": {
+    "@babel/parser": "8.1.0",
     "@tailwindcss/cli": "4.1.11",
+    "esbuild": "0.28.2",
     "tailwindcss": "4.1.11"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-native-web": "0.21.4"
+  },
+  "scripts": {
+    "build:ui": "node scripts/build_ui.mjs",
+    "check:ui": "node scripts/build_ui.mjs --check",
+    "check:ui-architecture": "node scripts/check_ui_architecture.mjs",
+    "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs",
+    "check:page-parity": "node scripts/check_page_parity.mjs",
+    "check:page-parity:strict": "node scripts/check_page_parity.mjs --strict",
+    "start:native": "npm --prefix native-proof run start -- --lan"
   }
 }

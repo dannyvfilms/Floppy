@@ -158,6 +158,7 @@ class MetadataBackfillField(models.TextChoices):
     GAME_LENGTHS = "game_lengths", "Game Lengths"
     TRAKT_POPULARITY = "trakt_popularity", "Trakt Popularity"
     IGDB_RATINGS = "igdb_ratings", "IGDB Ratings"
+    GAME_GROUPS = "game_groups", "Game Groups"
     WATCH_PROVIDERS = "watch_providers", "Watch Providers"
     EXTERNAL_IDS = "external_ids", "External IDs"
     STUDIOS = "studios", "Studios"
@@ -185,6 +186,10 @@ class MetadataBackfillState(models.Model):
     last_success_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")
     give_up = models.BooleanField(default=False)
+    # True when the last failure was the provider saying this identifier will
+    # never resolve (400/404/410/422), as opposed to an outage or an empty
+    # answer that a later retry might fill in.
+    terminal = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from app.detail_builders import _build_detail_link_sections, _build_detail_person_rows
 from app.models import (
@@ -9,6 +9,18 @@ from app.models import (
     Person,
     Sources,
 )
+
+
+class DetailSeasonRowTests(SimpleTestCase):
+    def test_season_row_preserves_enriched_cards_and_order(self):
+        seasons = [
+            {"item": {"title": "First"}, "media": None, "card_title": "Season 1"},
+            {"item": {"title": "Second"}, "media": None, "card_title": "Season 2"},
+        ]
+        row = _build_detail_person_rows({"related": {"seasons": seasons}})["seasons_row"]
+        self.assertEqual(row["items"], seasons)
+        self.assertEqual(row["total"], 2)
+        self.assertEqual(row["card_width_class"], "w-44")
 
 
 class GameCastRowFromCreditsTests(TestCase):

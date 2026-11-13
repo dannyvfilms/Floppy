@@ -1,5 +1,6 @@
 from datetime import timedelta
 from http import HTTPStatus as HTTP  # noqa: N814
+from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -11,7 +12,7 @@ from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 
 from api.authentication import authenticate_token
-from integrations.models import IntegrationToken
+from integrations.models import DEFAULT_INTEGRATION_SCOPES, IntegrationToken
 from integrations.oauth_models import (
     OAUTH_DEVICE_CODE_GRANT,
     OAUTH_REFRESH_TOKEN_GRANT,
@@ -129,17 +130,45 @@ class OAuthDeviceFlowTests(TestCase):
 
     def test_pending_and_fast_polling_return_device_flow_errors(self):
         """Pending authorisation and excessive polling follow RFC 8628 semantics."""
+        for content_type in ("application/x-www-form-urlencoded", "application/json"):
+            with self.subTest(content_type=content_type):
+                payload = self.issue_device_code()
+                data = {
+                    "client_id": self.oauth_client.client_id,
+                    "grant_type": OAUTH_DEVICE_CODE_GRANT,
+                    "device_code": payload["device_code"],
+                }
+                if content_type == "application/x-www-form-urlencoded":
+                    data = urlencode(data)
+
+                first = self.client.post(
+                    reverse("oauth_token"), data, content_type=content_type
+                )
+                second = self.client.post(
+                    reverse("oauth_token"), data, content_type=content_type
+                )
+
+                self.assertEqual(first.status_code, HTTP.BAD_REQUEST)
+                self.assertEqual(first.json()["error"], "authorization_pending")
+                self.assertEqual(second.status_code, HTTP.BAD_REQUEST)
+                self.assertEqual(second.json()["error"], "slow_down")
+                for response in (first, second):
+                    self.assertEqual(response["Cache-Control"], "no-store")
+                    self.assertEqual(response["Pragma"], "no-cache")
+                authorization = OAuthDeviceAuthorization.objects.get(
+                    device_code_digest=oauth_token_digest(payload["device_code"])
+                )
+                self.assertIsNone(authorization.user_id)
+                self.assertEqual(authorization.interval, 10)
+
+    def test_expired_device_code_returns_expired_token(self):
+        """An expired unapproved code returns an OAuth error, not a server error."""
         payload = self.issue_device_code()
+        OAuthDeviceAuthorization.objects.filter(
+            device_code_digest=oauth_token_digest(payload["device_code"])
+        ).update(expires_at=timezone.now() - timedelta(seconds=1))
 
-        first = self.client.post(
-            reverse("oauth_token"),
-            {
-                "client_id": self.oauth_client.client_id,
-                "grant_type": OAUTH_DEVICE_CODE_GRANT,
-                "device_code": payload["device_code"],
-            },
-        )
-        second = self.client.post(
+        response = self.client.post(
             reverse("oauth_token"),
             {
                 "client_id": self.oauth_client.client_id,
@@ -148,14 +177,32 @@ class OAuthDeviceFlowTests(TestCase):
             },
         )
 
-        self.assertEqual(first.status_code, HTTP.BAD_REQUEST)
-        self.assertEqual(first.json()["error"], "authorization_pending")
-        self.assertEqual(second.status_code, HTTP.BAD_REQUEST)
-        self.assertEqual(second.json()["error"], "slow_down")
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "expired_token")
+        self.assertFalse(IntegrationToken.objects.exists())
+        self.assertFalse(OAuthRefreshToken.objects.exists())
+
+    def test_denied_device_code_returns_access_denied(self):
+        """A user-denied device request cannot be exchanged for credentials."""
+        payload = self.issue_device_code()
         authorization = OAuthDeviceAuthorization.objects.get(
             device_code_digest=oauth_token_digest(payload["device_code"])
         )
-        self.assertEqual(authorization.interval, 10)
+        authorization.deny(self.user)
+
+        response = self.client.post(
+            reverse("oauth_token"),
+            {
+                "client_id": self.oauth_client.client_id,
+                "grant_type": OAUTH_DEVICE_CODE_GRANT,
+                "device_code": payload["device_code"],
+            },
+        )
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "access_denied")
+        self.assertFalse(IntegrationToken.objects.exists())
+        self.assertFalse(OAuthRefreshToken.objects.exists())
 
     def test_approved_device_exchange_issues_scoped_integration_token(self):
         """Successful OAuth access tokens reuse IntegrationToken enforcement."""
@@ -380,7 +427,7 @@ class OAuthDeviceFlowTests(TestCase):
             token_digest=oauth_token_digest(token_payload["access_token"])
         )
 
-        page = self.client.get(reverse("integrations"))
+        page = self.client.get(reverse("access_tokens"))
 
         self.assertEqual(page.status_code, HTTP.OK)
         self.assertNotContains(page, access_token.token_prefix)
@@ -505,6 +552,27 @@ class OAuthDeviceFlowTests(TestCase):
         self.assertEqual(token.status_code, HTTP.OK)
         self.assertEqual(token.json()["scope"], "catalog:read")
 
+    def test_registered_app_gets_list_scopes_only_when_it_asks(self):
+        """A registered app may ask for lists, but naming no scope stays the tracking preset."""
+        client_id = self.register(client_name="FanFilm").json()["client_id"]
+
+        def requested(**extra):
+            response = self.client.post(
+                reverse("oauth_device_authorization"),
+                {"client_id": client_id, **extra},
+            )
+            self.assertEqual(response.status_code, HTTP.OK)
+            return OAuthDeviceAuthorization.objects.get(
+                device_code_digest=oauth_token_digest(response.json()["device_code"])
+            ).requested_scopes
+
+        self.assertEqual(requested(), DEFAULT_INTEGRATION_SCOPES)
+        self.assertEqual(
+            requested(scope="progress:read lists:read lists:write"),
+            ["progress:read", "lists:read", "lists:write"],
+        )
+        self.assertIn("lists:write", self.client.get(reverse("oauth_scope_metadata")).content.decode())
+
     def test_registration_rejects_missing_and_overlong_names(self):
         """The app must give a name, and a short one."""
         for data in ({}, {"client_name": "   "}, {"client_name": "x" * 61}):
@@ -594,3 +662,41 @@ class OAuthDeviceFlowTests(TestCase):
         self.assertFalse(
             OAuthRefreshToken.objects.filter(revoked_at__isnull=True).exists()
         )
+
+
+class DeviceApprovalPropsTests(OAuthDeviceFlowTests):
+    """The approval page hands the shared card its state as JSON props."""
+
+    def test_approval_rejects_unsupported_methods(self):
+        """The view rejects unsupported methods before rendering props."""
+        self.client.force_login(self.user)
+        self.assertEqual(
+            self.client.put(reverse("oauth_device")).status_code,
+            HTTP.METHOD_NOT_ALLOWED,
+        )
+
+    def test_approval_requires_a_signed_in_user(self):
+        """Approval remains an interactive signed-in browser action."""
+        response = self.client.get(reverse("oauth_device"))
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_pending_authorization_exposes_card_props(self):
+        """A pending code renders the island root with client and scopes."""
+        device = self.issue_device_code()
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("oauth_device"), {"user_code": device["user_code"]})
+        props = response.context["device_approval_props"]
+        self.assertContains(response, "data-device-approval-root")
+        self.assertEqual(props["authorization"]["state"], "pending")
+        self.assertEqual(props["authorization"]["clientName"], "Kodi Living Room")
+        self.assertFalse(props["authorization"]["fullAccount"])
+        self.assertEqual(len(props["authorization"]["scopes"]), 2)
+
+    def test_unknown_code_exposes_error_without_authorization(self):
+        """An invalid code carries the error and no authorization."""
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("oauth_device"), {"user_code": "NOPE-NOPE"})
+        props = response.context["device_approval_props"]
+        self.assertIsNone(props["authorization"])
+        self.assertEqual(props["error"], "That device code is not valid.")

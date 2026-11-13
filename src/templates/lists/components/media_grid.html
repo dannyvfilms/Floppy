@@ -28,6 +28,10 @@
           {% if item.list_date_added %}
             <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ item.list_date_added|user_date_format:user }}</p>
           {% endif %}
+        {% elif current_sort == 'custom' %}
+          {% if item.list_rank %}
+            <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">#{{ item.list_rank }}</p>
+          {% endif %}
         {% elif current_sort == 'release_date' %}
           {% if item.release_datetime %}
             <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ item.release_datetime|user_date_format:user }}</p>

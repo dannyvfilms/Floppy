@@ -36,10 +36,29 @@ class LiveSchemaView(SpectacularAPIView):
         OpenApiJsonRenderer2,
     ]
 
+    # ``URL_FORMAT_OVERRIDE`` is disabled project-wide, so ``?format=`` is
+    # honoured here only. Other values fall back to Accept negotiation (#1049).
+    FORMAT_QUERY_RENDERERS = {
+        "json": OpenApiJsonRenderer2,
+        "yaml": OpenApiTextYamlRenderer,
+    }
+
+    def perform_content_negotiation(self, request, force=False):
+        """Let ``?format=json|yaml`` pick the renderer; otherwise use Accept."""
+        renderer_class = self.FORMAT_QUERY_RENDERERS.get(request.query_params.get("format"))
+        if renderer_class is not None:
+            renderer = renderer_class()
+            return renderer, renderer.media_type
+        return super().perform_content_negotiation(request, force)
+
     def get(self, request, *args, **kwargs):
         """Serve dynamic OpenAPI schema with text/yaml content-type and inline disposition."""
         response = super().get(request, *args, **kwargs)
-        response["Content-Disposition"] = 'inline; filename="openapi-live.yaml"'
+        is_json = request.accepted_renderer.format == "json"
+        disposition = "attachment" if request.query_params.get("download") == "1" else "inline"
+        response["Content-Disposition"] = (
+            f'{disposition}; filename="openapi-live.{"json" if is_json else "yaml"}"'
+        )
         return response
 
 
@@ -87,6 +106,18 @@ MEDIA_TYPE_TV_ONLY_PARAM = OpenApiParameter(
 
 MEDIA_LIST_FILTER_PARAMS = [
     OpenApiParameter(
+        name="updated_since",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "ISO 8601 date or datetime. Only entries changed at or after it, "
+            "judged by each result's `updated_at`, which moves on any edit "
+            "(status, score, progress, dates, notes, lists, tags, episodes). "
+            "Pair with `GET /library/activity/` to skip a sync when nothing "
+            "changed and `GET /library/deleted/` for removed entries."
+        ),
+    ),
+    OpenApiParameter(
         name="status",
         type=str,
         location=OpenApiParameter.QUERY,
@@ -128,6 +159,18 @@ MEDIA_LIST_FILTER_PARAMS = [
         enum=["all", "caught_up", "not_caught_up"],
         description="Currently meaningful for TV and anime lists.",
     ),
+    OpenApiParameter(
+        name="initial",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="A to Z rail: `a`-`z`, `0-9` or `other`; anything else means all titles.",
+    ),
+    OpenApiParameter(
+        name="separate_entries", type=str, enum=["0", "1"], location=OpenApiParameter.QUERY,
+        description="Show each matching tracking entry separately for movies, anime, manga, games and books.",
+    ),
+    OpenApiParameter(name="group_by", type=str, enum=["item", "series", "franchise"], location=OpenApiParameter.QUERY),
+    OpenApiParameter(name="group", type=str, location=OpenApiParameter.QUERY, description="Games group key from the library groups response."),
     OpenApiParameter(name="genre", type=str, location=OpenApiParameter.QUERY),
     OpenApiParameter(
         name="implied_genre",
@@ -292,6 +335,7 @@ MEDIA_LIST_FILTER_PARAMS = [
             "date_added",
             "start_date",
             "end_date",
+            "last_watched",
             "next_episode_air_date",
             "time_left",
             "added",

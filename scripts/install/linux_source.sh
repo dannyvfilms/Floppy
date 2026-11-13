@@ -70,7 +70,6 @@ floppy_commands_help() {
   Status:  sudo systemctl status floppy
   Logs:    tail -f "$LOG_DIR/gunicorn.log"   (and the other files in that directory)
   Resume:  bash "$REPO_DIR/scripts/install/main.sh"
-  Upgrade: git -C "$REPO_DIR" pull && "$UV" sync --locked --no-default-groups \\
-             && sudo systemctl restart floppy
+  Upgrade: follow "$REPO_DIR/docs/install.md" (stop, back up, update, migrate, collect static files, start)
 EOF
 }

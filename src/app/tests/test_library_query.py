@@ -131,6 +131,171 @@ class SqlAndScanAgreeTests(LibraryQueryTestCase):
         self.assertNotEqual(first, other)
 
 
+class LastWatchedSortTests(LibraryQueryTestCase):
+    """Last watched means recent activity, not only a completion date."""
+
+    def setUp(self):
+        """Create one old completion and one recently played entry."""
+        super().setUp()
+        completed_item = Item.objects.create(
+            media_id="last-watched-completed",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title="Finished Long Ago",
+            image="https://example.com/i.jpg",
+        )
+        self.completed = self.track(
+            completed_item,
+            status=Status.COMPLETED.value,
+            end_date=self.now - timedelta(days=10),
+            progressed_at=self.now - timedelta(days=10),
+        )
+        active_item = Item.objects.create(
+            media_id="last-watched-active",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title="Playing Now",
+            image="https://example.com/i.jpg",
+        )
+        self.active = self.track(
+            active_item,
+            status=Status.IN_PROGRESS.value,
+            end_date=None,
+            progressed_at=self.now,
+        )
+
+    def test_last_watched_orders_in_progress_by_progressed_at(self):
+        """A recently played in-progress item sorts above an older completion."""
+        items = self.run_query(
+            _query(sort=SortSpec("last_watched", "desc")),
+        ).items
+        self.assertEqual(
+            [item.pk for item in items],
+            [self.active.item_id, self.completed.item_id],
+        )
+
+    def test_duplicate_rows_use_the_latest_activity(self):
+        """An in-progress row wins over an older completed row for one item."""
+        item = Item.objects.create(
+            media_id="last-watched-repeated",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title="Watched Again",
+            image="https://example.com/i.jpg",
+        )
+        self.track(
+            item,
+            status=Status.COMPLETED.value,
+            end_date=self.now - timedelta(days=20),
+            progressed_at=self.now - timedelta(days=20),
+        )
+        self.track(
+            item,
+            status=Status.IN_PROGRESS.value,
+            end_date=None,
+            progressed_at=self.now + timedelta(days=1),
+        )
+
+        items = self.run_query(
+            _query(sort=SortSpec("last_watched", "desc")),
+        ).items
+        self.assertEqual(items[0].pk, item.pk)
+
+    def _undated_completed(self):
+        item = Item.objects.create(
+            media_id="last-watched-undated",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title="Logged Today Without Date",
+            image="https://example.com/i.jpg",
+        )
+        self.track(
+            item,
+            status=Status.COMPLETED.value,
+            end_date=None,
+            progressed_at=self.now,
+        )
+        return item
+
+    def test_undated_completion_does_not_count_as_recent(self):
+        """A completed item with no watch date sorts last, not first."""
+        undated = self._undated_completed()
+        for direction in ("desc", "asc"):
+            with self.subTest(direction=direction):
+                ids = [
+                    item.pk
+                    for item in self.run_query(
+                        _query(sort=SortSpec("last_watched", direction)),
+                    ).items
+                ]
+                self.assertEqual(ids[-1], undated.pk)
+        newest_first = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("last_watched", "desc")),
+            ).items
+        ]
+        self.assertEqual(
+            newest_first,
+            [self.active.item_id, self.completed.item_id, undated.pk],
+        )
+
+    def test_later_edit_does_not_change_the_order(self):
+        """Touching a row after its watch does not move it."""
+        older = self.track(
+            Item.objects.create(
+                media_id="last-watched-edited",
+                source=Sources.TMDB.value,
+                media_type=MOVIE,
+                title="Edited Later",
+                image="https://example.com/i.jpg",
+            ),
+            status=Status.COMPLETED.value,
+            end_date=self.now - timedelta(days=30),
+            progressed_at=self.now - timedelta(days=30),
+        )
+        Movie.objects.filter(pk=older.pk).update(score=9)
+        ids = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("last_watched", "desc")),
+            ).items
+        ]
+        self.assertEqual(ids[-1], older.item_id)
+
+    def test_end_date_stays_a_completion_sort(self):
+        """Custom lists keep the literal end date ordering."""
+        items = self.run_query(
+            _query(sort=SortSpec("end_date", "desc")),
+        ).items
+        self.assertEqual(items[0].pk, self.completed.item_id)
+
+
+class DateAddedSortTests(LibraryQueryTestCase):
+    """Date added is when the item was first tracked, not its latest row."""
+
+    def test_rewatch_does_not_make_an_old_item_look_new(self):
+        """A later tracker row must not move an item to the top of Date Added."""
+        old_item, old_row = self.make_movie(0)
+        Movie.objects.filter(pk=old_row.pk).update(
+            created_at=self.now - timedelta(days=30),
+        )
+        rewatch = self.track(old_item, status=Status.COMPLETED.value)
+        Movie.objects.filter(pk=rewatch.pk).update(created_at=self.now)
+        new_item, new_row = self.make_movie(1)
+        Movie.objects.filter(pk=new_row.pk).update(
+            created_at=self.now - timedelta(days=1),
+        )
+
+        ids = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("date_added", "desc")),
+            ).items
+        ]
+        self.assertEqual(ids, [new_item.pk, old_item.pk])
+
+
 class StatusSemanticsTests(LibraryQueryTestCase):
     """``latest`` follows the newest row; ``any`` accepts any row."""
 
@@ -356,9 +521,9 @@ class PageCostTests(LibraryQueryTestCase):
         seen_batch_sizes = []
         original = executor_module._attach_media
 
-        def spy(user, batch, needs):
+        def spy(user, batch, needs, **kwargs):
             seen_batch_sizes.append(len(batch))
-            return original(user, batch, needs)
+            return original(user, batch, needs, **kwargs)
 
         query = _query(sort=SortSpec("time_to_beat", "asc"))
         with mock.patch.object(executor_module, "_attach_media", spy):
@@ -417,3 +582,68 @@ class LargeTvBatchTests(LibraryQueryTestCase):
         self.assertEqual(len(episodes), len(with_items) + 1)
         with self.assertNumQueries(0):
             self.assertTrue(all(episode.item.episode_number == 1 for episode in with_items))
+
+
+class SeasonScanShowBlobTests(LibraryQueryTestCase):
+    """A season scan leaves each show's provider blob in the database."""
+
+    def test_season_rows_do_not_decode_their_shows_provider_blob(self):
+        """Every season row joins its show; the show's watch providers stay unread."""
+        from django.db import models
+
+        from app.library_query import filters as filter_registry
+
+        blob = {
+            f"R{region:03d}": {"flatrate": [{"provider_name": f"P{region}-{k}"} for k in range(16)]}
+            for region in range(96)
+        }
+        show = Item.objects.create(
+            media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.TV.value,
+            title="Wide Show", image="x", watch_providers=blob,
+        )
+        tv = TV.objects.create(item=show, user=self.user, status=Status.COMPLETED.value)
+        season_items = [
+            Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.SEASON.value,
+                season_number=number, title="Wide Show", image="x",
+            )
+            for number in (1, 2, 3)
+        ]
+        seasons = Season.objects.bulk_create(
+            Season(item=item, related_tv=tv, user=self.user, status=Status.COMPLETED.value)
+            for item in season_items
+        )
+        for season in seasons:
+            episode = Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.EPISODE.value,
+                season_number=season.item.season_number, episode_number=1, title="Wide Show", image="x",
+                # The provider is unreachable in tests, so the season's episode
+                # count comes from its released episodes.
+                release_datetime=self.now - timedelta(days=30),
+            )
+            Episode.objects.create(item=episode, related_season=season, status=Status.COMPLETED.value, end_date=self.now)
+
+        decoded = []
+        original = models.JSONField.from_db_value
+
+        def counting(field, value, expression, conn):
+            if isinstance(value, (str, bytes)):
+                decoded.append(len(value))
+            return original(field, value, expression, conn)
+
+        batch = [executor_module.Candidate(item) for item in season_items]
+        with mock.patch.object(models.JSONField, "from_db_value", counting):
+            executor_module._attach_media(
+                self.user, batch, {filter_registry.NEEDS_MEDIA, filter_registry.NEEDS_MAX_PROGRESS},
+            )
+
+        self.assertGreater(len(str(blob)), 40_000)
+        self.assertLess(sum(decoded), 10_000)
+        for candidate in batch:
+            show_item = candidate.media.related_tv.item
+            self.assertIn("watch_providers", show_item.get_deferred_fields())
+            self.assertEqual(show_item.title, "Wide Show")
+            self.assertEqual(candidate.media.max_progress, 1)
+            self.assertEqual(
+                filter_registry.season_effective_status(candidate.media), Status.COMPLETED.value,
+            )

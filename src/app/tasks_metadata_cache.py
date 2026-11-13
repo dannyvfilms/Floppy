@@ -9,7 +9,7 @@ from django.core.cache import cache
 
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.providers import credentials, services
 from app.tasks_backfill_state import MalformedItemIdentityError
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,45 @@ def _clear_item_metadata_cache(item: Item):
                 continue
 
 
+def _clear_items_metadata_cache(items):
+    keys = set()
+    for item in items:
+        keys.update(_metadata_cache_keys_for_item(item))
+    if not keys:
+        return
+    try:
+        cache.delete_many(keys)
+    except Exception:  # pragma: no cover - cache backends may not support delete_many
+        for key in keys:
+            try:
+                cache.delete(key)
+            except Exception:  # noqa: S112  # deliberate best-effort; skip the key and continue
+                continue
+
+
+def provider_key_scope(item: Item):
+    """Return the scope that lets a background fetch use the tracking user's keys.
+
+    A Celery task runs no middleware, so a personal IGDB key is ignored unless
+    the task opens the scope itself. Only IGDB games carry per-user keys.
+    """
+    user = None
+    if (
+        item.source == Sources.IGDB.value
+        and item.media_type == MediaTypes.GAME.value
+    ):
+        from app.tasks_game_groups import _users_by_item
+
+        user = _users_by_item([item])(item)
+    return credentials.current_user_scope(user)
+
+
 def _fetch_item_metadata(item: Item):
+    with provider_key_scope(item):
+        return _fetch_item_metadata_unscoped(item)
+
+
+def _fetch_item_metadata_unscoped(item: Item):
     if item.media_type == MediaTypes.SEASON.value:
         if item.season_number is None:
             msg = "season item missing season_number"

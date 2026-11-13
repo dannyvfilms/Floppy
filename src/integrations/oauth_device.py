@@ -9,18 +9,25 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.http import HttpRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
+from integrations.models import DEFAULT_INTEGRATION_SCOPES
 from integrations.oauth_models import (
     OAUTH_DEVICE_CODE_GRANT,
     OAUTH_DEVICE_CODE_LIFETIME_SECONDS,
     OAuthClient,
     OAuthDeviceAuthorization,
 )
-from integrations.oauth_scope_info import normalise_scopes, scope_details
+from integrations.oauth_scope_info import (
+    FULL_ACCOUNT_SCOPE,
+    first_party_full_access_enabled,
+    normalise_scopes,
+    scope_details,
+)
 
 DEVICE_AUTHORIZATION_LIMIT = 10
 DEVICE_AUTHORIZATION_WINDOW_SECONDS = 60
@@ -129,7 +136,7 @@ def oauth_device_authorization(request: HttpRequest) -> JsonResponse:
     if not client_id:
         return _oauth_error("invalid_request", "client_id is required.")
 
-    client = OAuthClient.objects.filter(client_id=client_id).first()
+    client = OAuthClient.resolve(client_id)
     if client is None or not client.is_active:
         return _oauth_error("invalid_client", "OAuth client is unknown or revoked.")
     if not client.allows_grant_type(OAUTH_DEVICE_CODE_GRANT):
@@ -138,9 +145,15 @@ def oauth_device_authorization(request: HttpRequest) -> JsonResponse:
             "This client cannot use the device authorization grant.",
         )
 
+    # A client that names no scope gets the tracking preset, not everything
+    # it is allowed: broader scopes such as lists:write must be asked for.
     requested_scopes = normalise_scopes(
         data.get("scope"),
-        default=client.allowed_scopes,
+        default=[
+            scope
+            for scope in DEFAULT_INTEGRATION_SCOPES
+            if scope in client.allowed_scopes
+        ],
     )
     if not requested_scopes:
         return _oauth_error("invalid_scope", "At least one scope is required.")
@@ -149,6 +162,10 @@ def oauth_device_authorization(request: HttpRequest) -> JsonResponse:
             "invalid_scope",
             "One or more requested scopes are not allowed for this client.",
         )
+    # The marker is never requestable (no client's allowed scopes hold it); the
+    # server adds it here so the approval page states it and the grant carries it.
+    if client.is_first_party and first_party_full_access_enabled():
+        requested_scopes.append(FULL_ACCOUNT_SCOPE)
 
     authorization, raw_device_code, user_code = OAuthDeviceAuthorization.issue(
         client=client,
@@ -173,6 +190,35 @@ def oauth_device_authorization(request: HttpRequest) -> JsonResponse:
     )
 
 
+def _approval_props(request: HttpRequest, context: dict[str, object]) -> dict:
+    """Props for the shared approval card; the template stays the fallback."""
+    authorization = context["authorization"]
+    state = None
+    if authorization is not None:
+        state = (
+            "approved"
+            if authorization.approved_at
+            else "denied" if authorization.denied_at else "pending"
+        )
+    return {
+        "userCode": context["user_code"],
+        "error": context.get("error", ""),
+        "success": context.get("success", ""),
+        "csrfToken": get_token(request),
+        "authorization": None
+        if authorization is None
+        else {
+            "state": state,
+            "clientName": authorization.client.name,
+            "fullAccount": context["full_account"],
+            "scopes": [
+                {"label": str(item["label"]), "description": str(item["description"])}
+                for item in context["scope_details"]
+            ],
+        },
+    }
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def oauth_device(request: HttpRequest):
@@ -192,6 +238,12 @@ def oauth_device(request: HttpRequest):
         "authorization": authorization,
         "scope_details": (
             scope_details(authorization.requested_scopes) if authorization else []
+        ),
+        "full_account": bool(
+            authorization
+            and authorization.client.is_first_party
+            and FULL_ACCOUNT_SCOPE in authorization.requested_scopes
+            and first_party_full_access_enabled()
         ),
     }
 
@@ -217,4 +269,5 @@ def oauth_device(request: HttpRequest):
         except ValueError as exc:
             context["error"] = str(exc)
 
+    context["device_approval_props"] = _approval_props(request, context)
     return render(request, "integrations/oauth_device.html", context)

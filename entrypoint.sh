@@ -115,42 +115,143 @@ warn_when_not_writable FLOPPY_DATA_DIR "$DATA_DIR"
 warn_when_not_writable LOG_DIR "$LOG_DIR_PATH"
 warn_when_not_writable BACKUP_DIR "$BACKUP_DIR_PATH"
 
+RUNNING_AS_ROOT=false
+if [ "$(id -u)" = 0 ]; then
+    RUNNING_AS_ROOT=true
+else
+    # These are persistent mounts; never attempt ownership repair without root.
+    for directory in "$DATA_DIR" "$LOG_DIR_PATH" "$BACKUP_DIR_PATH"; do
+        if ! mkdir -p -- "$directory" 2>/dev/null || [ ! -w "$directory" ]; then
+            echo "[entrypoint] ${directory} must be writable by container UID $(id -u) and GID $(id -g). Fix the mount permissions." >&2
+            exit 1
+        fi
+    done
+fi
+
 # Safe identifiers only, so this line can be pasted into a bug report without
 # redaction. Correlates a log against the image that produced it, and against
 # a specific container instance when HOSTNAME/HOST_CONTAINERNAME diverge.
 echo "[entrypoint] Floppy runtime: version=${VERSION:-unknown} commit=${COMMIT_SHA:-unknown} hostname=${HOSTNAME:-unknown} container_name=${HOST_CONTAINERNAME:-floppy}" >&2
 
+# Hold the public port with a fast 503 while the database is prepared. The
+# snapshot and migrations below can take minutes on a release that migrates, and
+# Nginx does not exist until they finish, so a proxy in front would otherwise
+# time out (Cloudflare 522) instead of getting an answer it can retry. Only the
+# packaged launcher supplies the port; a direct entrypoint run skips this.
+STARTING_SERVER_PID=
+start_starting_server() {
+    if [ -n "$RUNTIME_SERVER_PORT" ]; then
+        python -m config.startup_server "$RUNTIME_SERVER_PORT" &
+        STARTING_SERVER_PID=$!
+    fi
+}
+# Release the port for the recovery page or Nginx. Waits so the socket is closed
+# before the next listener binds.
+stop_starting_server() {
+    if [ -n "$STARTING_SERVER_PID" ]; then
+        kill "$STARTING_SERVER_PID" 2>/dev/null || :
+        wait "$STARTING_SERVER_PID" 2>/dev/null || :
+        STARTING_SERVER_PID=
+    fi
+}
+start_starting_server
+
+SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
+    SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        ''|*[!0-9]*)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be a positive whole number of seconds; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        *[1-9]*) ;;
+        *)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be greater than zero; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
     DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
     DB_PARENT=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).parent)' "$DB_FILE")
 
     reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
+    if [ "$RUNNING_AS_ROOT" = false ] && \
+       { ! mkdir -p -- "$DB_PARENT" 2>/dev/null || [ ! -w "$DB_PARENT" ]; }; then
+        echo "[entrypoint] SQLite directory ${DB_PARENT} must be writable by container UID $(id -u) and GID $(id -g). Fix the mount permissions." >&2
+        exit 1
+    fi
 
-    # Check storage before migrations. The recovery policy preserves rows when
-    # a broken nullable reference can be cleared, removes only known derived
-    # relationship rows automatically, and requires an incident-scoped operator
-    # choice before a row with a required missing parent can be removed.
-    if [ -f "$DB_FILE" ]; then
+    run_sqlite_admission() {
+        admission_attempt=1
         while :; do
-            echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
+            echo "[entrypoint] Checking SQLite startup admission for ${DB_FILE} (${SQLITE_ADMISSION_TIMEOUT}s deadline; attempt ${admission_attempt}/2)" >&2
             integrity_status=0
-            integrity_pid=
-            # The watchdog stops the check only when it stops making progress
-            # (no reads and no CPU for minutes), never because it is slow, and
-            # prints the heartbeat lines while it runs. See
-            # src/config/sqlite_startup_watchdog.py.
-            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-            python -m config.sqlite_startup_watchdog "$DB_FILE" python -c 'from config.sqlite_recovery_policy import check_database_for_startup; import sys; check_database_for_startup(sys.argv[1])' "$DB_FILE" &
+            timeout -k 5 "$SQLITE_ADMISSION_TIMEOUT" python manage.py sqlite_startup &
             integrity_pid=$!
             wait "$integrity_pid" || integrity_status=$?
+            case "$integrity_status" in
+                124|143)
+                    if [ "$admission_attempt" -eq 1 ]; then
+                        echo "[entrypoint] SQLite admission timed out after ${SQLITE_ADMISSION_TIMEOUT}s (exit ${integrity_status}); retrying once." >&2
+                        admission_attempt=2
+                        continue
+                    fi
+                    ;;
+            esac
+            return "$integrity_status"
+        done
+    }
+
+    # Admit ordinary restarts using bounded schema/history/incident reads.
+    # Pending migrations require explicit snapshot-based preparation. Repairs
+    # remain an offline, incident-scoped maintenance action.
+    if [ -f "$DB_FILE" ]; then
+        while :; do
+            integrity_status=0
+            integrity_pid=
+            # Admission reads only schema/history and incident sidecars. Full
+            # verification is separate maintenance, never this startup child.
+            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
+            if [ -f "$DB_FILE.integrity.decision" ] || [ -n "$FLOPPY_SQLITE_CONFLICT_ACTION" ]; then
+                echo "[entrypoint] Applying requested offline SQLite recovery (one-hour deadline); services remain stopped" >&2
+                python manage.py sqlite_startup --recover &
+                integrity_pid=$!
+                wait "$integrity_pid" || integrity_status=$?
+            fi
+            if [ "$integrity_status" -eq 0 ]; then
+                run_sqlite_admission || integrity_status=$?
+            fi
+            if [ "$integrity_status" -eq 11 ]; then
+                # Migrations pending and no snapshot: take one now (services are
+                # not running yet), structural check only; the relational scan
+                # runs after startup. FLOPPY_SQLITE_AUTO_SNAPSHOT=false keeps
+                # the manual --prepare-migrations requirement.
+                integrity_status=11
+                if [ "${FLOPPY_SQLITE_AUTO_SNAPSHOT:-true}" != "false" ]; then
+                    echo "[entrypoint] Taking a recovery snapshot before migrations" >&2
+                    integrity_status=0
+                    python manage.py sqlite_startup --prepare-migrations --fast --timeout 3600 &
+                    integrity_pid=$!
+                    wait "$integrity_pid" || integrity_status=$?
+                    if [ "$integrity_status" -eq 0 ]; then
+                        run_sqlite_admission || integrity_status=$?
+                    fi
+                fi
+            fi
             trap - TERM INT
+            if [ "$integrity_status" -eq 10 ]; then
+                SKIP_SQLITE_MIGRATIONS=true
+                break
+            fi
             if [ "$integrity_status" -eq 0 ]; then
                 break
             fi
             case "$integrity_status" in
-                124)
-                    echo "[entrypoint] SQLite integrity check stopped making progress; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
+                124|143)
+                    echo "[entrypoint] SQLite admission exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts (last exit ${integrity_status}); inspect storage/locks. Startup is paused before migrations and services." >&2
                     ;;
                 *)
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
@@ -158,6 +259,7 @@ if [ -z "$DB_HOST" ]; then
             esac
             # The container stays up while it is parked, so "exec" can attach.
             echo "[entrypoint] ${PREFLIGHT_HINT_EXEC}" >&2
+            echo "[entrypoint] To fix: https://github.com/dannyvfilms/Floppy/blob/latest/docs/sqlite-startup-recovery.md (docker exec <container> python manage.py sqlite_startup --prepare-migrations)" >&2
             decision_file="${DB_FILE}.integrity.decision"
             # The check above consumes a choice it can act on. Anything left is
             # stale, and a stale file would defeat the parking guard below and
@@ -169,6 +271,7 @@ if [ -z "$DB_HOST" ]; then
             # Show the recovery page. It writes a copy beside the database, then
             # serves it. If a choice is submitted, the server exits cleanly so
             # the loop can apply the decision before migrations run.
+            stop_starting_server
             if [ -n "$RUNTIME_SERVER_PORT" ]; then
                 python -m config.sqlite_recovery_server "$DB_FILE" "$RUNTIME_SERVER_PORT" &
             else
@@ -188,41 +291,70 @@ if [ -z "$DB_HOST" ]; then
     fi
 fi
 
-# Bounded, retrying migrate: a blocked migration must fail loudly and retry
-# instead of wedging the container as "unhealthy" forever (issue #341).
-# lock_timeout is libpq-only (ignored on SQLite) and fires only while waiting
-# on a lock, so long data migrations are unaffected. Retries escalate to
-# verbosity 2 so Django names each pre/post-migrate handler phase in the logs.
-migrate_attempts=0
-migrate_verbosity=1
-until echo "[entrypoint] Applying database migrations (attempt $((migrate_attempts + 1)))" >&2 && \
-      DB_POOL_ENABLED=false PGOPTIONS="-c lock_timeout=120s" \
-      timeout 900 python manage.py migrate --noinput -v "$migrate_verbosity"; do
-    migrate_attempts=$((migrate_attempts + 1))
-    migrate_verbosity=2
-    if [ "$migrate_attempts" -ge 5 ]; then
-        echo "[entrypoint] Migrations failed after ${migrate_attempts} attempts, exiting" >&2
-        # This path exits, so a restart policy puts the container into a restart
-        # loop. "exec" cannot attach to a restarting container, so name the
-        # one-off form here instead.
-        echo "[entrypoint] ${PREFLIGHT_HINT_RUN}" >&2
+# PostgreSQL keeps its bounded retry policy. SQLite migrations require offline
+# preparation and stop on a stall instead of killing useful index-build work.
+# Unbuffered verbosity 2 identifies the migration/handler currently running.
+run_migrations() {
+    if [ -z "$DB_HOST" ]; then
+        # Index construction may make useful progress beyond 900s. Stop on
+        # stalled I/O/CPU instead; retain the watchdog's absolute 4h ceiling.
+        PYTHONUNBUFFERED=1 DB_POOL_ENABLED=false python -m config.sqlite_startup_watchdog "$DB_FILE" python manage.py migrate --noinput -v 2
+    else
+        PYTHONUNBUFFERED=1 DB_POOL_ENABLED=false PGOPTIONS="-c lock_timeout=120s" timeout 900 python manage.py migrate --noinput -v 2
+    fi
+}
+if [ "$SKIP_SQLITE_MIGRATIONS" != true ]; then
+    migrate_attempts=0
+    until echo "[entrypoint] Applying database migrations (attempt $((migrate_attempts + 1)))" >&2 && \
+          run_migrations; do
+        migrate_status=$?
+        migrate_attempts=$((migrate_attempts + 1))
+        if [ -z "$DB_HOST" ]; then
+            echo "[entrypoint] SQLite migration exited with status ${migrate_status}; inspect the last named operation and database I/O. No automatic retry: stop writers and prepare migration recovery again." >&2
+            exit 1
+        fi
+        if [ "$migrate_status" -eq 124 ]; then
+            echo "[entrypoint] Migration attempt reached the 900s timeout. This does not establish whether it was stalled or still progressing; inspect the last migration/handler phase and database I/O." >&2
+        else
+            echo "[entrypoint] Migration command exited with status ${migrate_status}; see the error above." >&2
+        fi
+        if [ "$migrate_attempts" -ge 5 ]; then
+            echo "[entrypoint] Migrations failed after ${migrate_attempts} attempts, exiting" >&2
+            # This path exits, so a restart policy puts the container into a restart
+            # loop. "exec" cannot attach to a restarting container, so name the
+            # one-off form here instead.
+            echo "[entrypoint] ${PREFLIGHT_HINT_RUN}" >&2
+            exit 1
+        fi
+        echo "[entrypoint] Migrations blocked or failed (attempt ${migrate_attempts}), retrying in 15s" >&2
+        sleep 15
+    done
+else
+    echo "[entrypoint] SQLite schema is current; skipping migrate and its handlers" >&2
+fi
+
+# An unchanged image already contains the complete collection. The lightweight
+# check also verifies ownership for the image's default IDs. Any changed input,
+# missing file, runtime app change (including DEBUG's toolbar), or absent build
+# record keeps the ordinary collectstatic and ownership-repair paths (#1224).
+echo "[entrypoint] Preparing static files" >&2
+static_from_image=false
+if python config/static_collection.py; then
+    static_from_image=true
+    echo "[entrypoint] Reusing image static files" >&2
+else
+    echo "[entrypoint] Collecting static files" >&2
+    if [ "$RUNNING_AS_ROOT" = false ] && [ ! -w /floppy/staticfiles ]; then
+        echo "[entrypoint] Image static files do not match the current configuration and /floppy/staticfiles is not writable. Provide a writable staticfiles mount or use the image's production configuration." >&2
         exit 1
     fi
-    echo "[entrypoint] Migrations blocked or failed (attempt ${migrate_attempts}), retrying in 15s" >&2
-    sleep 15
-done
-
-# The image collects static files at build time with DEBUG unset, so
-# debug_toolbar's app (and its static assets) are never installed then. If an
-# operator turns DEBUG on for this container, re-collect now under the actual
-# runtime settings so /static/debug_toolbar/... stops 404ing instead of
-# serving a stale, DEBUG-less build (#1224).
-echo "[entrypoint] Collecting static files" >&2
-python manage.py collectstatic --noinput
+    python manage.py collectstatic --noinput
+fi
 
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+if [ "$RUNNING_AS_ROOT" = true ]; then
 echo "[entrypoint] Fixing file ownership (PUID=${PUID} PGID=${PGID})" >&2
 
 groupmod -o -g "$PGID" abc
@@ -247,7 +379,12 @@ if [ -z "$DB_HOST" ]; then
         echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
         exit 1
     fi
-    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm"; do
+    # The sidecars are published by the root-run startup verification and
+    # migration permit steps above, so they are root-owned (and recreated on
+    # every boot) unless repaired here (#1901).
+    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" "$DB_FILE.verification.lock" \
+        "$DB_FILE.verification.json" "$DB_FILE.migration-ready.json" \
+        "$DB_FILE.integrity.status.json" "$DB_FILE.integrity.verified.json"; do
         if { [ -e "$path" ] || [ -L "$path" ]; } && \
            ! timeout 600 chown -h abc:abc -- "$path"; then
             echo "[entrypoint] Cannot set ownership for SQLite file ${path} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
@@ -282,14 +419,36 @@ fi
 if [ -e "$BACKUP_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$BACKUP_DIR_PATH"; then
     echo "[entrypoint] WARNING: chown of ${BACKUP_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
+# Older images or root-run maintenance commands can leave the snapshot
+# directories root-owned. The startup snapshot before pending migrations runs
+# before the identity switch, so its files are written as root; repairing only
+# the directory left those files unreadable to PUID on the host (#1850). Repair
+# these two managed directories and their contents, never a symlink or the
+# whole backup tree, so the unprivileged worker can publish snapshots.
+for snapshot_dir in "${BACKUP_DIR_PATH}/database" "${BACKUP_DIR_PATH}/verification"; do
+    if [ -L "$snapshot_dir" ]; then
+        echo "[entrypoint] WARNING: snapshot directory ${snapshot_dir} is a symlink; refusing ownership repair" >&2
+    elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -R -h abc:abc -- "$snapshot_dir"; then
+        echo "[entrypoint] WARNING: chown of ${snapshot_dir} failed or timed out (stalled mount?); continuing" >&2
+    fi
+done
 
 # Bound recursive ownership fixes for the image-managed service directories: a
 # stalled bind mount must degrade to a warning instead of hanging boot (#341).
 for dir in /floppy/staticfiles /var/log/nginx /var/lib/nginx; do
+    if [ "$dir" = /floppy/staticfiles ] && [ "$static_from_image" = true ] && \
+       [ "$PUID" = 1000 ] && [ "$PGID" = 1000 ]; then
+        echo "[entrypoint] Reusing image static ownership" >&2
+        continue
+    fi
     echo "[entrypoint] Chowning ${dir}" >&2
     timeout 600 chown -R abc:abc -- "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
+else
+    echo "[entrypoint] Running as UID $(id -u) GID $(id -g); PUID/PGID and ownership repair are skipped." >&2
+fi
+export LOG_DIR="$LOG_DIR_PATH"
 
 # Probe the host once, here, and export the sizing decision for supervisord to
 # expand into each program's command line. Doing it per-process would let the
@@ -352,5 +511,13 @@ if [ -d "$LOG_DIR_PATH" ] && [ -w "$LOG_DIR_PATH" ]; then
 fi
 export FLOPPY_SUPERVISORD_LOG
 
+stop_starting_server
 echo "[entrypoint] Starting services" >&2
-exec supervisord -c /etc/supervisord.conf
+SUPERVISOR_CONFIG=/etc/supervisord.conf
+if [ "$RUNNING_AS_ROOT" = false ]; then
+    # Supervisor cannot switch users without root, and numeric Docker users
+    # need not exist in /etc/passwd. All children inherit the current identity.
+    SUPERVISOR_CONFIG=/tmp/floppy-runtime/supervisord.conf
+    sed '/^user=/d' /etc/supervisord.conf > "$SUPERVISOR_CONFIG"
+fi
+exec supervisord -c "$SUPERVISOR_CONFIG"

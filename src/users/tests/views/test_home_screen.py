@@ -33,9 +33,11 @@ from app.models import (
     Video,
 )
 from app.services.item_merge import dedupe_cross_provider_items
+from app.tests.card_props import card_models
 from lists import smart_rules
 from lists.models import CustomList
 from users import home_screen
+from users.home_screen import build_home_page_groups
 from users.models import (
     HOME_ALL_MEDIA_TYPE,
     DirectionChoices,
@@ -200,6 +202,21 @@ class HomeScreenViewTests(TestCase):
 
         self.assertEqual(result, ["Episode left TV", "Current Movie"])
 
+    @staticmethod
+    def _media_type_chips(response):
+        """Return {type: {style, color}} for the media-type chips on the page.
+
+        The card is React: the chip travels in each card's props, not in markup.
+        """
+        return {
+            model["statusChip"]["type"]: {
+                "style": model["statusChip"]["style"],
+                "color": model["statusChip"]["color"],
+            }
+            for model in card_models(response.content)
+            if model["statusChip"] and model["statusChip"]["kind"] == "media-type"
+        }
+
     def test_all_media_in_progress_row_mixes_selected_families_and_has_no_url(self):
         cache.clear()
         self.addCleanup(cache.clear)
@@ -243,9 +260,10 @@ class HomeScreenViewTests(TestCase):
         self.assertEqual(
             [entry.item.title for entry in mixed["rows"][0]["items"]], ["Current Movie"]
         )
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-media-type-chip="movie"')
+        self.assertIn("movie", self._media_type_chips(response))
 
     def test_all_media_row_supports_every_all_media_sort_and_progress_filter(self):
         cache.clear()
@@ -406,17 +424,17 @@ class HomeScreenViewTests(TestCase):
             filters={"status": [Status.IN_PROGRESS.value]},
         )
 
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
 
-        self.assertContains(response, 'data-media-type-chip="anime"')
-        self.assertContains(response, 'data-media-type-chip-style="outline"')
-        self.assertContains(response, "--media-type-chip-color: #123ABC")
+        chips = self._media_type_chips(response)
+        self.assertEqual(chips.get("anime"), {"style": "outline", "color": "#123ABC"})
 
         self.user.home_media_type_chips_enabled = False
         self.user.save(update_fields=["home_media_type_chips_enabled"])
         cache.clear()
         response = self.client.get(reverse("home"))
-        self.assertNotContains(response, 'data-media-type-chip="anime"')
+        self.assertNotIn("anime", self._media_type_chips(response))
 
     def test_home_screen_get_only_serializes_enabled_media_types(self):
         self._set_enabled_media_types(MediaTypes.TV.value, MediaTypes.MOVIE.value)
@@ -427,9 +445,7 @@ class HomeScreenViewTests(TestCase):
         self.assertTemplateUsed(response, "users/home_screen.html")
 
         sections = json.loads(response.context["home_screen_sections_json"])
-        # Disabled Season isn't offered as a configurable section here, even
-        # though it still renders on Home itself (see get_home_configurable_
-        # media_types's include_disabled_season flag).
+        # A disabled Season isn't offered as a configurable section here.
         self.assertEqual(
             [section["media_type"] for section in sections],
             [HOME_ALL_MEDIA_TYPE, "tv", "movie"],
@@ -1009,6 +1025,7 @@ class HomeScreenViewTests(TestCase):
             [entry.item.title for entry in groups[0]["rows"][0]["items"]],
             ["Home Video"],
         )
+        self.assertTrue(groups[0]["rows"][0]["video_landscape"])
 
     def test_empty_library_query_rows_build_quickly_on_cold_cache(self):
         """Regression test for #621: empty rows must not stall the home page.
@@ -1368,6 +1385,21 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(movie_section["filter_fields"], [])
 
+    def test_all_media_filter_choices_only_query_tags_not_library_facets(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        Tag.objects.create(user=self.user, name="Favorite")
+        with (
+            patch.object(smart_rules, "build_rule_filter_data", side_effect=AssertionError("All Media scanned library facets")),
+            self.assertNumQueries(1),
+        ):
+            fields = home_screen.serialize_settings_filter_fields(self.user, HOME_ALL_MEDIA_TYPE)
+        fields = {field["key"]: field for field in fields}
+        self.assertEqual(set(fields), {"media_types", "status", "progress", "rating", "collection", "release", "tag"})
+        self.assertEqual(fields["tag"]["options"], [{"value": "Favorite", "label": "Favorite"}])
+        tv = next(option for option in fields["media_types"]["options"] if option["value"] == "tv")
+        self.assertEqual([choice["value"] for choice in tv["subviews"]], ["shows", "seasons", "episodes"])
+
     def test_home_filter_fields_include_collected_only_untracked_authors(self):
         self._set_enabled_media_types(MediaTypes.BOOK.value)
         untracked_book = Item.objects.create(
@@ -1612,6 +1644,24 @@ class HomeScreenViewTests(TestCase):
                 row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
             ).exists(),
         )
+
+    def test_video_rows_round_trip_when_saving_home_settings(self):
+        self._set_enabled_media_types(MediaTypes.VIDEO.value, MediaTypes.TV.value)
+        response = self.client.get(reverse("home_screen"))
+        sections = json.loads(response.context["home_screen_sections_json"])
+        video_section = next(section for section in sections if section["media_type"] == "video")
+        self.assertTrue(video_section["rows"])
+        self.assertIn("status", video_section["rows"][0]["filters"])
+        all_section = next(section for section in sections if section["media_type"] == "all")
+        all_section["rows"].append({"row_type": "up_next"})
+        response = self.client.post(reverse("home_screen"), {"home_screen_sections": json.dumps(sections)})
+        self.assertRedirects(response, reverse("home_screen"))
+        messages = list(get_messages(response.wsgi_request))
+        self.assertTrue(any("updated successfully" in str(message) for message in messages), messages)
+        self.assertTrue(HomeScreenRow.objects.filter(user=self.user, media_type="video", row_type="library_query").exists())
+        fields = home_screen.serialize_settings_filter_fields(self.user, MediaTypes.VIDEO.value)
+        self.assertIn("status", {field["key"] for field in fields})
+        self.assertNotIn("provider", {field["key"] for field in fields})
 
     def test_home_screen_get_upgrades_legacy_seeded_defaults(self):
         self._set_enabled_media_types(
@@ -2011,13 +2061,11 @@ class HomeScreenViewTests(TestCase):
     def test_home_screen_save_preserves_existing_rows_for_disabled_season(self):
         """Saving other sections must not wipe pre-existing Season rows.
 
-        Season is intentionally excluded from the settings page's
-        configurable sections once disabled (see
-        get_home_configurable_media_types's include_disabled_season flag),
-        so a save payload never resubmits a season section for a user who
-        has season_enabled=False. That must not cause the save to delete
-        Season's stored rows out from under Home rendering, which still
-        force-includes Season regardless of the sidebar setting.
+        Season is excluded from the settings page's configurable sections
+        once disabled, so a save payload never resubmits a season section
+        for a user who has season_enabled=False. That must not cause the
+        save to delete Season's stored rows: they come back when Seasons is
+        re-enabled.
         """
         self._set_enabled_media_types(MediaTypes.TV.value, MediaTypes.SEASON.value)
         self.client.get(reverse("home_screen"))
@@ -2044,6 +2092,57 @@ class HomeScreenViewTests(TestCase):
                 media_type=MediaTypes.SEASON.value,
             ).exists(),
         )
+
+    def test_home_hides_season_row_when_seasons_disabled(self):
+        """A tracked season must not show on Home once Seasons is off (#1560)."""
+        self._set_enabled_media_types(
+            MediaTypes.TV.value,
+            MediaTypes.MOVIE.value,
+            MediaTypes.SEASON.value,
+        )
+        home_screen.ensure_home_screen_rows(self.user)
+        tv_item = Item.objects.create(
+            title="Seasons Off Show",
+            media_id="seasons-off",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/seasons-off.jpg",
+        )
+        season_item = Item.objects.create(
+            title="Seasons Off Show",
+            media_id="seasons-off",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/seasons-off.jpg",
+            season_number=1,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def home_group_types():
+            cache.clear()
+            groups = home_screen.build_home_page_groups(self.user, items_limit=14)
+            return [group["media_type"] for group in groups]
+
+        self.assertIn(MediaTypes.SEASON.value, home_group_types())
+
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+        self.assertNotIn(MediaTypes.SEASON.value, home_group_types())
+
+        # Turning Seasons back on restores the stored row, nothing was deleted.
+        self.user.season_enabled = True
+        self.user.save(update_fields=["season_enabled"])
+        self.assertIn(MediaTypes.SEASON.value, home_group_types())
 
     def test_home_screen_deleted_last_row_does_not_reseed(self):
         self._set_enabled_media_types(MediaTypes.TV.value)

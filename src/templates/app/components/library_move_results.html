@@ -1,7 +1,10 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% load ui_tags %}
 
+{% if library_move_results_props %}{{ library_move_results_props|json_script:"library-move-results-props" }}{% endif %}
+<div data-metadata-match-results-root{% if library_move_results_props %} data-props-id="library-move-results-props"{% endif %}>
 {% if error %}
   <p class="mt-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300" role="alert">{{ error }}</p>
 {% elif results %}
@@ -28,7 +31,7 @@
                 :disabled="moving"
                 class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-[var(--color-surface-strong)] disabled:cursor-wait disabled:opacity-60">
           {% if result.image %}
-            <img src="{{ result.image|image_url }}" alt="" loading="lazy" class="h-12 w-9 rounded object-cover bg-[var(--color-surface-alt)] shrink-0">
+            <img data-media-artwork decoding="sync" src="{{ result.image|image_url }}" alt="" loading="lazy" class="h-12 w-9 rounded object-cover bg-[var(--color-surface-alt)] shrink-0">
           {% else %}
             <span class="flex h-12 w-9 items-center justify-center rounded bg-[var(--color-surface-alt)] text-gray-600 shrink-0">
               {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
@@ -43,7 +46,7 @@
           <span class="shrink-0 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
             <span x-show="!moving">{% translate "Move" %}</span>
             <span x-show="moving" class="inline-flex items-center gap-1">
-              <span class="animate-spin rounded-full h-3 w-3 border-b border-white"></span>
+              {% spinner 12 "white" %}
               {% translate "Moving..." %}
             </span>
           </span>
@@ -54,3 +57,4 @@
 {% elif query %}
   <p class="mt-2 px-2 text-sm text-[var(--color-text-muted)]">{% translate "No matching titles found." %}</p>
 {% endif %}
+</div>

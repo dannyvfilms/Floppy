@@ -93,6 +93,12 @@ class VideoPlay(models.Model):
                 name="app_videoplay_unique_video_external_id",
             ),
         ]
+        indexes = [
+            models.Index(
+                fields=["video", "end_date"],
+                name="app_videoplay_video_end_idx",
+            ),
+        ]
 
     def __str__(self):
         """Return the play's external id."""

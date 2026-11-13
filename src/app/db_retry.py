@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from django.db import models, transaction
+from django.db import connections, models, transaction
 from django.db.utils import IntegrityError, OperationalError
+
+from app import db_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +102,8 @@ def run_retryable_db_operation(
             if not is_retryable_error(error):
                 raise
 
+            db_diagnostics.report_database_error(error, operation=operation_name)
+
             if attempt >= max_retries:
                 if mode != "best_effort":
                     raise
@@ -125,6 +131,100 @@ def run_retryable_db_operation(
             )
             time.sleep(sleep_for)
             attempt += 1
+
+
+# How long an optional save may wait for SQLite's writer. Long enough for a
+# writer that is just committing, short enough that nobody notices.
+BRIEF_WRITER_WAIT_MS = 50
+
+
+class _ReadRequest:
+    """What one page load has learned about SQLite's writer."""
+
+    __slots__ = ("writer_busy",)
+
+    def __init__(self):
+        self.writer_busy = False
+
+
+_read_request: ContextVar[_ReadRequest | None] = ContextVar(
+    "floppy_read_request", default=None
+)
+
+
+@contextmanager
+def read_request():
+    """Mark the work in this block as a page load (a GET or HEAD request).
+
+    A page load must not wait for SQLite's single writer to save something it
+    could serve without. Saves wrapped in :func:`optional_save` read this.
+    Tasks and commands never set it, so they keep the full wait.
+    """
+    token = _read_request.set(_ReadRequest())
+    try:
+        yield
+    finally:
+        _read_request.reset(token)
+
+
+def in_read_request() -> bool:
+    """Return whether the current work is a page load."""
+    return _read_request.get() is not None
+
+
+@contextmanager
+def brief_writer_wait(milliseconds: int = BRIEF_WRITER_WAIT_MS, *, using="default"):
+    """Let writes in this block give up quickly when SQLite's writer is busy.
+
+    Lowers ``busy_timeout`` on this thread's connection and puts the previous
+    value back afterwards. The connection is reused by later requests
+    (``CONN_MAX_AGE``), so a leaked short timeout would make ordinary writes
+    fail fast; if the value cannot be restored the connection is closed.
+    A write that gives up raises the usual "database is locked"
+    ``OperationalError``. No-op on PostgreSQL, and inside a transaction that
+    already holds the write lock there is nothing left to wait for.
+    """
+    connection = connections[using]
+    if connection.vendor != "sqlite":
+        yield
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute("PRAGMA busy_timeout")
+        previous = int(cursor.fetchone()[0])
+        cursor.execute(f"PRAGMA busy_timeout={int(milliseconds)}")
+    try:
+        yield
+    finally:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f"PRAGMA busy_timeout={previous}")
+        except Exception:
+            connection.close()
+            raise
+
+
+@contextmanager
+def optional_save(*, using="default"):
+    """Wrap a save the caller can do without, such as a derived cache row.
+
+    On a page load the save waits only briefly for a busy writer and then
+    raises a lock error the caller must treat as "not saved". Once one save
+    in a page load has given up, the rest do not wait at all, so a page with
+    many rows pays the brief wait once. Anywhere else this changes nothing.
+    """
+    state = _read_request.get()
+    if state is None:
+        yield
+        return
+    wait_ms = 0 if state.writer_busy else BRIEF_WRITER_WAIT_MS
+    try:
+        with brief_writer_wait(wait_ms, using=using):
+            yield
+    except OperationalError as error:
+        if is_lock_error(error):
+            state.writer_busy = True
+        raise
 
 
 def _describe_conflicting_row(manager, lookup: dict, defaults: dict) -> str:

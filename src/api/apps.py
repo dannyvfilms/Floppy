@@ -15,3 +15,7 @@ class ApiConfig(AppConfig):
         from api.fork_helpers import install_fork_media_types
 
         install_fork_media_types()
+
+        from api.health import install_cached_celery_ping
+
+        install_cached_celery_ping()

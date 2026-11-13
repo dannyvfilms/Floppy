@@ -307,7 +307,7 @@ async def get_authors_full(response):
     authors = []
     author_entries = response.get("authors", [])
 
-    timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
+    timeout = aiohttp.ClientTimeout(total=services.request_timeout())
     async with aiohttp.ClientSession(timeout=timeout) as session:
         tasks = []
         for index, author in enumerate(author_entries):
@@ -388,7 +388,7 @@ async def get_editions(response_book, response_work):
     # limit to 500 editions, pagination is not supported
     url = f"https://openlibrary.org/works/{work_id}/editions.json?limit=500"
 
-    timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
+    timeout = aiohttp.ClientTimeout(total=services.request_timeout())
     async with (
         aiohttp.ClientSession(timeout=timeout) as session,
         session.get(url) as response,
@@ -426,7 +426,7 @@ async def get_ratings(response_work):
 
     url = f"https://openlibrary.org/works/{work_id}/ratings.json"
 
-    timeout = aiohttp.ClientTimeout(total=settings.REQUEST_TIMEOUT)
+    timeout = aiohttp.ClientTimeout(total=services.request_timeout())
     async with (
         aiohttp.ClientSession(timeout=timeout) as session,
         session.get(url) as response,

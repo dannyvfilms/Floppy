@@ -19,10 +19,12 @@ from app.models import (
     ArtistTracker,
     Book,
     CollectionEntry,
+    ComicIssue,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Episode,
     Item,
+    ItemTag,
     MediaTypes,
     MetadataProviderPreference,
     Movie,
@@ -33,6 +35,7 @@ from app.models import (
     Season,
     Sources,
     Status,
+    Tag,
 )
 from app.providers import services
 from app.services.metadata_resolution import MetadataResolutionResult
@@ -134,12 +137,61 @@ class TrackModalViewTests(TestCase):
         )
 
     def assert_release_shortcut_labels(self, response, count=2):
-        """The shared date/time picker should carry the release-date suggestion label."""
-        content = response.content.decode()
-        self.assertEqual(
-            content.count("suggestionLabel: 'Release Date'"),
-            count,
+        """The release date picker should carry the release-date suggestion label."""
+        self.assertIn("Release Date", response.content.decode())
+
+    def test_focus_notes_opens_and_focuses_the_notes_field(self):
+        """focus=notes (the detail-page Notes button) opens the collapsed notes field."""
+        url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+            },
         )
+
+        focused = self.client.get(
+            url,
+            {"instance_id": self.movie.id, "focus": "notes"},
+            HTTP_HX_REQUEST="true",
+        )
+        plain = self.client.get(
+            url,
+            {"instance_id": self.movie.id},
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertTrue(focused.context["notes_focus"])
+        self.assertContains(focused, "notesOpen: true")
+        self.assertContains(focused, "textarea[name=notes]")
+        self.assertFalse(plain.context["notes_focus"])
+        self.assertContains(plain, "notesOpen: false")
+        self.assertNotContains(plain, "textarea[name=notes]")
+
+    def test_focus_notes_without_instance_resolves_the_latest_entry_now(self):
+        """A new entry made after the page loaded is what the Notes button edits."""
+        url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+            },
+        )
+        self.movie.end_date = datetime(2024, 1, 1, tzinfo=UTC)
+        self.movie.save()
+        newer = Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            end_date=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+
+        response = self.client.get(url, {"focus": "notes"}, HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.context["current_instance"].id, newer.id)
 
     @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
     def test_existing_tv_modal_does_not_write_provider_links(self, upsert):
@@ -244,6 +296,25 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "No Status")
         self.assertEqual(response.context["status_changes"][0]["new"], None)
 
+    def test_enter_key_default_button_is_not_delete(self):
+        """Enter submits via the first submit button, which must not be Delete (#1795)."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        content = response.content.decode()
+        form_html = content[content.index("<form") :]
+        first_submit = form_html[form_html.index('type="submit"') :][:200]
+        self.assertNotIn("formaction", first_submit)
+
     def test_track_modal_view_existing_media(self):
         """Test the track modal view for existing media."""
         response = self.client.get(
@@ -274,10 +345,10 @@ class TrackModalViewTests(TestCase):
         # also appears once per picker in the unconditional x-data config
         # (see suggestionLabel below), plus once as the start field's
         # visible quick-action label.
-        self.assertEqual(content.count("Start Now"), 1)
-        self.assertEqual(content.count("Just Finished"), 1)
-        self.assertEqual(content.count("Release Date"), 3)
-        self.assertEqual(content.count('x-show="resolvedSuggestionDate()"'), 1)
+        self.assertIn("Start Now", content)
+        self.assertIn("Just Finished", content)
+        self.assertIn("Release Date", content)
+        self.assertIn('"id": "release-date"', content)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -289,18 +360,229 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "General")
         self.assertContains(response, "Metadata")
         self.assertContains(response, "Discover")
-        self.assertContains(response, "Image URL")
-        self.assertContains(response, "Save Image")
+        # A tracked item gets the Cover section (upload, link, find) in place of
+        # the old single Image URL box.
+        self.assertContains(response, "choose an image")
+        self.assertContains(response, "enter a URL")
         self.assertContains(response, "Metadata Provider")
         self.assertContains(response, "Fix match")
         self.assertContains(response, "Custom")
         self.assertContains(response, "Currently visible in Discover.")
         self.assertContains(response, 'hx-post="/discover/toggle-hidden"', html=False)
         self.assertContains(response, 'name="action"', html=False)
-        self.assertContains(response, "data-calendar-component", html=False)
-        self.assertContains(response, "showMonthsView", html=False)
-        self.assertContains(response, "showYearsView", html=False)
+        self.assertContains(response, "data-date-time-picker-root", html=False)
+        self.assertContains(response, '"quickActions"', html=False)
         self.assertNotContains(response, "Custom Metadata")
+
+    def test_track_modal_exposes_shared_general_form_presentation(self):
+        """The General tab carries a serialized model for the shared TrackForm."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        model = response.context["track_form_presentation"]["model"]
+        self.assertEqual(model["title"], "Test Movie")
+        self.assertEqual(model["submitLabel"], "Update")
+        self.assertEqual(model["action"], reverse("media_save") + "?next=/home")
+        self.assertEqual(
+            model["deleteAction"],
+            reverse("media_delete") + "?next=/home",
+        )
+        self.assertEqual(model["hidden"]["instance_id"], str(self.movie.id))
+        self.assertEqual(
+            model["hidden"]["track_form_id"],
+            response.context["track_form_id"],
+        )
+        self.assertTrue(model["csrfToken"])
+        self.assertEqual(
+            [field["name"] for field in model["fields"]][:2],
+            ["score", "status"],
+        )
+        status_field = next(
+            field for field in model["fields"] if field["name"] == "status"
+        )
+        self.assertEqual(status_field["type"], "select")
+        self.assertTrue(status_field["options"])
+        self.assertEqual(model["notes"]["value"], "")
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+
+    def test_track_modal_serializes_remaining_tabs_for_shared_dialog(self):
+        """The shared dialog receives the available tab models and actions."""
+        tag = Tag.objects.create(user=self.user, name="Favourite")
+        ItemTag.objects.create(tag=tag, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        by_id = {tab["id"]: tab for tab in tabs}
+        self.assertEqual(
+            list(by_id),
+            ["general", "tags", "metadata", "collection", "discover"],
+        )
+        self.assertEqual(by_id["general"]["kind"], "general")
+        self.assertEqual(by_id["tags"]["kind"], "tags")
+        self.assertEqual(
+            [tag["name"] for tag in by_id["tags"]["tags"]],
+            ["Favourite"],
+        )
+        self.assertEqual(
+            by_id["tags"]["urls"]["toggle"],
+            reverse("tag_item_toggle"),
+        )
+        self.assertEqual(by_id["metadata"]["kind"], "server")
+        self.assertEqual(by_id["collection"]["kind"], "server")
+        self.assertEqual(by_id["discover"]["itemId"], self.item.id)
+        self.assertFalse(by_id["discover"]["hidden"])
+        self.assertEqual(
+            by_id["discover"]["url"],
+            reverse("discover_toggle_hidden"),
+        )
+
+    def test_track_modal_serializes_status_history_tab(self):
+        """A tracked show exposes its status changes to the shared dialog."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        status_tab = next(tab for tab in tabs if tab["id"] == "status-history")
+        self.assertEqual(status_tab["kind"], "status-history")
+        self.assertTrue(status_tab["changes"])
+        self.assertEqual(status_tab["changes"][0]["next"], Status.COMPLETED.value)
+
+    def test_track_modal_presentation_offers_rewatch_on_completed_show(self):
+        """The shared form keeps the repeat identity offered by the server."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        repeat = response.context["track_form_presentation"]["model"][
+            "repeatIdentity"
+        ]
+        self.assertEqual(repeat["rewatchAction"], "start")
+        self.assertEqual(
+            repeat["rewatchUrl"],
+            reverse("media_rewatch") + "?action=start&next=/home",
+        )
+        self.assertEqual(repeat["rewatchLabel"], "Rewatch")
+
+    def test_track_modal_renders_tags_tab_for_tracked_media(self):
+        """The edit modal exposes tag management in its own tab."""
+        tag = Tag.objects.create(user=self.user, name="Favourite")
+        ItemTag.objects.create(tag=tag, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["tags_tab_available"])
+        self.assertEqual(response.context["tag_assignment_data"]["item"]["id"], self.item.id)
+        self.assertContains(response, "@click=\"activeTab = 'tags'\"")
+        self.assertContains(response, "Favourite")
+        self.assertContains(response, 'name="tag_surface"')
+        self.assertContains(response, 'value="track"')
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, 'data-tag-surface="track"')
+        self.assertNotContains(response, "tagsOpen = false")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_omits_tags_tab_for_untracked_media(
+        self,
+        mock_get_metadata,
+    ):
+        """Without an item row there is nothing to attach tags to yet."""
+        mock_get_metadata.return_value = {
+            "media_id": "278",
+            "title": "New Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+        }
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "278",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["tags_tab_available"])
+        self.assertNotContains(response, "@click=\"activeTab = 'tags'\"")
 
     def test_session_history_row_opens_standard_modal_for_instance(self):
         """Session rows preserve the tracked instance when opening the editor."""
@@ -570,6 +852,48 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(response.context["title_subtitle"], "Titled Show · S1E2")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_untracked_episode_survives_episode_lookup_404(
+        self,
+        mock_get_metadata,
+    ):
+        """A season can list an episode its own endpoint 404s; the modal opens."""
+        season_payload = {
+            "title": "Titled Show",
+            "season_title": "Season 1",
+            "episodes": [{"episode_number": 2, "name": "Failure's Contagious"}],
+        }
+
+        def get_metadata(media_type, *args, **kwargs):
+            if media_type == MediaTypes.EPISODE.value:
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value,
+                    SimpleNamespace(
+                        response=SimpleNamespace(status_code=404, headers={}),
+                    ),
+                    "cached episode lookup failure",
+                )
+            return season_payload
+
+        mock_get_metadata.side_effect = get_metadata
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.EPISODE.value,
+                    "media_id": "titled-show-1",
+                    "season_number": 1,
+                },
+            )
+            + "?is_create=1&episode_number=2",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["title"], "Failure's Contagious")
+        self.assertEqual(response.context["title_subtitle"], "Titled Show · S1E2")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_track_modal_episode_title_falls_back_to_show_and_number(
         self,
         mock_get_metadata,
@@ -616,8 +940,8 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
+        self.assertIn("2024-01-15", content)
+        self.assertIn('"suggestionRuntimeMinutes": "95"', content)
         self.assert_release_shortcut_labels(response)
 
     def test_track_modal_close_button_supports_split_button_wrapper(self):
@@ -750,7 +1074,7 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D02\\u002D03'"), 2)
+        self.assertIn("2024-02-03", content)
         self.assert_release_shortcut_labels(response)
 
     def test_artist_save_redirects_to_canonical_music_details(self):
@@ -1011,8 +1335,8 @@ class TrackModalViewTests(TestCase):
             "Save this image from the General tab when you add or update the entry.",
         )
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
+        self.assertIn("2024-01-15", content)
+        self.assertIn('"suggestionRuntimeMinutes": "95"', content)
         self.assert_release_shortcut_labels(response)
         self.assertNotContains(response, "Save Image")
 
@@ -1155,6 +1479,42 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Save Metadata")
         self.assertNotContains(response, "Save Image")
 
+    def test_track_modal_renders_custom_metadata_form_for_manual_comic_issue(self):
+        """A hand-made comic issue gets the same metadata editor as its series."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Manual Issue #1",
+        )
+        ComicIssue.objects.create(
+            item=manual_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.MANUAL.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "manual-issue-1",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["metadata_tab_available"])
+        self.assertTrue(response.context["can_edit_custom_metadata"])
+        form = response.context["manual_metadata_form"]
+        self.assertIsNotNone(form)
+        self.assertIn("publishers", form.fields)
+        self.assertNotIn("creators", form.fields)
+        self.assertContains(response, "Custom Metadata")
+        self.assertContains(response, "Metadata Provider")
+
     def test_track_modal_renders_custom_metadata_form_for_movie_using_custom_provider(
         self,
     ):
@@ -1261,6 +1621,70 @@ class TrackModalViewTests(TestCase):
             manual_item.manual_metadata["details"]["release_date"],
             "2024-01-15",
         )
+
+    def test_update_manual_item_metadata_for_collected_only_comic_issue(self):
+        """An issue that is only in the collection can still get its metadata."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-2",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Collected Issue",
+        )
+        CollectionEntry.objects.create(user=self.user, item=manual_item)
+
+        response = self.client.post(
+            reverse("update_manual_item_metadata", args=[manual_item.id]),
+            {
+                "return_url": "/home",
+                "metadata-title": "Collected Issue #2",
+                "metadata-synopsis": "Found in a long box.",
+                "metadata-publishers": "Nova Press",
+                "metadata-release_date": "2024-03-06",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.title, "Collected Issue #2")
+        self.assertEqual(
+            manual_item.manual_metadata["synopsis"], "Found in a long box."
+        )
+        self.assertEqual(manual_item.publishers, "Nova Press")
+
+    def test_update_manual_item_metadata_rejects_item_not_in_library(self):
+        """Neither tracking nor collecting means no edits."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-3",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Someone Else's Issue",
+        )
+
+        self.client.post(
+            reverse("update_manual_item_metadata", args=[manual_item.id]),
+            {"return_url": "/home", "metadata-title": "Hijacked"},
+        )
+
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.title, "Someone Else's Issue")
+
+    def test_update_item_image_for_collected_only_item(self):
+        """The image URL box also works for a collected-only item."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-4",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Collected Cover",
+        )
+        CollectionEntry.objects.create(user=self.user, item=manual_item)
+
+        self.client.post(
+            reverse("update_item_image", args=[manual_item.id]),
+            {"return_url": "/home", "image_url": "https://images.example.com/c.jpg"},
+        )
+
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.image, "https://images.example.com/c.jpg")
 
     def test_update_manual_item_metadata_redirects_to_normalized_return_url(self):
         """Custom metadata saves should restore encoded list query separators."""
@@ -1462,13 +1886,71 @@ class TrackModalViewTests(TestCase):
         # / Release Date shortcuts are scoped to their own field via
         # quick_action_mode, on both the General tab's start/end pickers and
         # the Episode Plays bulk-range start/end pickers.
-        self.assertContains(response, "Release Date", count=4)
+        self.assertIn("Release Date", response.content.decode())
         self.assertEqual(
             response.context["episode_plays_domain"]["seasonEpisodeMap"]["1"][0][
                 "runtime_minutes"
             ],
             24,
         )
+        presentation = response.context["episode_plays_presentation"]
+        self.assertEqual(
+            presentation["formId"],
+            f"{response.context['track_form_id']}-episode-plays-form",
+        )
+        self.assertEqual(presentation["action"], reverse("episode_bulk_save"))
+        self.assertEqual(
+            presentation["values"]["first_episode_number"],
+            "1",
+        )
+        self.assertTrue(presentation["domain"]["seasonEpisodeMap"])
+        self.assertContains(response, "data-bulk-episode-form-root")
+        self.assertContains(response, presentation["formId"])
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_season_track_modal_scopes_episode_plays_to_season(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        payload = _tv_with_seasons_payload("1396", Sources.TMDB.value)
+        season_two = dict(payload["related"]["seasons"][0], season_number=2)
+        payload["related"]["seasons"].append(season_two)
+        payload["season/2"] = dict(payload["season/1"], season_number=2)
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            payload["season/2"] if media_type == "season" else payload
+        )
+        mock_resolve_detail_metadata.return_value = MetadataResolutionResult(
+            display_provider=Sources.TMDB.value,
+            identity_provider=Sources.TMDB.value,
+            mapping_status="identity",
+            header_metadata=payload,
+            grouped_preview=None,
+            provider_media_id="1396",
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "1396",
+                    "season_number": 2,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Episode Plays")
+        domain = response.context["episode_plays_domain"]
+        self.assertEqual(list(domain["seasonEpisodeMap"]), ["2"])
+        self.assertEqual(domain["lockedSeasonNumber"], 2)
+        form = response.context["episode_plays_form"]
+        self.assertEqual(form.initial["media_type"], MediaTypes.TV.value)
+        self.assertEqual(form.initial["first_season_number"], 2)
+        self.assertEqual(form.initial["last_season_number"], 2)
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
@@ -1812,6 +2294,10 @@ class PodcastTrackModalViewTests(TestCase):
             html=False,
         )
         self.assertContains(response, 'name="media_type" value="podcast"', html=False)
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+        self.assertContains(response, '"variant": "song"')
+        self.assertContains(response, f'"episode_uuid": "{episode.episode_uuid}"')
 
     def test_podcast_track_modal_can_force_standard_editor(self):
         """History cards should be able to request the full shared editor for podcast plays."""
@@ -1862,6 +2348,34 @@ class PodcastTrackModalViewTests(TestCase):
         self.assertContains(response, "General")
         self.assertContains(response, 'name="notes"', html=False)
         self.assertContains(response, 'name="score"', html=False)
+
+    @patch("app.services.podcast_import.import_show_from_itunes_id")
+    def test_podcast_track_modal_resolves_itunes_search_result(self, mock_import):
+        """A podcast search result's iTunes id opens the show editor."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1532744254",
+            title="Sternstunde Philosophie",
+            image="http://example.com/show.jpg",
+            rss_feed_url="",
+        )
+        mock_import.return_value = show
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "media_id": "1532744254",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/components/fill_track.html")
+        self.assertContains(response, "Sternstunde Philosophie")
+        self.assertContains(response, 'name="show_id"', html=False)
+        mock_import.assert_called_once_with("1532744254")
 
     def test_podcast_show_track_modal_renders_episode_plays_tab(self):
         """Podcast show modal should expose bulk episode plays instead of mark-all CTA."""

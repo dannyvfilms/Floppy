@@ -1,25 +1,29 @@
+import json
 import logging
 from contextlib import suppress
 from datetime import UTC, date
 from urllib.parse import urlencode
 from uuid import uuid4
 
+from django import forms
 from django.apps import apps
 from django.conf import settings
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
-from django.utils.translation import gettext_noop
+from django.utils.translation import gettext, gettext_noop, ngettext, pgettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from app import custom_metadata, helpers, history_processor
+from app import cover_views, custom_metadata, helpers, history_processor
 from app import statistics as stats
 from app.collection_views import build_collection_modal_context
 from app.discover_views import _build_track_modal_discover_tab_context
 from app.forms import BulkEpisodeTrackForm, get_form_class
+from app.icon_specs import file_icon
 from app.models import (
     Anime,
     BasicMedia,
@@ -33,6 +37,7 @@ from app.models import (
 from app.providers import hardcover, services, tmdb
 from app.services import bulk_episode_tracking, library_migration, metadata_resolution
 from app.services.metadata_fallback import stored_metadata_fallback
+from users.templatetags.user_tags import user_datetime_format
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 logger = logging.getLogger(__name__)
@@ -144,12 +149,205 @@ def _episode_domain_template_payload(domain):
     }
 
 
+def _bulk_episode_form_labels():
+    """Return the translated labels used by the shared bulk-play form."""
+    return {
+        "startDate": str(gettext("Start date")),
+        "endDate": str(gettext("End date")),
+        "playHandling": str(gettext("Play handling")),
+        "distribution": str(gettext("Distribution")),
+        "save": str(gettext("Save plays")),
+        "saving": str(gettext("Saving")),
+        "justFinished": str(pgettext("date picker shortcut", "Just Finished")),
+        "chooseRange": str(
+            gettext("Choose the first and last item to log a bulk play range."),
+        ),
+        "invalidRange": str(gettext("Choose a valid ordered range to log plays.")),
+        "lockedRange": str(
+            gettext("This range is locked to one mapped season."),
+        ),
+        "targetDates": str(
+            gettext("the target dates within the selected date range"),
+        ),
+        "evenDistribution": str(
+            gettext("an even distribution across the date range"),
+        ),
+        "fallbackEven": str(
+            gettext("Saving will fall back to even distribution."),
+        ),
+        "noExisting": str(
+            gettext("No existing plays are currently logged in the selected range."),
+        ),
+        "noTargetDateOne": str(
+            ngettext(
+                "%(count)s selected item has no target date.",
+                "%(count)s selected items have no target date.",
+                1,
+            ),
+        ),
+        "noTargetDateMany": str(
+            ngettext(
+                "%(count)s selected item has no target date.",
+                "%(count)s selected items have no target date.",
+                2,
+            ),
+        ),
+        "addOne": str(
+            ngettext(
+                "This will add plays for %(count)s ordered item using %(distribution)s.",
+                "This will add plays for %(count)s ordered items using %(distribution)s.",
+                1,
+            ),
+        ),
+        "addMany": str(
+            ngettext(
+                "This will add plays for %(count)s ordered item using %(distribution)s.",
+                "This will add plays for %(count)s ordered items using %(distribution)s.",
+                2,
+            ),
+        ),
+        "replaceOne": str(
+            ngettext(
+                "This will replace plays for %(count)s ordered item using %(distribution)s.",
+                "This will replace plays for %(count)s ordered items using %(distribution)s.",
+                1,
+            ),
+        ),
+        "replaceMany": str(
+            ngettext(
+                "This will replace plays for %(count)s ordered item using %(distribution)s.",
+                "This will replace plays for %(count)s ordered items using %(distribution)s.",
+                2,
+            ),
+        ),
+        "existingReplaceOne": str(
+            ngettext(
+                "This will delete %(count)s existing play in the selected range before adding the new ordered pass.",
+                "This will delete %(count)s existing plays in the selected range before adding the new ordered pass.",
+                1,
+            ),
+        ),
+        "existingReplaceMany": str(
+            ngettext(
+                "This will delete %(count)s existing play in the selected range before adding the new ordered pass.",
+                "This will delete %(count)s existing plays in the selected range before adding the new ordered pass.",
+                2,
+            ),
+        ),
+        "existingAppendOne": str(
+            ngettext(
+                "This range already has %(count)s logged play. New plays will be appended in order.",
+                "This range already has %(count)s logged plays. New plays will be appended in order.",
+                1,
+            ),
+        ),
+        "existingAppendMany": str(
+            ngettext(
+                "This range already has %(count)s logged play. New plays will be appended in order.",
+                "This range already has %(count)s logged plays. New plays will be appended in order.",
+                2,
+            ),
+        ),
+    }
+
+
+def _bulk_episode_presentation(
+    request,
+    form,
+    domain,
+    *,
+    track_form_id,
+    formaction,
+    return_url,
+    submit_label,
+):
+    """Serialize the bulk episode-play range form into shared presentation."""
+    if form is None or not domain:
+        return None
+    track_time = bool(settings.TRACK_TIME)
+    hidden_names = (
+        "media_id",
+        "source",
+        "media_type",
+        "identity_media_type",
+        "library_media_type",
+        "instance_id",
+        "return_url",
+        "context_kind",
+        "context_id",
+    )
+    hidden = {
+        name: str(form[name].value() or "")
+        for name in hidden_names
+        if name in form.fields
+    }
+    values = {
+        "first_season_number": str(form["first_season_number"].value() or ""),
+        "first_episode_number": str(form["first_episode_number"].value() or ""),
+        "last_season_number": str(form["last_season_number"].value() or ""),
+        "last_episode_number": str(form["last_episode_number"].value() or ""),
+        "write_mode": str(form["write_mode"].value() or ""),
+        "distribution_mode": str(form["distribution_mode"].value() or ""),
+        "start_date": _track_form_field_value(form["start_date"], track_time),
+        "end_date": _track_form_field_value(form["end_date"], track_time),
+        "episode_count": "",
+    }
+    action = formaction
+    if return_url:
+        action = f"{action}?next={return_url}"
+    errors = {
+        name: " ".join(str(message) for message in messages)
+        for name, messages in form.errors.items()
+        if name != "__all__"
+    }
+    non_field_errors = [
+        str(message) for message in form.non_field_errors()
+    ]
+    if non_field_errors:
+        errors["non_field"] = " ".join(non_field_errors)
+    return {
+        "formId": f"{track_form_id}-episode-plays-form",
+        "action": action,
+        "csrfToken": get_token(request),
+        "trackTime": track_time,
+        "hidden": hidden,
+        "values": values,
+        "domain": _episode_domain_template_payload(domain) or {},
+        "seasonOptions": [
+            {
+                "value": str(season["season_number"]),
+                "label": str(season["season_title"]),
+            }
+            for season in domain.get("seasons", [])
+        ],
+        "writeModeOptions": [
+            {"value": str(value), "label": str(label)}
+            for value, label in form.fields["write_mode"].choices
+        ],
+        "distributionModeOptions": [
+            {"value": str(value), "label": str(label)}
+            for value, label in form.fields["distribution_mode"].choices
+        ],
+        "submitLabel": str(submit_label),
+        "notice": str(domain.get("mode_notice") or ""),
+        "errors": errors,
+        "labels": _bulk_episode_form_labels(),
+    }
+
+
 def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=None):
     """Split a track form into hidden, general, and metadata field groups."""
     metadata_field_names = metadata_field_names or set()
     ordered_general_field_names = [
         field_name
-        for field_name in ("score", "status", "progress", "start_date", "end_date")
+        for field_name in (
+            "score",
+            "status",
+            "progress",
+            "reading_time",
+            "start_date",
+            "end_date",
+        )
         if field_name in form.fields
     ]
     remaining_general_field_names = [
@@ -176,6 +374,381 @@ def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=
             for field_name in form.fields
             if field_name in hidden_field_names
         ],
+    }
+
+
+def _track_form_date_value(value, track_time):
+    """Return a date or datetime value the shared picker can parse."""
+    if isinstance(value, datetime):
+        pattern = "%Y-%m-%dT%H:%M" if track_time else "%Y-%m-%d"
+        return value.strftime(pattern)
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not track_time:
+        return text.split("T")[0][:10]
+    if "T" in text:
+        return text[:16]
+    if " " in text:
+        return text.replace(" ", "T")[:16]
+    return text[:10]
+
+
+def _track_form_field_value(field, track_time):
+    value = field.value()
+    if field.name in {"start_date", "end_date"}:
+        return _track_form_date_value(value, track_time)
+    return "" if value is None else str(value)
+
+
+def _track_form_field_type(field):
+    widget = field.field.widget
+    if isinstance(widget, forms.Select):
+        return "select"
+    if field.name in {"start_date", "end_date"} or isinstance(
+        widget,
+        (forms.DateInput, forms.DateTimeInput),
+    ):
+        return "date"
+    if isinstance(widget, forms.Textarea):
+        return "textarea"
+    if getattr(widget, "input_type", "") == "number":
+        return "number"
+    return "text"
+
+
+def _track_form_field_options(field):
+    options = []
+    for value, label in getattr(field.field, "choices", None) or []:
+        if isinstance(label, (list, tuple)):
+            for option_value, option_label in label:
+                options.append(
+                    {"value": str(option_value), "label": str(option_label)},
+                )
+        else:
+            options.append({"value": str(value), "label": str(label)})
+    return options
+
+
+def _track_form_field_payload(field, track_time):
+    attrs = field.field.widget.attrs
+    field_type = _track_form_field_type(field)
+    return {
+        "name": field.name,
+        "label": str(field.label),
+        "type": field_type,
+        "value": _track_form_field_value(field, track_time),
+        "required": bool(field.field.required),
+        "options": _track_form_field_options(field) if field_type == "select" else [],
+        "help": str(field.help_text or ""),
+        "min": None if attrs.get("min") is None else str(attrs.get("min")),
+        "max": None if attrs.get("max") is None else str(attrs.get("max")),
+        "step": None if attrs.get("step") is None else str(attrs.get("step")),
+        "placeholder": str(attrs.get("placeholder") or ""),
+    }
+
+
+def _track_form_labels():
+    return {
+        "title": str(gettext("Tracking")),
+        "close": str(gettext("Close")),
+        "loading": str(gettext("Loading")),
+        "loadFailed": str(gettext("Couldn't load this form.")),
+        "retry": str(gettext("Try again")),
+        "save": str(gettext("Save")),
+        "saving": str(gettext("Saving")),
+        "delete": str(gettext("Delete")),
+        "required": str(gettext("%s is required.")),
+        "invalidNumber": str(gettext("Enter a number.")),
+        "minimum": str(gettext("Must be at least %s.")),
+        "maximum": str(gettext("Must be at most %s.")),
+        "dateOrder": str(gettext("End date must be on or after the start date.")),
+        "general": str(gettext("General")),
+        "notesPlaceholder": str(gettext("Add any notes or comments...")),
+        "since": str(gettext("Since")),
+        "sinceHint": str(gettext("Leave empty to start the rewatch today")),
+        "dateTime": {},
+    }
+
+
+def _track_tab_labels(context):
+    """Return labels only for the tabs this modal actually offers."""
+    labels = {}
+    if context.get("tags_tab_available"):
+        labels.update({
+            "tags": str(gettext("Tags")),
+            "noTags": str(gettext("No tags yet. Create one below.")),
+            "newTag": str(gettext("New tag...")),
+            "addTag": str(gettext("Add")),
+            "add": str(gettext("Add")),
+            "remove": str(gettext("Remove")),
+            "tagFailed": str(gettext("Couldn't update this tag.")),
+        })
+    if context.get("metadata_tab_available"):
+        labels.update({
+            "metadata": str(gettext("Metadata")),
+            "artwork": str(gettext("Artwork URL")),
+            "saveArtwork": str(gettext("Save artwork")),
+            "artworkFailed": str(gettext("Couldn't save the artwork.")),
+            "artworkUnavailable": str(
+                gettext("Save this item before changing its artwork."),
+            ),
+        })
+    if context.get("collection_tab_available"):
+        labels.update({
+            "collection": str(gettext("Collection")),
+            "noCollection": str(gettext("No owned copies recorded.")),
+        })
+    if context.get("episode_plays_tab_available"):
+        labels.update({
+            "plays": str(gettext("Plays")),
+            "noPlays": str(gettext("No plays recorded yet.")),
+        })
+    if context.get("status_history_tab_available"):
+        labels.update({
+            "statusHistory": str(gettext("Status history")),
+            "statusHistoryHelp": str(
+                gettext("Every status change, newest first, with what made it."),
+            ),
+            "noStatusChanges": str(gettext("No status changes recorded yet.")),
+            "noStatus": str(gettext("No Status")),
+            "sourceNotRecorded": str(gettext("source not recorded")),
+        })
+    if context.get("discover_tab_available"):
+        labels.update({
+            "discover": str(gettext("Discover")),
+            "discoverTitle": str(gettext("Discover Visibility")),
+            "discoverHelp": str(
+                gettext("Control whether this item appears in your Discover recommendations."),
+            ),
+            "discoverStatus": str(gettext("Status")),
+            "discoverVisible": str(gettext("Visible")),
+            "discoverHiddenOption": str(gettext("Hidden")),
+            "currentlyVisible": str(gettext("Currently visible in Discover.")),
+            "currentlyHidden": str(gettext("Currently hidden from Discover.")),
+            "save": str(gettext("Save")),
+            "hidden": str(gettext("Hidden from Discover")),
+            "shown": str(gettext("Shown in Discover")),
+            "hide": str(gettext("Hide from Discover")),
+            "unhide": str(gettext("Show in Discover")),
+            "discoverFailed": str(gettext("Couldn't update Discover.")),
+        })
+    return labels
+
+
+def _track_tabs_presentation(context):
+    """Serialize the available Track tabs for the shared dialog."""
+    tabs = [{
+        "id": "general",
+        "label": str(gettext("General")),
+        "kind": "general",
+        "icon": file_icon("edit"),
+    }]
+    tags_data = context.get("tag_assignment_data")
+    if context.get("tags_tab_available") and tags_data:
+        tabs.append({
+            "id": "tags",
+            "icon": file_icon("tag"),
+            "label": str(gettext("Tags")),
+            "kind": "tags",
+            "tags": tags_data.get("tags", []),
+            "itemId": tags_data.get("item", {}).get("id"),
+            "urls": tags_data.get("urls", {}),
+            "csrfToken": tags_data.get("csrfToken", ""),
+            "previewGenresJson": tags_data.get("previewGenresJson", "[]"),
+            "previewImpliedGenresJson": tags_data.get(
+                "previewImpliedGenresJson",
+                "[]",
+            ),
+        })
+    if context.get("metadata_tab_available"):
+        tabs.append({
+            "id": "metadata",
+            "icon": file_icon("database"),
+            "label": str(gettext("Metadata")),
+            "kind": "server",
+        })
+    if context.get("collection_tab_available"):
+        tabs.append({
+            "id": "collection",
+            "icon": file_icon("circle-check"),
+            "label": str(gettext("Collection")),
+            "kind": "server",
+        })
+    if context.get("episode_plays_tab_available"):
+        label = context.get("episode_plays_tab_label") or gettext("Plays")
+        tabs.append({
+            "id": "episode-plays",
+            "icon": file_icon("history"),
+            "label": str(label),
+            "kind": "server",
+        })
+    if context.get("status_history_tab_available"):
+        tabs.append({
+            "id": "status-history",
+            "icon": file_icon("clock-reversing"),
+            "label": str(gettext("Status history")),
+            "kind": "status-history",
+            "changes": [
+                {
+                    "id": index,
+                    "old": change.get("old") or "",
+                    "next": change.get("new") or "",
+                    "date": str(
+                        user_datetime_format(change.get("date"), context.get("user")),
+                    ),
+                    "reason": change.get("reason") or "",
+                }
+                for index, change in enumerate(context.get("status_changes") or [])
+            ],
+        })
+    discover_item = context.get("metadata_item")
+    if context.get("discover_tab_available") and discover_item is not None:
+        tabs.append({
+            "id": "discover",
+            "icon": file_icon("eye"),
+            "label": str(gettext("Discover")),
+            "kind": "discover",
+            "hidden": bool(context.get("is_hidden_from_discover")),
+            "canToggle": True,
+            "itemId": discover_item.id,
+            "url": reverse("discover_toggle_hidden"),
+        })
+    return tabs
+
+
+def _track_form_presentation(
+    request,
+    form,
+    *,
+    track_form_id,
+    title,
+    title_subtitle,
+    media_type,
+    media,
+    action,
+    delete_action,
+    hidden_fields,
+    general_fields,
+    rewatch_action,
+    rewatch_url,
+    save_as_new,
+    date_suggestion=None,
+):
+    """Serialize the General tab into the shared TrackForm model."""
+    track_time = bool(settings.TRACK_TIME)
+    hidden = {
+        field.name: _track_form_field_value(field, track_time)
+        for field in hidden_fields
+    }
+    hidden["track_form_id"] = track_form_id
+    if request.GET.get("edition_id"):
+        hidden["edition_id"] = request.GET["edition_id"]
+    repeat_identity = {}
+    if rewatch_action:
+        repeat_identity["rewatchLabel"] = str(gettext(rewatch_action["label"]))
+        repeat_identity["rewatchAction"] = rewatch_action["action"]
+        repeat_identity["rewatchUrl"] = rewatch_url
+    if save_as_new:
+        repeat_identity["canSaveAsNew"] = True
+        repeat_identity["saveAsNewLabel"] = str(gettext("Save as new entry"))
+    fields = [
+        _track_form_field_payload(field, track_time)
+        for field in general_fields
+    ]
+    suggestion = date_suggestion or {}
+    for field in fields:
+        if field["name"] not in {"start_date", "end_date"}:
+            continue
+        is_start = field["name"] == "start_date"
+        quick_actions = []
+        if is_start:
+            quick_actions.append(
+                {
+                    "id": "start-now",
+                    "label": str(
+                        pgettext("date picker shortcut", "Start Now"),
+                    ),
+                },
+            )
+        else:
+            quick_actions.append(
+                {
+                    "id": "just-finished",
+                    "label": str(
+                        pgettext("date picker shortcut", "Just Finished"),
+                    ),
+                },
+            )
+        if is_start:
+            quick_actions.append(
+                {
+                    "id": "release-date",
+                    "label": str(
+                        pgettext("date picker shortcut", "Release Date"),
+                    ),
+                    "requiresSuggestion": True,
+                },
+            )
+        field["quickActions"] = quick_actions
+        field["suggestionDate"] = suggestion.get("date", "")
+        suggestion_label = suggestion.get("label") or ""
+        field["suggestionLabel"] = (
+            (
+                str(pgettext("date picker shortcut", suggestion_label))
+                if suggestion_label == "Release Date"
+                else str(gettext(suggestion_label))
+            )
+            if suggestion.get("date") and suggestion_label
+            else ""
+        )
+        field["suggestionExtras"] = suggestion.get("extras", [])
+        field["runtimeMinutes"] = str(suggestion.get("runtime_minutes") or "")
+        copy_from = "end_date" if is_start else "start_date"
+        if copy_from in form.fields:
+            copy_label = str(gettext("End") if is_start else gettext("Start"))
+            field["copyFrom"] = copy_from
+            field["copyFromLabel"] = copy_label
+            field["copyEmptyMessage"] = str(
+                gettext("%(label)s is empty") % {"label": copy_label},
+            )
+    notes_field = form["notes"] if "notes" in form.fields else None
+    return {
+        "model": {
+            "mediaType": media_type,
+            "title": str(title),
+            "titleSubtitle": title_subtitle,
+            "formId": track_form_id,
+            "instanceId": str(media.id) if media is not None else None,
+            "isNew": media is None,
+            "action": action,
+            "deleteAction": delete_action if media is not None else "",
+            "csrfToken": get_token(request),
+            "fields": fields,
+            "hidden": hidden,
+            "notes": (
+                {
+                    "value": _track_form_field_value(notes_field, track_time),
+                    "label": str(notes_field.label),
+                    "help": str(notes_field.help_text or ""),
+                }
+                if notes_field is not None
+                else None
+            ),
+            "submitLabel": str(
+                gettext("Update") if media is not None else gettext("Add"),
+            ),
+            "deleteLabel": str(gettext("Delete")),
+            "trackTime": track_time,
+            "labels": _track_form_labels(),
+            "repeatIdentity": repeat_identity,
+        },
+        "errors": {
+            name: " ".join(str(message) for message in messages)
+            for name, messages in form.errors.items()
+        },
     }
 
 
@@ -294,6 +867,33 @@ def _track_modal_other_release_dates(media_type, item, user):
     ]
 
 
+def _tags_tab_context(item, user, request):
+    """Return the shared tag editor context for an item-backed track modal."""
+    if item is None:
+        return {"tags_tab_available": False}
+
+    from app.tag_views import _tag_assignment_data, _user_tags_for_item
+
+    user_tags = _user_tags_for_item(user, item)
+    preview_genres = list(item.genres or [])
+    preview_implied_genres = list(getattr(item, "implied_genres", None) or [])
+    return {
+        "tags_tab_available": True,
+        "tags_item": item,
+        "user_tags": user_tags,
+        "preview_genres_json": json.dumps(preview_genres),
+        "preview_implied_genres_json": json.dumps(preview_implied_genres),
+        "tag_assignment_data": _tag_assignment_data(
+            request,
+            item,
+            user_tags,
+            preview_genres,
+            preview_implied_genres,
+        ),
+        "tag_surface": "track",
+    }
+
+
 def _rewatch_action(media, media_type):
     """Return the rewatch action offered for a tracked show or season, if any.
 
@@ -364,12 +964,18 @@ def _render_standard_track_modal(
                 season_number=season_number,
                 episode_number=episode_number,
             )
-            media = user_medias.first()
+            if request.GET.get("focus") == "notes":
+                # The Notes shortcut edits the entry the detail page treats as
+                # current, resolved now so it stays right after a new entry.
+                media = max(user_medias, key=helpers.entry_activity_key, default=None)
+            else:
+                media = user_medias.first()
         if media:
             instance_id = media.id
 
-    if media_type == MediaTypes.EPISODE.value and media:
+    if media_type in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value} and media:
         season_number = media.item.season_number
+    if media_type == MediaTypes.EPISODE.value and media:
         episode_number = media.item.episode_number
 
     initial_data = {
@@ -444,14 +1050,46 @@ def _render_standard_track_modal(
                 percentage = round((media.progress / max_progress) * 100, 1)
                 initial_data["progress"] = percentage
     else:
-        with services.interactive_request_scope():
-            metadata = services.get_media_metadata(
-                media_type,
+        language = metadata_resolution.metadata_language_default(request.user)
+        try:
+            with services.interactive_request_scope():
+                metadata = services.get_media_metadata(
+                    media_type,
+                    media_id,
+                    source,
+                    [season_number],
+                    episode_number=episode_number,
+                    language=language,
+                )
+        except services.ProviderAPIError:
+            if media_type != MediaTypes.EPISODE.value:
+                raise
+            # The provider can list an episode in its season yet 404 the
+            # episode itself; the season payload still names it.
+            logger.warning(
+                "Falling back to season metadata for media_id=%s S%sE%s",
                 media_id,
-                source,
-                [season_number],
-                episode_number=episode_number,
-                language=metadata_resolution.metadata_language_default(request.user),
+                season_number,
+                episode_number,
+            )
+            with services.interactive_request_scope():
+                metadata = dict(
+                    services.get_media_metadata(
+                        MediaTypes.SEASON.value,
+                        media_id,
+                        source,
+                        [season_number],
+                        language=language,
+                    ),
+                )
+            metadata["episode_title"] = next(
+                (
+                    episode.get("name") or episode.get("title")
+                    for episode in metadata.get("episodes") or []
+                    if isinstance(episode, dict)
+                    and str(episode.get("episode_number")) == str(episode_number)
+                ),
+                None,
             )
         base_metadata = metadata
         title = metadata["title"]
@@ -757,8 +1395,15 @@ def _render_standard_track_modal(
             prefix="metadata",
         )
 
+    can_change_cover = bool(
+        metadata_item is not None
+        and request.user.is_authenticated
+        and cover_views.user_has_item(request.user, metadata_item)
+    )
+
     metadata_tab_available = bool(
-        metadata_fields
+        can_change_cover
+        or metadata_fields
         or can_update_metadata_provider
         or can_update_metadata_language
         or can_migrate_grouped_anime
@@ -772,14 +1417,16 @@ def _render_standard_track_modal(
         or (media_type == MediaTypes.TV.value and media is not None)
     )
 
+    is_season_modal = media_type == MediaTypes.SEASON.value
     episode_plays_domain = bulk_episode_tracking.build_episode_play_domain(
         request.user,
-        media_type,
+        MediaTypes.TV.value if is_season_modal else media_type,
         source,
         media_id,
-        metadata_item=metadata_item,
-        base_metadata=base_metadata,
+        metadata_item=None if is_season_modal else metadata_item,
+        base_metadata=None if is_season_modal else base_metadata,
         metadata_resolution_result=metadata_resolution_result,
+        season_number=int(season_number) if is_season_modal else None,
     )
     episode_plays_tab_available = bool(episode_plays_domain)
     if return_url is None:
@@ -914,6 +1561,7 @@ def _render_standard_track_modal(
         ),
         "metadata_fields": metadata_fields,
         "image_field": image_field,
+        "can_change_cover": can_change_cover,
         "image_save_item_id": (
             metadata_item.id
             if media and metadata_item and not can_edit_custom_metadata
@@ -931,6 +1579,7 @@ def _render_standard_track_modal(
         "track_action_update": track_action_update,
         "initial_active_tab": initial_active_tab,
         "notes_count": notes_count,
+        "notes_focus": request.GET.get("focus") == "notes",
         "episode_plays_tab_available": episode_plays_tab_available,
         "episode_plays_form": episode_plays_form,
         "episode_plays_formaction": reverse("episode_bulk_save"),
@@ -944,6 +1593,7 @@ def _render_standard_track_modal(
         "collection_tab_available": False,
         "collection_context": None,
     }
+    context.update(_tags_tab_context(metadata_item, request.user, request))
     context["status_history_tab_available"] = bool(
         media is not None
         and media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value),
@@ -990,6 +1640,39 @@ def _render_standard_track_modal(
             metadata=base_metadata,
         )
     context.update(_build_track_modal_discover_tab_context(request.user, metadata_item))
+    context["episode_plays_presentation_id"] = (
+        f"{track_form_id}-episode-plays-props"
+    )
+    context["episode_plays_presentation"] = _bulk_episode_presentation(
+        request,
+        episode_plays_form,
+        episode_plays_domain,
+        track_form_id=track_form_id,
+        formaction=reverse("episode_bulk_save"),
+        return_url=return_url,
+        submit_label=context["episode_plays_submit_label"],
+    )
+    context["track_form_props_id"] = f"{track_form_id}-shared-form"
+    presentation = _track_form_presentation(
+        request,
+        form,
+        track_form_id=track_form_id,
+        title=title,
+        title_subtitle=title_subtitle,
+        media_type=media_type,
+        media=media,
+        action=context["general_submit_formaction"],
+        delete_action=context["general_delete_formaction"],
+        hidden_fields=hidden_fields,
+        general_fields=general_fields,
+        rewatch_action=rewatch_action,
+        rewatch_url=context["general_rewatch_formaction"],
+        save_as_new=bool(media_type == MediaTypes.EPISODE.value and media),
+        date_suggestion=date_suggestion,
+    )
+    presentation["tabs"] = _track_tabs_presentation(context)
+    presentation["model"]["labels"].update(_track_tab_labels(context))
+    context["track_form_presentation"] = presentation
     response = render(
         request,
         "app/components/fill_track.html",
@@ -1067,49 +1750,72 @@ def _render_podcast_show_track_modal(
         episode_plays_form = None
 
     track_form_id = track_form_id or f"track-form-{uuid4().hex}"
+    date_suggestion = _track_modal_date_suggestion("Release Date", "")
+    context = {
+        "user": request.user,
+        "title": show.title,
+        "media_type": MediaTypes.PODCAST.value,
+        "form": form,
+        "media": tracker,
+        "return_url": return_url,
+        "metadata_tab_available": False,
+        "metadata_fields": [],
+        "general_hidden_fields": field_groups["hidden_fields"],
+        "general_fields": field_groups["general_fields"],
+        "general_submit_formaction": (
+            f"{reverse('podcast_show_save')}?next={return_url}"
+            + (f"&home_row_id={home_row_id}" if home_row_id else "")
+        ),
+        "general_delete_formaction": (
+            f"{reverse('podcast_show_delete')}?next={return_url}"
+        ),
+        "general_existing_instance": tracker,
+        "image_field": None,
+        "image_save_item_id": None,
+        "date_suggestion": date_suggestion,
+        "track_form_id": track_form_id,
+        "track_action_update": track_action_update,
+        "initial_active_tab": initial_active_tab,
+        "episode_plays_tab_available": episode_plays_tab_available,
+        "episode_plays_form": episode_plays_form,
+        "episode_plays_formaction": reverse("episode_bulk_save"),
+        "episode_plays_tab_label": "Episode Plays",
+        "episode_plays_submit_label": "Save plays",
+        "episode_plays_domain": _episode_domain_template_payload(
+            episode_plays_domain,
+        ),
+        "episode_plays_mode_notice": (
+            episode_plays_domain.get("mode_notice", "")
+            if episode_plays_domain
+            else ""
+        ),
+        "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+    }
+    context["track_form_props_id"] = f"{track_form_id}-shared-form"
+    presentation = _track_form_presentation(
+        request,
+        form,
+        track_form_id=track_form_id,
+        title=show.title,
+        title_subtitle="",
+        media_type=MediaTypes.PODCAST.value,
+        media=tracker,
+        action=context["general_submit_formaction"],
+        delete_action=context["general_delete_formaction"],
+        hidden_fields=field_groups["hidden_fields"],
+        general_fields=field_groups["general_fields"],
+        rewatch_action=None,
+        rewatch_url="",
+        save_as_new=False,
+        date_suggestion=date_suggestion,
+    )
+    presentation["tabs"] = _track_tabs_presentation(context)
+    presentation["model"]["labels"].update(_track_tab_labels(context))
+    context["track_form_presentation"] = presentation
     response = render(
         request,
         "app/components/fill_track.html",
-        {
-            "user": request.user,
-            "title": show.title,
-            "media_type": MediaTypes.PODCAST.value,
-            "form": form,
-            "media": tracker,
-            "return_url": return_url,
-            "metadata_tab_available": False,
-            "metadata_fields": [],
-            "general_hidden_fields": field_groups["hidden_fields"],
-            "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": (
-                f"{reverse('podcast_show_save')}?next={return_url}"
-                + (f"&home_row_id={home_row_id}" if home_row_id else "")
-            ),
-            "general_delete_formaction": (
-                f"{reverse('podcast_show_delete')}?next={return_url}"
-            ),
-            "general_existing_instance": tracker,
-            "image_field": None,
-            "image_save_item_id": None,
-            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
-            "track_form_id": track_form_id,
-            "track_action_update": track_action_update,
-            "initial_active_tab": initial_active_tab,
-            "episode_plays_tab_available": episode_plays_tab_available,
-            "episode_plays_form": episode_plays_form,
-            "episode_plays_formaction": reverse("episode_bulk_save"),
-            "episode_plays_tab_label": "Episode Plays",
-            "episode_plays_submit_label": "Save plays",
-            "episode_plays_domain": _episode_domain_template_payload(
-                episode_plays_domain,
-            ),
-            "episode_plays_mode_notice": (
-                episode_plays_domain.get("mode_notice", "")
-                if episode_plays_domain
-                else ""
-            ),
-            "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
-        },
+        context,
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"
@@ -1142,6 +1848,16 @@ def track_modal(
         except (TypeError, ValueError):
             episode_number = None
 
+    # A list card for an album carries the album page's id, which is not a
+    # recording; the album has its own tracking form.
+    if media_type == MediaTypes.MUSIC.value and source == Sources.MUSICBRAINZ.value:
+        from app.music_album_views import album_track_modal
+        from app.services.music import album_for_media_id
+
+        album = album_for_media_id(media_id, user=request.user)
+        if album:
+            return album_track_modal(request, album.id)
+
     # Handle podcast shows (identified by podcast_uuid)
     if (
         not standard_modal
@@ -1151,12 +1867,15 @@ def track_modal(
             Sources.POCKETCASTS.value,
             Sources.GPODDER.value,
             Sources.AUDIOBOOKSHELF.value,
+            Sources.MANUAL.value,
         }
     ):
-        from app.models import PodcastEpisode, PodcastShow
+        from app.models import PodcastEpisode
+        from app.services.podcast_import import resolve_show_for_media_id
 
-        # Check if this is a show (podcast_uuid) or an episode (episode_uuid)
-        show = PodcastShow.objects.filter(podcast_uuid=media_id).first()
+        # Check if this is a show (podcast_uuid or an iTunes search id) or an
+        # episode (episode_uuid).
+        show = resolve_show_for_media_id(media_id, source=source)
         if show:
             return _render_podcast_show_track_modal(request, show)
 
@@ -1239,11 +1958,7 @@ def track_modal(
                 all_history = []
                 for podcast in all_podcasts:
                     # Only include history records with end_date (completed plays)
-                    history = (
-                        podcast.history.filter(end_date__isnull=False)
-                        if hasattr(podcast.history, "filter")
-                        else [h for h in podcast.history.all() if h.end_date]
-                    )
+                    history = podcast.plays.filter(end_date__isnull=False)
                     # Convert queryset to list if needed to ensure proper evaluation
                     if hasattr(history, "__iter__") and not isinstance(
                         history, (list, tuple)

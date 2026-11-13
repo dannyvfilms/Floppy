@@ -143,6 +143,47 @@ def _aired_show_recheck_q():
     )
 
 
+def _log_skipped_finished_shows(tv_items, included_ids, limit=40):
+    """Name finished shows left out of a reload because they were checked recently.
+
+    A show whose new season never appears is either not selected or selected
+    and fetched with nothing new. This line is what tells the two apart in a
+    bug report (#1531): a show listed here was skipped, not fetched.
+    """
+    recheck_days = getattr(settings, "CALENDAR_AIRED_SHOW_RECHECK_DAYS", 0)
+    if recheck_days <= 0:
+        return
+    season_events = Event.objects.filter(
+        item__media_id=OuterRef("media_id"),
+        item__source=OuterRef("source"),
+        item__media_type=MediaTypes.SEASON.value,
+    )
+    skipped = list(
+        tv_items.exclude(id__in=included_ids)
+        .annotate(
+            has_season_events=Exists(season_events),
+            has_future_events=Exists(
+                season_events.filter(datetime__gte=timezone.now()),
+            ),
+        )
+        .filter(has_season_events=True, has_future_events=False)
+        .order_by("title")
+        .values_list("title", "media_id", "calendar_checked_at")[: limit + 1],
+    )
+    if not skipped:
+        return
+    logger.info(
+        "TV selection: skipped finished shows checked within %d days%s: %s",
+        recheck_days,
+        f" (first {limit})" if len(skipped) > limit else "",
+        "; ".join(
+            f"{title} ({media_id}, checked "
+            f"{checked_at.date().isoformat() if checked_at else 'never'})"
+            for title, media_id, checked_at in skipped[:limit]
+        ),
+    )
+
+
 def get_tv_items_to_include(tv_items):
     """Return tracked TMDB TV item ids that should be refreshed."""
     tracked_count = tv_items.count()
@@ -162,10 +203,21 @@ def get_tv_items_to_include(tv_items):
             has_future_events=Exists(
                 season_events.filter(datetime__gte=timezone.now()),
             ),
+            has_undated_events=Exists(
+                season_events.filter(
+                    item__season_number__gt=0,
+                    datetime__year__lt=1900,
+                ),
+            ),
         )
         .filter(
             Q(media_id__in=changed_tv_ids)
             | Q(has_season_events=False)
+            # TMDB can list a season before it has air dates. Those episodes
+            # are stored with the year-1 unknown-date sentinel, and TMDB's
+            # change feed is capped, so nothing else reliably brings the show
+            # back once the dates are published (#1531).
+            | Q(has_undated_events=True)
             | _aired_show_recheck_q(),
         )
         .values("id", "media_id", "title", "has_season_events"),
@@ -177,6 +229,7 @@ def get_tv_items_to_include(tv_items):
         len(changed_tv_ids),
         len(included_tv_rows),
     )
+    _log_skipped_finished_shows(tv_items, [row["id"] for row in included_tv_rows])
 
     for item in included_tv_rows:
         if item["media_id"] in changed_tv_ids:
@@ -201,6 +254,55 @@ def get_tv_items_to_include(tv_items):
     return [item["id"] for item in included_tv_rows]
 
 
+def _tvdb_ids_with_upcoming_tmdb_events(tv_items):
+    """Return TVDB media ids whose verified TMDB counterpart has future episodes.
+
+    A TVDB-preferred user tracks the same show under both identities. TVDB has
+    no change feed, so a show whose episodes have all aired waits for the
+    weekly recheck even when the TMDB identity already knows that a new season
+    started (#1531). The verified ``tvdb_id`` mapping is cached on the TMDB
+    Item, so this costs no provider call.
+    """
+    if getattr(settings, "CALENDAR_AIRED_SHOW_RECHECK_DAYS", 0) <= 0:
+        return set()
+
+    tvdb_media_ids = set(tv_items.values_list("media_id", flat=True))
+    if not tvdb_media_ids:
+        return set()
+
+    tmdb_ids_by_tvdb_id = {}
+    for external_ids, media_id in Item.objects.filter(
+        source=Sources.TMDB.value,
+        media_type=MediaTypes.TV.value,
+        provider_external_ids__has_key="tvdb_id",
+    ).values_list("provider_external_ids", "media_id"):
+        tvdb_id = (external_ids or {}).get("tvdb_id")
+        if tvdb_id:
+            tmdb_ids_by_tvdb_id.setdefault(str(tvdb_id), str(media_id))
+
+    tmdb_media_ids = {
+        tmdb_ids_by_tvdb_id[tvdb_id]
+        for tvdb_id in tvdb_media_ids
+        if tvdb_id in tmdb_ids_by_tvdb_id
+    }
+    if not tmdb_media_ids:
+        return set()
+
+    upcoming_tmdb_ids = set(
+        Event.objects.filter(
+            item__source=Sources.TMDB.value,
+            item__media_type=MediaTypes.SEASON.value,
+            item__media_id__in=tmdb_media_ids,
+            datetime__gte=timezone.now(),
+        ).values_list("item__media_id", flat=True),
+    )
+    return {
+        tvdb_id
+        for tvdb_id, tmdb_id in tmdb_ids_by_tvdb_id.items()
+        if tvdb_id in tvdb_media_ids and tmdb_id in upcoming_tmdb_ids
+    }
+
+
 def get_tvdb_tv_items_to_include(tv_items):
     """Return tracked TVDB TV item ids that should be refreshed.
 
@@ -212,6 +314,7 @@ def get_tvdb_tv_items_to_include(tv_items):
         return []
 
     now = timezone.now()
+    counterpart_upcoming_ids = _tvdb_ids_with_upcoming_tmdb_events(tv_items)
     season_events = Event.objects.filter(
         item__media_id=OuterRef("media_id"),
         item__source=OuterRef("source"),
@@ -238,6 +341,7 @@ def get_tvdb_tv_items_to_include(tv_items):
         .filter(
             Q(has_season_events=False)
             | Q(has_refreshable_events=True)
+            | Q(media_id__in=counterpart_upcoming_ids)
             | _aired_show_recheck_q(),
         )
         .values(
@@ -246,16 +350,23 @@ def get_tvdb_tv_items_to_include(tv_items):
     )
 
     for item in included_tv_rows:
-        if item["has_season_events"] and not item["has_refreshable_events"]:
+        if item["has_refreshable_events"]:
             logger.info(
-                "TVDB TV selection: including %s (%s) to look for a new season",
+                "TVDB TV selection: including %s (%s) because it has "
+                "future or unknown-date episodes",
+                item["title"],
+                item["media_id"],
+            )
+        elif item["media_id"] in counterpart_upcoming_ids:
+            logger.info(
+                "TVDB TV selection: including %s (%s) because its TMDB "
+                "counterpart has upcoming episodes",
                 item["title"],
                 item["media_id"],
             )
         elif item["has_season_events"]:
             logger.info(
-                "TVDB TV selection: including %s (%s) because it has "
-                "future or unknown-date episodes",
+                "TVDB TV selection: including %s (%s) to look for a new season",
                 item["title"],
                 item["media_id"],
             )

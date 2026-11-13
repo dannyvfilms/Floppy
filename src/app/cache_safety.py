@@ -33,6 +33,7 @@ from collections import OrderedDict
 from contextlib import suppress
 
 from django.core.cache import cache
+from django_redis.compressors.zlib import ZlibCompressor
 from redis import ConnectionPool, Redis
 from redis.connection import Connection, SSLConnection
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -92,7 +93,8 @@ class _CacheDNSResolver:
                 self._pending = None
                 if finished["error"] is None:
                     self._cache[finished["key"]] = (
-                        finished["completed_at"] + CACHE_DNS_TTL, finished["addresses"],
+                        finished["completed_at"] + CACHE_DNS_TTL,
+                        finished["addresses"],
                     )
                     if len(self._cache) > CACHE_DNS_MAX_ENTRIES:
                         self._cache.popitem(last=False)
@@ -107,14 +109,22 @@ class _CacheDNSResolver:
             if self._pending:
                 message = "Cache DNS lookup already pending"
                 raise CacheCoolingDownError(message)
-            job = {"key": key, "event": threading.Event(),
-                   "addresses": None, "error": None, "completed_at": None}
+            job = {
+                "key": key,
+                "event": threading.Event(),
+                "addresses": None,
+                "error": None,
+                "completed_at": None,
+            }
             self._pending = job
 
             def lookup():
                 try:
                     job["addresses"] = socket.getaddrinfo(
-                        host, port, family, socket.SOCK_STREAM,
+                        host,
+                        port,
+                        family,
+                        socket.SOCK_STREAM,
                     )
                 except (OSError, UnicodeError, TypeError, ValueError) as error:
                     job["error"] = error
@@ -147,8 +157,12 @@ class CacheConnection(Connection):
         with boundary("redis_connect"):
             with boundary("redis_dns_wait"):
                 addresses = _cache_dns.resolve(
-                    self.host, self.port, self.socket_type,
-                    self.socket_connect_timeout if self.socket_connect_timeout is not None else 1,
+                    self.host,
+                    self.port,
+                    self.socket_type,
+                    self.socket_connect_timeout
+                    if self.socket_connect_timeout is not None
+                    else 1,
                 )
             error = None
             for family, socktype, proto, _canonname, address in addresses:
@@ -278,3 +292,15 @@ def release_lock(key: str) -> None:
         cache.delete(key)
     except Exception as error:  # pragma: no cover - IGNORE_EXCEPTIONS covers this
         logger.debug("Cache unavailable releasing %s: %s", key, error)
+
+
+class SizedZlibCompressor(ZlibCompressor):
+    """Compress only payloads large enough to repay it (History days, Discover tabs).
+
+    Values below ``min_length`` (sessions, locks, counters) stay plain pickles.
+    Reads need no migration: a value that is not zlib raises CompressorError in
+    ``decompress``, which django-redis treats as "stored uncompressed".
+    """
+
+    min_length = 1024
+    preset = 1

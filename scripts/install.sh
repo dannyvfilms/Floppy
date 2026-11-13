@@ -2,8 +2,7 @@
 #
 # Floppy guided installer - bootstrap.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/scripts/install.sh -o /tmp/floppy-install.sh
-#   bash /tmp/floppy-install.sh
+# Start with the universal command in docs/install.md. This is its Unix branch.
 #
 # This file runs before the repository exists on the host, so it stays small
 # and self-contained: it looks at the machine, asks where Floppy should live,
@@ -20,6 +19,7 @@ set -euo pipefail
 
 REPO_URL=${FLOPPY_REPO_URL:-https://github.com/dannyvfilms/Floppy.git}
 REPO_BRANCH=${FLOPPY_REPO_BRANCH:-latest}
+REPO_COMMIT=${FLOPPY_REPO_COMMIT:-}
 INSTALL_ROOT=${FLOPPY_ROOT:-}
 ASSUME_YES=0
 
@@ -75,6 +75,8 @@ Usage: bash floppy-install.sh [options]
 
   --dir PATH     Installation root (default: ~/floppy)
   --branch NAME  Branch to install from (default: latest)
+  --commit SHA   Install exactly this full 40-character commit (immutable;
+                 verified after download, resumes never move it)
   --repo URL     Repository to clone (default: the Floppy repository)
   --yes          Accept every default without prompting
   --help         Show this message
@@ -87,6 +89,8 @@ while [ $# -gt 0 ]; do
         --dir=*) INSTALL_ROOT=${1#*=}; shift ;;
         --branch) REPO_BRANCH=${2:-}; shift 2 ;;
         --branch=*) REPO_BRANCH=${1#*=}; shift ;;
+        --commit) REPO_COMMIT=${2:-}; shift 2 ;;
+        --commit=*) REPO_COMMIT=${1#*=}; shift ;;
         --repo) REPO_URL=${2:-}; shift 2 ;;
         --repo=*) REPO_URL=${1#*=}; shift ;;
         --yes|-y) ASSUME_YES=1; shift ;;
@@ -94,6 +98,12 @@ while [ $# -gt 0 ]; do
         *) fail "Unknown option: $1 (try --help)" ;;
     esac
 done
+
+case $REPO_COMMIT in
+    "") ;;
+    *[!0-9a-f]*) fail "--commit needs a full lowercase 40-character commit SHA." ;;
+    *) [ ${#REPO_COMMIT} -eq 40 ] || fail "--commit needs a full lowercase 40-character commit SHA." ;;
+esac
 
 if [ "$(id -u)" = "0" ]; then
     say "Note: running as root. Floppy's own processes still run as a normal user where that applies."
@@ -227,7 +237,17 @@ if [ "$RESUME" = "0" ]; then
     # HTTPS, no credentials: a GitHub account is not needed to install Floppy.
     git clone --branch "$REPO_BRANCH" --depth 1 --single-branch "$REPO_URL" "$REPO_DIR" \
         || fail "Could not download Floppy from $REPO_URL. Check the network connection and try again; nothing was installed."
+    if [ -n "$REPO_COMMIT" ]; then
+        git -C "$REPO_DIR" fetch --quiet origin "$REPO_COMMIT" \
+            && git -C "$REPO_DIR" checkout --quiet --detach "$REPO_COMMIT" \
+            && [ "$(git -C "$REPO_DIR" rev-parse HEAD)" = "$REPO_COMMIT" ] \
+            || fail "Could not check out commit $REPO_COMMIT. Remove $REPO_DIR and check the SHA."
+    fi
     say "  Downloaded to $REPO_DIR"
+elif [ -n "$REPO_COMMIT" ]; then
+    step "Checking pinned commit"
+    [ "$(git -C "$REPO_DIR" rev-parse HEAD)" = "$REPO_COMMIT" ] \
+        || fail "$REPO_DIR is not at pinned commit $REPO_COMMIT. Remove it or drop --commit."
 else
     # The bootstrap re-downloads itself on every run, but a resumed
     # installation was otherwise stuck on whatever commit its first run
@@ -259,6 +279,7 @@ MAIN="$REPO_DIR/scripts/install/main.sh"
 export FLOPPY_ROOT="$INSTALL_ROOT"
 export FLOPPY_REPO_URL="$REPO_URL"
 export FLOPPY_REPO_BRANCH="$REPO_BRANCH"
+export FLOPPY_REPO_COMMIT="$REPO_COMMIT"
 export FLOPPY_ASSUME_YES="$ASSUME_YES"
 
 exec bash "$MAIN"

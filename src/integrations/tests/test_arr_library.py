@@ -18,7 +18,7 @@ RADARR_GET = "integrations.imports.radarr.requests.get"
 RADARR_SEND = "integrations.imports.radarr.requests.request"
 SONARR_GET = "integrations.imports.sonarr.requests.get"
 SONARR_SEND = "integrations.imports.sonarr.requests.request"
-SEERR_SEND = "integrations.seerr_api.requests.request"
+SEERR_SEND = "integrations.seerr_api.send_to_self_hosted_pinned"
 
 
 def _response(payload, status=200):
@@ -170,7 +170,9 @@ class SonarrPanelTests(TestCase):
         self.user = get_user_model().objects.create_user(username="arr")
         self.instance = SonarrInstance.objects.create(
             user=self.user,
-            base_url="https://sonarr.local:8989",
+            # HTTP is mocked, but the URL policy still resolves this host.
+            # A numeric address keeps cache assertions independent of mDNS.
+            base_url="https://127.0.0.1:8989",
             api_key=helpers.encrypt("key"),
         )
         past = (timezone.now() - timedelta(days=3)).isoformat()

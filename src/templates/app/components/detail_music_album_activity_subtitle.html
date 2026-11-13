@@ -8,8 +8,9 @@
        class="mb-3 flex flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:justify-start md:text-start">
     <button type="button"
             aria-haspopup="dialog"
-            aria-label="{% translate "View session history" %}"
-            class="flex w-full flex-wrap items-center justify-center gap-y-1 text-center cursor-pointer md:justify-start md:text-start"
+            title="{% translate "View play history" %}"
+            aria-label="{% translate "View play history" %}"
+            class="flex w-full flex-wrap items-center justify-center gap-y-1 text-center group cursor-pointer hover:text-[var(--color-text)] hover:underline md:justify-start md:text-start"
             hx-get="{% url 'activity_sessions_modal' %}?album={{ album.id }}"
             hx-target="#session-history-modal-host"
             hx-swap="innerHTML"

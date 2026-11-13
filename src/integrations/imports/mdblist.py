@@ -188,6 +188,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
 
         # Track existing plays for exact dedupe and distinct-episode roll-up.
         (
@@ -266,12 +267,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 app.models.Season,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.completed_seasons)
         if self.dropped_tvs:
             bulk_update_with_history(
                 self.dropped_tvs,
                 app.models.TV,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.dropped_tvs)
 
         imported_counts = {
             media_type: len(media_list)
@@ -475,6 +478,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -516,6 +520,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -580,6 +585,9 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         tmdb_id = self._resolve_entry_tmdb_id(show_data, MediaTypes.TV.value)
         if not tmdb_id:
+            return
+
+        if tmdb_id in self.deleted_media[MediaTypes.TV.value][Sources.TMDB.value]:
             return
 
         episode_watch_key = (tmdb_id, season_number, episode_number, watched_at_dt)
@@ -817,6 +825,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -868,7 +877,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     self._entry_error_warning(entry, "rating")
 
     def _process_movie_rating(self, entry):
-        """Apply a movie rating, creating a COMPLETED movie if needed."""
+        """Apply a movie rating, storing the score without tracking the movie."""
         self._process_rated_media_item(
             entry,
             entry.get("movie") or {},
@@ -876,19 +885,20 @@ class MDBListImporter(TraktMetadataResolverMixin):
             app.models.Movie,
             {
                 "score": entry["rating"],
-                "status": Status.COMPLETED.value,
-                "progress": 1,
+                # A rating says nothing about whether the user watched it.
+                # Leave the row statusless so it stays out of the lists.
+                "status": None,
             },
         )
 
     def _process_show_rating(self, entry):
-        """Apply a show rating, creating a COMPLETED show if needed."""
+        """Apply a show rating, storing the score without tracking the show."""
         self._process_rated_media_item(
             entry,
             entry.get("show") or {},
             MediaTypes.TV.value,
             app.models.TV,
-            {"score": entry["rating"], "status": Status.COMPLETED.value},
+            {"score": entry["rating"], "status": None},
         )
 
     def _process_season_rating(self, entry):
@@ -916,6 +926,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -936,7 +947,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             tmdb_id,
             tv_metadata,
             _parse_entry_datetime(entry, "rated_at"),
-            Status.IN_PROGRESS.value,
+            None,
         )
 
         season_item = self._get_or_create_item(
@@ -949,7 +960,9 @@ class MDBListImporter(TraktMetadataResolverMixin):
             item=season_item,
             user=self.user,
             related_tv=tv_obj,
-            status=Status.COMPLETED.value,
+            # A rating is not a watch: the season keeps no status, so it never
+            # triggers the completed-season episode backfill.
+            status=None,
             score=entry["rating"],
         )
         rated_at = _parse_entry_datetime(entry, "rated_at")
@@ -997,10 +1010,12 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 item__episode_number=episode_number,
             )
             if episodes.exists():
-                episodes.exclude(score=scaled_score).update(
-                    score=scaled_score,
-                    scored_at=timezone.now(),
-                )
+                # A queryset update sends no save signal; publish these days.
+                changed = list(episodes.exclude(score=scaled_score))
+                app.models.Episode.objects.filter(
+                    pk__in=[episode.pk for episode in changed],
+                ).update(score=scaled_score, scored_at=timezone.now())
+                helpers.note_bulk_rows(changed)
                 return
 
         ep_key = f"{tmdb_id}:{season_number}:{episode_number}"
@@ -1032,6 +1047,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

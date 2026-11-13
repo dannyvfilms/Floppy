@@ -73,41 +73,50 @@
     }
   </style>
   <div class="space-y-4 sm:space-y-8">
+    <style>
+      /* Several check-ins sit in one row that scrolls sideways. */
+      #active-playback-container {
+        grid-template-columns: none !important;
+        grid-auto-flow: column;
+        grid-auto-columns: var(--playback-card-w, 100%);
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+        margin-top: -0.5rem;
+        padding-top: 0.5rem;
+      }
+      #active-playback-container::-webkit-scrollbar { display: none; }
+      #active-playback-container > [data-active-playback-card] {
+        grid-column: auto !important;
+        scroll-snap-align: start;
+      }
+    </style>
     <div id="active-playback-container"
          class="media-grid"
-         {% if not active_playback_card %}style="display:none"{% endif %}
+         {% if not active_playback_cards %}style="display:none"{% endif %}
          hx-get="{% url 'active_playback_fragment' %}"
          hx-trigger="playback-poll queue:none"
          hx-sync="this:drop"
          hx-swap="innerHTML"
          hx-on::after-swap="this.style.display=this.children.length?'':'none'">
-      {% if active_playback_card %}
-        {% include "app/components/active_playback_card.html" %}
-      {% endif %}
+      {% include "app/components/active_playback_cards.html" %}
     </div>
-    {% include "app/components/home_groups.html" %}
-    {% if defer_remaining_groups %}
-      {% comment %}
-        Remaining groups hydrate asynchronously so first paint only pays
-        for the first group's rows.
-      {% endcomment %}
-      <div hx-get="{% url 'home_rest_fragment' %}"
-           hx-trigger="load"
-           hx-swap="outerHTML"
-           class="space-y-4 sm:space-y-8">
-        <section class="space-y-4 animate-pulse" aria-hidden="true">
-          <div class="h-6 w-40 bg-gray-700 rounded"></div>
-          <div class="flex gap-4 overflow-hidden">
-            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-          </div>
-        </section>
+    {% if home_groups or deferred_groups %}
+      {{ home_props|json_script:"home-props" }}
+      <div data-home-root data-props-id="home-props">
+        {% include "app/components/home_groups.html" %}
+        {% if deferred_groups %}
+          {% comment %}
+            Remaining groups render in place; each row loads on its own so a slow
+            shelf cannot hold back the rest.
+          {% endcomment %}
+          {% include "app/components/home_deferred_groups.html" %}
+        {% endif %}
+        {% include "app/components/home_artwork_poller.html" with active=True initial=True %}
       </div>
     {% endif %}
-    {% include "app/components/home_artwork_poller.html" with poll_row_ids=artwork_poll_row_ids initial=True %}
-    {% if not home_groups %}
+    {% if not home_groups and not deferred_groups %}
       <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[var(--color-surface)] rounded-lg">
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
@@ -127,4 +136,19 @@
 
 {% block js %}
   {% include "app/components/_scrollable_row_js.html" %}
+  <script>
+    // The React island fetches every deferred row. Loading them here as well
+    // doubled each row's request and, while the cache was cold, its build. Only
+    // fall back to the server placeholders if the island never mounted (a
+    // failed or stale bundle). Web-only: native clients have no HTMX placeholders.
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var root = document.querySelector('[data-home-root]');
+        if (!root || root.dataset.reactMounted === 'true' || !window.htmx) return;
+        document.querySelectorAll('[data-home-row-slot]').forEach(function (slot, index) {
+          setTimeout(function () { htmx.trigger(slot, 'floppy:home-row-fallback'); }, index * 120);
+        });
+      }, 2500);
+    });
+  </script>
 {% endblock js %}

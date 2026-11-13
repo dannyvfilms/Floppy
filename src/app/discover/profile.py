@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
+from django.db import OperationalError
 from django.db.models import Max, Q
 from django.utils import timezone
 
+from app import db_retry
 from app.discover import cache_repo
 from app.discover.feature_metadata import (
     is_director_credit,
@@ -30,9 +34,11 @@ from app.discover.scoring import (
     weighted_pearson_correlation,
 )
 from app.models import (
+    TV,
     CreditRoleType,
     DiscoverFeedback,
     DiscoverFeedbackType,
+    Episode,
     Item,
     ItemPersonCredit,
     ItemStudioCredit,
@@ -41,7 +47,11 @@ from app.models import (
     Status,
 )
 
+logger = logging.getLogger(__name__)
+
 PROFILE_TTL_SECONDS = 60 * 60 * 24
+# Shows per query when reading last-watched dates; keeps the IN list small.
+TV_ACTIVITY_BATCH_SIZE = 500
 COMFORT_PROFILE_FAMILIES = (
     "genres",
     "keywords",
@@ -237,6 +247,38 @@ def _entry_activity_datetime(entry):
     )
 
 
+def preload_tv_activity_dates(entries) -> None:
+    """Give TV entries their last-watched date, a few queries for any number.
+
+    `TV.end_date` and `TV.progressed_at` walk seasons and episodes on first
+    read, so asking a whole library for them cost thousands of queries
+    (minutes on a slow disk, and past the task time limit). Both are the
+    newest watched episode date, so one grouped read per batch of shows seeds
+    the values the `cached_property` would otherwise compute. Shows that
+    already carry their dates are skipped.
+    """
+    shows = [
+        entry
+        for entry in entries
+        if type(entry) is TV and "end_date" not in entry.__dict__
+    ]
+    for start in range(0, len(shows), TV_ACTIVITY_BATCH_SIZE):
+        batch = shows[start : start + TV_ACTIVITY_BATCH_SIZE]
+        latest = dict(
+            Episode.objects.filter(
+                related_season__related_tv_id__in=[show.id for show in batch],
+                related_season__order_archived=False,
+                end_date__isnull=False,
+            )
+            .values_list("related_season__related_tv_id")
+            .annotate(latest=Max("end_date")),
+        )
+        for show in batch:
+            show.__dict__["end_date"] = show.__dict__["progressed_at"] = latest.get(
+                show.id
+            )
+
+
 def _latest_datetime(*values):
     filtered = [value for value in values if value is not None]
     if not filtered:
@@ -353,10 +395,20 @@ def _item_credit_feature_maps(
             "person__name",
         )
     )
-    for item_id, role_type, role, department, person_name_raw in credit_entries:
+    # Stream the rows, and share one string per name: a library holds hundreds
+    # of thousands of credits but far fewer distinct people.
+    shared_names: dict[str, str] = {}
+    for (
+        item_id,
+        role_type,
+        role,
+        department,
+        person_name_raw,
+    ) in credit_entries.iterator(chunk_size=5000):
         person_name = normalize_person_name(person_name_raw or "")
         if not person_name:
             continue
+        person_name = shared_names.setdefault(person_name, person_name)
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)
@@ -869,6 +921,7 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         entries = list(
             model.objects.filter(user=user).select_related("item").only(*only_fields),
         )
+        preload_tv_activity_dates(entries)
 
         item_ids = [entry.item_id for entry in entries if entry.item_id]
 
@@ -1312,6 +1365,28 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
     )
 
 
+@contextmanager
+def _saving_profile(user_id: int, media_type: str):
+    """Save a freshly computed profile; on a page load, never wait to do it.
+
+    The caller returns the profile it computed either way. A save skipped
+    because SQLite's writer was busy leaves the stored profile missing or
+    stale, which the next Discover refresh task repairs.
+    """
+    try:
+        with db_retry.optional_save():
+            yield
+    except OperationalError as error:
+        if not (db_retry.in_read_request() and db_retry.is_lock_error(error)):
+            raise
+        logger.warning(
+            "discover_profile_cache_write_skipped user_id=%s media_type=%s error=%s",
+            user_id,
+            media_type,
+            error,
+        )
+
+
 def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) -> dict:
     """Return profile payload from DB cache or recompute when stale."""
     cached_entry, is_stale = cache_repo.get_taste_profile(user.id, media_type)
@@ -1509,53 +1584,55 @@ def get_or_compute_taste_profile(user, media_type: str, *, force: bool = False) 
         }
 
     profile = compute_taste_profile(user, media_type)
-    cache_repo.set_taste_profile(
-        user.id,
-        media_type,
-        genre_affinity=profile.genre_affinity,
-        recent_genre_affinity=profile.recent_genre_affinity,
-        phase_genre_affinity=profile.phase_genre_affinity,
-        genre_primacy_ratio=profile.genre_primacy_ratio,
-        tag_affinity=profile.tag_affinity,
-        recent_tag_affinity=profile.recent_tag_affinity,
-        phase_tag_affinity=profile.phase_tag_affinity,
-        keyword_affinity=profile.keyword_affinity,
-        recent_keyword_affinity=profile.recent_keyword_affinity,
-        phase_keyword_affinity=profile.phase_keyword_affinity,
-        studio_affinity=profile.studio_affinity,
-        recent_studio_affinity=profile.recent_studio_affinity,
-        phase_studio_affinity=profile.phase_studio_affinity,
-        collection_affinity=profile.collection_affinity,
-        recent_collection_affinity=profile.recent_collection_affinity,
-        phase_collection_affinity=profile.phase_collection_affinity,
-        director_affinity=profile.director_affinity,
-        recent_director_affinity=profile.recent_director_affinity,
-        phase_director_affinity=profile.phase_director_affinity,
-        lead_cast_affinity=profile.lead_cast_affinity,
-        recent_lead_cast_affinity=profile.recent_lead_cast_affinity,
-        phase_lead_cast_affinity=profile.phase_lead_cast_affinity,
-        certification_affinity=profile.certification_affinity,
-        recent_certification_affinity=profile.recent_certification_affinity,
-        phase_certification_affinity=profile.phase_certification_affinity,
-        runtime_bucket_affinity=profile.runtime_bucket_affinity,
-        recent_runtime_bucket_affinity=profile.recent_runtime_bucket_affinity,
-        phase_runtime_bucket_affinity=profile.phase_runtime_bucket_affinity,
-        decade_affinity=profile.decade_affinity,
-        recent_decade_affinity=profile.recent_decade_affinity,
-        phase_decade_affinity=profile.phase_decade_affinity,
-        comfort_library_affinity=profile.comfort_library_affinity,
-        comfort_rewatch_affinity=profile.comfort_rewatch_affinity,
-        person_affinity=profile.person_affinity,
-        negative_genre_affinity=profile.negative_genre_affinity,
-        negative_tag_affinity=profile.negative_tag_affinity,
-        negative_person_affinity=profile.negative_person_affinity,
-        world_rating_profile=profile.world_rating_profile,
-        world_alignment_offsets=profile.world_alignment_offsets,
-        world_alignment_offset_samples=profile.world_alignment_offset_samples,
-        avoidance_offsets=profile.avoidance_offsets,
-        avoidance_baselines=profile.avoidance_baselines,
-        profile_schema_version=PROFILE_SCHEMA_VERSION,
-        activity_snapshot_at=profile.activity_snapshot_at,
-        ttl_seconds=PROFILE_TTL_SECONDS,
-    )
+    with _saving_profile(user.id, media_type):
+        cache_repo.set_taste_profile(
+            user.id,
+            media_type,
+            genre_affinity=profile.genre_affinity,
+            recent_genre_affinity=profile.recent_genre_affinity,
+            phase_genre_affinity=profile.phase_genre_affinity,
+            genre_primacy_ratio=profile.genre_primacy_ratio,
+            tag_affinity=profile.tag_affinity,
+            recent_tag_affinity=profile.recent_tag_affinity,
+            phase_tag_affinity=profile.phase_tag_affinity,
+            keyword_affinity=profile.keyword_affinity,
+            recent_keyword_affinity=profile.recent_keyword_affinity,
+            phase_keyword_affinity=profile.phase_keyword_affinity,
+            studio_affinity=profile.studio_affinity,
+            recent_studio_affinity=profile.recent_studio_affinity,
+            phase_studio_affinity=profile.phase_studio_affinity,
+            collection_affinity=profile.collection_affinity,
+            recent_collection_affinity=profile.recent_collection_affinity,
+            phase_collection_affinity=profile.phase_collection_affinity,
+            director_affinity=profile.director_affinity,
+            recent_director_affinity=profile.recent_director_affinity,
+            phase_director_affinity=profile.phase_director_affinity,
+            lead_cast_affinity=profile.lead_cast_affinity,
+            recent_lead_cast_affinity=profile.recent_lead_cast_affinity,
+            phase_lead_cast_affinity=profile.phase_lead_cast_affinity,
+            certification_affinity=profile.certification_affinity,
+            recent_certification_affinity=profile.recent_certification_affinity,
+            phase_certification_affinity=profile.phase_certification_affinity,
+            runtime_bucket_affinity=profile.runtime_bucket_affinity,
+            recent_runtime_bucket_affinity=profile.recent_runtime_bucket_affinity,
+            phase_runtime_bucket_affinity=profile.phase_runtime_bucket_affinity,
+            decade_affinity=profile.decade_affinity,
+            recent_decade_affinity=profile.recent_decade_affinity,
+            phase_decade_affinity=profile.phase_decade_affinity,
+            comfort_library_affinity=profile.comfort_library_affinity,
+            comfort_rewatch_affinity=profile.comfort_rewatch_affinity,
+            person_affinity=profile.person_affinity,
+            negative_genre_affinity=profile.negative_genre_affinity,
+            negative_tag_affinity=profile.negative_tag_affinity,
+            negative_person_affinity=profile.negative_person_affinity,
+            world_rating_profile=profile.world_rating_profile,
+            world_alignment_offsets=profile.world_alignment_offsets,
+            world_alignment_offset_samples=profile.world_alignment_offset_samples,
+            avoidance_offsets=profile.avoidance_offsets,
+            avoidance_baselines=profile.avoidance_baselines,
+            profile_schema_version=PROFILE_SCHEMA_VERSION,
+            activity_snapshot_at=profile.activity_snapshot_at,
+            ttl_seconds=PROFILE_TTL_SECONDS,
+            retry_when_locked=not db_retry.in_read_request(),
+        )
     return profile.to_dict()

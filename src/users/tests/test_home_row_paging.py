@@ -158,6 +158,51 @@ class HomeRowPagingTests(ShelfFixtures, TestCase):
         )
 
 
+    def test_expired_section_reuses_the_cached_python_order(self):
+        """A warm render reloads one page, not the whole shelf (#1603)."""
+        from app import cache_utils
+        from app.library_query.executor import LibraryQueryExecutor
+
+        self.add_movies(20)
+        row = self.row(HomeSortChoices.COMPLETION, DirectionChoices.DESC)
+        home_screen._cached_row_section(self.user, row, row.media_type, PAGE)
+        cache.delete(
+            cache_utils.build_home_row_cache_key(self.user.id, row.id, PAGE),
+        )
+
+        with mock.patch.object(
+            LibraryQueryExecutor,
+            "ranked_ids",
+            side_effect=AssertionError("the shelf was ranked again"),
+        ):
+            section = home_screen._cached_row_section(
+                self.user, row, row.media_type, PAGE,
+            )
+
+        self.assertEqual(section["total"], 20)
+        self.assertEqual(len(section["items"]), PAGE)
+
+    def test_python_orders_outlive_the_rendered_section(self):
+        """A deterministic order is kept for the long order TTL."""
+        from app import cache_utils
+
+        self.add_movies(20)
+        row = self.row(HomeSortChoices.COMPLETION, DirectionChoices.DESC)
+        with mock.patch.object(cache, "set", wraps=cache.set) as cache_set:
+            home_screen._build_row_section(
+                self.user, row, row.media_type, PAGE, seed=7,
+            )
+        order_calls = [
+            call for call in cache_set.call_args_list if "_order_" in call.args[0]
+        ]
+        # One scan caches both directions; the flipped-direction cover preview
+        # then reuses them instead of ranking the shelf a second time.
+        self.assertEqual(len(order_calls), 2)
+        self.assertEqual(
+            {call.args[2] for call in order_calls},
+            {cache_utils.HOME_ROW_ORDER_CACHE_TTL},
+        )
+
     def test_recent_sql_order_matches_the_scan(self):
         """Tracked items by activity, then collected ones: released, upcoming, undated."""
         from datetime import timedelta

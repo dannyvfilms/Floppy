@@ -23,9 +23,11 @@ from integrations.webhooks.kodi import KodiWebhookProcessor
 from integrations.webhooks.plex import PlexWebhookProcessor
 from integrations.webhooks.stremio import StremioWebhookProcessor
 from integrations.webhooks.write_policy import (
+    MAX_STOP_POSITION_SECONDS,
     MIN_STOP_POSITION_SECONDS,
     WEBHOOK_WRITE_POLICIES,
     WritePolicy,
+    minimum_stop_position_seconds,
     should_record,
 )
 
@@ -74,14 +76,31 @@ class WritePolicyCoverageTests(SimpleTestCase):
 class WritePolicyRuleTests(SimpleTestCase):
     """The rule itself, independent of any integration."""
 
-    def _record(self, policy, event, *, played=False, position=None):
+    def _record(self, policy, event, *, played=False, position=None, duration=None):
         with patch.dict(WEBHOOK_WRITE_POLICIES, {"test": (policy, "test")}):
             return should_record(
                 "test",
                 event,
                 played=played,
                 position_seconds=position,
+                duration_seconds=duration,
             )
+
+    def test_minimum_stop_position_seconds(self):
+        cases = [
+            (None, MIN_STOP_POSITION_SECONDS),
+            (0, MIN_STOP_POSITION_SECONDS),
+            (600, MIN_STOP_POSITION_SECONDS),
+            (1800, 90),
+            (3600, MAX_STOP_POSITION_SECONDS),
+            (7200, MAX_STOP_POSITION_SECONDS),
+        ]
+        for duration, expected in cases:
+            with self.subTest(duration=duration):
+                self.assertEqual(
+                    minimum_stop_position_seconds(duration),
+                    expected,
+                )
 
     def test_stop_only(self):
         short = MIN_STOP_POSITION_SECONDS - 1
@@ -93,6 +112,12 @@ class WritePolicyRuleTests(SimpleTestCase):
             ("media.stop", {"position": short}, False),
             ("media.stop", {"position": 0}, False),
             ("media.stop", {"position": MIN_STOP_POSITION_SECONDS}, True),
+            ("media.stop", {"position": short, "duration": 600}, False),
+            ("media.stop", {"position": MIN_STOP_POSITION_SECONDS, "duration": 600}, True),
+            ("media.stop", {"position": 89, "duration": 1800}, False),
+            ("media.stop", {"position": 90, "duration": 1800}, True),
+            ("media.stop", {"position": 179, "duration": 7200}, False),
+            ("media.stop", {"position": MAX_STOP_POSITION_SECONDS, "duration": 7200}, True),
             ("media.stop", {"position": None}, True),
             ("media.stop", {"position": short, "played": True}, True),
             ("media.scrobble", {"position": 0}, True),
@@ -153,7 +178,7 @@ class ProcessorWiringTests(TestCase):
 
     # Payload builders: (start-ish payload, stop payload at `position` seconds)
 
-    def _plex(self, event, position):
+    def _plex(self, event, position, duration=8100):
         return {
             "event": event,
             "Account": {"title": "policyuser"},
@@ -161,13 +186,13 @@ class ProcessorWiringTests(TestCase):
                 "type": "movie",
                 "title": "The Matrix",
                 "ratingKey": "rk-1",
-                "duration": 8_100_000,
+                "duration": duration * 1000,
                 "viewOffset": position * 1000,
                 "Guid": [{"id": "tmdb://603"}],
             },
         }
 
-    def _jellyfin(self, event, position):
+    def _jellyfin(self, event, position, duration=8100):
         return {
             "Event": event,
             "PlaybackPositionTicks": position * 10_000_000,
@@ -175,19 +200,19 @@ class ProcessorWiringTests(TestCase):
                 "Name": "The Matrix",
                 "Type": "Movie",
                 "ProviderIds": {"Tmdb": "603"},
-                "RunTimeTicks": 8100 * 10_000_000,
+                "RunTimeTicks": duration * 10_000_000,
                 "UserData": {"Played": False},
             },
         }
 
-    def _emby(self, event, position):
+    def _emby(self, event, position, duration=8100):
         return {
             "Event": event,
             "Item": {
                 "Name": "The Matrix",
                 "Type": "Movie",
                 "ProviderIds": {"Tmdb": "603"},
-                "RunTimeTicks": 8100 * 10_000_000,
+                "RunTimeTicks": duration * 10_000_000,
             },
             "PlaybackInfo": {
                 "PlayedToCompletion": False,
@@ -195,14 +220,17 @@ class ProcessorWiringTests(TestCase):
             },
         }
 
-    def _kodi(self, event, position):
+    def _kodi(self, event, position, duration=8100):
         return {
             "event": event,
             "mediaType": "movie",
             "title": "The Matrix",
             "uniqueIds": {"tmdb": "603", "imdb": None, "tvdb": None},
-            "duration": 8160,
-            "progress": {"time": position, "percent": position / 81.6},
+            "duration": duration,
+            "progress": {
+                "time": position,
+                "percent": position / duration * 100,
+            },
         }
 
     STOP_ONLY_CASES = (
@@ -222,17 +250,34 @@ class ProcessorWiringTests(TestCase):
                 )
 
     def test_stop_only_processors_skip_short_stops(self, _image):
-        short = MIN_STOP_POSITION_SECONDS - 1
+        duration = 8100
+        short = minimum_stop_position_seconds(duration) - 1
         for label, cls, build, _start, stop in self.STOP_ONLY_CASES:
             with self.subTest(source=label):
-                payload = getattr(self, build)(stop, short)
+                payload = getattr(self, build)(stop, short, duration=duration)
                 self.assertFalse(self._writes(cls, payload), DOC_HINT)
 
     def test_stop_only_processors_write_on_real_stops(self, _image):
+        duration = 8100
+        minimum = minimum_stop_position_seconds(duration)
         for label, cls, build, _start, stop in self.STOP_ONLY_CASES:
             with self.subTest(source=label):
-                payload = getattr(self, build)(stop, MIN_STOP_POSITION_SECONDS)
+                payload = getattr(self, build)(stop, minimum, duration=duration)
                 self.assertTrue(self._writes(cls, payload), DOC_HINT)
+
+    def test_stop_only_processors_scale_the_threshold_with_runtime(self, _image):
+        duration = 1800
+        minimum = minimum_stop_position_seconds(duration)
+        for label, cls, build, _start, stop in self.STOP_ONLY_CASES:
+            with self.subTest(source=label):
+                too_short = getattr(self, build)(
+                    stop, minimum - 1, duration=duration,
+                )
+                self.assertFalse(self._writes(cls, too_short), DOC_HINT)
+                long_enough = getattr(self, build)(
+                    stop, minimum, duration=duration,
+                )
+                self.assertTrue(self._writes(cls, long_enough), DOC_HINT)
 
     def test_emby_zero_position_is_a_known_short_stop(self, _image):
         """A zero position is real, not missing, whichever field carries it."""

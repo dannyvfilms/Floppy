@@ -7,7 +7,8 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
-from app.models import TV, Item, Season
+from app.mixins import disable_fetch_releases
+from app.models import TV, Item, Movie, PlaybackProgress, Season
 from app.models.choices import MediaTypes, Sources, Status
 from integrations import stremio_playback as playback
 from integrations.imports.helpers import MediaImportError
@@ -78,7 +79,7 @@ class StremioPlaybackSessionTests(TestCase):
             playback.helpers, "decrypt_or_raise", return_value="auth"
         )
         self.library_patch = patch.object(
-            playback, "get_library_items", side_effect=lambda _auth: self.library
+            playback, "get_library_items", side_effect=lambda _auth, ids=None: self.library
         )
         self.client_patch.start()
         self.decrypt_patch.start()
@@ -131,6 +132,129 @@ class StremioPlaybackSessionTests(TestCase):
         self.assertEqual(self.observe(session_id, 60).reason, "baseline_captured")
         return session_id
 
+    def test_poll_stores_the_resume_position(self):
+        """The wiring this change exists for.
+
+        No other source reports a position for a client that cannot emit player
+        events, so without folding the poll in, the durable row stays empty.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="603",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                provider_external_ids={"imdb_id": "tt100"},
+                title="Polled Movie",
+                image="",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+
+        session_id = self.start()
+        self.library = self.state("tt100", 1, runtime_minutes=45)
+        self.library[0]["state"]["timeOffset"] = 7 * 60 * 1000
+        self.assertEqual(self.observe(session_id, 60).reason, "baseline_captured")
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=item)
+        self.assertEqual(progress.position_seconds, 7 * 60)
+        self.assertEqual(progress.duration_seconds, 45 * 60)
+
+    def test_a_watched_poll_appends_no_history_play(self):
+        """Completion and the history row stay the verifier's.
+
+        Folding the library's flag in as a viewing would let a stale completed
+        snapshot complete a replay — what the baseline evidence exists to
+        reject.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="604",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                provider_external_ids={"imdb_id": "tt101"},
+                title="Watched Already",
+                image="",
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+
+        session_id = self.start("tt101")
+        self.library = self.state("tt101", 95, flagged=1, times=1)
+        self.observe(session_id, 60)
+
+        self.assertEqual(movie.plays.count(), 0)
+
+    def test_a_removed_entry_stores_no_resume_position(self):
+        """An explicitly removed item has no live progress to fold.
+
+        `removed and not temp` is an item the user added and then removed, so
+        Stremio's own continue-watching excludes it and its `timeOffset` is a
+        leftover rather than a resume point.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="605",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                provider_external_ids={"imdb_id": "tt102"},
+                title="Removed By Hand",
+                image="",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+
+        session_id = self.start("tt102")
+        self.library = self.state("tt102", 30, runtime_minutes=45)
+        self.library[0]["removed"] = True
+        self.library[0]["temp"] = False
+        self.library[0]["state"]["timeOffset"] = 20 * 60 * 1000
+        self.observe(session_id, 60)
+
+        self.assertFalse(
+            PlaybackProgress.objects.filter(user=self.user, item=item).exists(),
+        )
+
+    def test_an_auto_added_entry_still_stores_its_position(self):
+        """`temp` keeps a removed entry live, and that is the common case.
+
+        319 of the 411 live entries carrying a `timeOffset` in this account are
+        `removed` and `temp`, so gating on `removed` alone would discard most
+        real resume positions.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="606",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                provider_external_ids={"imdb_id": "tt103"},
+                title="Auto Added",
+                image="",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
+
+        session_id = self.start("tt103")
+        self.library = self.state("tt103", 30, runtime_minutes=45)
+        self.library[0]["removed"] = True
+        self.library[0]["temp"] = True
+        self.library[0]["state"]["timeOffset"] = 20 * 60 * 1000
+        self.observe(session_id, 60)
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=item)
+        self.assertEqual(progress.position_seconds, 20 * 60)
+
     def test_movie_completion_at_ninety_percent(self):
         session_id = self.establish_movie_progress()
         self.library = self.state(
@@ -139,6 +263,38 @@ class StremioPlaybackSessionTests(TestCase):
         decision = self.observe(session_id, 41 * 60)
         self.assertEqual(decision.status, "complete")
         self.assertTrue(decision.payload["_floppy_verified_completion"])
+
+    def test_each_poll_fetches_only_the_session_item_and_stops_on_completion(self):
+        calls = []
+
+        def fetch(_auth, ids=None):
+            calls.append(ids)
+            return self.library
+
+        session_id = self.establish_movie_progress()
+        with patch.object(playback, "get_library_items", side_effect=fetch):
+            self.library = self.state("tt100", 20)
+            self.assertEqual(self.observe(session_id, 600).status, "schedule")
+            self.library = self.state(
+                "tt100", 90, watched_at=self.now + timedelta(minutes=41), flagged=1
+            )
+            self.assertEqual(self.observe(session_id, 41 * 60).status, "complete")
+            self.assertEqual(calls, [["tt100"], ["tt100"]])
+            self.assertEqual(self.observe(session_id, 42 * 60).status, "duplicate")
+            self.assertEqual(len(calls), 2)
+
+    def test_empty_id_fetch_falls_back_to_the_whole_library_once(self):
+        calls = []
+
+        def fetch(_auth, ids=None):
+            calls.append(ids)
+            return [] if ids else self.library
+
+        session_id = self.establish_movie_progress()
+        self.library = self.state("tt100", 20)
+        with patch.object(playback, "get_library_items", side_effect=fetch):
+            self.assertEqual(self.observe(session_id, 600).status, "schedule")
+        self.assertEqual(calls, [["tt100"], None])
 
     def test_runtime_deadlines_allow_normal_playback_to_reach_ninety_percent(self):
         for runtime in (45, 90, 120, 180):

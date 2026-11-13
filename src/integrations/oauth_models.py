@@ -10,7 +10,14 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from integrations.models import DEFAULT_INTEGRATION_SCOPES, IntegrationToken
+from app.public_errors import PublicMessageError
+from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import (
+    FIRST_PARTY_CLIENT_ID,
+    FIRST_PARTY_CLIENT_NAME,
+    OAUTH_ALLOWED_SCOPES,
+    OAUTH_SCOPE_OPTIONS,
+)
 
 OAUTH_DEVICE_CODE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 OAUTH_REFRESH_TOKEN_GRANT = "refresh_token"  # noqa: S105
@@ -38,13 +45,17 @@ def default_oauth_grant_types() -> list[str]:
 
 
 def default_oauth_scopes() -> list[str]:
-    """Return a fresh copy of Floppy's supported integration scopes."""
-    return list(DEFAULT_INTEGRATION_SCOPES)
+    """Return a fresh copy of the scopes a public client may request."""
+    return [scope for scope, _label, _description in OAUTH_SCOPE_OPTIONS]
 
 
 def normalise_user_code(user_code: str) -> str:
     """Canonicalise a human-entered device user code."""
     return "".join(character for character in user_code.upper() if character.isalnum())
+
+
+class DeviceAuthorizationStateError(PublicMessageError, ValueError):
+    """The device authorisation is already settled. The message is fixed text."""
 
 
 class OAuthClient(models.Model):
@@ -95,10 +106,10 @@ class OAuthClient(models.Model):
             dict.fromkeys(
                 allowed_scopes
                 if allowed_scopes is not None
-                else DEFAULT_INTEGRATION_SCOPES
+                else default_oauth_scopes()
             )
         )
-        unknown_scopes = set(scopes) - set(DEFAULT_INTEGRATION_SCOPES)
+        unknown_scopes = set(scopes) - OAUTH_ALLOWED_SCOPES
         if not scopes or unknown_scopes:
             msg = "OAuth clients require one or more supported scopes."
             raise ValueError(msg)
@@ -126,7 +137,34 @@ class OAuthClient(models.Model):
         cls.objects.filter(
             created_at__lt=timezone.now() - timedelta(days=1),
             refresh_tokens__isnull=True,
-        ).delete()
+        ).exclude(client_id=FIRST_PARTY_CLIENT_ID).delete()
+
+    @classmethod
+    def resolve(cls, client_id: str) -> OAuthClient | None:
+        """Return the client for an id, creating the built-in Floppy app on first use.
+
+        The first-party row is server-defined: registration cannot produce its id
+        and nothing a caller sends sets its name or scopes.
+        """
+        if not client_id:
+            return None
+        if client_id == FIRST_PARTY_CLIENT_ID:
+            from api.scopes import ALL_SCOPES
+
+            client, _created = cls.objects.get_or_create(
+                client_id=FIRST_PARTY_CLIENT_ID,
+                defaults={
+                    "name": FIRST_PARTY_CLIENT_NAME,
+                    "allowed_scopes": sorted(ALL_SCOPES),
+                },
+            )
+            return client
+        return cls.objects.filter(client_id=client_id).first()
+
+    @property
+    def is_first_party(self) -> bool:
+        """Return whether this is the built-in Floppy app client."""
+        return self.client_id == FIRST_PARTY_CLIENT_ID
 
     def allows_scope(self, scope: str) -> bool:
         """Return whether this active client may request the supplied scope."""
@@ -252,7 +290,7 @@ class OAuthDeviceAuthorization(models.Model):
         """Approve this request for the authenticated user."""
         if self.is_terminal:
             msg = "This device authorisation can no longer be approved."
-            raise ValueError(msg)
+            raise DeviceAuthorizationStateError(msg)
         self.user = user
         self.approved_at = timezone.now()
         self.save(update_fields=["user", "approved_at"])
@@ -261,7 +299,7 @@ class OAuthDeviceAuthorization(models.Model):
         """Deny this request for the authenticated user."""
         if self.is_terminal:
             msg = "This device authorisation can no longer be denied."
-            raise ValueError(msg)
+            raise DeviceAuthorizationStateError(msg)
         self.user = user
         self.denied_at = timezone.now()
         self.save(update_fields=["user", "denied_at"])

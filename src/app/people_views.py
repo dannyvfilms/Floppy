@@ -2,7 +2,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.db.models import Q
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -14,6 +14,7 @@ from app import (
 from app.media_list_filters import media_list_entries_for_items
 from app.media_list_views import build_filter_data_from_items
 from app.models import (
+    TV,
     BasicMedia,
     Book,
     Comic,
@@ -24,6 +25,7 @@ from app.models import (
     MediaTypes,
     Movie,
     Sources,
+    Status,
     Studio,
 )
 from app.providers import (
@@ -75,6 +77,146 @@ def attach_card_media(user, entries, source):
                 **entry,
                 "source": entry.get("source") or source,
             }
+
+
+def _people_credit_contract(entry, source, user):
+    """Shape one filmography entry for the shared native credit card."""
+    from django.urls import reverse
+    from django.utils.text import slugify
+
+    from app.templatetags.app_tags import image_url, media_type_readable, media_url
+
+    media_type = entry.get("media_type")
+    media_id = str(entry.get("media_id") or "")
+    title = entry.get("title") or "Unknown Title"
+    tracked_item = entry.get("tracked_item")
+    href = media_url(tracked_item) if tracked_item else ""
+    if not href:
+        href = reverse(
+            "media_details",
+            kwargs={
+                "source": entry.get("source") or source,
+                "media_type": media_type,
+                "media_id": media_id,
+                "title": slugify(title) or media_id or "item",
+            },
+        )
+    departments = entry.get("all_departments") or []
+    role = (
+        entry.get("role")
+        or ", ".join(department for department in departments if department)
+        or entry.get("department")
+        or ""
+    )
+    from app.card_surfaces import card_context
+    from app.icon_specs import file_icon
+
+    card_ctx = card_context(
+        {"user": user},
+        "credit",
+        {"item": entry.get("card_item"), "media": entry.get("media"),
+         "title": title, "card_media_type": media_type, "credit": entry},
+    )
+    card = card_ctx["react_props"]["model"]
+    card["hoverMetadata"] = card_ctx["card_display"] != "always"
+    status_icons = {
+        "Completed": "completed", "In progress": "in-progress", "Paused": "paused",
+        "Planning": "planning", "Dropped": "dropped",
+    }
+    chip = card.get("statusChip") or {}
+    if chip.get("kind") == "status" and chip.get("status") in status_icons:
+        chip["icon"] = file_icon(f"states/{status_icons[chip['status']]}")
+    return {
+        "id": f"{media_type}:{media_id}",
+        "title": title,
+        "mediaType": media_type,
+        "mediaTypeLabel": media_type_readable(media_type) if media_type else "",
+        "source": entry.get("source") or source,
+        "mediaId": media_id,
+        "year": entry.get("year"),
+        "role": role,
+        "imageUrl": image_url(entry.get("image") or ""),
+        "href": href,
+        "watched": bool(entry.get("is_watched")),
+        "watchedRuntimeLabel": entry.get("watched_person_runtime_display") or "",
+        "voteAverage": entry.get("vote_average"),
+        "card": card,
+    }
+
+
+def _people_filters_contract(context):
+    """Return the filmography toolbar state and options (what the web toolbar shows)."""
+    filter_data = context.get("filter_data") or {}
+    return {
+        "sort": context.get("current_sort"),
+        "direction": context.get("current_direction"),
+        "department": context.get("current_department") or "",
+        "year": context.get("current_year") or "",
+        "genre": context.get("current_genre") or "",
+        "rating": context.get("current_rating") or "all",
+        "collection": context.get("current_collection") or "all",
+        "sortChoices": [
+            {"value": str(value), "label": str(label)}
+            for value, label in context.get("sort_choices") or []
+        ],
+        "departments": [str(value) for value in filter_data.get("departments") or []],
+        "years": [
+            {"value": str(year["value"]), "label": str(year["label"])}
+            for year in filter_data.get("years") or []
+        ],
+        "genres": [str(value) for value in filter_data.get("genres") or []],
+    }
+
+
+def _people_person_contract(context):
+    """Return the person page values the native and browser adapters consume."""
+    from users.templatetags.ui_tags import _person_hero_props
+
+    hero = _person_hero_props(context)
+    person = context.get("person") or {}
+    return {
+        "kind": "person",
+        "person": hero["person"],
+        "counts": hero["counts"],
+        "labels": hero["labels"],
+        "historyUrl": hero["historyUrl"],
+        "canViewHistory": hero["canViewHistory"],
+        "showBiography": hero["showBiography"],
+        "isAuthor": bool(context.get("is_author")),
+        "source": context.get("source"),
+        "personId": str(person.get("person_id") or ""),
+        "sourceUrl": context.get("source_url") or "",
+        "filters": _people_filters_contract(context),
+        "watched": [
+            _people_credit_contract(entry, context.get("source"), context["user"])
+            for entry in context.get("watched_filmography") or []
+        ],
+        "filmography": [
+            _people_credit_contract(entry, context.get("source"), context["user"])
+            for entry in context.get("filmography") or []
+        ],
+    }
+
+
+def _people_studio_contract(context):
+    """Return the studio page values the native and browser adapters consume."""
+    from users.templatetags.ui_tags import _studio_hero_props
+
+    hero = _studio_hero_props(context)
+    studio = context.get("studio")
+    return {
+        "kind": "studio",
+        "studio": hero["studio"],
+        "counts": hero["counts"],
+        "labels": hero["labels"],
+        "source": context.get("source"),
+        "studioId": str(getattr(studio, "source_studio_id", "") or ""),
+        "sourceUrl": context.get("studio_source_url") or "",
+        "titles": [
+            _people_credit_contract(entry, context.get("source"), context["user"])
+            for entry in context.get("credited_titles") or []
+        ],
+    }
 
 
 @require_GET
@@ -290,7 +432,11 @@ def person_detail(request, source, person_id, name):
                     item__person_credits__person__source=source,
                     item__person_credits__person__source_person_id=person_id_str,
                 )
-                .filter(Q(start_date__isnull=False) | Q(end_date__isnull=False))
+                .filter(
+                    Q(start_date__isnull=False)
+                    | Q(end_date__isnull=False)
+                    | Q(status=Status.COMPLETED.value)
+                )
                 .select_related("item")
                 .distinct()
             )
@@ -355,7 +501,7 @@ def person_detail(request, source, person_id, name):
                 item__source=source,
                 item__media_type=MediaTypes.MOVIE.value,
                 item__media_id__in=watched_movie_media_ids,
-            ).exclude(start_date__isnull=True, end_date__isnull=True)
+            ).filter(Q(end_date__isnull=False) | Q(status=Status.COMPLETED.value))
             watched_media_keys.update(
                 (media_type, str(media_id))
                 for media_type, media_id in watched_movies.values_list(
@@ -367,16 +513,29 @@ def person_detail(request, source, person_id, name):
         if watched_tv_media_ids:
             watched_tv = Episode.all_objects.filter(
                 related_season__user=request.user,
-                end_date__isnull=False,
                 related_season__related_tv__item__source=source,
                 related_season__related_tv__item__media_type=MediaTypes.TV.value,
                 related_season__related_tv__item__media_id__in=watched_tv_media_ids,
-            )
+            ).filter(Q(end_date__isnull=False) | Q(status=Status.COMPLETED.value))
             watched_media_keys.update(
                 (media_type, str(media_id))
                 for media_type, media_id in watched_tv.values_list(
                     "related_season__related_tv__item__media_type",
                     "related_season__related_tv__item__media_id",
+                ).distinct()
+            )
+            completed_tv = TV.objects.filter(
+                user=request.user,
+                item__source=source,
+                item__media_type=MediaTypes.TV.value,
+                item__media_id__in=watched_tv_media_ids,
+                status=Status.COMPLETED.value,
+            )
+            watched_media_keys.update(
+                (media_type, str(media_id))
+                for media_type, media_id in completed_tv.values_list(
+                    "item__media_type",
+                    "item__media_id",
                 ).distinct()
             )
 
@@ -386,7 +545,11 @@ def person_detail(request, source, person_id, name):
                 item__source=source,
                 item__media_type=MediaTypes.BOOK.value,
                 item__media_id__in=watched_book_media_ids,
-            ).filter(Q(start_date__isnull=False) | Q(end_date__isnull=False))
+            ).filter(
+                Q(start_date__isnull=False)
+                | Q(end_date__isnull=False)
+                | Q(status=Status.COMPLETED.value)
+            )
             watched_media_keys.update(
                 (media_type, str(media_id))
                 for media_type, media_id in watched_books.values_list(
@@ -401,7 +564,11 @@ def person_detail(request, source, person_id, name):
                 item__source=source,
                 item__media_type=MediaTypes.COMIC.value,
                 item__media_id__in=watched_comic_media_ids,
-            ).filter(Q(start_date__isnull=False) | Q(end_date__isnull=False))
+            ).filter(
+                Q(start_date__isnull=False)
+                | Q(end_date__isnull=False)
+                | Q(status=Status.COMPLETED.value)
+            )
             watched_media_keys.update(
                 (media_type, str(media_id))
                 for media_type, media_id in watched_comics.values_list(
@@ -416,7 +583,11 @@ def person_detail(request, source, person_id, name):
                 item__source=source,
                 item__media_type=MediaTypes.MANGA.value,
                 item__media_id__in=watched_manga_media_ids,
-            ).filter(Q(start_date__isnull=False) | Q(end_date__isnull=False))
+            ).filter(
+                Q(start_date__isnull=False)
+                | Q(end_date__isnull=False)
+                | Q(status=Status.COMPLETED.value)
+            )
             watched_media_keys.update(
                 (media_type, str(media_id))
                 for media_type, media_id in watched_manga.values_list(
@@ -722,6 +893,8 @@ def person_detail(request, source, person_id, name):
         "supports_critic_rating_sort": not is_author,
         "person_detail_url": request.path,
     }
+    if request.GET.get("format") == "json":
+        return JsonResponse(_people_person_contract(context))
     if request.headers.get("HX-Request"):
         return render(
             request, "app/components/person_filmography_fragment.html", context
@@ -853,4 +1026,6 @@ def studio_detail(request, source, studio_id, name):
         "studio_games_count": len(credited_titles),
         "IMG_NONE": settings.IMG_NONE,
     }
+    if request.GET.get("format") == "json":
+        return JsonResponse(_people_studio_contract(context))
     return render(request, "app/studio_detail.html", context)

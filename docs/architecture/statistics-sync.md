@@ -57,6 +57,16 @@ for the same reason (#521).
   generation only; no day is rebuilt.
 * `mark_rows(user_id, rows)` — for bulk writes that skip signals.
 
+Credits are the one field marked through `request_credits_statistics_refresh`
+instead of `mark_aggregate` directly. A credits backfill drain completes a batch
+about every minute, and marking every batch kept the sync running back to back
+for the whole backfill against the same single SQLite writer (#1706). Credits
+marks are coalesced to `STATISTICS_CREDITS_MARK_SECONDS` (default 600, the
+heavy-range max delay, so heavy ranges are not made due more often than today).
+The first batch marks immediately; later batches schedule one trailing
+`app.tasks.mark_credits_statistics_refresh`, so the last credits written are
+still published even after the backfill stops.
+
 The older names still work and route here: `invalidate_statistics_days` →
 `mark_days`, `invalidate_statistics_cache` and `schedule_all_ranges_refresh` →
 `mark_aggregate`, `invalidate_all_statistics_days` → drop every day payload and
@@ -64,10 +74,14 @@ request a full sweep (imports, provider migrations, preference changes).
 
 ## The sync
 
-`statistics_sync_task(user_id)` runs `run_sync` on the interactive queue at
-`CELERY_TASK_PRIORITY_STATISTICS_SYNC = 1`: behind webhooks (0), ahead of
-follow-up imports and backfills (3+). That matters on the minimal tier, where
-one worker consumes every queue.
+`statistics_sync_task(user_id)` runs `run_sync` on the background `celery`
+queue at `CELERY_TASK_PRIORITY_STATISTICS_SYNC = 1`: ahead of follow-up imports
+and backfills (3+) on that worker. Ordinary syncs are bulk derived work, so
+they never share the interactive worker's only slot with webhook scrobbles or a
+manual refresh. Urgent requests (a manual Refresh, a range that has never been
+built) override the queue to `interactive`, because the user is waiting. On the
+minimal tier one worker consumes every queue, so priority ordering still
+separates them; on the other tiers the processes do.
 
 When an interactive browser request is active, the background task yields before
 claiming its database lease or between day slices and ranges. The reconciler
@@ -100,8 +114,9 @@ design aborted on every version change and needed a settling window to stop
 restarting in a loop.
 
 **It is bounded.** After `STATISTICS_SYNC_TASK_BUDGET_SECONDS` (10 s) it stops
-at the next slice or range, queues its own continuation and returns, so the
-single-slot interactive worker is never held for a whole All Time rebuild.
+at the next slice or range, queues its own continuation and returns, so a range
+aggregate cannot hold a worker indefinitely and the same SQLite writer is not
+occupied for a whole All Time rebuild.
 
 A range aggregate cannot stop partway, so the budget is enforced by choosing
 what to start: each finished range records its cost (`stats:sync:range_seconds`),
@@ -109,14 +124,33 @@ and a task starts a further range only if it is expected to fit in what is left.
 The first range a task builds always runs, so a range dearer than a whole budget
 still gets a task of its own. At each slice and range boundary the sync also
 looks at the broker and yields when a webhook-priority (0) task is queued: the
-worker cannot be preempted, so this is the only way a scrobble waits for one
-slice instead of one task. The worst case is therefore the budget plus one range.
+worker cannot be preempted, so this is how a background sync steps aside
+between slices while webhook work is waiting on the same SQLite writer. The
+worst case is therefore the budget plus one range.
 A sync more than 5 s over budget logs `stats_sync_overrun` naming its slowest
-range; `stats_sync` carries `days` and `days_ms` for the day-building phase.
+range; `stats_sync` carries `days` and `days_ms` for the day-building phase,
+and each `stats_range_summary` carries `missing_days` and `days_ms` so the
+range's own day-building can be told apart from its aggregation. A range that
+is slow with `missing_days=0` is aggregation work, not a cold cache.
+`phases_ms` then says which part: wall milliseconds per phase of the aggregate
+as `phase:ms` pairs (`day_fetch` and `day_merge` are the walk over the day
+payloads, the rest is the finish), and `days_decoded` is how many day payloads
+it read.
+
+Ranges of one pass share an in-memory memo of lookups that do not depend on
+the range (the History index and the History days the highlight cards read).
+It lives for the pass only: it is never cached and never part of a snapshot,
+and a pass still stops at any range boundary.
 
 The highlights ("on this day") read the History day cache and keep any day they
 had to build, so a History cache that keeps losing days (see the coverage repair
-reasons in the log) also makes every Statistics range slower.
+reasons in the log) also makes every Statistics range slower. The "today in
+history" release candidate scan cannot use a date index - it matches a
+month/day across every year - and a range asks for it once per media type, so
+its handful of matching items is cached for
+`statistics_highlights.TODAY_RELEASE_CACHE_TIMEOUT` (5 min). Every range and
+media type of a sync pass then shares one scan; the random card choice is still
+made per range.
 
 ## Lease fencing — an expired worker is inert
 
@@ -144,6 +178,13 @@ on every claim. Every state-touching operation is fenced on it:
   dirty-day clearing. A worker that lost its lease during the expensive
   build cannot overwrite its successor's days. The full-sweep epoch marker
   uses the same fence.
+  This deliberately includes Redis I/O in the writer transaction: a delayed
+  cache publication blocks other SQLite writers. Moving that publication
+  outside the transaction is unsafe with the current shared day keys:
+  a takeover can publish newer days before the old Redis write arrives, and
+  a subsequent lease check cannot undo that overwrite. Snapshot publication
+  avoids this race through durable revision validation; day readers do not
+  have that protocol.
 * **Markers** (`hot/heavy_synced_generation`, `synced_day`) advance
   monotonically (`Greatest`) and only under the caller's token, so a stale pass
   cannot regress what a successor recorded; the full-sweep clear is likewise
@@ -163,14 +204,41 @@ successor-arrives-mid-range case.
 
 ## The reconciler — why a lost message cannot strand a page
 
-`Reconcile statistics sync` runs every 60 s (on the interactive worker, so a
-long import on the background worker cannot delay it). One query finds users
+`Reconcile statistics sync` is published every 60 s on the default `celery`
+queue, with no queue override in its route. A page does not await this periodic
+sweep; viewer-requested urgent syncs choose the interactive lane independently.
+Background-worker saturation can delay periodic recovery until capacity returns.
+The sweep finds users
 whose lease is free and who have dirty rows, an unsynced generation, a pending
 full sweep, overdue heavy ranges, or a `synced_day` before today — and queues a
 sync for each. That covers every way a sync message can go missing (a dropped
 or starved message, a worker restart, a second consumer on the same Redis) and
 also midnight rollover and the first build after an upgrade: users with no
 state row are bootstrapped with a full sweep.
+
+Beat gives each new reconciler message a 60-second publication lifetime
+(`options.expire_seconds` for Django's database scheduler). The source-owned
+canonical entry explicitly clears any previous absolute expiry (`expires=None`)
+in favor of that rolling lifetime; its persisted enabled/disabled state is
+preserved. These fields rely on the configured Django DatabaseScheduler, and
+apply only to this canonical entry, leaving differently named legacy rows alone.
+When the background worker resumes, Celery discards expired ticks before running their database
+queries; the next fresh tick still finds durable unfinished work. Redis may
+retain expired envelopes until a consumer discards them. This applies to new
+publications; older messages without an expiry keep their original lifetime.
+It does not detect duplicate Beat producers or remove legacy periodic schedules.
+Routing changes also affect new publications only: previously queued messages
+retain their original queue and expiry, and remain registered for consumption.
+
+The reconciler does not publish a second per-user sync message while the last one
+is still waiting. A successful enqueue writes `stats:sync:pending:{uid}`; the task
+deletes it when it starts, and the marker expires after the lease window
+(`STATISTICS_SYNC_LEASE_SECONDS`) if delivery was lost before that. So a busy
+worker sees one queued sync per user instead of one per 60 s tick. A lost
+publication becomes eligible for recovery when its marker expires and a fresh
+tick can run. The 5-second
+interactive gate still coalesces rapid marks; the scheduled path uses the
+pending marker because a tick interval outlives the gate.
 
 ## The read path
 
@@ -189,17 +257,38 @@ Tests that exercise the real queueing override both settings and patch
 
 `request_manual_refresh(user, range_name)` marks every day in that range dirty,
 requests a full sweep (so the heavy ranges are due too), and queues an urgent
-sync. It no longer throws away every day payload the user has.
+sync on the interactive lane, since the user is waiting on it. It no longer
+throws away every day payload the user has.
 
 ## What marks changes
 
 Signals (`app/signals.py`, `_handle_media_cache_change`) mark the days a media
 row touched; a change with no day marks the aggregate. A `pre_save`/`post_save`
 pair marks the day a Movie, Music, Podcast, Game, BoardGame, Anime, Manga, Book
-or Comic entry moved *away* from (Episode already did this). Paths without
-signals mark explicitly: generic imports and Pocket Casts
+or Comic entry moved *away* from (Episode already did this). Audiobook listening
+sessions (`BookListeningSession`) mark the day they started on, since Statistics
+reports their minutes apart from page counts. Paths without
+signals mark explicitly: generic imports
 (`invalidate_all_statistics_days`), the TV and season completion fan-outs,
 episode-order remaps, music track relinks and TV provider migrations.
+
+A recurring poll must not use that blanket drop: one changed row would send
+thousands of days back to the sync, and the next poll arrives before it has
+caught up. Importers listed in `DAY_SCOPED_IMPORTERS`
+(`integrations/tasks/_media_imports.py`) write through the ORM (signals mark the
+day, including the day a moved row left, for History as well as Statistics),
+through `helpers.bulk_create_media`, or through a bulk write they report with
+`helpers.note_bulk_rows`. The task then calls `helpers.publish_bulk_rows` to
+refresh just those days in History and Statistics (undated rows re-aggregate),
+and `coalesce_import_changes` drops the full sweep it requested up front.
+A write that moves rows between libraries (Stremio promoting a show to grouped
+anime) calls `helpers.note_full_refresh()`, which falls back to the blanket drop.
+
+Not in the list: Trakt (its durable, resumable import publishes through
+`durable.publish_pending`, which still drops everything) and the one-off file
+importers, where a full refresh after a big upload is what the user expects.
+Add an importer only after checking that every write it makes takes one of the
+paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
 `queryset.update`) on anything Statistics reads, mark it.
@@ -232,7 +321,7 @@ above has no message whose loss matters, and polling never touches it.
 | --- | --- |
 | `stats_mark user_id days reason` | a change was recorded |
 | `stats_sync user_id status ranges elapsed_ms` | a sync pass ended (`done`, `continued`, `busy`, `lost_lease`) |
-| `stats_range_summary user_id range generation elapsed_ms` | one range published |
+| `stats_range_summary user_id range generation elapsed_ms missing_days days_ms days_decoded phases_ms` | one range published (`days_ms` is the day-building part of `elapsed_ms`; `phases_ms` splits the aggregate) |
 | `stats_snapshot_superseded user_id range generation` | a publish was skipped: a newer generation is already out |
 | `stats_reconcile candidates queued` | the reconciler found unfinished work |
 | `stats_sync_enqueue_failed` | the broker refused a sync; the reconciler will retry |

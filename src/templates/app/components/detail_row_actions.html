@@ -3,10 +3,11 @@
 {% load app_tags %}
 {% load user_tags %}
 
-<div class="flex space-x-2 shrink-0">
+<div class="flex items-center space-x-2 shrink-0">
   {% if track_button_variant == "episode" %}
     <div x-data="{ trackOpen: false }">
       {% include "app/components/detail_episode_track_button.html" with episode=episode detail_return_url=detail_return_url request=request track_button_oob=False only %}
+      <template x-teleport="body">
       <div x-show="trackOpen"
       @mousedown.self="trackOpen = false"
            x-cloak
@@ -18,10 +19,12 @@
           <div id="{% component_id 'track' episode %}"></div>
         </div>
       </div>
+      </template>
     </div>
   {% elif track_button_variant != "episode" %}
     <div x-data="{ trackOpen: false }">
       <button hx-get="{% media_view_url 'track_modal' episode %}"
+              data-children-action="track"
               hx-target="#{% component_id 'track' episode %}"
               hx-trigger="click once"
               @click="trackOpen = true"
@@ -47,33 +50,49 @@
     </div>
   {% endif %}
 
-  {% if episode.item or media_type == MediaTypes.SEASON.value or action_media_type == MediaTypes.COMIC_ISSUE.value %}
-    <div x-data="{ listsOpen: false }">
-      <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
-              title="{% translate "Add to custom lists" %}"
-              hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
-              hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
-              hx-target="#{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"
-              hx-trigger="click once"
-              @click="listsOpen = true">
-        {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
-      </button>
-
-      <div x-show="listsOpen"
-      @mousedown.self="listsOpen = false"
-           x-cloak
-           @keydown.escape.window="listsOpen = false"
-           class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-          <div id="{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"></div>
+  {% if track_button_variant == "episode" %}
+    <div x-data="{ collectionOpen: false }">
+      {% include "app/components/detail_episode_collection_button.html" %}
+      <template x-teleport="body">
+        <div x-show="collectionOpen" x-cloak
+             @mousedown.self="if (!$event.target.closest('[data-cf-dropdown-menu]')) collectionOpen = false"
+             @keydown.escape.window="collectionOpen = false"
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div class="w-152 modal-max-height overflow-y-auto px-4 md:px-0 relative z-60">
+            <div id="{% component_id 'collection' episode %}"></div>
+          </div>
         </div>
-      </div>
+      </template>
     </div>
   {% endif %}
 
-  {% if history_item %}
+  {% if episode.item or media_type == MediaTypes.SEASON.value or action_media_type == MediaTypes.COMIC_ISSUE.value %}
+    <div>
+      <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
+              data-children-action="lists"
+              title="{% translate "Add to custom lists" %}"
+              {% if episode.item %}{% lists_modal_click episode.item detail_return_url %}{% else %}{% lists_modal_click episode detail_return_url %}{% endif %}>
+        {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
+      </button>
+
+    </div>
+  {% endif %}
+
+  {% if track_button_variant == "episode" %}
+    <button type="button"
+            data-children-action="history"
+            class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition-colors cursor-pointer"
+            title="{% translate "View your activity history" %}"
+            hx-get="{% url 'activity_sessions_modal' %}?media_type=tv&amp;media_id={{ episode.media_id|urlencode }}&amp;source={{ episode.source|urlencode }}&amp;season_number={{ episode.season_number }}&amp;episode_number={{ episode.episode_number }}"
+            hx-target="#session-history-modal-host"
+            hx-swap="innerHTML"
+            @click="$dispatch('open-session-history')">
+      {% include "app/icons/history.svg" with classes="w-4 h-4" %}
+    </button>
+  {% elif history_item %}
     <div x-data="{ historyOpen: false }">
       <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
+              data-children-action="history"
               title="{% translate "View your activity history" %}"
               hx-get="{% media_view_url 'history_modal' history_item %}"
               hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -94,28 +113,13 @@
     </div>
   {% endif %}
 
-  {% comment %}
-    A rating belongs to the episode, not to one pass over it, so this reads
-    every play rather than only the ones inside an open rewatch.
-  {% endcomment %}
-  {% with plays=episode|rating_plays %}
-    {% if plays and action_media_type == MediaTypes.EPISODE.value and current_instance %}
-      {% with ep_score=plays.0.score %}
-        {% include "app/components/detail_row_rating_button.html" with ep_score=ep_score rating_kind="episode" episode=episode episode_score_target_id=current_instance.id action_media_type=action_media_type csrf_token=csrf_token user=user MediaTypes=MediaTypes only %}
-      {% endwith %}
-    {% elif plays and action_media_type == MediaTypes.EPISODE.value and episode.rating_season_id %}
-      {% with ep_score=plays.0.score %}
-        {% include "app/components/detail_row_rating_button.html" with ep_score=ep_score rating_kind="episode" episode=episode episode_score_target_id=episode.rating_season_id action_media_type=action_media_type csrf_token=csrf_token user=user MediaTypes=MediaTypes only %}
-      {% endwith %}
-    {% elif not plays and action_media_type == MediaTypes.EPISODE.value and episode.rating_season_id %}
-      {% comment %}Unwatched episode of a tracked season: the rating is stored without a play.{% endcomment %}
-      {% with ep_score=episode.unwatched_score %}
-        {% include "app/components/detail_row_rating_button.html" with ep_score=ep_score rating_kind="episode" episode=episode episode_score_target_id=episode.rating_season_id action_media_type=action_media_type csrf_token=csrf_token user=user MediaTypes=MediaTypes only %}
-      {% endwith %}
-    {% elif plays and action_media_type != MediaTypes.EPISODE.value %}
-      {% with ep_score=plays.0.score rating_instance=plays.0 %}
-        {% include "app/components/detail_row_rating_button.html" with ep_score=ep_score rating_kind="media" episode=episode rating_instance=rating_instance action_media_type=action_media_type csrf_token=csrf_token user=user MediaTypes=MediaTypes only %}
-      {% endwith %}
-    {% endif %}
-  {% endwith %}
+  {% if track_button_variant != "episode" %}
+    {% with plays=episode|rating_plays %}
+      {% if plays and action_media_type != MediaTypes.EPISODE.value %}
+        {% with ep_score=plays.0.score rating_instance=plays.0 %}
+          {% include "app/components/detail_row_rating_button.html" with ep_score=ep_score rating_kind="media" episode=episode rating_instance=rating_instance action_media_type=action_media_type csrf_token=csrf_token user=user MediaTypes=MediaTypes only %}
+        {% endwith %}
+      {% endif %}
+    {% endwith %}
+  {% endif %}
 </div>

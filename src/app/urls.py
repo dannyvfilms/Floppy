@@ -1,6 +1,15 @@
 from django.urls import path, register_converter
 
-from app import converters, episode_order_views, views
+from app import (
+    checkin_views,
+    converters,
+    cover_views,
+    episode_order_views,
+    history_views,
+    media_details_views,
+    progress_views,
+    views,
+)
 from app.discover import feeds as discover_feeds
 
 register_converter(converters.MediaTypeChecker, "media_type")
@@ -8,15 +17,32 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path("youtube-player", media_details_views.youtube_player, name="youtube_player"),
+    path("progress/cancel-rewatch/", progress_views.cancel_progress_rewatch, name="cancel_progress_rewatch"),
     path(
         "tv/<int:tv_id>/episode-ordering/",
         episode_order_views.episode_ordering_settings,
         name="episode_ordering_settings",
     ),
     path(
+        "progress/tv/<int:tv_id>/",
+        progress_views.tv_progress_breakdown,
+        name="tv_progress_breakdown",
+    ),
+    path(
+        "progress/season/<int:season_id>/",
+        progress_views.season_progress_breakdown,
+        name="season_progress_breakdown",
+    ),
+    path(
         "image-cache/<str:token>",
         views.serve_image_cache,
         name="image_cache",
+    ),
+    path(
+        "covers/<str:name>",
+        cover_views.serve_local_cover,
+        name="local_cover",
     ),
     path("", views.home, name="home"),
     path("discover", views.discover_page, name="discover"),
@@ -55,6 +81,11 @@ urlpatterns = [
         "search/suggestions",
         views.search_suggestions,
         name="search_suggestions",
+    ),
+    path(
+        "search/results",
+        views.search_results_json,
+        name="search_results_json",
     ),
     path(
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
@@ -114,6 +145,11 @@ urlpatterns = [
         name="media_details",
     ),
     path(
+        "podcast/show-tracker/<int:tracker_id>/update-score/",
+        views.update_podcast_show_score,
+        name="update_podcast_show_score",
+    ),
+    path(
         "update-score/<media_type:media_type>/<int:instance_id>",
         views.update_media_score,
         name="update_media_score",
@@ -169,6 +205,16 @@ urlpatterns = [
         name="update_item_image",
     ),
     path(
+        "details/cover/<int:item_id>",
+        cover_views.update_item_cover,
+        name="update_item_cover",
+    ),
+    path(
+        "details/cover/<int:item_id>/candidates",
+        cover_views.item_cover_candidates,
+        name="item_cover_candidates",
+    ),
+    path(
         "details/metadata/<int:item_id>",
         views.update_manual_item_metadata,
         name="update_manual_item_metadata",
@@ -208,6 +254,11 @@ urlpatterns = [
         views.progress_edit,
         name="progress_edit",
     ),
+    path(
+        "checkin/<source:source>/<media_type:media_type>/<path:media_id>",
+        checkin_views.checkin_action,
+        name="checkin_action",
+    ),
     path("media_save", views.media_save, name="media_save"),
     path("media_delete", views.media_delete, name="media_delete"),
     path("media_rewatch", views.media_rewatch, name="media_rewatch"),
@@ -237,7 +288,7 @@ urlpatterns = [
     ),
     path(
         "media/history/<str:media_type>/<int:history_id>/delete/",
-        views.delete_history_record,
+        history_views.delete_history_record,
         name="delete_history_record",
     ),
     path("create", views.create_entry, name="create_entry"),
@@ -258,6 +309,11 @@ urlpatterns = [
         "statistics/compare-mode",
         views.update_statistics_compare_mode,
         name="update_statistics_compare_mode",
+    ),
+    path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
     ),
     path(
         "statistics/select-featured-person",
@@ -341,7 +397,11 @@ urlpatterns = [
         views.home_rows_artwork_refresh,
         name="home_rows_artwork_refresh",
     ),
-    path("home/rest/", views.home_rest_fragment, name="home_rest_fragment"),
+    path(
+        "home/row/<int:row_id>/",
+        views.home_row_fragment,
+        name="home_row_fragment",
+    ),
     path(
         "music/artist/<int:artist_id>/update-score/",
         views.update_artist_score,
@@ -393,6 +453,11 @@ urlpatterns = [
         "music/album/delete/",
         views.album_delete,
         name="album_delete",
+    ),
+    path(
+        "music/track/<int:track_id>/notes/",
+        views.music_track_notes,
+        name="music_track_notes",
     ),
     path(
         "music/song/save/",
@@ -452,6 +517,26 @@ urlpatterns = [
         name="podcast_episodes_api",
     ),
     path(
+        "podcast/show/<int:show_id>/episodes/manage/",
+        views.podcast_episodes_manage,
+        name="podcast_episodes_manage",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/add/",
+        views.podcast_episode_add,
+        name="podcast_episode_add",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/edit/",
+        views.podcast_episode_edit,
+        name="podcast_episode_edit",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/delete/",
+        views.podcast_episode_delete,
+        name="podcast_episode_delete",
+    ),
+    path(
         "podcast/show/<int:show_id>/mark-all-played/",
         views.podcast_mark_all_played,
         name="podcast_mark_all_played",
@@ -488,6 +573,11 @@ urlpatterns = [
         "collection/season/<int:season_item_id>/remove/",
         views.collection_remove_season,
         name="collection_remove_season",
+    ),
+    path(
+        "collection/season/<int:season_item_id>/update/",
+        views.collection_update_season,
+        name="collection_update_season",
     ),
     path(
         "collection/modal/<source:source>/<media_type:media_type>/<path:media_id>/",
@@ -532,6 +622,16 @@ urlpatterns = [
         "bulk/status",
         views.bulk_status_update,
         name="bulk_status_update",
+    ),
+    path(
+        "bulk/plays",
+        views.bulk_show_plays_start,
+        name="bulk_show_plays_start",
+    ),
+    path(
+        "bulk/plays/<str:operation_id>",
+        views.bulk_show_plays_status,
+        name="bulk_show_plays_status",
     ),
     path(
         "bulk/collection",

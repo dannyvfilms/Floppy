@@ -107,7 +107,7 @@ class ExplainRedisErrorTests(SimpleTestCase):
         self.assertIn('"redis" does not resolve', cause)
         self.assertIn("network", fix)
         self.assertIn("network_mode", fix)
-        self.assertIn(redis_diagnosis.README_URL, fix)
+        self.assertIn(redis_diagnosis.GUIDE_URL, fix)
 
     def test_dns_outside_a_container_gives_no_docker_advice(self):
         with mock.patch("app.preflight.in_container", return_value=False):
@@ -167,7 +167,7 @@ class QueueFailureMessageTests(SimpleTestCase):
 
         self.assertTrue(message.startswith("The import could not be queued."))
         self.assertIn("cannot reach Redis at redis:6379", message)
-        self.assertIn(redis_diagnosis.README_SECTION, message)
+        self.assertIn(redis_diagnosis.GUIDE_SECTION, message)
         self.assertNotIn("worker", message)
 
     def test_other_failures_keep_the_hint(self):

@@ -14,6 +14,7 @@ from app.discover.feature_metadata import (
     release_decade_label,
     runtime_bucket_label,
 )
+from app.discover.profile import preload_tv_activity_dates
 from app.discover.registry import ALL_MEDIA_KEY, DISCOVER_MEDIA_TYPES
 from app.discover.schemas import CandidateItem
 from app.discover.service_helpers import (
@@ -70,6 +71,7 @@ def _entries_to_candidates(
     entries = list(entries)
     if not entries:
         return []
+    preload_tv_activity_dates(entries)
     rewatch_counts = rewatch_counts or {}
     phase_evidence_by_item = phase_evidence_by_item or {}
     phase_pool_bucket_by_item = phase_pool_bucket_by_item or {}
@@ -248,10 +250,16 @@ def _clear_out_next_entries(user, media_type: str):
     if not model:
         return []
 
+    # `progress` walks seasons and episodes (TV) per entry; prefetch them once
+    # instead of issuing a few queries per show.
     entries = list(
-        model.objects.filter(user=user, status=Status.IN_PROGRESS.value)
-        .select_related("item")
-        .order_by(*_activity_ordering(model))
+        BasicMedia.objects._apply_prefetch_related(
+            model.objects.filter(user=user, status=Status.IN_PROGRESS.value)
+            .select_related("item")
+            .order_by(*_activity_ordering(model)),
+            media_type,
+            list_mode=True,
+        )
     )
     if not entries:
         return []

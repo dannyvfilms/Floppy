@@ -1,5 +1,6 @@
 import json
 import zipfile
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import Mock, patch
 
@@ -226,6 +227,66 @@ class ImportTraktExport(TestCase):
         )
 
         self.assertEqual(TV.objects.filter(user=self.user, item=item).count(), 1)
+        self.assertEqual(
+            TV.objects.get(user=self.user, item=item).status,
+            Status.COMPLETED.value,
+        )
+
+    def test_rows_written_after_the_snapshot_are_reused_not_inserted(self):
+        """A tracking row added mid-import must not abort the bulk save (#1518).
+
+        Imports decide what is new against a snapshot taken at the start of the
+        run. A webhook or sync can store the same show while a long import is
+        still preparing it; the queued duplicate then hit
+        ``UNIQUE(user, item)`` and failed the whole import.
+        """
+        item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Raced Show",
+            image="",
+        )
+        season_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Raced Show",
+            image="",
+        )
+        stored_tv = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+        stored_season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=stored_tv,
+            status=Status.COMPLETED.value,
+        )
+
+        queued_tv = TV(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+        queued_season = Season(
+            item=season_item,
+            user=self.user,
+            related_tv=queued_tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        helpers.bulk_create_media(
+            {
+                MediaTypes.TV.value: [queued_tv],
+                MediaTypes.SEASON.value: [queued_season],
+            },
+            self.user,
+        )
+
+        self.assertEqual(TV.objects.filter(user=self.user, item=item).count(), 1)
+        self.assertEqual(Season.objects.filter(user=self.user, item=season_item).count(), 1)
+        self.assertEqual(queued_tv.pk, stored_tv.pk)
+        self.assertEqual(queued_season.pk, stored_season.pk)
+        # Reuse keeps the row the other writer stored, including its status.
         self.assertEqual(
             TV.objects.get(user=self.user, item=item).status,
             Status.COMPLETED.value,
@@ -538,6 +599,90 @@ class ImportTraktExport(TestCase):
             1,
         )
 
+    def _collection_shows_export(self, show_last_collected_at=None):
+        show_entry = {
+            "type": "show",
+            "show": _show(),
+            "seasons": [
+                {
+                    "number": 1,
+                    "episodes": [
+                        {"number": 1, "collected_at": "2024-07-17T14:25:07.000Z"},
+                        {"number": 2, "collected_at": "2024-07-18T10:00:00.000Z"},
+                    ],
+                },
+            ],
+        }
+        if show_last_collected_at:
+            show_entry["last_collected_at"] = show_last_collected_at
+        return _zip_bytes({"collection-shows.json": [show_entry]})
+
+    def _rollup_dates(self):
+        return {
+            entry.item.media_type: entry.collected_at
+            for entry in CollectionEntry.objects.filter(user=self.user).exclude(
+                item__media_type=MediaTypes.EPISODE.value,
+            )
+        }
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_collection_rollups_keep_historical_dates(self, mock_get_metadata):
+        """Season and show entries use Trakt dates, not the import time."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        importer(
+            self._collection_shows_export("2024-07-19T00:00:00.000Z"),
+            self.user,
+            "new",
+        )
+
+        dates = self._rollup_dates()
+        self.assertEqual(
+            dates[MediaTypes.SEASON.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            dates[MediaTypes.TV.value],
+            datetime(2024, 7, 19, 0, 0, tzinfo=UTC),
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_collection_show_date_falls_back_to_newest_episode(
+        self,
+        mock_get_metadata,
+    ):
+        """Without last_collected_at the show uses its newest episode date."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        importer(self._collection_shows_export(), self.user, "new")
+
+        self.assertEqual(
+            self._rollup_dates()[MediaTypes.TV.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_overwrite_corrects_existing_rollup_dates(self, mock_get_metadata):
+        """Re-importing in overwrite mode fixes dates set to the import time."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+        export = self._collection_shows_export("2024-07-19T00:00:00.000Z")
+
+        importer(export, self.user, "new")
+        CollectionEntry.objects.filter(user=self.user).update(
+            collected_at=datetime(2026, 10, 3, tzinfo=UTC),
+        )
+        importer(export, self.user, "overwrite")
+
+        dates = self._rollup_dates()
+        self.assertEqual(
+            dates[MediaTypes.TV.value],
+            datetime(2024, 7, 19, 0, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            dates[MediaTypes.SEASON.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_hidden_progress_marks_show_dropped(self, mock_get_metadata):
         """hidden-progress-watched is read even though there is no OAuth token."""
@@ -802,6 +947,42 @@ class TraktExportUploadViewTests(TestCase):
         )
 
     @patch("integrations.views.tasks.import_trakt_export.delay")
+    def test_selective_modes_are_refused_for_the_export(self, mock_delay):
+        """watchlist/update_collection would run the full import, so nothing is queued (#1873)."""
+        payload = _zip_bytes({"watched-history-1.json": []}).getvalue()
+        for mode in ("watchlist", "update_collection"):
+            upload = SimpleUploadedFile("export.zip", payload, "application/zip")
+
+            response = self.client.post(
+                self.url,
+                {"mode": mode, "trakt_export": upload},
+                follow=True,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                "supports only the 'new' and 'overwrite' modes",
+                " ".join(str(m) for m in response.context["messages"]),
+            )
+        mock_delay.assert_not_called()
+
+    @patch("integrations.views.tasks.import_trakt_collection_csv.delay")
+    def test_csv_upload_keeps_the_update_collection_mode(self, mock_delay):
+        """The collection CSV legitimately supports update_collection."""
+        upload = SimpleUploadedFile("collection.csv", b"collected_at,type\n", "text/csv")
+
+        self.client.post(
+            self.url,
+            {"mode": "update_collection", "trakt_export": upload},
+        )
+
+        mock_delay.assert_called_once()
+        self.addCleanup(
+            discard_staged_upload,
+            mock_delay.call_args.kwargs["file"],
+        )
+
+    @patch("integrations.views.tasks.import_trakt_export.delay")
     def test_large_upload_is_queued(self, mock_delay):
         """Large uploads are staged instead of rejected by an application cap."""
         self._post(SimpleUploadedFile("export.zip", b"x" * 100, "application/zip"))
@@ -818,3 +999,13 @@ class TraktExportUploadViewTests(TestCase):
         self.client.post(self.url, {"mode": "new"})
 
         mock_delay.assert_not_called()
+
+
+class TraktExportModeGuardTests(TestCase):
+    """The importer refuses modes it would not honour (#1873)."""
+
+    def test_selective_modes_are_refused_before_reading_the_archive(self):
+        user = get_user_model().objects.create_user(username="mode-guard")
+        for mode in ("watchlist", "update_collection"):
+            with self.assertRaises(MediaImportError):
+                importer("/nonexistent.zip", user, mode)

@@ -24,6 +24,7 @@ function libraryFilterState(rules = {}, filterData = {}, mediaTypes = {}) {
     rating_min: value('rating_min'),
     rating_max: value('rating_max'),
     collection: value('collection', 'all'),
+    group_by: value('group_by', 'item'),
     genre: value('genre'),
     implied_genre: value('implied_genre'),
     year: value('year'),
@@ -87,6 +88,11 @@ function libraryFilterState(rules = {}, filterData = {}, mediaTypes = {}) {
       all: gettext('Any'),
       released: gettext('Released'),
       not_released: gettext('Not Released'),
+    },
+    groupByLabels: {
+      item: gettext('Item'),
+      series: gettext('Collection/Series'),
+      franchise: gettext('Franchise'),
     },
     isStatusSelected(status) {
       return this.statuses.includes(status);
@@ -192,6 +198,7 @@ function libraryFilterState(rules = {}, filterData = {}, mediaTypes = {}) {
       if (this.rating && this.rating !== 'all') labels.push(this.ratingLabels[this.rating]);
       labels.push(this.formatRangeLabel(this.rating_min, this.rating_max));
       if (this.collection && this.collection !== 'all') labels.push(this.collectionLabels[this.collection]);
+      if (this.group_by && this.group_by !== 'item') labels.push(this.groupByLabels[this.group_by]);
       if (this.progress && this.progress !== 'all') labels.push(this.progressLabels[this.progress]);
       labels.push(this.genre);
       if (this.implied_genre) labels.push(gettext('Implied: ') + this.implied_genre);
@@ -236,6 +243,7 @@ function libraryFilterState(rules = {}, filterData = {}, mediaTypes = {}) {
         rating_min: '',
         rating_max: '',
         collection: 'all',
+        group_by: 'item',
         progress: 'all',
         genre: '',
         implied_genre: '',

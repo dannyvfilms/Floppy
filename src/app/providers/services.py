@@ -29,8 +29,10 @@ from app.models import Item, MediaTypes, Sources, Video
 from app.providers import (
     bgg,
     comicvine,
+    credentials,
     gcd,
     googlebooks,
+    gpodder,
     hardcover,
     igdb,
     mal,
@@ -40,6 +42,8 @@ from app.providers import (
     musicbrainz,
     openlibrary,
     pocketcasts,
+    podcast_links,
+    podcastindex,
     tmdb,
     tvdb,
 )
@@ -53,6 +57,10 @@ TRANSIENT_HTTP_STATUS_CODES = frozenset(
         requests.codes.gateway_timeout,
     },
 )
+# Comic Vine signals its quota with 420 ("Enhance Your Calm") rather than 429,
+# so it must use the same retry-and-cooldown path or one rate-limited lookup
+# aborts a whole import.
+RATE_LIMIT_STATUS_CODES = frozenset({420, requests.codes.too_many_requests})
 TRANSIENT_HTTP_MAX_RETRIES = 2
 RATE_LIMIT_MAX_RETRIES = 3
 # Retry-After is attacker-ish input from our perspective: providers occasionally
@@ -70,12 +78,38 @@ RATE_LIMIT_DEFAULT_WAIT_SECONDS = 5
 RATE_LIMIT_MAX_COOLDOWN_SECONDS = 60 * 60
 RATE_LIMIT_MAX_RETRIES_INTERACTIVE = 1
 RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE = 5
+# A user is waiting, so a flaky 5xx gets one quick retry rather than two sleeps.
+TRANSIENT_HTTP_MAX_RETRIES_INTERACTIVE = 1
+# After an interactive call times out, cannot connect, or gets a 5xx, later
+# interactive calls to that provider fail fast for this long instead of each
+# holding a web thread for REQUEST_TIMEOUT_INTERACTIVE (typing in search fires
+# a request per keystroke; a media list fires one per item).
+PROVIDER_DOWN_SECONDS = 30
+# A bare 500 can be one bad record, so only gateway-level failures trip it.
+PROVIDER_DOWN_STATUS_CODES = frozenset({502, 503, 504})
 # A provider that accepts the connection but never answers would hold a web
 # thread for the full REQUEST_TIMEOUT, longer than nginx waits for the page.
 # An interactive caller has a stored-metadata fallback, so it gives up sooner.
 REQUEST_TIMEOUT_INTERACTIVE = 10
+# Comic Vine's API can accept a connection without returning a response when
+# its edge service is unhealthy. Do not let that hold the single local worker
+# for the global 120-second provider timeout.
+COMICVINE_REQUEST_TIMEOUT = 20
 
 _interactive_request = contextvars.ContextVar("_interactive_request", default=False)
+
+
+def request_timeout(default=None):
+    """Return the provider read timeout for direct (non-api_request) callers.
+
+    Capped inside interactive_request_scope() like api_request() does, so an
+    aiohttp or requests call outside api_request cannot hold a web thread for
+    the 120 s background budget.
+    """
+    default = settings.REQUEST_TIMEOUT if default is None else default
+    if _interactive_request.get():
+        return min(default, REQUEST_TIMEOUT_INTERACTIVE)
+    return default
 
 
 @contextmanager
@@ -119,6 +153,7 @@ def _audiobookshelf_book(media_id):
     image = item.image if item and item.image else settings.IMG_NONE
     runtime_minutes = item.runtime_minutes if item else None
     authors = item.authors if item else []
+    narrators = item.narrators if item else []
     isbn = item.isbn if item else []
     genres = item.genres if item else []
     publishers = item.publishers if item else ""
@@ -141,6 +176,7 @@ def _audiobookshelf_book(media_id):
         "related": {},
         "details": {
             "author": authors,
+            "narrator": narrators,
             "isbn": isbn,
             "publisher": publishers,
             "publish_date": publish_date,
@@ -462,7 +498,7 @@ session.mount(
 
 @request_timing.timed_provider_call
 def resilient_request(method, url, **kwargs):
-    """GET/POST through the shared rate-limited session.
+    """Send a request through the shared rate-limited session.
 
     Falls back to a per-process limited session if Redis breaks the shared
     bucket mid-run, instead of raising RedisError. Construction-time Redis
@@ -477,7 +513,12 @@ def resilient_request(method, url, **kwargs):
     provider response without api_request()'s retry/cooldown handling
     (e.g. Trakt device-code polling, HowLongToBeat scraping).
     """
-    request_func = session.get if method == "GET" else session.post
+    request_func = {
+        "GET": session.get,
+        "POST": session.post,
+        "PUT": session.put,
+        "PATCH": session.patch,
+    }[method]
     try:
         return request_func(url=url, **kwargs)
     except RedisError as error:
@@ -488,9 +529,12 @@ def resilient_request(method, url, **kwargs):
             url,
             error,
         )
-        fallback_func = (
-            _fallback_session.get if method == "GET" else _fallback_session.post
-        )
+        fallback_func = {
+            "GET": _fallback_session.get,
+            "POST": _fallback_session.post,
+            "PUT": _fallback_session.put,
+            "PATCH": _fallback_session.patch,
+        }[method]
         return fallback_func(url=url, **kwargs)
 
 
@@ -615,14 +659,20 @@ def raise_not_found_error(provider, media_id, media_type="item", *, confirmed_ab
     raise error
 
 
+# Versioned with the selection policy: the pre-superuser key may still hold an
+# ordinary user's proxy in a warm cache after upgrade, so it is never read.
+TMDB_PROXY_CACHE_KEY = "tmdb_proxy_url:superuser"
+
+
 def _get_tmdb_proxy_url():
     """Return the configured TMDB outbound proxy URL, if any.
 
-    The setting is stored per-user (Settings > Advanced UI), but applied
-    instance-wide: the first user with one configured wins. Cached briefly
-    since api_request is on the hot path for search and metadata backfill.
+    The setting is stored on a user (Settings > Advanced UI), but applied
+    instance-wide, so only superusers' values count: the lowest-pk superuser
+    with one configured wins. Cached briefly since api_request is on the hot
+    path for search and metadata backfill.
     """
-    cached = cache.get("tmdb_proxy_url")
+    cached = cache.get(TMDB_PROXY_CACHE_KEY)
     if cached is not None:
         return cached or None
 
@@ -630,12 +680,14 @@ def _get_tmdb_proxy_url():
     from users.models import User
 
     encrypted = (
-        User.objects.exclude(tmdb_proxy_url="")
+        User.objects.filter(is_superuser=True)
+        .exclude(tmdb_proxy_url="")
+        .order_by("pk")
         .values_list("tmdb_proxy_url", flat=True)
         .first()
     )
     proxy_url = decrypt(encrypted) if encrypted else ""
-    cache.set("tmdb_proxy_url", proxy_url, 60)
+    cache.set(TMDB_PROXY_CACHE_KEY, proxy_url, 60)
     return proxy_url or None
 
 
@@ -676,6 +728,11 @@ def _rate_limit_cooldown_key(provider, headers=None) -> str:
         return f"provider_cooldown:{provider}"
     digest = hashlib.sha256(authorization.encode("utf-8", "replace")).hexdigest()
     return f"provider_cooldown:{provider}:{digest[:16]}"
+
+
+def _provider_down_key(provider) -> str:
+    """Return the short-lived circuit-breaker key for a provider."""
+    return f"provider_down:{provider}"
 
 
 def _rate_limit_headers(response) -> dict[str, str]:
@@ -732,10 +789,10 @@ def api_request(
 
     Args:
         provider: Provider identifier for error messages
-        method: HTTP method ("GET" or "POST")
+        method: HTTP method ("GET", "POST", "PUT" or "PATCH")
         url: Request URL
         params: Query params for GET, JSON body for POST
-        data: Raw data for POST
+        data: Raw data for POST/PUT/PATCH (e.g. form-encoded body)
         headers: Request headers
         response_format: "json" (default) or "xml" for XML parsing
 
@@ -750,14 +807,26 @@ def api_request(
             "rate limit exceeded, still cooling down",
         )
 
+    if _interactive_request.get() and cache.get(_provider_down_key(provider)):
+        raise ProviderAPIError(
+            provider,
+            requests.exceptions.RequestException("provider recently unavailable"),
+            "temporarily unavailable, skipping the request",
+        )
+
     try:
+        request_timeout = (
+            COMICVINE_REQUEST_TIMEOUT
+            if provider == Sources.COMICVINE.value
+            else settings.REQUEST_TIMEOUT
+        )
         request_kwargs = {
             "url": url,
             "headers": headers,
             "timeout": (
-                min(settings.REQUEST_TIMEOUT, REQUEST_TIMEOUT_INTERACTIVE)
+                min(request_timeout, REQUEST_TIMEOUT_INTERACTIVE)
                 if _interactive_request.get()
-                else settings.REQUEST_TIMEOUT
+                else request_timeout
             ),
         }
 
@@ -771,6 +840,8 @@ def api_request(
         elif method == "POST":
             request_kwargs["data"] = data
             request_kwargs["json"] = params
+        elif method in {"PUT", "PATCH"}:
+            request_kwargs["data"] = data
 
         response = resilient_request(method, **request_kwargs)
         response.raise_for_status()
@@ -788,7 +859,7 @@ def api_request(
         max_retries = (
             RATE_LIMIT_MAX_RETRIES_INTERACTIVE if interactive else RATE_LIMIT_MAX_RETRIES
         )
-        if status_code == requests.codes.too_many_requests:
+        if status_code in RATE_LIMIT_STATUS_CODES:
             max_wait = (
                 RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE
                 if interactive
@@ -822,9 +893,14 @@ def api_request(
                     _retry_attempt=_retry_attempt + 1,
                 )
 
+        max_transient = (
+            TRANSIENT_HTTP_MAX_RETRIES_INTERACTIVE
+            if interactive
+            else TRANSIENT_HTTP_MAX_RETRIES
+        )
         if (
             status_code in TRANSIENT_HTTP_STATUS_CODES
-            and _retry_attempt < TRANSIENT_HTTP_MAX_RETRIES
+            and _retry_attempt < max_transient
         ):
             seconds_to_wait = _retry_attempt + 1
             logger.warning(
@@ -836,7 +912,7 @@ def api_request(
                 status_code,
                 seconds_to_wait,
                 _retry_attempt + 1,
-                TRANSIENT_HTTP_MAX_RETRIES,
+                max_transient,
             )
             time.sleep(seconds_to_wait)
             return api_request(
@@ -850,8 +926,15 @@ def api_request(
                 _retry_attempt=_retry_attempt + 1,
             )
 
+        if interactive and status_code in PROVIDER_DOWN_STATUS_CODES:
+            cache.set(_provider_down_key(provider), True, PROVIDER_DOWN_SECONDS)
         raise error from None
     except requests.exceptions.RequestException as error:
+        if _interactive_request.get() and isinstance(
+            error,
+            requests.exceptions.Timeout | requests.exceptions.ConnectionError,
+        ):
+            cache.set(_provider_down_key(provider), True, PROVIDER_DOWN_SECONDS)
         raise ProviderAPIError(provider, error) from None
 
 
@@ -923,7 +1006,8 @@ def _podcast_show_metadata(show):
                 "author": show.author,
                 "description": show.description,
                 "language": show.language,
-                "rss_feed_url": show.rss_feed_url,
+                # No rss_feed_url: shows are a shared catalog and an imported
+                # feed URL can carry the importing user's private token.
                 "website_url": show.website_url,
                 "show_website_url": show.website_url,
             },
@@ -1059,6 +1143,19 @@ def _resolve_podcast_metadata(media_id, source, user=None):
     ).first()
     if show is not None:
         return _podcast_show_metadata(show)
+
+    if source in {Sources.POCKETCASTS.value, Sources.GPODDER.value}:
+        from app.services.podcast_import import (
+            PodcastImportError,
+            resolve_show_for_media_id,
+        )
+
+        try:
+            show = resolve_show_for_media_id(media_id, source=source)
+        except PodcastImportError:
+            show = None
+        if show is not None:
+            return _podcast_show_metadata(show)
 
     raise_not_found_error(source, media_id, "podcast episode")
     return None  # unreachable: raise_not_found_error always raises
@@ -1312,39 +1409,33 @@ def _normalize_source_value(source):
     return str(source) if source is not None else None
 
 
-def _resolve_search_source(media_type, source=None):
-    """Return the effective search provider for a media type."""
-    resolved = _normalize_source_value(source)
-    if resolved:
-        if (
-            resolved == Sources.TVDB.value
-            and not tvdb.enabled()
-        ) or (
-            resolved == Sources.GOOGLEBOOKS.value
-            and not googlebooks.enabled()
-        ):
-            resolved = None
-        else:
-            return resolved
+def _source_can_search(provider, user=None):
+    """Return whether a provider has the credentials a search needs."""
+    if credentials.get_spec(provider) is None:
+        return True
+    return credentials.is_configured(provider, user)
 
-    default_source = config.get_default_source_name(media_type)
-    default_value = _normalize_source_value(default_source)
-    if default_value not in {Sources.TVDB.value, Sources.GOOGLEBOOKS.value} or (
-        default_value == Sources.TVDB.value
-        and tvdb.enabled()
-    ) or (
-        default_value == Sources.GOOGLEBOOKS.value
-        and googlebooks.enabled()
-    ):
+
+def _resolve_search_source(media_type, source=None, user=None):
+    """Return the effective search provider for a media type.
+
+    A provider without usable credentials is skipped whether it was requested
+    or is the media type's default, so a search falls back to one that can
+    answer instead of failing (#1856).
+    """
+    resolved = _normalize_source_value(source)
+    if resolved and _source_can_search(resolved, user):
+        return resolved
+
+    default_value = _normalize_source_value(
+        config.get_default_source_name(media_type)
+    )
+    if _source_can_search(default_value, user):
         return default_value
 
     for candidate in config.get_sources(media_type) or []:
         candidate_value = _normalize_source_value(candidate)
-        if candidate_value == Sources.TVDB.value and not tvdb.enabled():
-            continue
-        if candidate_value == Sources.GOOGLEBOOKS.value and not googlebooks.enabled():
-            continue
-        if candidate_value:
+        if candidate_value and _source_can_search(candidate_value, user):
             return candidate_value
 
     return default_value
@@ -1442,6 +1533,41 @@ def _extract_isbns(metadata):
         if isbn:
             normalized.add(isbn)
     return normalized
+
+
+# "Death Note, Vol. 1: Boredom" -> "Death Note", "Spider-Man #5" -> "Spider-Man".
+_VOLUME_SUFFIX_RE = re.compile(
+    r"[\s,:(\-]*(?:\b(?:vol(?:ume)?|book|omnibus|part)\b\.?\s*#?|#)\s*\d+.*$",
+    re.IGNORECASE,
+)
+# These types have no ISBN lookup of their own: a scanned book barcode is
+# turned into the series title and searched like typed text.
+_SERIES_BARCODE_TYPES = frozenset(
+    {
+        MediaTypes.MANGA.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.COMIC_ISSUE.value,
+    },
+)
+
+
+def _isbn_series_title(isbn):
+    """Return the series title a volume's ISBN belongs to, or an empty string."""
+    lookups = [lambda: openlibrary.search(isbn, 1)]
+    if googlebooks.enabled():
+        lookups.append(lambda: googlebooks.search(f"isbn:{isbn}", 1))
+
+    title = ""
+    for lookup in lookups:
+        try:
+            results = lookup().get("results", [])
+        except Exception as error:  # best-effort provider lookup
+            logger.debug("ISBN title lookup failed: %s", exception_summary(error))
+            continue
+        title = str(results[0].get("title") or "") if results else ""
+        if title:
+            break
+    return _VOLUME_SUFFIX_RE.sub("", title).strip(" ,:-")
 
 
 def _resolve_hardcover_isbn_search(query, page, user=None):
@@ -1591,7 +1717,7 @@ def search_by_id(media_type, query, source=None, user=None):
     from app import helpers
 
     query = query.strip()
-    source = _resolve_search_source(media_type, source)
+    source = _resolve_search_source(media_type, source, user)
     metadata = None
 
     try:
@@ -1620,6 +1746,53 @@ def search_by_id(media_type, query, source=None, user=None):
     return helpers.format_search_response(1, 1, 1, [result])
 
 
+# Modules rather than functions, so each search is looked up when it runs.
+_PODCAST_SEARCHERS = {
+    Sources.POCKETCASTS.value: pocketcasts,
+    Sources.GPODDER.value: gpodder,
+    Sources.PODCASTINDEX.value: podcastindex,
+}
+
+
+def _search_podcasts(query, page, source):
+    """Search podcasts, resolving pasted links and falling back across sources.
+
+    A pasted Apple Podcasts link or RSS feed address names one show, so it is
+    answered directly whichever source tab is selected. A name that the chosen
+    source cannot find is retried on the other sources, and the response says
+    which one answered so the page can explain why the tab differs.
+    """
+    if page == 1:
+        linked = podcast_links.resolve(query)
+        if linked is not None:
+            return linked
+
+    search_module = _PODCAST_SEARCHERS.get(source)
+    response = search_module.search(query, page) if search_module else None
+    if response is not None and (response["results"] or page != 1):
+        return response
+    if not query.strip():
+        return response
+
+    for fallback_source, fallback_module in _PODCAST_SEARCHERS.items():
+        if fallback_source == source:
+            continue
+        if fallback_source == Sources.PODCASTINDEX.value and not podcastindex.enabled():
+            continue
+        try:
+            fallback = fallback_module.search(query, page)
+        except ProviderAPIError as exc:
+            logger.debug(
+                "Podcast fallback search failed: %s",
+                exception_summary(exc),
+            )
+            continue
+        if fallback["results"]:
+            fallback["fallback_source"] = fallback_source
+            return fallback
+    return response
+
+
 def search(
     media_type,
     query,
@@ -1641,7 +1814,11 @@ def search(
             user=user,
         )
 
-    source = _resolve_search_source(media_type, source)
+    source = _resolve_search_source(media_type, source, user)
+
+    if media_type in _SERIES_BARCODE_TYPES:
+        isbn = _normalize_isbn_candidate(query)
+        query = (isbn and _isbn_series_title(isbn)) or query
 
     # Attempt direct ID lookup on page 1 only. The result is merged with the
     # normal text-search results below rather than returned immediately, so a
@@ -1692,7 +1869,7 @@ def search(
             if source == Sources.TMDB.value
             else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
-        MediaTypes.GAME.value: lambda: igdb.search(query, page),
+        MediaTypes.GAME.value: lambda: igdb.search(query, page, user=user),
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value
@@ -1712,11 +1889,7 @@ def search(
         ),
         MediaTypes.BOARDGAME.value: lambda: bgg.search(query, page),
         MediaTypes.MUSIC.value: lambda: musicbrainz.search_combined(query, page),
-        MediaTypes.PODCAST.value: lambda: (
-            pocketcasts.search(query, page)
-            if source == Sources.POCKETCASTS.value
-            else None
-        ),
+        MediaTypes.PODCAST.value: lambda: _search_podcasts(query, page, source),
         # Videos arrive from clients, so there is no provider to search.
         MediaTypes.VIDEO.value: lambda: None,
     }

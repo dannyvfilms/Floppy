@@ -79,7 +79,7 @@ from app.templatetags import app_tags
 
 logger = logging.getLogger(__name__)
 
-STATISTICS_CACHE_VERSION = 17
+STATISTICS_CACHE_VERSION = 19
 STATISTICS_CACHE_PREFIX = f"statistics_page_v{STATISTICS_CACHE_VERSION}"
 STATISTICS_CACHE_TIMEOUT = 60 * 60 * 6  # 6 hours
 # Retain page snapshots between visits; freshness is checked independently.

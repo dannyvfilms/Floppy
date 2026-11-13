@@ -1,13 +1,15 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% load ui_tags %}
 
 <div id="history-day-{{ day.day_key|default:'unknown' }}"
-     class="history-day space-y-4">
+     class="history-day space-y-4"
+     {% if day.lazy %}hx-get="{% url 'history_day_fragment' day_key=day.day_key %}?{{ day.lazy_query }}" hx-trigger="intersect once" hx-target="this" hx-swap="outerHTML"{% endif %}>
   <div class="flex items-center justify-between gap-4 pb-3 border-b border-[var(--color-border)]">
     <div class="history-date-row">
-      <span class="text-xl font-semibold text-[var(--color-text)]">{{ day.weekday }}</span>
-      <span class="text-xl text-[var(--color-text)]">{{ day.date_display }}</span>
+      {% if day.date %}<span class="text-xl font-semibold text-[var(--color-text)]">{{ day.weekday }}</span>{% endif %}
+      <span class="text-xl text-[var(--color-text)]{% if not day.date %} font-semibold{% endif %}">{{ day.date_display }}</span>
     </div>
     <div class="text-right">
       {% if history_mode == "release" %}
@@ -26,10 +28,13 @@
     </div>
   </div>
 
-  {# Split entries by aspect ratio: 2:3 for video/games, 1:1 for music/podcasts #}
-  {% with square_types="music,podcast" %}
+  {% if day.lazy %}
+    <div class="h-40" aria-hidden="true"></div>
+  {% else %}
+  {# Group cards by aspect ratio without changing the day's entries. #}
+  {% with square_types="music,podcast" non_poster_types="music,podcast,video" %}
     {# Standard 2:3 aspect ratio entries (TV, Movies, Games, Anime, etc.) #}
-    {% with standard_entries=day.entries|exclude_media_types:square_types %}
+    {% with standard_entries=day.entries|exclude_media_types:non_poster_types %}
       {% if standard_entries %}
         <div class="media-grid">
           {% for entry in standard_entries %}
@@ -49,18 +54,23 @@
         </div>
       {% endif %}
     {% endwith %}
+    {% with video_entries=day.entries|filter_media_types:"video" %}
+      {% if video_entries %}
+        <div class="media-grid media-grid-video mt-4">
+          {% for entry in video_entries %}
+            {% include "app/components/history_card.html" with entry=entry card_class="search-result-card video-card-landscape" history_mode=history_mode user=user %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
   {% endwith %}
+  {% endif %}
 
-  {% if day.has_more %}
+  {% if day.has_more and not day.lazy %}
     <div class="flex justify-center pt-2">
-      <button type="button"
-              class="px-4 py-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-              hx-get="{% url 'history_day_fragment' day_key=day.day_key %}?{{ day.next_entry_query }}"
-              hx-target="closest .history-day"
-              hx-swap="outerHTML">
-        {% translate "Load more" %}
-        {% if day.remaining_entry_count %}{% blocktranslate trimmed with value_1=day.remaining_entry_count %}({{ value_1 }} remaining){% endblocktranslate %}{% endif %}
-      </button>
+      {% url 'history_day_fragment' day_key=day.day_key as day_url %}
+      {% translate "Load more" as load_more_label %}
+      {% if day.remaining_entry_count %}{% blocktranslate trimmed asvar remaining_label with value_1=day.remaining_entry_count %}({{ value_1 }} remaining){% endblocktranslate %}{% button load_more_label|add:" "|add:remaining_label "surface" "sm" hx_get=day_url|add:"?"|add:day.next_entry_query hx_target="closest .history-day" hx_swap="outerHTML" %}{% else %}{% button load_more_label "surface" "sm" hx_get=day_url|add:"?"|add:day.next_entry_query hx_target="closest .history-day" hx_swap="outerHTML" %}{% endif %}
     </div>
   {% endif %}
 </div>

@@ -54,6 +54,14 @@ _ENCODED_NAVIGATION_SEPARATOR_PATTERNS = (
 )
 
 
+def get_page_number(request):
+    """Return the ``page`` query parameter as an int, or 1 when it is not numeric."""
+    try:
+        return int(request.GET.get("page", 1))
+    except (TypeError, ValueError):
+        return 1
+
+
 def is_htmx_fragment(request):
     """Return whether this HTMX request expects a partial fragment response.
 
@@ -123,16 +131,24 @@ def get_tmdb_backdrop_image(media_type, media_id):
         return None
 
     try:
-        from lists.models import CustomList
-    except Exception:
-        return None
+        from app.backdrops import get_tmdb_backdrop
 
-    try:
-        backdrop = CustomList()._get_tmdb_backdrop(media_type, media_id)
+        backdrop = get_tmdb_backdrop(media_type, media_id)
     except Exception:
         return None
 
     return backdrop if has_real_image(backdrop) else None
+
+
+def safe_return_url(request, destination, fallback="/"):
+    """Keep user-supplied navigation on this host and preserve HTTPS."""
+    if url_has_allowed_host_and_scheme(
+        destination,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return destination
+    return fallback
 
 
 def redirect_back(request):
@@ -747,7 +763,8 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
         ).exclude(season_number=0)
     )
 
-    # Use metadata episode count if provided (matches Details pane), otherwise count from Items
+    # Provider totals can lag the episode records used by the season audit.
+    # Never use a total smaller than that same locally known episode set.
     # Guard against providers handing back an episode list instead of a count:
     # a non-numeric value would be rendered verbatim by the Collection panel.
     if isinstance(metadata_episode_count, bool) or not isinstance(
@@ -755,10 +772,7 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
         int,
     ):
         metadata_episode_count = None
-    if metadata_episode_count is not None:
-        total_episodes = metadata_episode_count
-    else:
-        total_episodes = len(all_episode_items)
+    total_episodes = max(metadata_episode_count or 0, len(all_episode_items))
 
     # Get collection entries for all seasons and episodes
     season_item_ids = [item.id for item in all_season_items]
@@ -910,7 +924,8 @@ def get_season_collection_stats(user, season_item):
         item_id__in=episode_item_ids,
     )
 
-    collected_count = episode_collection_entries.count()
+    # Count episodes, not copies: a Blu-ray and a digital copy are one episode.
+    collected_count = episode_collection_entries.values("item_id").distinct().count()
 
     # If no episode-level entries exist, fall back to broader collection rows.
     # A manual season-level entry represents the whole season in the current UI.
@@ -1326,6 +1341,7 @@ def parse_completion_datetime(value):
 
     return parsed
 
+
 def split_pass_history(tracked_plays, season):
     """Return (plays in the season's current rewatch pass, every play).
 
@@ -1337,3 +1353,25 @@ def split_pass_history(tracked_plays, season):
     return [
         play for play in tracked_plays if season.play_counts_for_pass(play)
     ], tracked_plays
+
+
+def entry_activity_key(entry):
+    """Sort key that puts the most recently active tracked entry last."""
+    dates = [d for d in (entry.end_date, entry.start_date) if d]
+    primary_date = max(dates) if dates else entry.created_at
+    return (
+        primary_date,
+        entry.start_date or entry.created_at,
+        entry.created_at,
+    )
+
+
+def progress_activity(media):
+    """Return when an entry last progressed, for the Last Watched fallback.
+
+    A completed entry without a watch date has none: its progress time only
+    records when it was logged, so it must not rank as just watched.
+    """
+    if getattr(media, "status", None) == Status.COMPLETED.value:
+        return None
+    return getattr(media, "progressed_at", None)

@@ -6,15 +6,19 @@ never block a web worker.
 """
 
 import json
-from unittest.mock import call, patch
+from contextlib import suppress
+from datetime import timedelta
+from unittest.mock import ANY, call, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
+from app.providers import credentials
 from integrations import tasks
 from integrations.models import JellyfinAccount, PlexAccount, PlexWebhookShare
 
@@ -89,7 +93,13 @@ class WebhookViewEnqueueTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        mock_delay.assert_called_once_with("jellyfin", payload, self.user.id)
+        mock_delay.assert_called_once_with(
+            "jellyfin",
+            payload,
+            self.user.id,
+            received_at=ANY,
+            event_id=ANY,
+        )
 
     @patch("integrations.tasks.process_webhook.delay")
     def test_plex_enqueues_task(self, mock_delay):
@@ -98,7 +108,13 @@ class WebhookViewEnqueueTests(TestCase):
         payload = {"event": "media.scrobble"}
         response = self.client.post(url, data={"payload": json.dumps(payload)})
         self.assertEqual(response.status_code, 200)
-        mock_delay.assert_called_once_with("plex", payload, self.user.id)
+        mock_delay.assert_called_once_with(
+            "plex",
+            payload,
+            self.user.id,
+            received_at=ANY,
+            event_id=ANY,
+        )
 
     @patch("integrations.tasks.process_webhook.delay")
     def test_plex_enqueues_enabled_shared_recipient(self, mock_delay):
@@ -128,8 +144,21 @@ class WebhookViewEnqueueTests(TestCase):
         self.assertEqual(
             mock_delay.call_args_list,
             [
-                call("plex", payload, self.user.id),
-                call("plex", payload, recipient.id, share_id=share.id),
+                call(
+                    "plex",
+                    payload,
+                    self.user.id,
+                    received_at=ANY,
+                    event_id=ANY,
+                ),
+                call(
+                    "plex",
+                    payload,
+                    recipient.id,
+                    share_id=share.id,
+                    received_at=ANY,
+                    event_id=ANY,
+                ),
             ],
         )
 
@@ -161,7 +190,13 @@ class WebhookViewEnqueueTests(TestCase):
         response = self.client.post(url, data={"payload": json.dumps(payload)})
 
         self.assertEqual(response.status_code, 200)
-        mock_delay.assert_called_once_with("plex", payload, self.user.id)
+        mock_delay.assert_called_once_with(
+            "plex",
+            payload,
+            self.user.id,
+            received_at=ANY,
+            event_id=ANY,
+        )
 
     @patch("integrations.tasks.process_webhook.delay")
     def test_emby_enqueues_task(self, mock_delay):
@@ -170,7 +205,13 @@ class WebhookViewEnqueueTests(TestCase):
         payload = {"Event": "playback.stop"}
         response = self.client.post(url, data={"data": json.dumps(payload)})
         self.assertEqual(response.status_code, 200)
-        mock_delay.assert_called_once_with("emby", payload, self.user.id)
+        mock_delay.assert_called_once_with(
+            "emby",
+            payload,
+            self.user.id,
+            received_at=ANY,
+            event_id=ANY,
+        )
 
     @patch("integrations.tasks.process_webhook.delay")
     def test_seerr_enqueues_task(self, mock_delay):
@@ -232,8 +273,49 @@ class ProcessWebhookTaskTests(TestCase):
         self.assertIsNotNone(self.user.plex_webhook_last_received_at)
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
-    def test_plex_payload_log_redacts_identity_fields(self, _mock_process):
-        """The logged payload censors the user, server and device, not the media."""
+    def test_webhook_logs_queue_delay_and_structured_outcome(self, mock_process):
+        """Receipt, worker start and finish share one event id and outcome."""
+        mock_process.return_value = None
+        received_at = (timezone.now() - timedelta(seconds=2)).isoformat()
+
+        with self.assertLogs("integrations.tasks", level="INFO") as logs:
+            tasks.process_webhook(
+                "plex",
+                {"event": "media.scrobble", "Metadata": {"ratingKey": "42"}},
+                self.user.id,
+                received_at=received_at,
+                event_id="abc123",
+            )
+
+        output = "\n".join(logs.output)
+        self.assertIn("webhook_started event_id=abc123 provider=plex", output)
+        self.assertIn("rating_key=42", output)
+        self.assertIn("queue_delay_ms=", output)
+        self.assertIn("queue_delay_bucket=", output)
+        self.assertIn("webhook_finished event_id=abc123", output)
+        self.assertIn("outcome=skipped", output)
+        self.assertIn("elapsed_ms=", output)
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_slow_queue_wait_logs_a_warning(self, mock_process):
+        """A queue wait past the threshold is called out, not just recorded."""
+        mock_process.return_value = None
+        received_at = (timezone.now() - timedelta(seconds=30)).isoformat()
+
+        with self.assertLogs("integrations.tasks", level="WARNING") as logs:
+            tasks.process_webhook(
+                "plex",
+                {"event": "media.scrobble"},
+                self.user.id,
+                received_at=received_at,
+                event_id="slow1",
+            )
+
+        self.assertIn("webhook_slow_queue event_id=slow1", "\n".join(logs.output))
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_plex_payload_log_omits_identity_and_activity_values(self, _mock_process):
+        """Worker diagnostics retain structure without copying private values."""
         payload = {
             "event": "media.play",
             "Account": {"id": 1234, "thumb": "https://plex.tv/a", "title": "alice"},
@@ -246,10 +328,11 @@ class ProcessWebhookTaskTests(TestCase):
             tasks.process_webhook("plex", payload, self.user.id)
 
         output = "\n".join(logs.output)
-        for value in ("alice", "203.0.113.9", "server-abc", "Movies"):
+        for value in ("alice", "203.0.113.9", "server-abc", "Movies", "Jumanji"):
             with self.subTest(value=value):
                 self.assertNotIn(value, output)
-        self.assertIn("Jumanji", output)
+        self.assertIn("Metadata", output)
+        self.assertIn("provider=plex", output)
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
     def test_shared_plex_task_uses_owner_account_and_recipient(self, mock_process):
@@ -302,7 +385,9 @@ class ProcessWebhookTaskTests(TestCase):
             recipient_enabled=False,
         )
 
-        tasks.process_webhook("plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id)
+        tasks.process_webhook(
+            "plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id
+        )
 
         mock_process.assert_not_called()
 
@@ -328,6 +413,102 @@ class ProcessWebhookTaskTests(TestCase):
         tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
         self.assertEqual(seen["user"], self.user)
         self.assertFalse(hasattr(HistoricalRecords.context, "request"))
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_processing_resolves_the_users_personal_tmdb_key(self, mock_process):
+        """Metadata lookups use the user's own key, as imports do (#1488)."""
+        credentials.set_user("tmdb", self.user, {"api_key": "personal-tmdb"})
+        seen = {}
+
+        def capture_key(_payload, _user):
+            seen["api_key"] = credentials.get("tmdb", "api_key")
+
+        mock_process.side_effect = capture_key
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+
+        self.assertEqual(seen["api_key"], "personal-tmdb")
+        self.assertIsNone(credentials.active_user())
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_shared_plex_task_resolves_the_recipients_personal_key(
+        self,
+        mock_process,
+    ):
+        """A shared play is tracked for the recipient, so their key applies."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        credentials.set_user("tmdb", self.user, {"api_key": "owner-tmdb"})
+        credentials.set_user("tmdb", recipient, {"api_key": "recipient-tmdb"})
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="owner-plex-token",
+            plex_username="taskuser",
+        )
+        share = PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="plex-friend",
+            recipient_enabled=True,
+        )
+        seen = {}
+
+        def capture_key(_payload, _user, **_kwargs):
+            seen["api_key"] = credentials.get("tmdb", "api_key")
+
+        mock_process.side_effect = capture_key
+        tasks.process_webhook(
+            "plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id
+        )
+
+        self.assertEqual(seen["api_key"], "recipient-tmdb")
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_credential_scope_resets_after_a_failure(self, mock_process):
+        """A failing run does not leave its user published for the next task."""
+        seen = {}
+
+        def fail_in_scope(_payload, _user):
+            seen["user"] = credentials.active_user()
+            raise ValueError("boom")
+
+        mock_process.side_effect = fail_in_scope
+        with self.assertRaises(ValueError):
+            tasks.process_webhook("plex", {"event": "media.scrobble"}, self.user.id)
+
+        self.assertEqual(seen["user"], self.user)
+        self.assertIsNone(credentials.active_user())
+
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_credential_scope_restores_an_outer_user(self, mock_process):
+        """An eager task inside another user's scope hands that scope back."""
+        outer = get_user_model().objects.create_user(username="outer")
+        for side_effect in (None, ValueError("boom")):
+            with self.subTest(fails=side_effect is not None):
+                mock_process.side_effect = side_effect
+                with credentials.current_user_scope(outer):
+                    with suppress(ValueError):
+                        tasks.process_webhook(
+                            "jellyfin", {"Event": "Stop"}, self.user.id
+                        )
+                    self.assertEqual(credentials.active_user(), outer)
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_sequential_webhooks_resolve_each_users_own_key(self, mock_process):
+        """One user's key does not carry over into the next user's webhook."""
+        other = get_user_model().objects.create_user(username="other")
+        credentials.set_user("tmdb", self.user, {"api_key": "first-tmdb"})
+        credentials.set_user("tmdb", other, {"api_key": "second-tmdb"})
+        seen = []
+        mock_process.side_effect = lambda _payload, _user: seen.append(
+            credentials.get("tmdb", "api_key")
+        )
+
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, other.id)
+
+        self.assertEqual(seen, ["first-tmdb", "second-tmdb"])
 
     def test_missing_user_logs_and_returns(self):
         """A deleted user is logged and skipped without raising."""

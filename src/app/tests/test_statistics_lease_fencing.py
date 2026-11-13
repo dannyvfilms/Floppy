@@ -14,6 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from app import statistics_sync
 from app.models import (
@@ -201,6 +202,50 @@ class LeaseFencingTests(TestCase):
         ):
             statistics_sync._build_days(self.user, [day], None, {}, lease_token=token)
         self.assertEqual(cache.get(key), {"owner": "successor"})
+
+    def test_day_publication_timeout_retains_dirty_token_for_retry(self):
+        """A failed Redis publication must leave durable work for another try."""
+        from app.statistics_day_cache import _day_cache_key
+
+        token = statistics_sync._claim_lease(self.user.id, takeover=False)
+        day = timezone.localdate()
+        dirty = StatisticsDirtyDay.objects.create(
+            user=self.user, day=day, marked_at=timezone.now()
+        )
+        dirty_tokens = {day: dirty.token}
+        key = _day_cache_key(self.user.id, day)
+        payload = {"owner": "current"}
+        with (
+            patch(
+                "app.statistics_day_builder._build_prefetch_for_range", return_value={}
+            ),
+            patch(
+                "app.statistics_day_builder.build_stats_for_day", return_value=payload
+            ),
+            patch.object(cache, "set_many", side_effect=RedisTimeoutError),
+            self.assertRaises(RedisTimeoutError),
+        ):
+            statistics_sync._build_days(
+                self.user, [day], None, dirty_tokens, lease_token=token
+            )
+        dirty.refresh_from_db()
+        self.assertEqual(dirty.token, dirty_tokens[day])
+        self.assertIsNone(cache.get(key))
+        self.assertEqual(self.state().lease_token, token)
+
+        with (
+            patch(
+                "app.statistics_day_builder._build_prefetch_for_range", return_value={}
+            ),
+            patch(
+                "app.statistics_day_builder.build_stats_for_day", return_value=payload
+            ),
+        ):
+            statistics_sync._build_days(
+                self.user, [day], None, dirty_tokens, lease_token=token
+            )
+        self.assertEqual(cache.get(key), payload)
+        self.assertFalse(StatisticsDirtyDay.objects.filter(pk=dirty.pk).exists())
 
     def test_expired_owner_cannot_renew_or_release_successor_lease(self):
         worker_a = statistics_sync._claim_lease(self.user.id, takeover=False)

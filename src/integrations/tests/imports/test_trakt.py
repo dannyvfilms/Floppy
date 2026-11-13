@@ -4,11 +4,14 @@ import json
 import sqlite3
 import tempfile
 import threading
+import time
+from collections import defaultdict
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import redis
 import requests
@@ -410,6 +413,119 @@ class ImportTrakt(TestCase):
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_adds_older_watch_to_tracked_movie(
+        self,
+        mock_get_metadata,
+    ):
+        """An older Trakt watch is kept when the movie is already tracked (#1423)."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            end_date="2023-06-01T20:00:00Z",
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+        entry = {
+            "type": "movie",
+            "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+            "watched_at": "2019-06-01T22:19:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(entry)
+        helpers.bulk_create_media(trakt_importer.bulk_media, self.user)
+
+        end_dates = sorted(
+            Movie.objects.filter(user=self.user, item=item).values_list(
+                "end_date",
+                flat=True,
+            ),
+        )
+        self.assertEqual(
+            [d.isoformat() for d in end_dates],
+            ["2019-06-01T22:19:00+00:00", "2023-06-01T20:00:00+00:00"],
+        )
+
+        # Importing the same history again must not add the watch twice.
+        again = TraktImporter("test", self.user, "new")
+        again.process_watched_movie(entry)
+        self.assertEqual(len(again.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_without_date_skips_tracked_movie(
+        self,
+        mock_get_metadata,
+    ):
+        """An undated Trakt watch cannot be deduped, so a tracked movie is left alone."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            end_date="2023-06-01T20:00:00Z",
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+                "watched_at": trakt.TRAKT_UNKNOWN_DATE,
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_completes_planned_movie(self, mock_get_metadata):
+        """A Trakt watch of a movie planned locally completes it, with no extra row."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+                "watched_at": "2019-06-01T22:19:00.000Z",
+            },
+        )
+        helpers.bulk_create_media(trakt_importer.bulk_media, self.user)
+
+        movie = Movie.objects.get(user=self.user, item=item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.end_date.year, 2019)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode(self, mock_get_metadata):
         """Test processing an episode entry."""
         episode_entry = {
@@ -698,6 +814,77 @@ class ImportTrakt(TestCase):
         # overwritten to Completed.
         self.assertEqual(len(trakt_importer.completed_seasons), 0)
         self.assertEqual(len(trakt_importer.completed_tvs), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_new_mode_still_syncs_a_show_an_overwrite_import_replaced(
+        self,
+        mock_get_metadata,
+    ):
+        """An overwrite import must not make later syncs skip the show (#375)."""
+        tv_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show"},
+        )[0]
+        season_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Season 1"},
+        )[0]
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        # What an overwrite import does: delete the show, then write it back.
+        to_delete = defaultdict(lambda: defaultdict(set))
+        to_delete[MediaTypes.TV.value][Sources.TMDB.value].add("12345")
+        helpers.cleanup_existing_media(to_delete, self.user)
+        # Imports write with bulk_create, which sends no post_save signal.
+        tv_obj = TV.objects.bulk_create(
+            [TV(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)],
+        )[0]
+        Season.objects.bulk_create(
+            [
+                Season(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv_obj,
+                    status=Status.IN_PROGRESS.value,
+                ),
+            ],
+        )
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 2,
+                    "max_progress": 2,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 2, "still_path": "/still2.jpg"}],
+                    "max_progress": 5,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 2, "title": "Episode 2"},
+                "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                "watched_at": "2023-01-02T00:00:00.000Z",
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode_overwrite_mode_existing_show(
@@ -3051,7 +3238,7 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
         original_connection = connection.connection
         with tempfile.TemporaryDirectory() as directory:
             database_path = str(Path(directory) / "contention.sqlite3")
-            with sqlite3.connect(database_path) as database:
+            with closing(sqlite3.connect(database_path)) as database, database:
                 original_connection.backup(database)
                 database.execute("PRAGMA journal_mode=DELETE")
             connection.connection = None
@@ -3062,7 +3249,7 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
 
             def competing_writer():
                 try:
-                    with sqlite3.connect(database_path, timeout=1) as database:
+                    with closing(sqlite3.connect(database_path, timeout=1)) as database, database:
                         database.execute("BEGIN IMMEDIATE")
                         database.execute("UPDATE integrations_externalreference SET metadata = metadata")
                         locked.set()
@@ -3095,7 +3282,16 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
                     patch.object(importer_instance, "_get_paginated_data", return_value=entries),
                     patch.object(importer_instance, "_get_metadata",
                                  return_value={"title": "Test Movie", "image": "movie.jpg"}),
-                    patch("integrations.imports.trakt.time.sleep", side_effect=release_on_retry) as pause,
+                    # Patch the importer's own `time` name, not time.sleep itself:
+                    # that is the process-wide function, so any other thread
+                    # sleeping meanwhile would be counted and spin without waiting.
+                    patch(
+                        "integrations.imports.trakt.time",
+                        SimpleNamespace(
+                            monotonic=time.monotonic,
+                            sleep=(pause := MagicMock(side_effect=release_on_retry)),
+                        ),
+                    ),
                 ):
                     importer_instance.process_history()
                 self.assertEqual(pause.call_count, 1)

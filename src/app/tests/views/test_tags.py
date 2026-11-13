@@ -78,6 +78,29 @@ class TagsModalViewTest(TestCase):
         # tag1 is applied, so its button should show "Remove"
         self.assertContains(response, "Remove")
 
+    def test_tags_modal_exposes_assignment_mount(self):
+        """The modal carries the shared assignment model while keeping its fallback."""
+        ItemTag.objects.create(tag=self.tag1, item=self.item)
+        response = self.client.get(
+            reverse(
+                "tags_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "278",
+                },
+            )
+        )
+
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, "data-tag-row")
+        data = response.context["tag_assignment_data"]
+        self.assertEqual(data["item"]["id"], self.item.id)
+        self.assertEqual(
+            {tag["name"]: tag["hasTag"] for tag in data["tags"]},
+            {"Favorite": True, "Must Watch": False},
+        )
+
 
 class TagItemToggleViewTest(TestCase):
     """Test the tag_item_toggle view."""
@@ -140,6 +163,8 @@ class TagItemToggleViewTest(TestCase):
         self.assertContains(response, 'hx-swap-oob="outerHTML"')
         self.assertContains(response, 'id="tag-preview-movie-278"')
         self.assertContains(response, 'data-has-preview="true"')
+        self.assertContains(response, "data-tag-preview-root")
+        self.assertContains(response, 'data-preview-id="tag-preview-movie-278"')
         self.assertContains(response, "Genres")
         self.assertContains(response, "Drama")
         self.assertContains(response, "Tags")
@@ -208,6 +233,26 @@ class TagCreateViewTest(TestCase):
         response = self.client.post(url, {"name": "New Tag", "item_id": self.item.id})
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Tag.objects.filter(user=self.user, name="New Tag").exists())
+
+    def test_create_from_track_tab_returns_the_tab_editor(self):
+        """A create made inside the edit modal keeps the tab shell, not the popup one."""
+        url = reverse("tag_create")
+        response = self.client.post(
+            url,
+            {
+                "name": "New Tag",
+                "item_id": self.item.id,
+                "tag_surface": "track",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="tag_surface"')
+        self.assertContains(response, 'value="track"')
+        self.assertNotContains(response, "tagsOpen = false")
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, 'data-tag-surface="track"')
+        self.assertContains(response, "New Tag")
 
     def test_create_returns_oob_preview_refresh(self):
         """Create response refreshes the detail-tag preview via OOB swap."""
@@ -595,6 +640,19 @@ class TagIndexViewTest(TestCase):
         tags_by_name = {tag.name: tag for tag in response.context["tags"]}
         self.assertEqual(tags_by_name["Favorite"].item_count, 2)
         self.assertEqual(tags_by_name["Someday"].item_count, 0)
+
+    def test_index_exposes_mount_model(self):
+        """The index carries shared search/sort data and keeps its server fallback."""
+        response = self.client.get(reverse("tag_index"))
+
+        self.assertContains(response, "data-tag-index-root")
+        self.assertContains(response, 'id="tag-index-list"')
+        data = response.context["tag_index_data"]
+        favorite = next(tag for tag in data["tags"] if tag["name"] == "Favorite")
+        self.assertEqual(favorite["count"], 2)
+        self.assertEqual(favorite["types"][0]["label"], "Movie")
+        self.assertEqual(favorite["types"][0]["count"], 2)
+        self.assertIn("Favorite", favorite["confirmMessage"])
 
     def test_tag_link_ignores_saved_status_filter(self):
         """Following a tag link lists every tagged entry, whatever status was saved."""

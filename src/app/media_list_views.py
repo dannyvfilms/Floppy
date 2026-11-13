@@ -3,6 +3,7 @@ import logging
 import math
 import time
 from collections import Counter, defaultdict
+from copy import copy
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -13,15 +14,15 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import FieldError
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Min, Q
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.db.models import Count, F, Min, Prefetch, Q
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from app import cache_utils, helpers, history_cache
-from app import statistics as stats
 from app.bulk_actions import build_bulk_action_data
 from app.columns import (
     resolve_column_config,
@@ -30,7 +31,16 @@ from app.columns import (
     sanitize_column_prefs,
 )
 from app.library_query import FilterValues, LibraryQuery, LibraryQueryExecutor
-from app.library_query.adapters import from_media_list_filters
+from app.library_query.adapters import (
+    from_media_list_filters,
+    last_watched_sort_key,
+)
+from app.library_query.alphabet import (
+    first_other_initial,
+    initial_condition,
+    normalize_initial,
+    query_other_initial,
+)
 from app.media_list_entry_grouping import entry_grouping_is_separate
 from app.media_list_filters import (
     apply_media_list_collection_filter,
@@ -48,6 +58,7 @@ from app.models import (
     ItemTag,
     MediaTypes,
     Sources,
+    Status,
     Tag,
     prefill_episode_runtime_index,
 )
@@ -55,12 +66,19 @@ from app.providers import tmdb
 from app.release_years import prefill_display_release_years
 from app.search_views import _mark_grouped_anime_route
 from app.services import metadata_resolution
+from app.stats_music import _country_name_from_code
+from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
-from app.tv_sort import _sort_tv_media_by_time_left
+from app.tv_sort import (
+    _sort_tv_media_by_time_left,
+    build_time_left_records,
+    is_caught_up_record,
+)
 from lists import smart_rules
 from users.models import (
     MediaSortChoices,
     MediaStatusChoices,
+    relabel_author_sort_choice,
     relabel_end_date_sort_choice,
 )
 
@@ -83,6 +101,247 @@ MEDIA_LIST_NO_STATUS_LABEL = "No Status"
 RECENTLY_NOT_RATED_KEY = "recently_not_rated"
 RECENTLY_NOT_RATED_LABEL = "Recently Played - Not Rated"
 RECENTLY_NOT_RATED_DAYS = 7
+
+
+GAME_GROUP_BY_CHOICES = (
+    ("item", "Item"),
+    ("series", "Collection/Series"),
+    ("franchise", "Franchise"),
+)
+
+
+def _game_group_key_for_item(item, group_by):
+    """Return the provider-qualified key for one game's selected grouping."""
+    if group_by == "series":
+        provider_id = str(getattr(item, "provider_collection_id", "") or "").strip()
+        name = str(getattr(item, "provider_collection_name", "") or "").strip()
+    else:
+        provider_id = str(getattr(item, "provider_franchise_id", "") or "").strip()
+        name = str(getattr(item, "provider_franchise_name", "") or "").strip()
+    if provider_id:
+        return f"id:{provider_id}"
+    if name:
+        return f"name:{name.casefold()}"
+    return ""
+
+
+def _game_group_name_for_item(item, group_by):
+    """Return the provider name for one game's selected grouping."""
+    if group_by == "series":
+        return str(getattr(item, "provider_collection_name", "") or "").strip()
+    return str(getattr(item, "provider_franchise_name", "") or "").strip()
+
+
+def _release_year(value):
+    """Return the display year for one release datetime."""
+    if value is None:
+        return ""
+    if timezone.is_aware(value):
+        value = timezone.localtime(value)
+    return str(value.year)
+
+
+def _build_game_groups(entries, group_by, *, sort_key, direction):
+    """Return the filtered Games library rolled up into catalog groups."""
+    groups = {}
+    for entry in entries:
+        item = entry.item
+        key = _game_group_key_for_item(item, group_by)
+        ungrouped = not key
+        if ungrouped:
+            key = "__ungrouped__"
+        name = _game_group_name_for_item(item, group_by) or key
+        group = groups.setdefault(
+            key,
+            {
+                "key": key,
+                "name": "Ungrouped" if ungrouped else name,
+                "ungrouped": ungrouped,
+                "entries": [],
+                "played_count": 0,
+                "completed_count": 0,
+                "playtime_minutes": 0,
+                "last_played": None,
+                "first_release": None,
+                "last_release": None,
+                "first_added": None,
+                "first_started": None,
+                "last_ended": None,
+                "genres": [],
+                "platforms": [],
+                "runtime_minutes": 0,
+                "status_counts": Counter(),
+                # TODO: use a franchise/series-level poster when one exists;
+                # until then a tracked member game's poster is the fallback.
+                "image": "",
+                "scores": [],
+            },
+        )
+        group["entries"].append(entry)
+        if not group["image"] and getattr(item, "image", ""):
+            group["image"] = item.image
+        release = getattr(item, "release_datetime", None)
+        if release:
+            if group["first_release"] is None or release < group["first_release"]:
+                group["first_release"] = release
+            if group["last_release"] is None or release > group["last_release"]:
+                group["last_release"] = release
+        for genre in getattr(item, "genres", None) or []:
+            if genre not in group["genres"]:
+                group["genres"].append(genre)
+        for platform in getattr(item, "platforms", None) or []:
+            if platform not in group["platforms"]:
+                group["platforms"].append(platform)
+        group["runtime_minutes"] += getattr(item, "runtime_minutes", 0) or 0
+        media = entry.media
+        if media is None:
+            continue
+        created = getattr(media, "aggregated_created_at", None) or getattr(
+            media, "created_at", None
+        )
+        if created and (group["first_added"] is None or created < group["first_added"]):
+            group["first_added"] = created
+        started = getattr(media, "aggregated_start_date", None) or getattr(
+            media, "start_date", None
+        )
+        if started and (
+            group["first_started"] is None or started < group["first_started"]
+        ):
+            group["first_started"] = started
+        ended = getattr(media, "aggregated_end_date", None) or getattr(
+            media, "end_date", None
+        )
+        if ended and (group["last_ended"] is None or ended > group["last_ended"]):
+            group["last_ended"] = ended
+        progress = getattr(media, "aggregated_progress", None)
+        if progress is None:
+            progress = getattr(media, "progress", 0) or 0
+        status = getattr(media, "aggregated_status", None) or getattr(
+            media, "status", None
+        )
+        played = progress > 0 or status in {
+            Status.IN_PROGRESS.value,
+            Status.COMPLETED.value,
+        }
+        if played:
+            group["played_count"] += 1
+            activity = (
+                getattr(media, "aggregated_last_watched", None)
+                or getattr(media, "end_date", None)
+                or helpers.progress_activity(media)
+            )
+            if activity and (
+                group["last_played"] is None or activity > group["last_played"]
+            ):
+                group["last_played"] = activity
+        if status:
+            group["status_counts"][status] += 1
+        if status == Status.COMPLETED.value:
+            group["completed_count"] += 1
+        group["playtime_minutes"] += progress
+        score = getattr(media, "aggregated_score", None)
+        if score is None:
+            score = getattr(media, "score", None)
+        if score is not None:
+            group["scores"].append(float(score))
+    for group in groups.values():
+        group["game_count"] = len(group["entries"])
+        group["image"] = group["image"] or settings.IMG_NONE
+        group["average_score"] = (
+            sum(group["scores"]) / len(group["scores"]) if group["scores"] else None
+        )
+        first_year = _release_year(group["first_release"])
+        last_year = _release_year(group["last_release"])
+        group["release_range"] = (
+            ""
+            if not first_year
+            else first_year
+            if first_year == last_year
+            else f"{first_year}-{last_year}"
+        )
+        status_labels = []
+        for status, count in group["status_counts"].items():
+            try:
+                label = str(Status(status).label)
+            except ValueError:
+                label = status
+            status_labels.append(f"{label} ({count})")
+        group["status_label"] = ", ".join(status_labels)
+        group["average_score"] = (
+            round(group["average_score"], 1)
+            if group["average_score"] is not None
+            else None
+        )
+
+        representative_entry = next(
+            (entry for entry in group["entries"] if entry.media is not None),
+            group["entries"][0],
+        )
+        display_item = copy(representative_entry.item)
+        display_item.title = group["name"]
+        display_item.original_title = ""
+        display_item.localized_title = ""
+        display_item.release_datetime = None
+        display_item.display_release_year = group["release_range"] or None
+        display_item.genres = group["genres"]
+        display_item.platforms = group["platforms"]
+        display_item.runtime = (
+            helpers.minutes_to_hhmm(group["runtime_minutes"])
+            if group["runtime_minutes"]
+            else ""
+        )
+        display_item.synopsis = ""
+        group["display_item"] = display_item
+        if representative_entry.media is not None:
+            display_media = copy(representative_entry.media)
+        else:
+            display_media = SimpleNamespace(
+                card_tile_url="",
+                progress=0,
+                aggregated_progress=None,
+                max_progress=None,
+                repeats=0,
+                play_count=0,
+            )
+        display_media.item = display_item
+        display_media.score = group["average_score"]
+        display_media.aggregated_score = group["average_score"]
+        display_media.status = group["status_label"]
+        display_media.aggregated_status = group["status_label"]
+        display_media.last_played_at = group["last_played"]
+        display_media.aggregated_created_at = group["first_added"]
+        display_media.aggregated_start_date = group["first_started"]
+        display_media.aggregated_end_date = group["last_ended"]
+        display_media.progress = group["playtime_minutes"]
+        display_media.aggregated_progress = group["playtime_minutes"]
+        display_media.max_progress = None
+        group["display_media"] = display_media
+
+    def _value(group):
+        if sort_key in {"progress", "plays", "time_watched"}:
+            return group["playtime_minutes"]
+        if sort_key == "start_date":
+            return group["first_started"]
+        if sort_key == "date_added":
+            return group["first_added"]
+        if sort_key == "end_date":
+            return group["last_ended"] or group["last_played"]
+        if sort_key == "release_date":
+            return group["last_release"]
+        if sort_key in {"score", "critic_rating"}:
+            return group["average_score"]
+        return group["name"].casefold()
+
+    grouped = [group for group in groups.values() if not group["ungrouped"]]
+    ungrouped = [group for group in groups.values() if group["ungrouped"]]
+    present = [group for group in grouped if _value(group) is not None]
+    missing = [group for group in grouped if _value(group) is None]
+    present.sort(
+        key=lambda group: (_value(group), group["name"].casefold()),
+        reverse=direction == "desc",
+    )
+    missing.sort(key=lambda group: group["name"].casefold())
+    return present + missing + ungrouped
 
 
 @dataclass
@@ -143,24 +402,21 @@ def _tracked_media_entries(entries):
     return tracked_entries
 
 
-def _serialize_time_left_order(entries):
+def _serialize_time_left_order(records):
     """Compact, cache-friendly representation of a time_left sorted list.
 
     Stores primary keys plus the display values computed during the sort so
-    cache hits can hydrate a single page without re-sorting the library.
+    any page can be hydrated without re-sorting the library.
     """
-    order = []
-    for entry in entries:
-        media = getattr(entry, "media", None)
-        order.append(
-            {
-                "media_pk": getattr(media, "pk", None),
-                "item_pk": entry.item_id,
-                "time_left_display": entry.__dict__.get("time_left_display"),
-                "episodes_left_display": entry.__dict__.get("episodes_left_display", 0),
-            }
-        )
-    return order
+    return [
+        {
+            "media_pk": record.media_pk,
+            "item_pk": record.item_pk,
+            "time_left_display": record.time_left_display,
+            "episodes_left_display": record.episodes_left_display,
+        }
+        for record in records
+    ]
 
 
 def _hydrate_time_left_page(user, order_slice):
@@ -222,6 +478,27 @@ def _serialize_media_list_order(entries):
     return result
 
 
+def _prefetch_untracked_item_tags(entries):
+    """Load tags for item-only rows in one query instead of one per card.
+
+    Tracked rows inherit the ``item__item_tags`` prefetch from their tracker
+    query. Untracked (collected but unstatused) rows have no tracker to inherit
+    it from, and every card renders the Tags column.
+    """
+    item_pks = [entry.item.pk for entry in entries if entry.media is None]
+    if not item_pks:
+        return
+    tagged_items = {
+        item.pk: item
+        for item in Item.objects.filter(pk__in=item_pks).prefetch_related(
+            Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
+        )
+    }
+    for entry in entries:
+        if entry.media is None:
+            entry.item = tagged_items.get(entry.item.pk, entry.item)
+
+
 def _hydrate_media_list_page(user, media_type, order_slice):
     """Rebuild MediaListEntry objects for a slice of a cached compact order."""
     pks_by_model: dict[str, list] = {}
@@ -276,6 +553,8 @@ def _hydrate_media_list_page(user, media_type, order_slice):
         if item is None:
             continue
         entries.append(MediaListEntry(item=item, media=None))
+
+    _prefetch_untracked_item_tags(entries)
 
     # Grouped anime (TV items in the anime bucket) are surfaced in the anime
     # list via the warm-cache hydration path too. _mark_grouped_anime_route is
@@ -769,6 +1048,9 @@ AUTHOR_MEDIA_TYPES = (
     MediaTypes.COMIC.value,
     MediaTypes.COMIC_ISSUE.value,
 )
+# A video's channel is stored as its author, so videos filter, sort and show by
+# it too. Formats stay with the reading types.
+AUTHOR_FILTER_MEDIA_TYPES = (*AUTHOR_MEDIA_TYPES, MediaTypes.VIDEO.value)
 CRITIC_RATING_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.SEASON.value,
@@ -965,7 +1247,10 @@ def _resolve_media_list_preferences(request, route_media_type, comic_subview):
         sort_filter = "title"  # Default fallback
         request.user.update_preference(f"{route_media_type}_sort", "title")
         direction_param = None
-    elif sort_filter == "author" and effective_media_type not in AUTHOR_MEDIA_TYPES:
+    elif (
+        sort_filter == "author"
+        and effective_media_type not in AUTHOR_FILTER_MEDIA_TYPES
+    ):
         sort_filter = "title"  # Default fallback
         # Update the user's preference to the fallback
         request.user.update_preference(f"{route_media_type}_sort", "title")
@@ -1021,8 +1306,300 @@ def _resolve_media_list_preferences(request, route_media_type, comic_subview):
         media_type,
         sorted_media_sort_choices,
     )
+    sorted_media_sort_choices = relabel_author_sort_choice(
+        media_type,
+        sorted_media_sort_choices,
+    )
 
     return layout, sort_filter, direction, media_type, sorted_media_sort_choices
+
+
+def _release_date_from_value(value):
+    if value is None:
+        return None
+    if isinstance(value, date) and not hasattr(value, "hour"):
+        return value
+    if hasattr(value, "date"):
+        try:
+            if hasattr(value, "utcoffset") and timezone.is_aware(value):
+                return timezone.localtime(value).date()
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
+            pass
+        try:
+            return value.date()
+        except Exception:
+            return None
+    return None
+
+
+def _matches_release_filter_value(release_value, filter_value, today):
+    if filter_value == "all":
+        return True
+    release_date = _release_date_from_value(release_value)
+    if not release_date:
+        return filter_value == "not_released"
+    if filter_value == "released":
+        return release_date <= today
+    if filter_value == "not_released":
+        return release_date > today
+    return True
+
+
+def _build_artist_list_context(
+    user,
+    *,
+    tracked_status_filter,
+    search_query,
+    initial="",
+    rating_filter,
+    release_filter,
+    genre_filter,
+    origin_filter,
+    sort_filter,
+    direction,
+    layout,
+    page,
+    is_pagination_req,
+):
+    """Build the artist page and facets without mutating the route's context.
+
+    Status, search, rating and release constrain the facet universe; genre and
+    origin then narrow the page. Image refresh/backfill is limited to that page.
+    The route owns preferences, shared context, and full-page/HTMX rendering.
+    """
+    from app.models import Artist, ArtistTracker
+
+    artist_trackers = (
+        ArtistTracker.objects.filter(user=user)
+        .exclude(artist__name__isnull=True)
+        .exclude(artist__name__exact="")
+        .select_related("artist")
+    )
+
+    # Apply status filter to artists
+    if tracked_status_filter:
+        artist_trackers = artist_trackers.filter(status__in=tracked_status_filter)
+
+    # Apply search filter to artists
+    if search_query:
+        artist_trackers = artist_trackers.filter(artist__name__icontains=search_query)
+    artist_trackers = artist_trackers.filter(
+        initial_condition(initial, name_field="artist__name")
+    )
+
+    # Apply rating filter to artists
+    if rating_filter == "rated":
+        artist_trackers = artist_trackers.filter(score__isnull=False)
+    elif rating_filter == "not_rated":
+        artist_trackers = artist_trackers.filter(score__isnull=True)
+
+    should_annotate_first_release_date = (
+        release_filter != "all" or sort_filter == "release_date" or layout == "table"
+    )
+    if should_annotate_first_release_date:
+        artist_trackers = artist_trackers.annotate(
+            first_release_date=Min("artist__albums__release_date")
+        )
+
+    # Apply sorting (limited to what makes sense for artists)
+    if sort_filter == "title":
+        order = "artist__name" if direction == "asc" else "-artist__name"
+        artist_trackers = artist_trackers.order_by(order)
+    elif sort_filter == "score":
+        order = "score" if direction == "asc" else "-score"
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "release_date":
+        order = (
+            F("first_release_date").asc(nulls_last=True)
+            if direction == "asc"
+            else F("first_release_date").desc(nulls_last=True)
+        )
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "date_added":
+        order = "created_at" if direction == "asc" else "-created_at"
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "start_date":
+        order = "start_date" if direction == "asc" else "-start_date"
+        artist_trackers = artist_trackers.order_by(order)
+    else:
+        # Default: most recently updated
+        artist_trackers = artist_trackers.order_by("-updated_at")
+
+    artist_trackers_list = list(artist_trackers)
+
+    if release_filter != "all":
+        today = timezone.localdate()
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if _matches_release_filter_value(
+                getattr(tracker, "first_release_date", None),
+                release_filter,
+                today,
+            )
+        ]
+
+    def _build_music_filter_data(trackers):
+        genres_set = set()
+        origins_set = set()
+        for tracker in trackers:
+            artist = tracker.artist
+            for genre in artist.genres or []:
+                genre_value = str(genre).strip()
+                if genre_value:
+                    genres_set.add(genre_value)
+            origin_value = (artist.country or "").strip()
+            if origin_value:
+                origins_set.add(origin_value)
+
+        genres = sorted(genres_set, key=lambda value: value.lower())
+        origins = []
+        for value in sorted(origins_set):
+            label = value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value
+            try:
+                if len(value) <= MAX_ISO_CODE_LENGTH:
+                    country_name = _country_name_from_code(value.upper())
+                    if country_name:
+                        label = country_name
+            except Exception:  # pragma: no cover - defensive  # noqa: S110  # deliberate best-effort; failure is non-fatal here
+                pass
+            origins.append({"value": value, "label": label})
+        return {
+            "genres": genres,
+            "years": [],
+            "sources": [],
+            "languages": [],
+            "countries": [],
+            "platforms": [],
+            "origins": origins,
+            "show_languages": False,
+            "show_countries": False,
+            "show_platforms": False,
+            "show_origins": True,
+        }
+
+    filter_data = _build_music_filter_data(artist_trackers_list)
+
+    if genre_filter:
+        target_genre = _normalize_filter_value(genre_filter)
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if any(
+                _normalize_filter_value(genre) == target_genre
+                for genre in (tracker.artist.genres or [])
+            )
+        ]
+
+    if origin_filter:
+        target_country = _normalize_filter_value(origin_filter)
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if _normalize_filter_value(tracker.artist.country) == target_country
+        ]
+
+    # Paginate artist trackers first
+    artist_paginator = Paginator(artist_trackers_list, 32)
+    artist_page = artist_paginator.get_page(page)
+
+    # Backfill missing artist images from album covers (no API calls - uses existing data)
+    # Similar to _fix_missing_season_images for TV seasons
+    # First, bulk fetch latest image data from DB for all artists on this page
+    # (images might have been set by background tasks, detail page visits, etc.)
+    # This is more efficient and reliable than individual refresh_from_db calls
+    artist_ids = [tracker.artist.id for tracker in artist_page.object_list]
+    artist_images_map = dict(
+        Artist.objects.filter(id__in=artist_ids).values_list("id", "image"),
+    )
+
+    refreshed_with_images = 0
+    images_in_db_count = 0
+    for tracker in artist_page.object_list:
+        artist_id = tracker.artist.id
+        old_image = tracker.artist.image
+        # Always update the in-memory object with the latest image from DB
+        # This ensures we have the most up-to-date data, even if it's None
+        if artist_id in artist_images_map:
+            # Get the actual value (could be None if DB has None)
+            actual_image = artist_images_map[artist_id]
+            tracker.artist.image = actual_image
+            # Count images that exist in DB (for logging)
+            if actual_image and actual_image not in (settings.IMG_NONE, ""):
+                images_in_db_count += 1
+            # Count if refresh found an image that wasn't there before
+            if (
+                actual_image
+                and actual_image not in (settings.IMG_NONE, "")
+                and (not old_image or old_image in (settings.IMG_NONE, ""))
+            ):
+                refreshed_with_images += 1
+
+    # Only check artists on the current page to avoid full queryset evaluation
+    # Use object_list to avoid consuming the page iterator (important for HTMX pagination)
+    seen_artist_ids = set()
+    artists_checked = 0
+    artists_with_images = 0
+    artists_missing_images = 0
+
+    # Partition artists into those with / without images in a single pass.
+    artists_missing_image_objects = []
+    for tracker in artist_page.object_list:
+        artist = tracker.artist
+        if artist.id not in seen_artist_ids:
+            seen_artist_ids.add(artist.id)
+            artists_checked += 1
+            has_image = artist.image and artist.image not in (
+                settings.IMG_NONE,
+                "",
+            )
+            if has_image:
+                artists_with_images += 1
+            else:
+                artists_missing_images += 1
+                artists_missing_image_objects.append(artist)
+
+    # Queue a background backfill for artists missing images instead of writing
+    # synchronously during this GET request (avoids racing concurrent importers'
+    # writes and 503s from SQLite lock contention). The Celery task performs the
+    # same "hero image from earliest album cover" lookup and single-row save.
+    queued_for_backfill = 0
+    if artists_missing_image_objects:
+        from app.tasks import prefetch_album_covers_batch
+
+        for artist in artists_missing_image_objects:
+            cache_key = f"music:cover-prefetch:{artist.id}"
+            if cache.add(cache_key, True, 60 * 10):
+                prefetch_album_covers_batch.delay([artist.id], limit_per_artist=5)
+                queued_for_backfill += 1
+
+    logger.debug(
+        "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d queued for backfill",
+        page,
+        is_pagination_req,
+        artists_checked,
+        images_in_db_count,
+        artists_with_images,
+        artists_missing_images,
+        queued_for_backfill,
+    )
+
+    if refreshed_with_images > 0:
+        logger.info(
+            "Refreshed %d artists from DB that now have images (page %d, pagination=%s)",
+            refreshed_with_images,
+            page,
+            is_pagination_req,
+        )
+
+    return {
+        "media_list": artist_page,
+        "is_artist_list": True,
+        "filter_data": filter_data,
+        "alphabet_other_initial": first_other_initial(
+            ArtistTracker.objects.filter(user=user), name_field="artist__name"
+        ),
+    }
 
 
 def media_list(request, media_type):
@@ -1082,7 +1659,15 @@ def media_list(request, media_type):
         status_choices.insert(1, (MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL))
 
     # One parser for the web list and the API, so a filter reaches both.
-    parsed_filters = parse_media_list_filters(request, strict=False)
+    initial = normalize_initial(request.GET.get("initial"))
+    parsed_filters = replace(
+        parse_media_list_filters(request, strict=False),
+        initial=initial,
+        # The web grouping path below owns drilldown and ordering. Keep the
+        # shared engine's alphabet scope identical to the ungrouped library.
+        group_by="item",
+        group="",
+    )
     rating_filter = parsed_filters.rating
     collection_filter = parsed_filters.collection
     progress_filter = (
@@ -1133,6 +1718,13 @@ def media_list(request, media_type):
         page = int(request.GET.get("page", 1))
     except (ValueError, TypeError):
         page = 1
+
+    group_by = request.GET.get("group_by", "item")
+    if group_by not in dict(GAME_GROUP_BY_CHOICES) or media_type != MediaTypes.GAME.value:
+        group_by = "item"
+    game_group = request.GET.get("group", "").strip() if group_by != "item" else ""
+    grouped_game_overview = group_by != "item" and not game_group
+    current_game_group_name = ""
 
     def apply_range_filters(media_items):
         """Keep entries whose item is inside the rating and date ranges.
@@ -1209,35 +1801,6 @@ def media_list(request, media_type):
     def apply_progress_filter(media_items, filter_value, media_type):
         return apply_media_list_progress_filter(media_items, filter_value, media_type)
 
-    def _release_date_from_value(value):
-        if value is None:
-            return None
-        if isinstance(value, date) and not hasattr(value, "hour"):
-            return value
-        if hasattr(value, "date"):
-            try:
-                if hasattr(value, "utcoffset") and timezone.is_aware(value):
-                    return timezone.localtime(value).date()
-            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                pass
-            try:
-                return value.date()
-            except Exception:
-                return None
-        return None
-
-    def _matches_release_filter_value(release_value, filter_value, today):
-        if filter_value == "all":
-            return True
-        release_date = _release_date_from_value(release_value)
-        if not release_date:
-            return filter_value == "not_released"
-        if filter_value == "released":
-            return release_date <= today
-        if filter_value == "not_released":
-            return release_date > today
-        return True
-
     collection_formats_by_item_id = defaultdict(set)
     collection_platforms_by_item_id = defaultdict(set)
 
@@ -1313,10 +1876,11 @@ def media_list(request, media_type):
         "title"
         if sort_filter
         in {"author", "runtime", "time_to_beat", "platform", "time_watched"}
-        else sort_filter
+        else last_watched_sort_key(sort_filter)
     )
 
     list_sql_filters = {
+        "initial": initial,
         "genre": genre_filter,
         "implied_genre": implied_genre_filter,
         "year": year_filter,
@@ -1343,7 +1907,7 @@ def media_list(request, media_type):
         progress=progress_filter,
         implied_genre=implied_genre_filter,
         pinned_providers=tuple(request.user.pinned_watch_providers or ()),
-        sort=sort_filter,
+        sort=last_watched_sort_key(sort_filter),
         direction=direction,
         exclude=(),
         media_type=media_type,
@@ -1355,11 +1919,20 @@ def media_list(request, media_type):
     _skip_generic_media_list = media_type == MediaTypes.PODCAST.value or (
         media_type == MediaTypes.MUSIC.value and music_subview != "tracks"
     )
-    use_sql_media_pagination = not (
+    use_sql_media_pagination = group_by == "item" and not (
         entry_grouping_is_separate()
         or (sort_filter == "time_left" and media_type == MediaTypes.TV.value)
         or _skip_generic_media_list
     )
+    if use_sql_media_pagination and request.GET.get("bulk_ids") == "1":
+        # The bulk toolbar asks for the ids behind the current filters so
+        # "Select all matching" does not have to page through the library.
+        # Resolve before any list/order cache work, including its build lock.
+        engine = LibraryQueryExecutor(
+            request.user,
+            from_media_list_filters(sql_media_filters, (media_type,)),
+        )
+        return JsonResponse({"item_ids": sorted(engine.ids())})
 
     anime_library_mode = getattr(
         request.user,
@@ -1515,7 +2088,9 @@ def media_list(request, media_type):
         today = timezone.localdate()
         filtered_items = []
         candidate_items = list(
-            Item.objects.filter(id__in=candidate_item_ids).order_by("title", "id"),
+            Item.objects.filter(id__in=candidate_item_ids)
+            .filter(initial_condition(initial, request.user))
+            .order_by("title", "id"),
         )
         for item in candidate_items:
             if not _item_matches_requested_media_type(item):
@@ -1599,9 +2174,26 @@ def media_list(request, media_type):
 
     # Cache tracker-backed list results and filter summaries separately.
     _time_left_active = sort_filter == "time_left" and media_type == MediaTypes.TV.value
+    _time_left_record_by_entry = {}
+
+    def _time_left_records(entries):
+        """Ranking records for time-left entries, read once per request."""
+        missing = [
+            entry for entry in entries if id(entry) not in _time_left_record_by_entry
+        ]
+        for entry, record in zip(
+            missing,
+            build_time_left_records(request.user, missing),
+            strict=True,
+        ):
+            _time_left_record_by_entry[id(entry)] = record
+        return [_time_left_record_by_entry[id(entry)] for entry in entries]
+
     # Platform ordering is resolved from collection entries after the base query,
     # so cache only the database-backed sort orders.
-    _use_media_list_cache = not _time_left_active and sort_filter != "platform"
+    _use_media_list_cache = (
+        group_by == "item" and not _time_left_active and sort_filter != "platform"
+    )
     _include_untracked_entries = MEDIA_LIST_NO_STATUS in status_filter
 
     def _resolve_tag_count_source_items(filter_data_source_items, tracked_item_ids):
@@ -1628,6 +2220,7 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=tag_free_filters,
+                prefetch_graph=not _time_left_active,
             )
         ]
         if _include_untracked_entries:
@@ -1709,6 +2302,13 @@ def media_list(request, media_type):
         if (_use_media_list_cache or _time_left_active)
         else None
     )
+    # The alphabet follows the viewer's displayed title, including on warm caches.
+    if initial:
+        alphabet_variant = f":initial={initial}:title={request.user.title_display_preference}"
+        if _media_list_cache_key:
+            _media_list_cache_key += alphabet_variant
+        if _media_list_filter_cache_key:
+            _media_list_filter_cache_key += alphabet_variant
     _media_list_cached = (
         cache.get(_media_list_cache_key) if _media_list_cache_key else None
     )
@@ -1717,6 +2317,27 @@ def media_list(request, media_type):
         if _media_list_filter_cache_key
         else None
     )
+    # Concurrent cold requests for one key would all run the same build; let one
+    # build and the rest read its result. The lock is short-lived and waiters
+    # fall back to building, so a dead builder cannot wedge anyone.
+    _media_list_build_lock_key = None
+    _order_cache_built = bool(_media_list_cache_key) and not use_sql_media_pagination
+    if _media_list_filter_cache_key and (
+        filter_data is None or (_order_cache_built and _media_list_cached is None)
+    ):
+        if cache_utils.acquire_media_list_build_lock(_media_list_filter_cache_key):
+            _media_list_build_lock_key = _media_list_filter_cache_key
+        elif cache_utils.wait_for_media_list_build(
+            _media_list_filter_cache_key,
+            lambda: cache.get(_media_list_filter_cache_key) is not None
+            and (
+                not _order_cache_built or cache.get(_media_list_cache_key) is not None
+            ),
+        ):
+            _media_list_cached = (
+                cache.get(_media_list_cache_key) if _media_list_cache_key else None
+            )
+            filter_data = cache.get(_media_list_filter_cache_key)
 
     # time_left keeps its own sorted-order cache (the sort is the expensive
     # part). Check it BEFORE building the full media list: on a hit with warm
@@ -1755,6 +2376,8 @@ def media_list(request, media_type):
             completed_date_to=completed_date_to,
             range_filters=range_cache_key,
         )
+        if initial:
+            _time_left_cache_key += alphabet_variant
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
             # Sentinel: skips the list build below; the page is hydrated
@@ -1777,13 +2400,16 @@ def media_list(request, media_type):
         engine_query = from_media_list_filters(sql_media_filters, (media_type,))
         engine = LibraryQueryExecutor(request.user, engine_query)
         engine_total = engine.count()
-        media_page = Paginator(range(engine_total), items_per_page).get_page(max(page, 1))
+        media_page = Paginator(range(engine_total), items_per_page).get_page(
+            max(page, 1)
+        )
         engine_page = engine.page(
             (media_page.number - 1) * items_per_page,
             items_per_page,
             total=engine_total,
         )
         page_entries = media_list_entries_for_items(request.user, engine_page.items)
+        _prefetch_untracked_item_tags(page_entries)
         media_page.object_list = [
             MediaListEntry(item=entry.item, media=entry.media) for entry in page_entries
         ]
@@ -1827,12 +2453,12 @@ def media_list(request, media_type):
                 author="",
                 format="",
                 provider="",
-                platforms=() if media_type == MediaTypes.GAME.value else platform_values,
+                platforms=()
+                if media_type == MediaTypes.GAME.value
+                else platform_values,
             )
             provider_region_for_values = (
-                watch_provider_region
-                if media_type in provider_media_types
-                else None
+                watch_provider_region if media_type in provider_media_types else None
             )
 
             def _menu_rows(filters):
@@ -1842,7 +2468,9 @@ def media_list(request, media_type):
                 )
                 return list(
                     BasicMedia.objects.item_values_for_menu(
-                        Item.objects.filter(pk__in=menu_engine.filtered.values("pk")).order_by(),
+                        Item.objects.filter(
+                            pk__in=menu_engine.filtered.values("pk")
+                        ).order_by(),
                         provider_region_for_values,
                     ),
                 )
@@ -1896,7 +2524,8 @@ def media_list(request, media_type):
             filter_data["show_platforms"] = media_type == MediaTypes.GAME.value
             filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
             filter_data["show_formats"] = media_type in AUTHOR_MEDIA_TYPES
-            filter_data["show_authors"] = media_type in AUTHOR_MEDIA_TYPES
+            filter_data["show_authors"] = media_type in AUTHOR_FILTER_MEDIA_TYPES
+            filter_data["author_is_channel"] = media_type == MediaTypes.VIDEO.value
             filter_data["show_providers"] = media_type in provider_media_types and bool(
                 (watch_provider_region and watch_provider_region != "UNSET")
                 or request.user.pinned_watch_providers
@@ -1904,15 +2533,24 @@ def media_list(request, media_type):
             filter_data["show_progress"] = media_type in PROGRESS_MEDIA_TYPES
             # Tag counts ignore the tag filter itself, or every other tag
             # would count 0 (#1072).
-            tag_rows = (
-                _menu_rows(replace(menu_filters, tags=()))
+            # Counting reads only the item ids, so the tag-free pass skips the
+            # menu columns.
+            tag_item_ids = (
+                LibraryQueryExecutor(
+                    request.user,
+                    from_media_list_filters(
+                        replace(menu_filters, tags=()), (media_type,)
+                    ),
+                )
+                .filtered.order_by()
+                .values_list("pk", flat=True)
                 if tag_values
-                else filter_data_rows
+                else item_ids
             )
             filter_data.update(
                 _build_media_list_tag_data(
                     request.user,
-                    [SimpleNamespace(**row) for row in tag_rows],
+                    [SimpleNamespace(id=pk) for pk in tag_item_ids],
                 ),
             )
             if _media_list_filter_cache_key:
@@ -1925,6 +2563,8 @@ def media_list(request, media_type):
                     request.user.id,
                     _media_list_filter_cache_key,
                 )
+                if _media_list_build_lock_key:
+                    cache_utils.release_media_list_build_lock(_media_list_build_lock_key)
     elif _media_list_cached is None:
         # Podcasts always render from PodcastShowTracker further below, and
         # music's artists/albums subviews render from ArtistTracker/
@@ -1944,6 +2584,7 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=list_sql_filters,
+                prefetch_graph=not _time_left_active,
             )
         )
 
@@ -2024,6 +2665,21 @@ def media_list(request, media_type):
                 return title
 
             media_list = sorted(media_list, key=_untracked_sort_key, reverse=_reverse)
+
+        if game_group:
+            media_list = [
+                entry
+                for entry in media_list
+                if _game_group_key_for_item(entry.item, group_by) == game_group
+            ]
+            current_game_group_name = next(
+                (
+                    _game_group_name_for_item(entry.item, group_by)
+                    for entry in media_list
+                    if _game_group_name_for_item(entry.item, group_by)
+                ),
+                "",
+            )
 
         filter_data_source_items = media_list
         if (
@@ -2121,7 +2777,8 @@ def media_list(request, media_type):
             filter_data["show_platforms"] = media_type == MediaTypes.GAME.value
             filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
             filter_data["show_formats"] = media_type in AUTHOR_MEDIA_TYPES
-            filter_data["show_authors"] = media_type in AUTHOR_MEDIA_TYPES
+            filter_data["show_authors"] = media_type in AUTHOR_FILTER_MEDIA_TYPES
+            filter_data["author_is_channel"] = media_type == MediaTypes.VIDEO.value
             filter_data["show_providers"] = media_type in provider_media_types and bool(
                 (watch_provider_region and watch_provider_region != "UNSET")
                 or request.user.pinned_watch_providers
@@ -2145,14 +2802,28 @@ def media_list(request, media_type):
                     request.user.id,
                     _media_list_filter_cache_key,
                 )
+                if _media_list_build_lock_key:
+                    cache_utils.release_media_list_build_lock(_media_list_build_lock_key)
         media_list = apply_rating_filter(media_list, rating_filter)
         media_list = apply_range_filters(media_list)
         media_list = apply_collection_filter(
             media_list, collection_filter, request.user, media_type
         )
-        media_list = apply_progress_filter(media_list, progress_filter, media_type)
-        if media_type in AUTHOR_MEDIA_TYPES:
+        if not _time_left_active:
+            media_list = apply_progress_filter(media_list, progress_filter, media_type)
+        elif progress_filter != "all":
+            media_list = [
+                entry
+                for entry, record in zip(
+                    media_list, _time_left_records(media_list), strict=True
+                )
+                if entry.media is not None
+                and is_caught_up_record(record, entry.item)
+                == (progress_filter == "caught_up")
+            ]
+        if media_type in AUTHOR_FILTER_MEDIA_TYPES:
             media_list = apply_author_filter(media_list, author_filter)
+        if media_type in AUTHOR_MEDIA_TYPES:
             media_list = apply_format_filter(media_list, format_filter)
         if media_type in provider_media_types:
             media_list = apply_provider_filter(
@@ -2161,7 +2832,7 @@ def media_list(request, media_type):
                 watch_provider_region,
                 request.user.pinned_watch_providers,
             )
-        if sort_filter == "author" and media_type in AUTHOR_MEDIA_TYPES:
+        if sort_filter == "author" and media_type in AUTHOR_FILTER_MEDIA_TYPES:
             media_list = _sort_media_items_by_author(media_list, direction)
         if sort_filter == "runtime" and media_type in RUNTIME_MEDIA_TYPES:
             BasicMedia.objects.annotate_max_progress(
@@ -2263,8 +2934,11 @@ def media_list(request, media_type):
                     )
                     return (_sortable_dt(start_dt), title.lower())
                 if sort_filter == "end_date":
-                    end_dt = getattr(media, "aggregated_end_date", None) or getattr(
-                        media, "end_date", None
+                    end_dt = (
+                        getattr(media, "aggregated_last_watched", None)
+                        or getattr(media, "aggregated_end_date", None)
+                        or getattr(media, "end_date", None)
+                        or helpers.progress_activity(media)
                     )
                     return (_sortable_dt(end_dt), title.lower())
                 if sort_filter == "next_episode_air_date":
@@ -2287,6 +2961,8 @@ def media_list(request, media_type):
             cache_utils.register_media_list_cache_key(
                 request.user.id, _media_list_cache_key
             )
+            if _media_list_build_lock_key and filter_data is not None:
+                cache_utils.release_media_list_build_lock(_media_list_build_lock_key)
     elif filter_data is None:
         # Order cache hit but filter_data cache missed: hydrate every cached
         # row (one bulk query) instead of the full filter/sort pipeline, then
@@ -2395,7 +3071,8 @@ def media_list(request, media_type):
         filter_data["show_platforms"] = media_type == MediaTypes.GAME.value
         filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
         filter_data["show_formats"] = media_type in AUTHOR_MEDIA_TYPES
-        filter_data["show_authors"] = media_type in AUTHOR_MEDIA_TYPES
+        filter_data["show_authors"] = media_type in AUTHOR_FILTER_MEDIA_TYPES
+        filter_data["author_is_channel"] = media_type == MediaTypes.VIDEO.value
         filter_data["show_providers"] = media_type in provider_media_types and bool(
             (watch_provider_region and watch_provider_region != "UNSET")
             or request.user.pinned_watch_providers
@@ -2419,6 +3096,8 @@ def media_list(request, media_type):
                 request.user.id,
                 _media_list_filter_cache_key,
             )
+            if _media_list_build_lock_key:
+                cache_utils.release_media_list_build_lock(_media_list_build_lock_key)
 
     # Handle time_left sorting for TV shows
     if _time_left_active:
@@ -2434,35 +3113,29 @@ def media_list(request, media_type):
                 media_page.object_list,
             )
         else:
-            logger.debug("DEBUG: Starting time_left sort for page %s (no cache)", page)
-
-            # media_list already has filters applied from above
-            logger.debug("DEBUG: Got %s media objects after filtering", len(media_list))
-
-            # Annotate max_progress first
-            BasicMedia.objects.annotate_max_progress(
-                _tracked_media_entries(media_list),
-                media_type,
+            # No cached order. media_list holds the filtered library as
+            # trackers with only their item; rank it from grouped facts, then
+            # hydrate this page exactly as a cache hit does.
+            _time_left_order = _serialize_time_left_order(
+                _sort_tv_media_by_time_left(
+                    _time_left_records(media_list),
+                    direction,
+                ),
             )
-
-            prefill_episode_runtime_index(media_list)
-
-            # Apply time_left sorting
-            media_list = _sort_tv_media_by_time_left(media_list, direction)
 
             # Cache the compact sort order for 5 minutes (300 seconds)
-            cache.set(
-                _time_left_cache_key,
-                _serialize_time_left_order(media_list),
-                300,
-            )
+            cache.set(_time_left_cache_key, _time_left_order, 300)
             cache_utils.register_time_left_cache_key(
                 request.user.id,
                 _time_left_cache_key,
             )
 
-            paginator = Paginator(media_list, items_per_page)
+            paginator = Paginator(_time_left_order, items_per_page)
             media_page = paginator.get_page(page)
+            media_page.object_list = _hydrate_time_left_page(
+                request.user,
+                media_page.object_list,
+            )
 
         BasicMedia.objects.annotate_max_progress(
             _tracked_media_entries(media_page.object_list),
@@ -2470,8 +3143,11 @@ def media_list(request, media_type):
         )
         prefill_episode_runtime_index(media_page.object_list)
     else:
-        # Paginate results normally
-        items_per_page = 32
+        # Paginate results normally. A grouped Games view needs every filtered
+        # entry so each group's rollup covers the whole filtered library.
+        items_per_page = (
+            max(len(_media_list_full or []), 1) if grouped_game_overview else 32
+        )
         if _sql_media_page is not None:
             media_page = _sql_media_page
         elif _cached_media_list_order is not None:
@@ -2522,32 +3198,99 @@ def media_list(request, media_type):
             video.card_subtitle_text = " · ".join(parts)
 
     if media_type == MediaTypes.GAME.value:
-        if not collection_platforms_by_item_id:
-            _page_item_ids = {
-                media.item_id
-                for media in media_page.object_list
-                if getattr(media, "item_id", None)
-            }
-            if _page_item_ids:
-                for item_id, collection_platform in CollectionEntry.objects.filter(
-                    user=request.user,
-                    item_id__in=_page_item_ids,
-                ).values_list("item_id", "resolution"):
-                    platform_value = str(collection_platform or "").strip()
-                    if platform_value:
-                        collection_platforms_by_item_id[item_id].add(platform_value)
+        _page_item_ids = {
+            media.item_id
+            for media in media_page.object_list
+            if getattr(media, "item_id", None)
+        }
+        if _page_item_ids:
+            for item_id, collection_platform in CollectionEntry.objects.filter(
+                user=request.user,
+                item_id__in=_page_item_ids,
+            ).values_list("item_id", "resolution"):
+                platform_value = str(collection_platform or "").strip()
+                if platform_value:
+                    collection_platforms_by_item_id[item_id].add(platform_value)
         for media in media_page.object_list:
+            media.card_collection_platforms = sorted(
+                collection_platforms_by_item_id.get(media.item_id, ()),
+                key=str.lower,
+            )
             media.display_platform = _resolve_display_platform(
                 getattr(media, "item", None),
                 collection_platforms_by_item_id,
                 platform_filter,
             )
 
-    if media_type in AUTHOR_MEDIA_TYPES:
+    if media_type in AUTHOR_FILTER_MEDIA_TYPES:
         annotate_media_authors(media_page.object_list)
 
     if filter_data is not None:
         filter_data.setdefault("departments", [])
+        filter_data["show_group_by"] = group_by != "item" or media_type == MediaTypes.GAME.value
+
+    media_groups = (
+        _build_game_groups(
+            media_page.object_list,
+            group_by,
+            sort_key=sort_filter,
+            direction=direction,
+        )
+        if grouped_game_overview
+        else []
+    )
+    group_params = request.GET.copy()
+    group_params.pop("page", None)
+    group_back_href = ""
+    if game_group:
+        group_params.pop("group", None)
+        group_back_href = (
+            f"{reverse('medialist', args=[route_media_type])}"
+            f"?{group_params.urlencode()}"
+        )
+        if not current_game_group_name:
+            current_game_group_name = game_group.split(":", 1)[-1]
+    else:
+        for group in media_groups:
+            group_params["group"] = group["key"]
+            group["href"] = (
+                f"{reverse('medialist', args=[route_media_type])}"
+                f"?{group_params.urlencode()}"
+            )
+            group["display_media"].card_tile_url = group["href"]
+        group_params.pop("group", None)
+
+    ungrouped_entries = [
+        entry
+        for group in media_groups
+        if group["ungrouped"]
+        for entry in group["entries"]
+    ]
+    try:
+        ungrouped_page_number = int(request.GET.get("ug_page", 1))
+    except (TypeError, ValueError):
+        ungrouped_page_number = 1
+    ungrouped_page = Paginator(ungrouped_entries, 32).get_page(
+        max(ungrouped_page_number, 1)
+    )
+    ungrouped_next_url = ""
+    if ungrouped_page.has_next():
+        ungrouped_params = request.GET.copy()
+        ungrouped_params.pop("page", None)
+        ungrouped_params["ug_page"] = ungrouped_page.next_page_number()
+        ungrouped_next_url = (
+            f"{reverse('medialist', args=[route_media_type])}"
+            f"?{ungrouped_params.urlencode()}"
+        )
+
+    if grouped_game_overview:
+        result_count = sum(
+            1 for group in media_groups if not group["ungrouped"]
+        ) + len(ungrouped_entries)
+    elif getattr(media_page, "paginator", None) is not None:
+        result_count = media_page.paginator.count
+    else:
+        result_count = len(media_page)
 
     if tag_values and not _skip_generic_media_list:
         _log_tag_filter_result(
@@ -2565,10 +3308,28 @@ def media_list(request, media_type):
         "media_type": route_media_type,
         "media_type_plural": app_tags.media_type_readable_plural(media_type).lower(),
         "media_list": media_page,
+        "result_count": result_count,
+        "library_page_model": {
+            "title": app_tags.media_type_readable_plural(route_media_type),
+            "count": result_count,
+        },
         "current_layout": layout,
         "layout_class": _layout_class,
         "media_list_url": reverse("medialist", args=[route_media_type]),
-        "filter_hx_target": _layout_class if media_page else "#empty_list",
+        "filter_hx_target": (
+            "#media-table-view" if layout == "table" else _layout_class
+        )
+        if media_page
+        else "#empty_list",
+        "current_group_by": group_by,
+        "current_game_group": game_group,
+        "current_game_group_name": current_game_group_name,
+        "group_back_href": group_back_href,
+        "group_by_choices": GAME_GROUP_BY_CHOICES,
+        "group_by_label": dict(GAME_GROUP_BY_CHOICES).get(group_by, ""),
+        "media_groups": media_groups,
+        "ungrouped_page": ungrouped_page,
+        "ungrouped_next_url": ungrouped_next_url,
         "current_sort": sort_filter,
         "current_direction": direction,
         "current_status": list(status_filter),
@@ -2578,7 +3339,9 @@ def media_list(request, media_type):
         "current_genre": genre_filter,
         "current_implied_genre": implied_genre_filter,
         "current_year": year_filter,
-        "current_completed_date_from": "" if completed_date_within else completed_date_from,
+        "current_completed_date_from": ""
+        if completed_date_within
+        else completed_date_from,
         "current_completed_date_to": "" if completed_date_within else completed_date_to,
         "current_completed_date_within": completed_date_within,
         "current_completed_date_within_unit": completed_date_within_unit,
@@ -2639,6 +3402,9 @@ def media_list(request, media_type):
         # Apply search filter to shows
         if search_query:
             show_trackers = show_trackers.filter(show__title__icontains=search_query)
+        show_trackers = show_trackers.filter(
+            initial_condition(initial, name_field="show__title")
+        )
 
         # A tag sits on the show's item (the show's uuid) or on one of its
         # episodes (the episode's uuid); either tags the show.
@@ -2784,6 +3550,9 @@ def media_list(request, media_type):
                 self.start_date = tracker.start_date
                 self.end_date = tracker.end_date
                 self.notes = tracker.notes
+                self.score_url = reverse(
+                    "update_podcast_show_score", args=[tracker.id]
+                )
                 self.created_at = tracker.created_at
                 self.updated_at = tracker.updated_at
                 self.release_datetime = getattr(tracker, "first_published", None)
@@ -2831,7 +3600,9 @@ def media_list(request, media_type):
             "current_layout": layout,
             "layout_class": ".media-grid" if layout == "grid" else ".media-table",
             "media_list_url": reverse("medialist", args=[media_type]),
-            "filter_hx_target": (".media-grid" if layout == "grid" else ".media-table")
+            "filter_hx_target": (
+                ".media-grid" if layout == "grid" else "#media-table-view"
+            )
             if media_page
             else "#empty_list",
             "current_sort": sort_filter,
@@ -2864,9 +3635,12 @@ def media_list(request, media_type):
             "supports_critic_rating_sort": False,
         }
         context["enable_bulk_select"] = False
+        context["alphabet_other_initial"] = first_other_initial(
+            PodcastShowTracker.objects.filter(user=request.user), name_field="show__title"
+        )
 
     if media_type == MediaTypes.MUSIC.value:
-        from app.models import AlbumTracker, Artist, ArtistTracker
+        from app.models import AlbumTracker
 
         context["current_subview"] = music_subview
 
@@ -2896,6 +3670,10 @@ def media_list(request, media_type):
                 album_trackers = album_trackers.filter(score__isnull=False)
             elif rating_filter == "not_rated":
                 album_trackers = album_trackers.filter(score__isnull=True)
+
+            album_trackers = album_trackers.filter(
+                initial_condition(initial, name_field="album__title")
+            )
 
             should_annotate_release_date = (
                 release_filter != "all"
@@ -2987,6 +3765,9 @@ def media_list(request, media_type):
             context["is_album_list"] = True
             context["filter_data"] = filter_data
             context["media_type_plural"] = "albums"
+            context["alphabet_other_initial"] = first_other_initial(
+                AlbumTracker.objects.filter(user=request.user), name_field="album__title"
+            )
 
         elif music_subview == "tracks":
             context["is_artist_list"] = False
@@ -2994,257 +3775,47 @@ def media_list(request, media_type):
             context["media_type_plural"] = "tracks"
 
         if music_subview == "artists":
-            artist_trackers = (
-                ArtistTracker.objects.filter(user=request.user)
-                .exclude(artist__name__isnull=True)
-                .exclude(artist__name__exact="")
-                .select_related("artist")
-            )
-
-            # Apply status filter to artists
-            if tracked_status_filter:
-                artist_trackers = artist_trackers.filter(
-                    status__in=tracked_status_filter
+            context.update(
+                _build_artist_list_context(
+                    request.user,
+                    tracked_status_filter=tracked_status_filter,
+                    search_query=search_query,
+                    initial=initial,
+                    rating_filter=rating_filter,
+                    release_filter=release_filter,
+                    genre_filter=genre_filter,
+                    origin_filter=origin_filter,
+                    sort_filter=sort_filter,
+                    direction=direction,
+                    layout=layout,
+                    page=page,
+                    is_pagination_req=page > 1,
                 )
-
-            # Apply search filter to artists
-            if search_query:
-                artist_trackers = artist_trackers.filter(
-                    artist__name__icontains=search_query
-                )
-
-            # Apply rating filter to artists
-            if rating_filter == "rated":
-                artist_trackers = artist_trackers.filter(score__isnull=False)
-            elif rating_filter == "not_rated":
-                artist_trackers = artist_trackers.filter(score__isnull=True)
-
-            should_annotate_first_release_date = (
-                release_filter != "all"
-                or sort_filter == "release_date"
-                or layout == "table"
             )
-            if should_annotate_first_release_date:
-                artist_trackers = artist_trackers.annotate(
-                    first_release_date=Min("artist__albums__release_date")
-                )
-
-            # Apply sorting (limited to what makes sense for artists)
-            if sort_filter == "title":
-                order = "artist__name" if direction == "asc" else "-artist__name"
-                artist_trackers = artist_trackers.order_by(order)
-            elif sort_filter == "score":
-                order = "score" if direction == "asc" else "-score"
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "release_date":
-                order = (
-                    F("first_release_date").asc(nulls_last=True)
-                    if direction == "asc"
-                    else F("first_release_date").desc(nulls_last=True)
-                )
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "date_added":
-                order = "created_at" if direction == "asc" else "-created_at"
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "start_date":
-                order = "start_date" if direction == "asc" else "-start_date"
-                artist_trackers = artist_trackers.order_by(order)
-            else:
-                # Default: most recently updated
-                artist_trackers = artist_trackers.order_by("-updated_at")
-
-            artist_trackers_list = list(artist_trackers)
-
-            if release_filter != "all":
-                today = timezone.localdate()
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if _matches_release_filter_value(
-                        getattr(tracker, "first_release_date", None),
-                        release_filter,
-                        today,
-                    )
-                ]
-
-            def _build_music_filter_data(trackers):
-                genres_set = set()
-                origins_set = set()
-                for tracker in trackers:
-                    artist = tracker.artist
-                    for genre in artist.genres or []:
-                        genre_value = str(genre).strip()
-                        if genre_value:
-                            genres_set.add(genre_value)
-                    origin_value = (artist.country or "").strip()
-                    if origin_value:
-                        origins_set.add(origin_value)
-
-                genres = sorted(genres_set, key=lambda value: value.lower())
-                origins = []
-                for value in sorted(origins_set):
-                    label = (
-                        value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value
-                    )
-                    try:
-                        if len(value) <= MAX_ISO_CODE_LENGTH:
-                            country_name = stats._country_name_from_code(value.upper())
-                            if country_name:
-                                label = country_name
-                    except Exception:  # pragma: no cover - defensive  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                        pass
-                    origins.append({"value": value, "label": label})
-                return {
-                    "genres": genres,
-                    "years": [],
-                    "sources": [],
-                    "languages": [],
-                    "countries": [],
-                    "platforms": [],
-                    "origins": origins,
-                    "show_languages": False,
-                    "show_countries": False,
-                    "show_platforms": False,
-                    "show_origins": True,
-                }
-
-            filter_data = _build_music_filter_data(artist_trackers_list)
-
-            if genre_filter:
-                target_genre = _normalize_filter_value(genre_filter)
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if any(
-                        _normalize_filter_value(genre) == target_genre
-                        for genre in (tracker.artist.genres or [])
-                    )
-                ]
-
-            if origin_filter:
-                target_country = _normalize_filter_value(origin_filter)
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if _normalize_filter_value(tracker.artist.country) == target_country
-                ]
-
-            # Paginate artist trackers first
-            artist_paginator = Paginator(artist_trackers_list, 32)
-            artist_page = artist_paginator.get_page(page)
-
-            # Backfill missing artist images from album covers (no API calls - uses existing data)
-            # Similar to _fix_missing_season_images for TV seasons
-            # First, bulk fetch latest image data from DB for all artists on this page
-            # (images might have been set by background tasks, detail page visits, etc.)
-            # This is more efficient and reliable than individual refresh_from_db calls
-            artist_ids = [tracker.artist.id for tracker in artist_page.object_list]
-            artist_images_map = dict(
-                Artist.objects.filter(id__in=artist_ids).values_list("id", "image"),
-            )
-
-            refreshed_with_images = 0
-            images_in_db_count = 0
-            for tracker in artist_page.object_list:
-                artist_id = tracker.artist.id
-                old_image = tracker.artist.image
-                # Get the latest image from DB (may be None if not in map or if DB value is None)
-                # Use get() with a sentinel to distinguish "not in map" from "None in DB"
-                artist_images_map.get(artist_id, object())  # object() as sentinel
-
-                # Always update the in-memory object with the latest image from DB
-                # This ensures we have the most up-to-date data, even if it's None
-                if artist_id in artist_images_map:
-                    # Get the actual value (could be None if DB has None)
-                    actual_image = artist_images_map[artist_id]
-                    tracker.artist.image = actual_image
-                    # Count images that exist in DB (for logging)
-                    if actual_image and actual_image not in (settings.IMG_NONE, ""):
-                        images_in_db_count += 1
-                    # Count if refresh found an image that wasn't there before
-                    if (
-                        actual_image
-                        and actual_image not in (settings.IMG_NONE, "")
-                        and (not old_image or old_image in (settings.IMG_NONE, ""))
-                    ):
-                        refreshed_with_images += 1
-
-            # Only check artists on the current page to avoid full queryset evaluation
-            # Use object_list to avoid consuming the page iterator (important for HTMX pagination)
-            seen_artist_ids = set()
-            artists_checked = 0
-            artists_with_images = 0
-            artists_missing_images = 0
-
-            # Partition artists into those with / without images in a single pass.
-            artists_missing_image_objects = []
-            for tracker in artist_page.object_list:
-                artist = tracker.artist
-                if artist.id not in seen_artist_ids:
-                    seen_artist_ids.add(artist.id)
-                    artists_checked += 1
-                    has_image = artist.image and artist.image not in (
-                        settings.IMG_NONE,
-                        "",
-                    )
-                    if has_image:
-                        artists_with_images += 1
-                    else:
-                        artists_missing_images += 1
-                        artists_missing_image_objects.append(artist)
-
-            # Queue a background backfill for artists missing images instead of writing
-            # synchronously during this GET request (avoids racing concurrent importers'
-            # writes and 503s from SQLite lock contention). The Celery task performs the
-            # same "hero image from earliest album cover" lookup and single-row save.
-            queued_for_backfill = 0
-            if artists_missing_image_objects:
-                from app.tasks import prefetch_album_covers_batch
-
-                for artist in artists_missing_image_objects:
-                    cache_key = f"music:cover-prefetch:{artist.id}"
-                    if cache.add(cache_key, True, 60 * 10):
-                        prefetch_album_covers_batch.delay(
-                            [artist.id], limit_per_artist=5
-                        )
-                        queued_for_backfill += 1
-
-            # Log backfill attempt (always, not just when updates happen)
-            is_pagination_req = bool(
-                request.GET.get("page") and int(request.GET.get("page", 1)) > 1
-            )
-            # Use module-level logger via logging module to avoid conflict with local 'logger' variable
-            # (there's a local 'logger' assignment on line 168 that makes Python treat it as local)
-            import logging as _logging_module
-
-            _log = _logging_module.getLogger(__name__)
-            _log.debug(
-                "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d queued for backfill",
-                page,
-                is_pagination_req,
-                artists_checked,
-                images_in_db_count,
-                artists_with_images,
-                artists_missing_images,
-                queued_for_backfill,
-            )
-
-            if refreshed_with_images > 0:
-                _log.info(
-                    "Refreshed %d artists from DB that now have images (page %d, pagination=%s)",
-                    refreshed_with_images,
-                    page,
-                    is_pagination_req,
-                )
-
-            # Replace media_list with artist trackers for music
-            # Use the page object directly - it's already iterable and has all pagination metadata
-            # This ensures HTMX pagination works correctly and images are backfilled for new pages
-            context["media_list"] = artist_page
-            context["is_artist_list"] = True
-            context["filter_data"] = filter_data
 
         context["enable_bulk_select"] = music_subview == "tracks"
+
+    if not _skip_generic_media_list and not helpers.is_htmx_fragment(request):
+        if use_sql_media_pagination and initial in {"", "other"}:
+            # Reuse the already evaluated engine, including provider deduplication
+            # and Python predicates; only the representative title is read again.
+            matches = engine.matches() if engine.uses_sql else engine.ranked_ids()
+            context["alphabet_other_initial"] = first_other_initial(
+                Item.objects.filter(pk__in=matches), request.user
+            )
+        else:
+            context["alphabet_other_initial"] = query_other_initial(
+                request.user, from_media_list_filters(sql_media_filters, (media_type,))
+            )
+
+    if _skip_generic_media_list:
+        # Container trackers replace the item page above; expose their own count
+        # and empty target rather than the skipped generic library's values.
+        container_page = context["media_list"]
+        context["result_count"] = container_page.paginator.count
+        context["filter_hx_target"] = (
+            ".media-grid" if layout == "grid" else "#media-table-view"
+        ) if container_page else "#empty_list"
 
     if context.get("enable_bulk_select"):
         context["bulk_action_data"] = build_bulk_action_data(
@@ -3254,6 +3825,11 @@ def media_list(request, media_type):
             list_url=reverse("bulk_list_add"),
             collection_url=reverse("bulk_collection_quick_add"),
             tag_url=reverse("tag_bulk_toggle"),
+            select_all_url=(
+                reverse("medialist", args=[route_media_type]) + "?bulk_ids=1"
+                if use_sql_media_pagination
+                else ""
+            ),
         )
 
     if context.get("is_artist_list", False):
@@ -3303,8 +3879,54 @@ def media_list(request, media_type):
                 resolved_keys,
             )
 
+        media_page = context.get("media_list")
+        next_url = (
+            table_json_url(request, media_page.next_page_number())
+            if media_page is not None and media_page.has_next()
+            else ""
+        )
+        context["table_browser_props"] = build_table_browser_props(
+            rows=list(media_page.object_list) if media_page is not None else [],
+            resolved_columns=context["resolved_columns"],
+            column_config=context["column_config"],
+            default_column_config=context["default_column_config"],
+            user=request.user,
+            table_type=table_type,
+            media_type=media_type,
+            current_sort=sort_filter,
+            current_direction=direction,
+            update_url=reverse("medialist_columns", args=[route_media_type]),
+            refresh_url=context["media_list_url"],
+            refresh_target=".media-table",
+            refresh_include="#filter-form",
+            csrf_token=get_token(request),
+            next_url=next_url,
+        )
+        if request.GET.get("table_json") == "1":
+            return JsonResponse(
+                {
+                    "rows": context["table_browser_props"]["table"]["rows"],
+                    "nextUrl": next_url,
+                    "resultCount": context["result_count"],
+                },
+            )
+
     # Handle HTMX requests for partial updates (boosted navigation still
     # sends HX-Request but needs the full page)
+    if (
+        grouped_game_overview
+        and request.GET.get("ug_page")
+        and helpers.is_htmx_fragment(request)
+    ):
+        from django.template.loader import render_to_string
+
+        html = render_to_string(
+            "app/components/game_grouped_ungrouped_page.html",
+            context,
+            request=request,
+        )
+        return HttpResponse(html)
+
     if helpers.is_htmx_fragment(request):
         is_artist_list = context.get("is_artist_list", False)
         is_album_list = context.get("is_album_list", False)
@@ -3314,11 +3936,14 @@ def media_list(request, media_type):
             if media_page is not None and not media_page.object_list:
                 return HttpResponse(status=204)
             response = HttpResponse()
-            response["HX-Redirect"] = reverse("medialist", args=[media_type])
+            redirect_url = reverse("medialist", args=[media_type])
+            if initial:
+                redirect_url += "?" + request.GET.urlencode()
+            response["HX-Redirect"] = redirect_url
             return response
 
         # Check if this is a pagination request (has page parameter and is not the first page)
-        is_pagination = request.GET.get("page") and int(request.GET.get("page", 1)) > 1
+        is_pagination = page > 1
         context["is_pagination"] = bool(is_pagination)
 
         if layout == "grid":
@@ -3333,6 +3958,9 @@ def media_list(request, media_type):
 
         from django.template.loader import render_to_string
 
+        if initial and not context.get("media_list") and not is_pagination:
+            template_name = "app/components/alphabet_results_empty.html"
+            context["alphabet_table_fragment"] = layout == "table"
         html = render_to_string(template_name, context, request=request)
 
         media_page = context.get("media_list")

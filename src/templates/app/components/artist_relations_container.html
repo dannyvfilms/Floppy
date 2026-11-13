@@ -3,7 +3,11 @@
 <div id="artist-relations-container"
      {% if poll_for_relation_images %}
        hx-get="{% url 'prefetch_artist_relation_images' artist.id %}?attempt={{ next_attempt|default:1 }}"
-       hx-trigger="load delay:500ms, every 5s"
+       {% if next_attempt %}
+         hx-trigger="every 5s"
+       {% else %}
+         hx-trigger="load delay:500ms, every 5s"
+       {% endif %}
        hx-target="#artist-relations-container"
        hx-swap="outerHTML"
      {% endif %}>

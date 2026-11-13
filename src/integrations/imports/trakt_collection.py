@@ -90,11 +90,15 @@ def apply_season_and_show_rollup(
     tv_metadata,
     season_metadata,
     collected_at=None,
+    show_collected_at=None,
 ):
     """Create season/show CollectionEntry rows once every episode is owned.
 
     Mirrors how ``TraktImporter._update_completion_status`` rolls episode watch
     events up into season/show watch status, but for ownership.
+
+    ``collected_at`` dates the season entry and ``show_collected_at`` the show
+    entry (falling back to ``collected_at``), so historical dates survive.
     """
     max_progress = season_metadata.get("max_progress")
     if not max_progress:
@@ -135,7 +139,12 @@ def apply_season_and_show_rollup(
         ).values_list("item__season_number", flat=True),
     )
     if collected_season_numbers >= season_numbers:
-        upsert_collection_entry(user, tv_item, mode=mode, collected_at=collected_at)
+        upsert_collection_entry(
+            user,
+            tv_item,
+            mode=mode,
+            collected_at=show_collected_at or collected_at,
+        )
 
 
 class TraktCollectionCsvImporter(TraktMetadataResolverMixin):

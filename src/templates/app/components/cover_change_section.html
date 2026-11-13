@@ -1,0 +1,4 @@
+{% load i18n %}
+{% url 'update_item_cover' metadata_item.id as cover_save_url %}
+{% url 'item_cover_candidates' metadata_item.id as cover_candidates_url %}
+{% include "app/components/image_picker.html" with uid="cover" title=_("Cover") current=metadata_item.image save_url=cover_save_url candidates_url=cover_candidates_url next_url=return_url %}

@@ -10,14 +10,34 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import formats, timezone
+from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app import backdrops
+from app.icon_specs import file_icon
 from app.models import Item, MediaTypes, PodcastEpisode, Status
+from app.templatetags.app_tags import (
+    image_url,
+    media_status_readable,
+    media_type_readable,
+    media_type_readable_plural,
+    user_event_time,
+)
 from events import tasks
+from events.history_feed import (
+    DEFAULT_MEDIA_TYPES,
+    HISTORY_MEDIA_TYPES,
+    get_history_plays,
+    selected_history_media_types,
+)
 from events.models import INACTIVE_TRACKING_STATUSES, Event, ReleaseTypes
+from events.templatetags.events_tags import calendar_event_url
+from users.card_metadata import card_lines
 from users.models import User, WeekStartDayChoices
 
 logger = logging.getLogger(__name__)
@@ -55,6 +75,18 @@ def _fold_ics_line(line):
             current += char
     folded.append(current)
     return "\r\n ".join(folded)
+
+
+def _user_for_token(token):
+    """Return the user a calendar link belongs to, or None for an unknown one."""
+    try:
+        return User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning(
+            "Could not process Calendar request: Invalid token: %s",
+            token,
+        )
+        return None
 
 
 @require_GET
@@ -189,9 +221,42 @@ def calendar(request):
         if media_type not in {MediaTypes.TV.value, MediaTypes.EPISODE.value}
     }
 
+    season_identities = {
+        (release.item.source, release.item.media_id)
+        for release in releases
+        if release.item.media_type == MediaTypes.SEASON.value
+    }
+    show_titles = {}
+    if season_identities:
+        show_titles = {
+            (source, media_id): title
+            for source, media_id, title in Item.objects.filter(
+                tv__user=request.user,
+                media_type=MediaTypes.TV.value,
+                source__in={source for source, _ in season_identities},
+                media_id__in={media_id for _, media_id in season_identities},
+            ).values_list("source", "media_id", "title")
+        }
+
     release_dict = {}
+    backdrop_by_item = {}
+    backdrop_misses = []
     for release in releases:
         release.status = status_by_item_id.get(release.item_id)
+        release.calendar_title = (
+            _show_title(
+                show_titles.get((release.item.source, release.item.media_id))
+                or release.item.title,
+                release.item.season_number,
+            )
+            if release.item.media_type == MediaTypes.SEASON.value
+            else str(release.item)
+        )
+        if release.item_id not in backdrop_by_item:
+            backdrop_by_item[release.item_id] = backdrops.cached_backdrop(release.item)
+            if not backdrop_by_item[release.item_id]:
+                backdrop_misses.append(release.item)
+        release.calendar_backdrop = backdrop_by_item[release.item_id]
 
         if (
             release.item.media_type == MediaTypes.PODCAST.value
@@ -208,6 +273,9 @@ def calendar(request):
         if day not in release_dict:
             release_dict[day] = []
         release_dict[day].append(release)
+
+    if backdrop_misses:
+        backdrops.schedule_backdrop_warm(backdrop_misses)
 
     # Get today's date for highlighting
     today = timezone.localdate()
@@ -226,6 +294,8 @@ def calendar(request):
             if media_type != MediaTypes.EPISODE
         ],
         "event_statuses": event_status_values,
+        "history_media_types": HISTORY_MEDIA_TYPES,
+        "history_default_media_types": DEFAULT_MEDIA_TYPES,
         "calendar": calendar_format,
         "month": month,
         "month_name": month_name,
@@ -247,8 +317,292 @@ def calendar(request):
         "days_in_month": days_in_month,
         "selected_day": selected_day,
         "weekday_headers": weekday_headers,
+        "calendar_menu": _calendar_menu_props(request, today),
     }
+    context["calendar_props"] = _release_calendar_props(request, context)
+    context["calendar_links_props"] = _calendar_links_props(request, context)
     return render(request, "events/calendar.html", context)
+
+
+def _show_title(title, season_number):
+    """Drop a trailing "Season N" so the season only appears in its own label."""
+    suffix = f" Season {season_number}"
+    if season_number is not None and title.endswith(suffix) and title != suffix.strip():
+        return title.removesuffix(suffix)
+    return title
+
+
+def _calendar_menu_props(request, today):
+    """Return the props the shared React calendar menu needs."""
+    return {
+        "csrf": get_token(request),
+        "icon": file_icon("settings"),
+        "weekStart": request.user.week_start_day,
+        "labels": {
+            "menu": gettext("Calendar Actions"),
+            "today": gettext("Go to Today"),
+            "fetch": gettext("Fetch New Releases"),
+            "download": gettext("Download Calendar"),
+            "weekStart": gettext("Week starts on"),
+            "monday": gettext("Monday"),
+            "sunday": gettext("Sunday"),
+        },
+        "urls": {
+            "today": f"{reverse('calendar')}?month={today.month}&year={today.year}",
+            "fetch": reverse("reload_calendar"),
+            "download": reverse("download_calendar", kwargs={"token": request.user.token}),
+            "preferences": reverse("update_statistics_preferences"),
+        },
+    }
+
+
+def _calendar_links_props(request, context):
+    """Return the serialisable props for the shared calendar links panel."""
+    media_types = context["media_types"]
+    enabled_media_types = set(request.user.get_enabled_media_types())
+    release_type_choices = context["release_type_choices"]
+    return {
+        "releaseBaseUrl": request.build_absolute_uri(
+            reverse("download_calendar", kwargs={"token": request.user.token}),
+        ),
+        "historyBaseUrl": request.build_absolute_uri(
+            reverse("download_history_calendar", kwargs={"token": request.user.token}),
+        ),
+        "releaseMediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+            }
+            for media_type in media_types
+        ],
+        "historyMediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+            }
+            for media_type in HISTORY_MEDIA_TYPES
+        ],
+        "statuses": [
+            {
+                "value": status,
+                "label": media_status_readable(status),
+            }
+            for status in context["event_statuses"]
+        ],
+        "releaseTypes": [
+            {"value": value, "label": label}
+            for value, label in release_type_choices
+        ],
+        "initialFeed": "releases",
+        "initialReleaseMediaTypes": [
+            media_type for media_type in media_types if media_type in enabled_media_types
+        ],
+        "initialHistoryMediaTypes": list(DEFAULT_MEDIA_TYPES),
+        "initialStatuses": list(context["event_statuses"]),
+        "initialReleaseTypes": [value for value, _label in release_type_choices],
+        "labels": {
+            "title": gettext("Calendar links"),
+            "releasesHelp": gettext(
+                "Add this link to any calendar app to see upcoming releases there.",
+            ),
+            "historyHelp": gettext(
+                "Add this link to any calendar app to see what you watched, read and played, on the day you logged it.",
+            ),
+            "releasesTab": gettext("Upcoming releases"),
+            "historyTab": gettext("Watch history"),
+            "mediaTypes": gettext("Media Types"),
+            "status": gettext("Status"),
+            "releaseDates": gettext("Movie Release Dates"),
+            "releaseMediaHelp": gettext(
+                "Choose which media types to include in this calendar URL.",
+            ),
+            "historyMediaHelp": gettext(
+                "Music, podcasts and videos start off because they add many entries.",
+            ),
+            "statusHelp": gettext(
+                "Choose which statuses to include in this calendar URL.",
+            ),
+            "releaseDatesHelp": gettext(
+                "Choose which digital and physical release dates to include in this calendar URL.",
+            ),
+            "subscription": gettext("Subscription link"),
+            "ics": gettext("ICS"),
+            "copy": gettext("Copy link"),
+            "copied": gettext("Copied"),
+            "download": gettext("Download calendar"),
+            "unavailable": gettext("No calendar link is available."),
+        },
+    }
+
+
+def _release_calendar_props(request, context):
+    """Return the serialisable props for the shared release calendar."""
+    month = context["month"]
+    year = context["year"]
+    release_dict = context["release_dict"]
+    release_type_choices = context["release_type_choices"]
+    available_statuses = context["available_statuses_by_type"]
+    calendar_url = reverse("calendar")
+
+    releases = {
+        str(day): [_release_props(request, release) for release in day_releases]
+        for day, day_releases in release_dict.items()
+    }
+    statuses_by_type = {
+        media_type: [
+            {
+                "value": status,
+                "label": media_status_readable(status),
+                "inMonth": status in available_statuses.get(media_type, []),
+            }
+            for status in statuses
+        ]
+        for media_type, statuses in context["filter_statuses_by_type"].items()
+    }
+    return {
+        "month": month,
+        "year": year,
+        "monthName": context["month_name"],
+        "weekdayHeaders": context["weekday_headers"],
+        "weeks": context["calendar"],
+        "daysInMonth": list(context["days_in_month"]),
+        "dayLabels": {
+            str(day): formats.date_format(
+                date(year, month, day),
+                "l",
+            )
+            for day in context["days_in_month"]
+        },
+        "today": {
+            "day": context["today"].day,
+            "month": context["today"].month,
+            "year": context["today"].year,
+        },
+        "selectedDay": context["selected_day"],
+        "view": "list" if context["view_type"] == "list" else "grid",
+        "viewIcons": {"grid": file_icon("grid"), "list": file_icon("list")},
+        "regionUnset": context["region_unset"],
+        "regionNotice": gettext(
+            "Set your watch provider region in Preferences to see digital and physical dates.",
+        ),
+        "preferencesUrl": reverse("preferences"),
+        "releases": releases,
+        "mediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+                "shortLabel": media_type_readable(media_type),
+            }
+            for media_type in context["filter_media_types"]
+        ],
+        "releaseTypes": [
+            {"value": value, "label": label}
+            for value, label in release_type_choices
+        ],
+        "statusesByType": statuses_by_type,
+        "initialFilters": {
+            "selectedTypes": list(context["filter_media_types"]),
+            "selectedStatusesByType": {
+                media_type: [status["value"] for status in statuses]
+                for media_type, statuses in statuses_by_type.items()
+            },
+            "selectedReleaseTypes": [
+                value for value, _label in release_type_choices
+            ],
+        },
+        "navigation": {
+            "previous": (
+                f"{calendar_url}?month={context['prev_month']}"
+                f"&year={context['prev_year']}"
+            ),
+            "next": (
+                f"{calendar_url}?month={context['next_month']}"
+                f"&year={context['next_year']}"
+            ),
+            "today": (
+                f"{calendar_url}?month={context['today'].month}"
+                f"&year={context['today'].year}"
+            ),
+            "views": {
+                "grid": f"{calendar_url}?view=grid&month={month}&year={year}",
+                "list": f"{calendar_url}?view=list&month={month}&year={year}",
+            },
+        },
+        "menu": context["calendar_menu"],
+        "filterStorageKey": f"yamtrack.calendar.filters.{request.user.id}",
+        "labels": {
+            "filters": gettext("Filters"),
+            "all": gettext("All"),
+            "none": gettext("None"),
+            "mediaTypes": gettext("Media Types"),
+            "status": gettext("Status"),
+            "movieReleaseDates": gettext("Movie Release Dates"),
+            "clearAll": gettext("Clear all filters"),
+            "close": gettext("Close"),
+            "agenda": gettext("Agenda"),
+            "closeDay": gettext("Close day details"),
+            "noDayReleases": gettext("No releases scheduled for this day."),
+            "noFilteredReleases": gettext("No releases for selected media types."),
+            "today": gettext("Today"),
+            "release": gettext("release"),
+            "releases": gettext("releases"),
+            "viewMonth": gettext("Month"),
+            "viewList": gettext("List"),
+            "previousMonth": gettext("Previous month"),
+            "nextMonth": gettext("Next month"),
+            "filterCalendar": gettext("Filter calendar by media type"),
+        },
+    }
+
+
+def _release_props(request, release):
+    """Return one release as serialisable presentation data."""
+    item = release.item
+    event_time = user_event_time(release, request.user)
+    episode_label = release.season_episode_label or ""
+    release_type_label = (
+        release.get_release_type_display() if release.release_type else ""
+    )
+    if episode_label:
+        subtitle = episode_label
+    elif release_type_label:
+        subtitle = f"{release_type_label} {gettext('release')}"
+    else:
+        subtitle = ""
+    if event_time:
+        subtitle = f"{subtitle} {event_time}".strip()
+    elif not episode_label and not release_type_label:
+        subtitle = gettext("Time unknown")
+
+    # The release list names the item itself ("Show S4") and shows the short
+    # content number ("E1 at 2 a.m."); the month agenda uses the longer forms.
+    list_parts = []
+    if release.readable_content_number:
+        list_parts.append(f"{release.readable_content_number} {event_time or ''}".strip())
+    if release_type_label:
+        list_parts.append(f"{release_type_label} {gettext('release')}")
+
+    image = release.calendar_backdrop or item.image
+    return {
+        "id": release.id,
+        "mediaType": item.media_type,
+        "mediaLabel": media_type_readable(item.media_type),
+        "releaseType": release.release_type or "",
+        "status": release.status or "",
+        "title": release.calendar_title,
+        "href": calendar_event_url(release),
+        "image": image_url(image),
+        "subtitle": subtitle,
+        "listTitle": str(item),
+        "listSubtitle": " ".join(list_parts) or subtitle,
+        "unknownTime": release.is_sentinel_time,
+        "sortTime": 0 if release.is_sentinel_time else int(release.datetime.timestamp()),
+        "cardLines": [
+            line["text"]
+            for line in card_lines(request.user, item.media_type, item)
+            if line.get("text")
+        ],
+    }
 
 
 @require_POST
@@ -264,13 +618,8 @@ def reload_calendar(request):
 @require_http_methods(["GET", "HEAD", "PROPFIND"])
 def download_calendar(request, token: str):
     """Download the calendar as a iCalendar file."""
-    try:
-        user = User.objects.get(token=token)
-    except ObjectDoesNotExist:
-        logger.warning(
-            "Could not process Calendar request: Invalid token: %s",
-            token,
-        )
+    user = _user_for_token(token)
+    if user is None:
         return HttpResponse(status=401)
 
     now = timezone.now()
@@ -375,8 +724,64 @@ def download_calendar(request, token: str):
     return _calendar_feed_response(feed)
 
 
-def _calendar_feed_response(feed):
+@login_not_required
+@csrf_exempt
+@require_http_methods(["GET", "HEAD", "PROPFIND"])
+def download_history_calendar(request, token: str):
+    """Download finished plays (what the user watched, read, played) as iCal."""
+    user = _user_for_token(token)
+    if user is None:
+        return HttpResponse(status=401)
+
+    now = timezone.now()
+    media_types = selected_history_media_types(request.GET.getlist("media_types"))
+
+    # Calendar apps poll this link on their own schedule, so a built feed is
+    # reused briefly. The key holds the resolved types, so a link with no
+    # selection shares an entry with one that lists the defaults.
+    feed_cache_key = (
+        f"calendar_history_feed:{user.id}:{now.date().isoformat()}:"
+        f"{','.join(sorted(media_types))}"
+    )
+    cached_feed = cache.get(feed_cache_key)
+    if cached_feed is not None:
+        return _calendar_feed_response(cached_feed, "history.ics")
+
+    dtstamp = now.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+    lines = [
+        "BEGIN:VCALENDAR",
+        "PRODID:-//Floppy//EN",
+        "VERSION:2.0",
+        "X-WR-CALNAME:Floppy history",
+    ]
+    for play in get_history_plays(user, media_types, now):
+        if play.is_date_only:
+            dtstart = f"DTSTART;VALUE=DATE:{play.local_date:%Y%m%d}"
+            dtend = (
+                f"DTEND;VALUE=DATE:{play.local_date + timedelta(days=1):%Y%m%d}"
+            )
+        else:
+            played_at = play.played_at.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+            dtstart = f"DTSTART:{played_at}"
+            dtend = f"DTEND:{played_at}"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{play.uid}@floppy-history",
+            _fold_ics_line(f"SUMMARY:{_escape_ics_text(play.summary)}"),
+            dtstart,
+            dtend,
+            f"DTSTAMP:{dtstamp}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+
+    feed = ("\r\n".join(lines) + "\r\n").encode()
+    cache.set(feed_cache_key, feed, CALENDAR_FEED_CACHE_SECONDS)
+    return _calendar_feed_response(feed, "history.ics")
+
+
+def _calendar_feed_response(feed, filename="calendar.ics"):
     """Return the iCal file."""
     response = HttpResponse(feed, content_type="text/calendar")
-    response["Content-Disposition"] = 'attachment; filename="calendar.ics"'
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

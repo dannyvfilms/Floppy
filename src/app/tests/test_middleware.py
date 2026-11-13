@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import time
+from unittest.mock import MagicMock, patch
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -48,8 +49,14 @@ class DatabaseContentionMiddlewareTest(TestCase):
         self.assertIn(b"location.replace(location.href)", response.content)
         self.assertNotIn(b"Service Unavailable", response.content)
 
-    @patch("app.middleware.time.sleep")
-    def test_middleware_lock_retries_end_in_automatic_page_reload(self, _sleep):
+    def test_middleware_lock_retries_end_in_automatic_page_reload(self):
+        # Patch the module's own `time` name so other threads' sleeps are not counted.
+        fake_time = MagicMock(wraps=time)
+        _sleep = fake_time.sleep
+        patcher = patch("app.middleware.time", fake_time)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         def locked(_request):
             raise OperationalError("database is locked")
 

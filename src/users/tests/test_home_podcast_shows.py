@@ -17,7 +17,9 @@ from app.models import (
     Sources,
     Status,
 )
+from app.tests.card_props import card_models
 from users import home_screen
+from users.home_screen import build_home_page_groups
 from users.models import (
     DirectionChoices,
     HomeScreenRow,
@@ -97,6 +99,51 @@ class HomePodcastShowShelfTests(TestCase):
 
         self.assertEqual(titles, ["The Show"])
         self.assertEqual(total, 1)
+
+    def test_all_media_episode_without_artwork_uses_the_show_image(self):
+        """An episode with no cover of its own shows its show's artwork."""
+        self.show.image = "https://static.pocketcasts.com/discover/images/130/show.jpg"
+        self.show.save()
+        items = list(Item.objects.filter(media_type=MediaTypes.PODCAST.value))
+
+        entries = home_screen._row_entries(
+            self.user, items, podcast_episodes=True,
+        )
+
+        self.assertTrue(entries)
+        self.assertEqual({e.item.image for e in entries}, {self.show.image})
+
+    def test_python_ordered_shelf_ranks_once_for_both_directions(self):
+        """The first ranking serves a later flip, and each direction keeps its order."""
+
+        class Executor:
+            uses_sql = False
+            direction = DirectionChoices.DESC
+            scans = 0
+
+            def __init__(self, ids):
+                self.ids = ids
+
+            def ranked_ids_both_directions(self):
+                type(self).scans += 1
+                return {"desc": self.ids, "asc": self.ids[::-1]}
+
+        row = self.row({"status": [Status.IN_PROGRESS.value]})
+        row.sort_by = MediaSortChoices.NEXT_EPISODE_AIR_DATE
+        ids = list(
+            Item.objects.filter(media_type=MediaTypes.PODCAST.value)
+            .order_by("id")
+            .values_list("id", flat=True)
+        )
+
+        row.direction = DirectionChoices.DESC
+        desc, _ = home_screen._row_items(self.user, row, Executor(ids), 0, 14, seed=0)
+        row.direction = DirectionChoices.ASC
+        asc, _ = home_screen._row_items(self.user, row, Executor(ids), 0, 14, seed=0)
+
+        self.assertEqual([i.id for i in desc], ids)
+        self.assertEqual([i.id for i in asc], ids[::-1])
+        self.assertEqual(Executor.scans, 1)
 
     def test_entry_carries_show_for_card_link_and_modal(self):
         """The card links to the show and edits the show's tracker."""
@@ -209,10 +256,14 @@ class HomePodcastShowShelfTests(TestCase):
         """The Home page lists the show title once, not once per episode."""
         self.row({"status": [Status.IN_PROGRESS.value]})
         self.client.force_login(self.user)
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
 
         response = self.client.get(reverse("home"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "The Show", count=3)  # title, alt text, link
+        # One card for the show, whatever its episode count; the React card
+        # carries its title in the props script.
+        titles = [model["title"] for model in card_models(response.content)]
+        self.assertEqual(titles.count("The Show"), 1)
         self.assertNotContains(response, "Episode 1")
         self.assertNotContains(response, "Episode 2")

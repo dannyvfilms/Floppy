@@ -12,11 +12,13 @@ from django.db import models
 from django.utils import timezone
 
 from app.models import MediaTypes, Music
+from app.public_errors import PublicMessageError
+from app.stats_utils import _coerce_genre_list
 
 logger = logging.getLogger(__name__)
 
 
-class UnsupportedHistoryMediaTypeError(ValueError):
+class UnsupportedHistoryMediaTypeError(PublicMessageError, ValueError):
     """Raised when a history API media-type filter is unknown."""
 
     def __init__(self, token):
@@ -57,7 +59,7 @@ def _coerce_timedelta(value, default):
         return default
 
 
-HISTORY_CACHE_VERSION = 23
+HISTORY_CACHE_VERSION = 26
 HISTORY_INDEX_PREFIX = f"history_index_v{HISTORY_CACHE_VERSION}"
 HISTORY_DAY_PREFIX = f"history_day_v{HISTORY_CACHE_VERSION}"
 HISTORY_CACHE_PREFIX = HISTORY_INDEX_PREFIX
@@ -144,6 +146,38 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
     "HISTORY_COVERAGE_REPAIR_LOCK_TTL",
     60 * 30,
 )
+HISTORY_COVERAGE_WINDOW_DAYS = getattr(settings, "HISTORY_COVERAGE_WINDOW_DAYS", 62)
+HISTORY_COVERAGE_BOTH_STYLES = getattr(
+    settings, "HISTORY_COVERAGE_BOTH_STYLES", False
+)
+
+
+def history_coverage_day_keys(index_day_keys):
+    """Return the indexed days whose payloads are built ahead of a visit.
+
+    The days of the last ``HISTORY_COVERAGE_WINDOW_DAYS`` (the month view's
+    current and previous month), and never fewer than one page, so a user who
+    has been away still finds their latest page warm. Everything older is
+    built when a page asks for it. ``index_day_keys`` is newest first.
+    """
+    keys = list(index_day_keys or [])
+    if HISTORY_COVERAGE_WINDOW_DAYS <= 0:
+        return keys
+    cutoff = timezone.localdate() - timedelta(days=HISTORY_COVERAGE_WINDOW_DAYS)
+    cutoff_key = cutoff.strftime("%Y%m%d")
+    recent = sum(1 for key in keys if str(key) >= cutoff_key)
+    return keys[: max(recent, HISTORY_DAYS_PER_PAGE)]
+
+
+def history_coverage_styles(user):
+    """Return the logging styles whose day payloads are built ahead of a visit.
+
+    Only the style the user reads, unless the operator asked for both. The
+    other style is still invalidated on every write; it is built on demand.
+    """
+    if HISTORY_COVERAGE_BOTH_STYLES or user is None:
+        return HISTORY_LOGGING_STYLES
+    return (_normalize_logging_style(None, user),)
 
 DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
 
@@ -393,8 +427,11 @@ def history_day_keys_for_range(start_dt, end_dt):
 # ── Logging style ─────────────────────────────────────────────────────────────
 
 
+HISTORY_LOGGING_STYLES = ("sessions", "repeats")
+
+
 def _normalize_logging_style(logging_style, user=None):
-    if logging_style in ("sessions", "repeats"):
+    if logging_style in HISTORY_LOGGING_STYLES:
         return logging_style
     if user is not None:
         return getattr(user, "game_logging_style", "repeats")
@@ -429,36 +466,6 @@ def _localize_datetime(value):
 
 
 # ── Genre helpers ─────────────────────────────────────────────────────────────
-
-
-def _coerce_genre_list(value):
-    """Normalize a genre field (string, dict, or list) into a list of strings."""
-
-    def _coerce_one(v):
-        if not v:
-            return None
-        if isinstance(v, str):
-            return v
-        if isinstance(v, dict):
-            return v.get("name") or v.get("tag") or v.get("label")
-        return str(v)
-
-    if not value:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        coerced = _coerce_one(value)
-        return [coerced] if coerced else []
-    if isinstance(value, (list, tuple)):
-        out = []
-        for v in value:
-            coerced = _coerce_one(v)
-            if coerced:
-                out.append(coerced)
-        return out
-    coerced = _coerce_one(value)
-    return [coerced] if coerced else []
 
 
 def _resolve_genres(*items):

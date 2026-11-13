@@ -1,0 +1,35 @@
+{% load i18n ui_tags %}
+    <div id="import-activity-panel"
+         class="space-y-6"
+         hx-get="{% url 'import_data_activity' %}{% if activity_source %}?source={{ activity_source|urlencode }}{% endif %}"
+         hx-trigger="load, every 3s [!document.querySelector('#import-activity-panel [data-keep-open=true]')]"
+         hx-sync="this:replace"
+         hx-on::before-swap="if (document.querySelector('#import-activity-panel [data-keep-open=true]')) { event.detail.shouldSwap = false; } else { this.activityScroll = Array.from(this.querySelectorAll('.ui-activity-list'), list => list.scrollTop); }"
+         hx-on::after-swap="this.querySelectorAll('.ui-activity-list').forEach((list, index) => { list.scrollTop = this.activityScroll?.[index] || 0; });"
+         hx-swap="innerHTML">
+      {# Same card shell as import_activity.html so the first htmx swap does not change the layout. #}
+      {% translate "Active Periodic Imports" as activity_title %}
+      {% settings_card title=activity_title enabled=provider_navigation %}
+      <div class="{% if provider_navigation %}ui-activity-content{% else %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
+        {% if not provider_navigation %}
+        <div class="flex items-center mb-4">
+          {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{{ activity_title }}</h2>
+        </div>
+        {% endif %}
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading scheduled import activity..." %}</p>
+      </div>
+      {% endsettings_card %}
+      {% translate "Import History" as history_title %}
+      {% settings_card title=history_title enabled=provider_navigation %}
+      <div class="{% if provider_navigation %}ui-activity-content{% else %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
+        {% if not provider_navigation %}
+        <div class="flex items-center mb-4">
+          {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{{ history_title }}</h2>
+        </div>
+        {% endif %}
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading recent import history..." %}</p>
+      </div>
+      {% endsettings_card %}
+    </div>

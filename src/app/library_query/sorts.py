@@ -22,6 +22,7 @@ from django.db.models import (
     F,
     IntegerField,
     Max,
+    Min,
     OuterRef,
     Q,
     Subquery,
@@ -80,6 +81,10 @@ class SortDef:
     # expensive subquery is computed once per row. It must order exactly like
     # ``batch_values``, which still serves queries a Python filter scans.
     sql_order: Callable[[TypeContext, int, str], tuple | None] | None = None
+    # The Python value reads nothing from a show's tracker row beyond what
+    # ``app.tv_show_facts.TrackedShow`` carries, so a scan need not hydrate
+    # seasons and plays to compute it. Other media types are unaffected.
+    tv_facts: bool = False
 
 
 def _field(name: str):
@@ -91,6 +96,9 @@ def _tracker_aggregate(sort_key: str):
     field_name = {
         "start_date": "start_date",
         "end_date": "end_date",
+        # Last watched is derived from the same rows, but falls back to
+        # progressed_at for entries that are still in progress.
+        "last_watched": "end_date",
         "progress": "progress",
     }[sort_key]
 
@@ -100,6 +108,17 @@ def _tracker_aggregate(sort_key: str):
         subqueries = []
         for source in ctx.sources:
             if source.is_episode:
+                value = F(field_name)
+                if sort_key == "last_watched":
+                    value = Coalesce("end_date", Case(
+                        When(status=Status.IN_PROGRESS.value, then=F("start_date")),
+                    ))
+                if sort_key != "progress":
+                    aggregate = Min if sort_key == "start_date" else Max
+                    subqueries.append(Subquery(
+                        source.item_rows(ctx.user).order_by().values("item_id")
+                        .annotate(value=aggregate(value)).values("value")[:1],
+                    ))
                 continue
             if not source.has_field(field_name):
                 # The value is derived in Python (TV dates come from seasons).
@@ -125,13 +144,18 @@ def _latest_score(ctx: TypeContext, seed: int):
     return latest_value(ctx, "score", Q(score__isnull=False))
 
 
-def _latest_created(ctx: TypeContext, seed: int):
+def _first_created(ctx: TypeContext, seed: int):
+    """Order by when the item was first tracked, not its latest row.
+
+    A rewatch adds a newer tracker row; Date Added must stay the earliest one,
+    matching the media list's ``aggregated_created_at``.
+    """
     subqueries = [
         Subquery(
             source.item_rows(ctx.user)
             .order_by()
             .values("item_id")
-            .annotate(value=Max("created_at"))
+            .annotate(value=Min("created_at"))
             .values("value")[:1],
         )
         for source in ctx.sources
@@ -281,13 +305,8 @@ def _next_episode_air_date_values(user, candidates, direction):
     from app.models import BasicMedia
 
     medias = [c.media for c in candidates if c.media is not None]
-    BasicMedia.objects.attach_show_season_events(medias)
-    return [
-        None
-        if candidate.media is None
-        else BasicMedia.objects._next_episode_air_date_value(candidate.media)
-        for candidate in candidates
-    ]
+    values = iter(BasicMedia.objects.next_episode_air_date_values(medias))
+    return [None if candidate.media is None else next(values) for candidate in candidates]
 
 
 def _media_list_value(sort_key: str):
@@ -319,9 +338,10 @@ SORTS: tuple[SortDef, ...] = (
     SortDef(("id", "itemid", "mediaid"), sql=_field("media_id")),
     SortDef(("source",), sql=_field("source")),
     SortDef(("type",), sql=_field("media_type")),
-    SortDef(("date_added", "added", "created_at"), sql=_latest_created, tracker=True),
+    SortDef(("date_added", "added", "created_at"), sql=_first_created, tracker=True),
     SortDef(("start_date", "started"), sql=_tracker_aggregate("start_date"), tracker=True),
     SortDef(("end_date", "ended"), sql=_tracker_aggregate("end_date"), tracker=True),
+    SortDef(("last_watched",), sql=_tracker_aggregate("last_watched"), tracker=True),
     SortDef(("score",), sql=_latest_score, tracker=True),
     SortDef(("progress", "plays"), sql=_tracker_aggregate("progress"), tracker=True),
     SortDef(("random",), sql=_random_sql),

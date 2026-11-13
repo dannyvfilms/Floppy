@@ -12,6 +12,42 @@ _SUBPROCESS_TIMEOUT_SECONDS = 120
 
 
 class WebStartupImportTests(SimpleTestCase):
+    def test_background_workers_register_game_group_tasks(self):
+        script = """
+import json
+import sys
+
+sys.argv = ["celery", "-A", "config", "worker"]
+import django
+
+django.setup()
+from config.celery import app
+
+app.loader.import_default_modules()
+names = (
+    "app.tasks.reconcile_game_groups_backfill",
+    "app.tasks.populate_game_group_data_for_items",
+    "app.tasks.populate_game_group_backfill_queue",
+)
+print(json.dumps({name: name in app.tasks for name in names}, sort_keys=True))
+"""
+        for role in ("background", "combined"):
+            with self.subTest(role=role):
+                environment = os.environ.copy()
+                environment["DJANGO_SETTINGS_MODULE"] = "config.test_settings"
+                environment["FLOPPY_PROCESS_ROLE"] = role
+                environment["PYTHONPATH"] = str(settings.BASE_DIR)
+                result = subprocess.run(  # noqa: S603
+                    [sys.executable, "-c", script],
+                    check=True,
+                    timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                )
+                registered = json.loads(result.stdout.splitlines()[-1])
+                self.assertTrue(all(registered.values()), registered)
+
     def test_url_loading_does_not_import_task_aggregators(self):
         script = """
 import json
@@ -63,9 +99,11 @@ names = (
     "Reconcile statistics sync",
     "Process media server webhook",
     "Process Stremio playback webhook",
+    "Process Stremio tracker event",
     "Verify Stremio playback completion",
     "Refresh Plex library sections",
     "Import from CLZ",
+    "app.tasks.reconcile_game_groups_backfill",
 )
 print(json.dumps({name: name in app.tasks for name in names}, sort_keys=True))
 """
@@ -86,6 +124,7 @@ print(json.dumps({name: name in app.tasks for name in names}, sort_keys=True))
 
         registered = json.loads(result.stdout.splitlines()[-1])
         self.assertFalse(registered.pop("Import from CLZ"))
+        self.assertFalse(registered.pop("app.tasks.reconcile_game_groups_backfill"))
         self.assertTrue(all(registered.values()))
 
 
@@ -131,6 +170,9 @@ print(json.dumps(sorted(name for name in watched if name in sys.modules)))
         environment = os.environ.copy()
         environment["DJANGO_SETTINGS_MODULE"] = "config.test_settings"
         environment["PYTHONPATH"] = str(settings.BASE_DIR)
+        # A developer .env with DEBUG=True turns on the debug toolbar, which
+        # production never loads.
+        environment["DEBUG"] = "False"
         if role:
             environment["FLOPPY_PROCESS_ROLE"] = role
         else:

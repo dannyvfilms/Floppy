@@ -7,6 +7,8 @@ import logging
 from http import HTTPStatus
 
 from celery import shared_task
+from django.db.models import Exists, OuterRef, Q
+from django.utils import timezone
 
 from app import backfill_queue
 from app import credits as credit_helpers
@@ -17,6 +19,7 @@ from app.models import (
     Item,
     MediaTypes,
     MetadataBackfillField,
+    MetadataBackfillState,
     Sources,
 )
 from app.providers import services
@@ -28,7 +31,7 @@ from app.tasks_backfill_state import (
     _record_backfill_success,
     _schedule_metadata_statistics_refresh,
 )
-from app.tasks_metadata_cache import _clear_item_metadata_cache, _fetch_item_metadata
+from app.tasks_metadata_cache import _clear_items_metadata_cache, _fetch_item_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +45,27 @@ def _missing_credits_item_ids(item_ids):
     return credit_helpers.missing_credits_backfill_item_ids(item_ids)
 
 
+def _credits_backfill_blocked_states(now):
+    """States ``_filter_backfill_item_ids`` drops for credits, as a subquery."""
+    return MetadataBackfillState.objects.filter(
+        field=MetadataBackfillField.CREDITS,
+        item_id=OuterRef("pk"),
+    ).filter(
+        Q(give_up=True)
+        | Q(next_retry_at__gt=now)
+        | Q(
+            give_up=False,
+            fail_count=0,
+            last_success_at__isnull=False,
+            strategy_version__gte=CREDITS_BACKFILL_VERSION,
+        ),
+    )
+
+
 def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
     if batch_size <= 0:
         return []
-    candidate_limit = max(batch_size * max(scan_multiplier, 1), batch_size)
+    window = max(batch_size * max(scan_multiplier, 1), batch_size)
     candidates = (
         Item.objects.filter(
             source__in=CREDITS_BACKFILL_SOURCES,
@@ -65,16 +85,26 @@ def _next_credits_backfill_item_ids(batch_size: int, scan_multiplier: int):
             source=Sources.TVDB.value,
             media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
         )
+        # Items whose state already says done / backing off / given up are
+        # skipped in SQL, so completed rows never occupy the scan window.
+        .exclude(Exists(_credits_backfill_blocked_states(timezone.now())))
         .order_by("id")
-        .values_list("id", flat=True)[:candidate_limit]
+        .values_list("id", flat=True)
     )
-    candidate_ids = _filter_backfill_item_ids(
-        list(candidates), MetadataBackfillField.CREDITS
-    )
-    if not candidate_ids:
-        return []
-    missing_ids = _missing_credits_item_ids(candidate_ids)
-    return missing_ids[:batch_size]
+    # Walk the remaining candidates window by window (keyset on id) until the
+    # batch is full or the items run out: a window with nothing missing no
+    # longer hides the missing items that sit after it.
+    selected = []
+    last_id = 0
+    while len(selected) < batch_size:
+        window_ids = list(candidates.filter(id__gt=last_id)[:window])
+        if not window_ids:
+            break
+        selected.extend(_missing_credits_item_ids(window_ids))
+        if len(window_ids) < window:
+            break
+        last_id = window_ids[-1]
+    return selected[:batch_size]
 
 
 def _populate_credits_for_items(items, delay_seconds):
@@ -85,6 +115,11 @@ def _populate_credits_for_items(items, delay_seconds):
     updated_count = 0
     error_count = 0
     updated_items = []
+
+    # Drop every item's cached metadata up front, in one cache round trip,
+    # so each fetch below still reaches the provider; items of the same show
+    # then share the payload the first of them just fetched.
+    _clear_items_metadata_cache(items)
 
     run = CooperativeRun("credits_backfill")
     for item in run.iter(items):
@@ -120,7 +155,6 @@ def _populate_credits_for_items(items, delay_seconds):
                 )
                 continue
 
-            _clear_item_metadata_cache(item)
             metadata = _fetch_item_metadata(item)
 
             if not isinstance(metadata, dict):
@@ -288,18 +322,13 @@ def populate_credits_data_for_items(item_ids: list[int], delay_seconds: float = 
 @shared_task(name="app.tasks.populate_credits_backfill_queue")
 def populate_credits_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the credits backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
         CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued credits items"}
+        drain_task=populate_credits_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued credits items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_credits_backfill_queue,
-        )
-
-    return populate_credits_data_for_items(batch, delay_seconds=delay_seconds)
+        return populate_credits_data_for_items(batch, delay_seconds=delay_seconds)

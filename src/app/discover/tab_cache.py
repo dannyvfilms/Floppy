@@ -43,6 +43,10 @@ DISCOVER_TAB_STALE_AFTER = timedelta(minutes=15)
 DISCOVER_TAB_REFRESH_LOCK_TTL = 60 * 5
 DISCOVER_TAB_REFRESH_SCHEDULED_TTL = 60 * 10
 DISCOVER_TAB_ACTIVE_TTL = 45
+# A rebuild costs 20-30 s of CPU on a large library. After one finishes,
+# background invalidations (imports, scrobbles) only mark the tab stale for this
+# long; the next Discover view rebuilds it at once (stale rows are served).
+DISCOVER_BACKGROUND_REBUILD_COOLDOWN = 60 * 10
 DISCOVER_ACTION_UNDO_TTL = 60
 DISCOVER_TAB_RECENTLY_BUILT_SECONDS = 60
 DISCOVER_REQUEST_WARMUP_PREFIX = f"{DISCOVER_TAB_PREFIX}_request_warm"
@@ -182,6 +186,13 @@ def _refresh_scheduled_key(
     )
 
 
+def _rebuild_cooldown_key(user_id: int, media_type: str, *, show_more: bool) -> str:
+    return (
+        f"{DISCOVER_TAB_REFRESH_SCHEDULED_PREFIX}_cooldown_{user_id}_"
+        f"{_normalize_media_type(media_type)}_{int(bool(show_more))}"
+    )
+
+
 def _active_key(user_id: int) -> str:
     return f"{DISCOVER_TAB_ACTIVE_PREFIX}_{user_id}"
 
@@ -261,7 +272,9 @@ def get_activity_version(user_id: int, media_type: str) -> str:
 
 def bump_activity_version(user_id: int, media_type: str) -> str:
     """Advance the activity version for a Discover media type."""
-    version = timezone.now().isoformat()
+    # The suffix makes every bump distinct: a coarse clock can give a bump the
+    # same timestamp as the version it replaces, leaving the tab looking fresh.
+    version = f"{timezone.now().isoformat()}-{uuid4().hex[:8]}"
     _cache_set(
         _activity_version_key(user_id, media_type),
         version,
@@ -806,6 +819,7 @@ def refresh_tab_cache(
 ) -> list[RowResult]:
     """Rebuild and persist a Discover tab payload."""
     from app.discover.service import get_discover_rows
+    from app.discover.service_helpers import credit_maps_scope
 
     media_type = _normalize_media_type(media_type)
     lock_key = _refresh_lock_key(user.id, media_type, show_more=show_more)
@@ -817,13 +831,14 @@ def refresh_tab_cache(
         if clear_provider_cache:
             clear_provider_cache_for_media_type(media_type)
 
-        rows = get_discover_rows(
-            user,
-            media_type,
-            show_more=show_more,
-            include_debug=False,
-            defer_artwork=False,
-        )
+        with credit_maps_scope():
+            rows = get_discover_rows(
+                user,
+                media_type,
+                show_more=show_more,
+                include_debug=False,
+                defer_artwork=False,
+            )
         current_activity_version = _get_activity_version(user.id, media_type)
         if current_activity_version != build_activity_version:
             version_drifted = True
@@ -847,7 +862,15 @@ def refresh_tab_cache(
         return rows
     finally:
         _cache_delete(lock_key)
-        if version_drifted:
+        _cache_set(
+            _rebuild_cooldown_key(user.id, media_type, show_more=show_more),
+            1,
+            timeout=DISCOVER_BACKGROUND_REBUILD_COOLDOWN,
+        )
+        active_context = get_active_context(user.id) if version_drifted else None
+        if version_drifted and (
+            active_context is not None and active_context.media_type == media_type
+        ):
             schedule_tab_refresh(
                 user.id,
                 media_type,
@@ -1340,6 +1363,12 @@ def _invalidate_targets(
             and active_context.media_type == target_media_type
         )
         prioritized_show_more = active_context.show_more if prioritized else False
+        if not prioritized and _cache_get(
+            _rebuild_cooldown_key(user_id, target_media_type, show_more=False)
+        ):
+            # Rebuilt moments ago and nobody is looking: the version bump
+            # above already marks it stale for the next view.
+            continue
         schedule_tab_refresh(
             user_id,
             target_media_type,

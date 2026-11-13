@@ -44,6 +44,8 @@ MAX_SOURCE_KEY_LENGTH = 200
 # than once, all short.
 MAX_SELECT_OPTIONS = 20
 MIN_SELECT_REPETITION = 2
+# ISBN-10 and up: a digit run this long names something, it is not a quantity.
+MIN_IDENTIFIER_DIGITS = 10
 MAX_SELECT_OPTION_LENGTH = 50
 
 _TRUE_TOKENS = frozenset({"true", "yes", "y", "on", "x", "✓", "checked"})
@@ -124,11 +126,14 @@ def _parse_bool(text):
 def _parse_number(text):
     """Return a float for a plainly numeric token, or None.
 
-    Identifier-shaped values (leading zeros, grouping, currency, ranges) stay
-    text so barcodes and issue numbers survive the round trip.
+    Identifier-shaped values (leading zeros, long digit runs, grouping,
+    currency, ranges) stay text so barcodes and issue numbers survive the
+    round trip. A float cannot hold a 16 digit barcode exactly.
     """
     candidate = text.replace(" ", "")
     if not candidate:
+        return None
+    if candidate.isdigit() and len(candidate) >= MIN_IDENTIFIER_DIGITS:
         return None
     body = candidate.removeprefix("-").removeprefix("+")
     if body.startswith("0") and len(body) > 1 and not body.startswith("0."):

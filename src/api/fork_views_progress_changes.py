@@ -8,6 +8,7 @@ implements the other, and the retention machinery is shared rather than forked.
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -19,6 +20,15 @@ from app.services.progress_changes import (
 from integrations.models import SyncBinding
 from integrations.state.checkpoints import record_applied_position
 
+from .fork_views_playback import item_reference, show_item_map
+from .fork_views_sync import (
+    FEED_ERROR_SCHEMA,
+    FEED_SCHEMA,
+    SYNC_PARAMETERS,
+    availability,
+    strict_feed,
+)
+
 logger = logging.getLogger(__name__)
 
 MAX_CHANGE_PAGE = 500
@@ -28,8 +38,12 @@ MAX_CHANGE_PAGE = 500
 class ProgressChangeFeedView(drf_views.APIView):
     """Serve the ordered resume-progress change feed."""
 
+    @extend_schema(parameters=SYNC_PARAMETERS, responses={200: FEED_SCHEMA, 400: FEED_ERROR_SCHEMA, 409: FEED_ERROR_SCHEMA})
     def get(self, request):
         """Return progress changes after a cursor, in server order."""
+        if "contract" in request.query_params:
+            return strict_feed(request, "progress")
+
         raw_cursor = request.query_params.get("cursor", "0")
         try:
             cursor = int(raw_cursor)
@@ -48,7 +62,8 @@ class ProgressChangeFeedView(drf_views.APIView):
             )
 
         oldest, newest = retained_progress_range(request.user)
-        if oldest is not None and 0 < cursor < oldest - 1:
+        feed_status = availability(request.user, "progress")
+        if 0 < cursor < feed_status["minimum_valid_cursor"]:
             return Response(
                 {
                     "code": "cursor_expired",
@@ -68,6 +83,7 @@ class ProgressChangeFeedView(drf_views.APIView):
             record_applied_position(binding, cursor, resource=PROGRESS_RESOURCE)
 
         changes = progress_changes_since(request.user, cursor, limit=limit)
+        show_map = show_item_map([change.item for change in changes if change.item])
         results = [
             {
                 "sequence": change.sequence,
@@ -78,6 +94,7 @@ class ProgressChangeFeedView(drf_views.APIView):
                 "media_id": change.item.media_id if change.item else None,
                 "source": change.item.source if change.item else None,
                 "media_type": change.item.media_type if change.item else None,
+                **(item_reference(change.item, show_map) if change.item else {}),
                 "origin_key": change.origin_key,
                 "correlation_id": str(change.correlation_id),
             }
@@ -91,6 +108,7 @@ class ProgressChangeFeedView(drf_views.APIView):
                 "has_more": len(results) == limit,
                 "oldest_sequence": oldest,
                 "newest_sequence": newest,
+                **feed_status,
             },
             status=HTTP.OK,
         )

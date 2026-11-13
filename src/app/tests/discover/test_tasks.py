@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from app.providers import credentials
 from app.tasks import refresh_discover_rows, refresh_discover_tab_cache
 from app.tasks_discover import (
     refresh_discover_profile_for_user,
@@ -178,3 +179,42 @@ class DiscoverTaskTests(TestCase):
             },
         )
         mock_refresh_tab_cache.assert_not_called()
+
+    @patch("app.discover.tab_cache.refresh_tab_cache")
+    @patch("app.discover.service.refresh_rows_for_user")
+    def test_refresh_discover_rows_uses_personal_credentials(
+        self,
+        mock_refresh_rows_for_user,
+        _mock_refresh_tab_cache,
+    ):
+        """A personal key must apply to background row rebuilds for that member."""
+        observed = {}
+
+        def rebuild(user, media_type, row_keys, *, show_more=False):
+            observed["user"] = credentials.active_user()
+            return 0
+
+        mock_refresh_rows_for_user.side_effect = rebuild
+
+        refresh_discover_rows(self.user.id, "movie", ["top_picks"])
+
+        self.assertEqual(observed["user"], self.user)
+        self.assertIsNone(credentials.active_user())
+
+    @patch("app.discover.tab_cache.refresh_tab_cache")
+    def test_refresh_discover_tab_cache_uses_personal_credentials(
+        self,
+        mock_refresh_tab_cache,
+    ):
+        observed = {}
+
+        def rebuild(user, media_type, **kwargs):
+            observed["user"] = credentials.active_user()
+            return []
+
+        mock_refresh_tab_cache.side_effect = rebuild
+
+        refresh_discover_tab_cache(self.user.id, "movie")
+
+        self.assertEqual(observed["user"], self.user)
+        self.assertIsNone(credentials.active_user())

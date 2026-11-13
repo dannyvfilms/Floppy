@@ -1,10 +1,13 @@
+import json
 import logging
+import re
 import threading
 import time
 from http import HTTPStatus
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import get_user_model, login
 from django.contrib.sessions.exceptions import SessionInterrupted
 from django.db import DatabaseError, connection
@@ -14,12 +17,19 @@ from django.shortcuts import redirect, resolve_url
 from django.urls import reverse
 from django.utils import translation
 
-from app import request_timing
-from app.db_retry import is_contention_error, is_lock_error, is_retryable_error
+from app import db_diagnostics, request_timing, stall_watchdog
+from app.db_retry import (
+    is_contention_error,
+    is_lock_error,
+    is_retryable_error,
+    read_request,
+)
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
 from app.interactive_requests import (
-    mark_interactive_request,
+    marks_api_request,
+    marks_page_request,
+    refresh_interactive_mark,
     should_mark_interactive_request,
 )
 from app.models import Sources
@@ -178,7 +188,9 @@ class RequestPerformanceLoggingMiddleware:
             query_started = time.perf_counter()
             try:
                 with request_timing.boundary("db"):
-                    return execute(sql, params, many, context)
+                    return db_diagnostics.track_query(
+                        execute, sql, params, many, context
+                    )
             finally:
                 elapsed = time.perf_counter() - query_started
                 query_count["seconds"] += elapsed
@@ -189,10 +201,18 @@ class RequestPerformanceLoggingMiddleware:
             type(self)._inflight += 1
         start = time.perf_counter()
         cpu_start = time.thread_time()
+        stall_token = (
+            stall_watchdog.enter(request.method, request.path)
+            if settings.PERF_STALL_WARN_MS > 0
+            else None
+        )
+        stalled = False
         try:
             with connection.execute_wrapper(count_query):
                 response = self.get_response(request)
         finally:
+            if stall_token is not None:
+                stalled = stall_watchdog.leave(stall_token)
             request_timing.end(tally_token)
             with self._inflight_lock:
                 inflight = type(self)._inflight
@@ -225,15 +245,17 @@ class RequestPerformanceLoggingMiddleware:
                     f", {name.removesuffix('_ms')};dur={value:.1f}"
                     for name, value in breakdown.items()
                 )
+                + f', queries;desc="{query_count["total"]}"'
             )
 
         if (
-            duration_ms >= settings.PERF_LOG_SLOW_REQUEST_MS
+            stalled
+            or duration_ms >= settings.PERF_LOG_SLOW_REQUEST_MS
             or query_count["total"] >= settings.PERF_LOG_QUERY_COUNT_THRESHOLD
         ):
             logger.info(
                 "slow_request method=%s path=%s status=%s duration_ms=%.0f queries=%s "
-                "cpu_ms=%.1f db_ms=%.1f provider_ms=%.1f provider_calls=%s inflight=%s %s",
+                "cpu_ms=%.1f db_ms=%.1f provider_ms=%.1f provider_calls=%s inflight=%s %s rid=%s",
                 request.method,
                 request.path,
                 response.status_code,
@@ -245,8 +267,22 @@ class RequestPerformanceLoggingMiddleware:
                 provider_tally["calls"],
                 inflight,
                 boundary_fields,
+                _nginx_request_id(request),
             )
         return response
+
+
+_NGINX_REQUEST_ID = re.compile(r"[0-9a-f]{32}")
+
+
+def _nginx_request_id(request) -> str:
+    """Return the request id Nginx stamped on this request, to join its access log.
+
+    Only Nginx's own 32-hex form is kept, so a client-supplied header cannot
+    put arbitrary text in the log.
+    """
+    value = request.META.get("HTTP_X_REQUEST_ID", "")
+    return value if _NGINX_REQUEST_ID.fullmatch(value) else "-"
 
 
 class DatabaseRetryMiddleware:
@@ -258,6 +294,13 @@ class DatabaseRetryMiddleware:
 
     def __call__(self, request):
         """Process the request with retry logic for database errors."""
+        with db_diagnostics.bind_request(request):
+            if request.method in {"GET", "HEAD"}:
+                with read_request():
+                    return self._run(request)
+            return self._run(request)
+
+    def _run(self, request):
         max_retries = 5
         # A lock error arrives only after SQLite's busy_timeout (30 s by
         # default) ran out, so each retry of the whole view can wait that
@@ -275,6 +318,8 @@ class DatabaseRetryMiddleware:
                 # Only retry retryable errors while under the retry cap.
                 if not (is_contention_error(error) or is_retryable_error(error)):
                     raise
+
+                db_diagnostics.report_database_error(error, operation="request")
 
                 if request.method != "GET":
                     logger.exception(
@@ -501,16 +546,7 @@ class DiscoverWarmupMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        """Mark active browsing and queue Discover warmup when eligible."""
-        if should_mark_interactive_request(request):
-            try:
-                mark_interactive_request()
-            except Exception as error:
-                logger.debug(
-                    "Skipping interactive-request marker for %s due to error: %s",
-                    request.path,
-                    error,
-                )
+        """Queue Discover warmup when eligible, and mark first-party API reads."""
         if self._should_warm_discover(request):
             try:
                 discover_tab_cache.maybe_schedule_user_warmup(request.user)
@@ -520,7 +556,27 @@ class DiscoverWarmupMiddleware:
                     request.path,
                     error,
                 )
-        return self.get_response(request)
+        response = self.get_response(request)
+        # The credential is only known once DRF has authenticated the view.
+        if marks_api_request(request):
+            self._mark(request)
+        return response
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        """Mark a person's page load before its view runs (URL known, polls excluded)."""
+        if marks_page_request(request):
+            self._mark(request)
+
+    @staticmethod
+    def _mark(request: HttpRequest) -> None:
+        try:
+            refresh_interactive_mark()
+        except Exception as error:
+            logger.debug(
+                "Skipping interactive-request marker for %s due to error: %s",
+                request.path,
+                error,
+            )
 
     def _should_warm_discover(self, request: HttpRequest) -> bool:
         if (
@@ -572,3 +628,69 @@ class ProviderCredentialUserMiddleware:
 
         with credentials.current_user_scope(getattr(request, "user", None)):
             return self.get_response(request)
+
+
+class DemoAccountGuardMiddleware:
+    """Refuse account, credential and library-wide changes from the demo user.
+
+    The demo login is public, so whatever it can change every visitor can. The
+    preference pages and the account page guard themselves; this list covers
+    the routes where one visitor could lock the rest out (tokens),
+    attach credentials or external logins, or wipe the shared library. Reads
+    are untouched.
+    """
+
+    MESSAGE = "This section is view-only for demo accounts."
+    BLOCKED_ROUTES = frozenset(
+        {
+            "regenerate_token",
+            "create_integration_token",
+            "revoke_integration_token",
+            "create_catalog_grant",
+            "revoke_catalog_grant",
+            "oauth_revoke_application",
+            "save_provider_credential",
+            "save_personal_credential",
+            "clear_provider_credential",
+            "socialaccount_connections",
+            "notifications",
+            "update_tmdb_proxy",
+            "plex_connect",
+            "jellyfin_connect",
+            "jellyfin_settings",
+            "update_jellyseerr_settings",
+            "update_plex_usernames",
+            "bulk_delete_by_import_source",
+            "bulk_delete_by_media_type",
+            "rollback_import_run",
+            "convert_anime_library",
+            "convert_tv_library",
+            "repair_duplicate_anime_libraries",
+        },
+    )
+
+    def __init__(self, get_response):
+        """Initialize the middleware."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Pass the request through; refusals happen in process_view."""
+        return self.get_response(request)
+
+    def process_view(self, request, _view_func, _view_args, _view_kwargs):
+        """Refuse a blocked route's writes for the demo user."""
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            return None
+        if not getattr(getattr(request, "user", None), "is_demo", False):
+            return None
+        match = request.resolver_match
+        if match is None or match.url_name not in self.BLOCKED_ROUTES:
+            return None
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=HTTPStatus.FORBIDDEN)
+            response["HX-Trigger"] = json.dumps(
+                {"showToast": {"message": self.MESSAGE, "type": "error"}},
+            )
+            return response
+        messages.error(request, self.MESSAGE)
+        return redirect(request.path)

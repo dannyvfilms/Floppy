@@ -1,5 +1,6 @@
 # FORK: tests for fork-only API surface (media-type overlay, progress,
 # collection). Mirrors the fixture/request style of the upstream api tests.
+from datetime import UTC, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
@@ -234,6 +235,27 @@ class ForkCollectionEndpointTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(CollectionEntry.objects.filter(id=entry_id).exists())
 
+    def test_collection_list_returns_pages_past_the_first(self):
+        """An offset page lists the next entries instead of none."""
+        item = self._movie_item()
+        entries = [
+            CollectionEntry.objects.create(
+                user=self.user1,
+                item=item,
+                media_type="bluray",
+            )
+            for _ in range(3)
+        ]
+        response = self.client.get(
+            "/api/v1/collection",
+            {"limit": 2, "offset": 2},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        data = response.json()
+        self.assertEqual(data["pagination"]["total"], 3)
+        self.assertEqual([row["id"] for row in data["results"]], [entries[0].id])
+
     def test_collection_entry_scoped_to_user(self):
         """Another user's entry is invisible and immutable."""
         item = self._movie_item()
@@ -254,6 +276,46 @@ class ForkCollectionEndpointTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
         self.assertTrue(CollectionEntry.objects.filter(id=entry.id).exists())
 
+    def test_collection_update_keeps_fields_it_is_not_sent(self):
+        """A PATCH changes only the fields in the request."""
+        item = self._movie_item()
+        entry = CollectionEntry.objects.create(
+            user=self.user1,
+            item=item,
+            media_type="bluray",
+            is_3d=True,
+            bitrate=320,
+            purchase_price="9.99",
+            purchase_location="Shop",
+        )
+
+        response = self.client.patch(
+            f"/api/v1/collection/{entry.id}",
+            {"resolution": "4k"},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        entry.refresh_from_db()
+        self.assertEqual(entry.resolution, "4k")
+        self.assertEqual(entry.media_type, "bluray")
+        self.assertTrue(entry.is_3d)
+        self.assertEqual(entry.bitrate, 320)
+        self.assertEqual(str(entry.purchase_price), "9.99")
+        self.assertEqual(entry.purchase_location, "Shop")
+
+        response = self.client.patch(
+            f"/api/v1/collection/{entry.id}",
+            {"is_3d": False, "bitrate": None},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        entry.refresh_from_db()
+        self.assertFalse(entry.is_3d)
+        self.assertIsNone(entry.bitrate)
+        self.assertEqual(str(entry.purchase_price), "9.99")
+
     def test_collection_add_requires_item(self):
         """POST without item_id is a 400."""
         response = self.client.post(
@@ -263,6 +325,43 @@ class ForkCollectionEndpointTests(FloppyApiTestCase):
             **self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_collection_add_and_update_store_collected_at(self):
+        """POST and PATCH keep the collected date they are sent."""
+        item = self._movie_item()
+        response = self.client.post(
+            "/api/v1/collection",
+            {
+                "item_id": item.id,
+                "media_type": "bluray",
+                "collected_at": "2024-05-01T10:30:00+02:00",
+            },
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        entry = CollectionEntry.objects.get(id=response.json()["id"])
+        self.assertEqual(entry.collected_at, datetime(2024, 5, 1, 8, 30, tzinfo=UTC))
+
+        response = self.client.patch(
+            f"/api/v1/collection/{entry.id}",
+            {"collected_at": "2023-01-02T03:04:05Z"},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        entry.refresh_from_db()
+        self.assertEqual(entry.collected_at, datetime(2023, 1, 2, 3, 4, 5, tzinfo=UTC))
+
+        response = self.client.patch(
+            f"/api/v1/collection/{entry.id}",
+            {"resolution": "4k"},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        entry.refresh_from_db()
+        self.assertEqual(entry.collected_at, datetime(2023, 1, 2, 3, 4, 5, tzinfo=UTC))
 
 
 class ForkBackdropFieldTests(FloppyApiTestCase):
@@ -301,7 +400,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         )
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_detail_serves_cached_backdrop_without_calling_tmdb(
         self,
         mock_backdrop,
@@ -321,7 +420,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
 
     @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_detail_never_calls_the_provider_for_a_cold_backdrop(
         self,
         mock_backdrop,
@@ -339,7 +438,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         mock_warm.assert_called_once()
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_detail_serves_the_backdrop_once_the_warm_lands(
         self,
         mock_backdrop,
@@ -369,9 +468,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         """Clients need to distinguish "no artwork" from "a poster", so: null."""
         mock_metadata.return_value = self._tv_metadata()
         # The provider's cached "no backdrop" answer.
-        cache.set(
-            f"tmdb_backdrop_tv_{self.tv_item.media_id}", settings.IMG_NONE, 60
-        )
+        cache.set(f"tmdb_backdrop_tv_{self.tv_item.media_id}", settings.IMG_NONE, 60)
 
         payload = self._get_detail().json()
 
@@ -381,7 +478,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         mock_warm.assert_not_called()
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_episode_detail_carries_the_show_backdrop(
         self,
         mock_backdrop,

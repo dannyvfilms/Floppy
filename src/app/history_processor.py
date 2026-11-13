@@ -19,6 +19,43 @@ def process_history_entries(history_records, media_type, media_entry_number, use
     return timeline_entries
 
 
+def process_podcast_plays(plays, media_entry_number, user):
+    """Build the activity timeline of a podcast tracker from its plays.
+
+    One entry per listen. The entry id is the PodcastPlay id, which is what
+    the delete route takes.
+    """
+    entries = []
+    for play in plays:
+        changes = []
+        if play.start_date:
+            changes.append(
+                {
+                    "description": gettext("Started on %(date)s")
+                    % {"date": app_tags.datetime_format(play.start_date, user)},
+                },
+            )
+        if play.end_date:
+            changes.append(
+                {
+                    "description": gettext("Finished on %(date)s")
+                    % {"date": app_tags.datetime_format(play.end_date, user)},
+                },
+            )
+        if not changes:
+            continue
+        entries.append(
+            {
+                "id": play.id,
+                "instance_id": play.podcast_id,
+                "date": play.end_date or play.start_date,
+                "changes": changes,
+                "media_entry_number": media_entry_number,
+            },
+        )
+    return entries
+
+
 def process_history_entry(entry, media_type, user):
     """Process a single history entry to organize and format changes."""
     new_record, old_record = entry

@@ -149,6 +149,41 @@ class RecentVerificationTests(_Base):
         self.assertIsNone(record)
         self.assertIn("replaced", reason)
 
+    def test_a_changed_device_number_keeps_the_record(self):
+        # btrfs subvolumes and device-mapper volumes get st_dev at mount time,
+        # so a reboot changes it while the filesystem and file stay the same.
+        self.run_startup_check()
+        self.rewrite_record(device=9999)
+
+        record, reason = self.recent_verification()
+
+        self.assertIsNotNone(record)
+        self.assertIn("verified by", reason)
+
+    def test_a_different_filesystem_never_inherits_the_record(self):
+        # A rolled-back btrfs snapshot repeats inode numbers; f_fsid differs.
+        self.run_startup_check()
+        record = json.loads(sqlite_integrity._verified_path(self.db_path).read_text())
+        self.rewrite_record(fsid=record["fsid"] + 1)
+
+        record, reason = self.recent_verification()
+
+        self.assertIsNone(record)
+        self.assertIn("replaced", reason)
+
+    def test_a_record_without_fsid_is_matched_by_inode(self):
+        self.run_startup_check()
+        path = sqlite_integrity._verified_path(self.db_path)
+        record = json.loads(path.read_text())
+        del record["fsid"]
+        record["device"] = 9999
+        path.write_text(json.dumps(record))
+
+        record, reason = self.recent_verification()
+
+        self.assertIsNotNone(record)
+        self.assertIn("verified by", reason)
+
     def test_an_open_recovery_report_forces_the_full_scan(self):
         self.run_startup_check()
         with mock.patch.object(
@@ -204,7 +239,7 @@ class RecentVerificationTests(_Base):
         self.assertIn("open check failed", output)
 
     @requires_linux
-    def test_a_verified_snapshot_vouches_for_the_live_file(self):
+    def test_a_structural_snapshot_does_not_vouch_for_relationships(self):
         backups = Path(self.db_path).parent / "backups"
 
         snapshot = sqlite_integrity.create_live_database_snapshot(
@@ -216,9 +251,8 @@ class RecentVerificationTests(_Base):
 
         self.assertIsNotNone(snapshot)
         record, reason = self.recent_verification()
-        self.assertIsNotNone(record)
-        self.assertEqual(record["source"], "snapshot")
-        self.assertIn("verified by snapshot", reason)
+        self.assertIsNone(record)
+        self.assertIn("does not verify relationships", reason)
 
 
 class WarmCacheTests(_Base):

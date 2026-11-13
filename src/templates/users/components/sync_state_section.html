@@ -1,4 +1,4 @@
-{% load i18n user_tags %}
+{% load i18n user_tags ui_tags %}
 {% comment %}
 Watched-state synchronization settings, one card per connection.
 
@@ -29,7 +29,7 @@ Two things this section is careful about:
       </h3>
       <p class="text-xs text-[var(--color-warning-text)] opacity-80 mb-3">
         Both sides changed while they were out of contact. Sync is paused for
-        these items only — everything else keeps flowing.
+        these items only. Everything else keeps flowing.
       </p>
       <ul class="space-y-2">
         {% for conflict in sync_conflicts %}
@@ -69,6 +69,7 @@ Two things this section is careful about:
     </div>
   {% endif %}
 
+  {% if not activity_conflicts_only %}
   {% if not sync_bindings %}
     <p class="text-sm text-[var(--color-text-muted)]">
       {% translate "No connections yet. Connect a media server above and it will appear here." %}
@@ -155,10 +156,7 @@ Two things this section is careful about:
               <input type="hidden" name="direction" x-bind:value="selectedValue">
             </div>
 
-            <button type="submit"
-                    class="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
-              Save
-            </button>
+            {% button "Save" "primary" "sm" submit=True %}
           </form>
 
           <ul class="mt-3 space-y-1">
@@ -167,7 +165,7 @@ Two things this section is careful about:
                 {% if capability.unavailable %}
                   <span class="text-[var(--color-warning-text)]">Unavailable</span>
                   <span class="text-[var(--color-text-muted)]">{{ capability.label }}</span>
-                  <span class="text-[var(--color-text-muted)]">— not verified for this provider yet</span>
+                  <span class="text-[var(--color-text-muted)]">(not verified for this provider yet)</span>
                 {% elif capability.approved %}
                   <span style="color: var(--color-status-clean)">On</span>
                   <span class="text-[var(--color-text-secondary)]">{{ capability.label }}</span>
@@ -185,4 +183,5 @@ Two things this section is careful about:
       {% endfor %}
     </div>
   {% endif %}
+{% endif %}
 </div>

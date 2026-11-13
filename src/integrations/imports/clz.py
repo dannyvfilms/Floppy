@@ -25,14 +25,18 @@ from defusedxml.ElementTree import iterparse as defused_iterparse
 from django.db import transaction
 from django.utils import timezone
 
+from app import local_covers
 from app.collection_field_import import ImportColumn, ImportedFieldResolver
 from app.collection_field_import import normalize_label as normalize
+from app.helpers import MODEL_MAP
 from app.models import (
     CollectionEntry,
     CollectionEntrySource,
     Item,
+    ItemTag,
     MediaTypes,
     Sources,
+    Tag,
 )
 from app.providers import services
 from integrations import import_progress
@@ -42,6 +46,8 @@ from integrations.imports.helpers import MediaImportError
 logger = logging.getLogger(__name__)
 
 SOURCE = "clz"
+# Consecutive failed cover downloads before a run keeps the remaining links.
+COVER_FAILURE_LIMIT = 5
 WISHLIST_LIST_NAME = "CLZ Wishlist"
 MAX_TITLE_MATCH_RESULTS = 5
 
@@ -68,20 +74,12 @@ STRUCTURAL_COLUMNS = frozenset(
         "sorttitle",
         "originaltitle",
         "series",
-        "issue",
-        "issuenr",
-        "issuenumber",
-        "issueno",
         "volume",
         "year",
         "releaseyear",
         "publicationyear",
         "publisher",
         "platform",
-        "barcode",
-        "upc",
-        "ean",
-        "isbn",
         "imdbnumber",
         "imdb",
         "tmdb",
@@ -93,10 +91,24 @@ STRUCTURAL_COLUMNS = frozenset(
         "index",
         "id",
         "clzid",
+        "coverurl",
+        "clznative",
     },
 )
 
 IDENTIFIER_COLUMNS = ("barcode", "upc", "ean", "isbn")
+# No provider for these answers a barcode, so a lookup is only a wasted call
+# per record.
+BARCODE_BLIND_TYPES = frozenset(
+    {
+        MediaTypes.MANGA.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.COMIC_ISSUE.value,
+    },
+)
+# Retail barcodes may carry a 2 or 5 digit price/issue supplement after the
+# 12 digit UPC-A or 13 digit EAN: base length by total digit count.
+_BARCODE_BASE_LENGTH = {14: 12, 15: 13, 17: 12, 18: 13}
 # CLZ Comics heads its issue column "Issue"; other exports use "Issue Nr".
 ISSUE_COLUMNS = ("issue nr", "issue number", "issue no", "issue")
 # What versions before issue #809 read, kept only to recognise their links.
@@ -104,7 +116,9 @@ LEGACY_ISSUE_COLUMNS = ("issue nr", "issue number")
 QUANTITY_COLUMNS = ("quantity", "qty")
 RECORD_ID_COLUMNS = ("clz id", "id", "index")
 
-_WISHLIST_TOKENS = frozenset({"wishlist", "onwishlist", "want", "notincollection"})
+_WISHLIST_TOKENS = frozenset(
+    {"wishlist", "onwishlist", "onorder", "want", "notincollection"},
+)
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d")
 
 
@@ -118,9 +132,23 @@ def column_key(label):
     return normalize(label).replace(" ", "")
 
 
-def importer(file, user, mode, media_type=None):
+def importer(
+    file,
+    user,
+    mode,
+    media_type=None,
+    wishlist_status=None,
+    wishlist_tag=None,
+):
     """Import a CLZ export for *user*. Entry point used by the import task."""
-    return CLZImporter(file, user, mode, media_type=media_type).import_data()
+    return CLZImporter(
+        file,
+        user,
+        mode,
+        media_type=media_type,
+        wishlist_status=wishlist_status,
+        wishlist_tag=wishlist_tag,
+    ).import_data()
 
 
 # -- parsing ------------------------------------------------------------
@@ -205,25 +233,169 @@ def _flatten_element(element, prefix, into):
         into.setdefault(label, value)
 
 
+# CLZ's own XML wraps the records several levels deep:
+# collectorz > data > comicinfo > comiclist > comic. Only the depth and the
+# "...list" parent are fixed; the record tag differs per CLZ product.
+NATIVE_ROOT = "collectorz"
+NATIVE_RECORD_DEPTH = 5
+
+# Flattened native labels mapped onto the column names the importer reads.
+# Anything not listed keeps a readable label (see ``_native_label``).
+_NATIVE_LABELS = {
+    "mainsection series displayname": "Series",
+    "mainsection title": "Title",
+    "mainsection subtitle": "Subtitle",
+    "mainsection plot": "Plot",
+    "mainsection notes": "Notes",
+    "mainsection pagecount": "Page Count",
+    "mainsection myrating": "My Rating",
+    "issuenr": "Issue Nr",
+    "issueext": "Issue Extension",
+    "publisher displayname": "Publisher",
+    "imprint displayname": "Imprint",
+    "format displayname": "Format",
+    "store displayname": "Store",
+    "purchaseprice": "Purchase Price",
+    "purchasedate date": "Purchase Date",
+    "barcode": "Barcode",
+    "quantity": "Quantity",
+    "collectionstatus": "Collection Status",
+    "collection displayname": "Collection",
+    "age displayname": "Age",
+    "country displayname": "Country",
+    "language displayname": "Language",
+    "edition displayname": "Edition",
+    "storyarc displayname": "Story Arc",
+    "seriesgroup displayname": "Series Group",
+    "genres genre displayname": "Genres",
+    "tags tag displayname": "Tags",
+    "coverprice": "Cover Price",
+    "currentprice": "Current Value",
+    "readit": "Read",
+    "iskeycomic": "Key Comic",
+    "isslabbed": "Slabbed",
+    "grade displayname": "Grade",
+    "grade rating": "Grade Rating",
+    "coverdate displaydate": "Cover Date",
+    "releasedate date": "Release Date",
+}
+
+# Bookkeeping CLZ writes for its own sync: none of it describes the item.
+_NATIVE_DROPPED = frozenset(
+    {
+        "datasetversion",
+        "bpcomicid",
+        "hash",
+        "index",
+        "grade id",
+        "valueislocked",
+        "usecustomcreators",
+        "usecustomcharacters",
+        "collection sortid",
+        "collection hash",
+        "addeddate timestamp",
+        "modifieddate timestamp",
+        "mainsection series bpseriesid",
+        "mainsection series complete",
+        "mainsection series onpulllist",
+        "mainsection series ignoreformissingcomics",
+        "mainsection series lastname",
+        "mainsection series sortname",
+        "mainsection series the",
+        "coverfrontneeded",
+        # Folded into Release Date, Cover Date and Purchase Date.
+        "coverdate year displayname",
+        "coverdate month",
+        "coverdate day",
+        "coverdate date",
+        "releasedate year displayname",
+        "releasedate month",
+        "releasedate day",
+        "releasedate displaydate",
+        "publicationdate year displayname",
+        "publicationdate month",
+        "publicationdate day",
+        "publicationdate date",
+        "publicationdate displaydate",
+        "purchasedate year displayname",
+        "purchasedate month",
+        "purchasedate day",
+        "purchasedate displaydate",
+    },
+)
+_NATIVE_COVER_LABELS = ("coverfront", "coverfrontlarge", "coverfrontdefault")
+_NATIVE_YEAR_LABELS = (
+    "publicationdate year displayname",
+    "releasedate year displayname",
+    "coverdate year displayname",
+)
+
+
+def _native_label(label):
+    """Return a readable column label for a flattened CLZ-native element."""
+    parts = label.removeprefix("mainsection ").removesuffix(" displayname")
+    return parts.replace("_", " ").title()
+
+
+def _native_record(flat):
+    """Rename one flattened CLZ-native record onto the importer's columns.
+
+    CLZ nests the fields it exports as plain text (series, format, store) one
+    ``displayname`` element down, so the flattened labels never match the
+    names a CSV export would carry. Records are marked so the importer knows
+    their ids are derived, and the best cover link is kept for the item.
+    """
+    record = {"CLZ Native": "1"}
+    for label, value in flat.items():
+        if label in _NATIVE_DROPPED or label.startswith("coverfront"):
+            continue
+        record.setdefault(_NATIVE_LABELS.get(label) or _native_label(label), value)
+    for label in _NATIVE_YEAR_LABELS:
+        if flat.get(label):
+            record["Year"] = flat[label]
+            break
+    for label in _NATIVE_COVER_LABELS:
+        if flat.get(label):
+            record["Cover URL"] = flat[label]
+            break
+    return record
+
+
+def _is_record(native, stack):
+    """Return whether the element that just closed is an export record."""
+    if native:
+        return len(stack) == NATIVE_RECORD_DEPTH and stack[-2].tag.lower().endswith(
+            "list"
+        )
+    return len(stack) == 2  # noqa: PLR2004
+
+
 def parse_xml(file, sink=None):
-    """Parse safe XML, optionally writing records to disk as they complete."""
+    """Parse safe XML, optionally writing records to disk as they complete.
+
+    Two shapes are read: a plain document whose root's children are the
+    records, and CLZ's own export, whose records sit inside
+    ``collectorz/data/<product>info/<product>list``.
+    """
     records = []
     columns = []
     seen = set()
     count = 0
     try:
-        depth = 0
-        root = None
+        stack = []
+        native = False
         for event, element in defused_iterparse(file, events=("start", "end")):
             if event == "start":
-                depth += 1
-                if root is None:
-                    root = element
+                stack.append(element)
+                if len(stack) == 1:
+                    native = element.tag.lower() == NATIVE_ROOT
                 continue
-            if depth == 2:  # noqa: PLR2004
+            if _is_record(native, stack):
                 if len(element):
                     record = {}
                     _flatten_element(element, "", record)
+                    if native:
+                        record = _native_record(record)
                     if sink is None:
                         records.append(record)
                     else:
@@ -233,8 +405,8 @@ def parse_xml(file, sink=None):
                         if name not in seen:
                             seen.add(name)
                             columns.append(name)
-                root.remove(element)
-            depth -= 1
+                stack[-2].remove(element)
+            stack.pop()
     except Exception as error:
         msg = f"Could not parse the CLZ XML export: {error}"
         raise MediaImportError(msg) from error
@@ -299,6 +471,18 @@ def _parse_quantity(text):
     return max(1, int(match.group()))
 
 
+def _clean_barcode(value):
+    """Return the barcode's digits without a trailing 2 or 5 digit supplement.
+
+    An ISBN-10 keeps its check character, which may be an ``X``.
+    """
+    compact = re.sub(r"[\s-]", "", _text(value))
+    if re.fullmatch(r"\d{9}[\dXx]", compact):
+        return compact.upper()
+    digits = re.sub(r"\D", "", compact)
+    return digits[: _BARCODE_BASE_LENGTH.get(len(digits), len(digits))]
+
+
 def is_wishlist(value):
     """Return whether a CLZ collection-status value means "not owned"."""
     return column_key(value) in _WISHLIST_TOKENS
@@ -310,12 +494,27 @@ def is_wishlist(value):
 class CLZImporter:
     """Import a CLZ export into owned copies, preserving every column."""
 
-    def __init__(self, file, user, mode, media_type=None):
-        """Store the upload and the mode the run was requested with."""
+    def __init__(
+        self,
+        file,
+        user,
+        mode,
+        media_type=None,
+        wishlist_status=None,
+        wishlist_tag=None,
+    ):
+        """Store the upload and the choices the run was requested with."""
         self.file = file
         self.user = user
         self.mode = mode
         self.requested_media_type = media_type
+        self.media_type = media_type
+        self.wishlist_status = wishlist_status or None
+        self.wishlist_tag = " ".join((wishlist_tag or "").split())[:50] or None
+        self._seen_ids = defaultdict(int)
+        self._title_results = {}
+        self._covers = {}
+        self._cover_failures = 0
         self.warnings = []
         self.counts = defaultdict(int)
         self.import_run_id = import_progress.get_current_import_run_id()
@@ -352,6 +551,7 @@ class CLZImporter:
             return dict(self.counts), "The CLZ export contained no records."
 
         media_type = self.requested_media_type or self._detect_media_type(columns)
+        self.media_type = media_type
         self._legacy_media_type = _legacy_detect_media_type(columns)
         self._build_column_index(columns)
         self._prepare_fields(records, media_type)
@@ -477,9 +677,19 @@ class CLZImporter:
         self._custom_columns = [
             column
             for column in columns
-            if column_key(column) not in STRUCTURAL_COLUMNS
-            and column_key(column) not in ENTRY_FIELD_COLUMNS
+            if self._is_custom_column(column)
         ]
+
+    def _is_custom_column(self, column):
+        """Return whether *column* is stored as a custom field.
+
+        A manga row collapses onto its series, so an explicit Volume column
+        is the only record of which volume the copy is.
+        """
+        key = column_key(column)
+        if key == "volume" and self.media_type == MediaTypes.MANGA.value:
+            return True
+        return key not in STRUCTURAL_COLUMNS and key not in ENTRY_FIELD_COLUMNS
 
     def _prepare_fields(self, records, media_type):
         """Resolve every custom column against the user's fields once."""
@@ -488,13 +698,27 @@ class CLZImporter:
         columns = [
             ImportColumn(
                 key=column,
-                label=column,
+                label=self._field_label(column, media_type),
                 values=_column_values(records, column),
                 media_types=[media_type],
             )
             for column in self._custom_columns
         ]
         self.resolver.prepare(columns)
+
+    def _field_label(self, column, media_type):
+        """Return the custom field label a new column is created under.
+
+        A manga record's issue number is the volume of its series, unless the
+        export has a Volume column of its own.
+        """
+        if (
+            media_type == MediaTypes.MANGA.value
+            and "volume" not in self._column_index
+            and column_key(column) in {column_key(label) for label in ISSUE_COLUMNS}
+        ):
+            return "Volume"
+        return column
 
     def _get(self, record, *labels):
         """Return the first present value among normalized column *labels*."""
@@ -525,6 +749,7 @@ class CLZImporter:
             )
             return
 
+        self._apply_tags(item, record)
         status = self._get(record, "collection status", "status")
         if is_wishlist(status):
             self._add_to_wishlist(item, record, media_type)
@@ -539,6 +764,14 @@ class CLZImporter:
         )
         collected_at = _parse_date(self._get(record, "purchase date"))
         record_id, derived = self._record_identity(record)
+        if self._get(record, "clz native"):
+            # A re-export reorders records, so a position would orphan every
+            # copy. Records sharing one identity are second copies of the
+            # same thing: number them in the order they appear instead.
+            base = self._seen_ids[record_id] * 1000
+            self._seen_ids[record_id] += 1
+        else:
+            base = position * 1000 if derived else 0
 
         for copy_index in range(quantity):
             self._upsert_copy(
@@ -546,11 +779,32 @@ class CLZImporter:
                 item=item,
                 record_id=record_id,
                 derived=derived,
-                occurrence=position * 1000 + copy_index if derived else copy_index,
+                occurrence=base + copy_index,
                 entry_fields=entry_fields,
                 custom_values=custom_values,
                 collected_at=collected_at,
             )
+
+    def _apply_tags(self, item, record):
+        """Keep the record's CLZ tags as the user's own Floppy tags on the item."""
+        raw = self._get_raw(record, "tags")
+        names = raw if isinstance(raw, list) else str(raw or "").split(",")
+        for name in names:
+            cleaned = " ".join(str(name).split())[:50]
+            if cleaned:
+                self._tag_item(item, cleaned)
+
+    def _tag_item(self, item, name):
+        """Attach the user's tag *name* (any case) to *item*, creating it once."""
+        tag = Tag.objects.filter(user=self.user, name__iexact=name).first()
+        if tag is None:
+            tag = Tag.objects.create(user=self.user, name=name)
+        ItemTag.objects.get_or_create(tag=tag, item=item)
+
+    def _get_raw(self, record, label):
+        """Return a column's stored value, which may be a list."""
+        column = self._column_index.get(column_key(label))
+        return record.get(column) if column is not None else None
 
     def _entry_fields(self, record):
         """Return the built-in CollectionEntry attributes this record sets."""
@@ -724,8 +978,8 @@ class CLZImporter:
         if explicit is not None:
             return explicit
 
-        identifier = self._get(record, *IDENTIFIER_COLUMNS)
-        if identifier:
+        identifier = _clean_barcode(self._get(record, *IDENTIFIER_COLUMNS))
+        if identifier and media_type not in BARCODE_BLIND_TYPES:
             matched = self._search_item(record, media_type, identifier)
             if matched is not None:
                 return matched
@@ -789,11 +1043,19 @@ class CLZImporter:
         if not corroboration:
             return None
 
-        try:
-            results = services.search(media_type, title, 1).get("results", [])
-        except Exception as error:
-            logger.debug("CLZ title search failed for %r: %s", title, error)
-            return None
+        # A series repeats on every one of its volumes: ask the provider once.
+        key = (media_type, title)
+        if key not in self._title_results:
+            try:
+                self._title_results[key] = services.search(
+                    media_type,
+                    title,
+                    1,
+                ).get("results", [])
+            except Exception as error:
+                logger.debug("CLZ title search failed for %r: %s", title, error)
+                self._title_results[key] = []
+        results = self._title_results[key]
 
         matches = [
             result
@@ -831,6 +1093,7 @@ class CLZImporter:
         title = self._title(record)
         if not title:
             return None
+        cover = self._stored_cover(self._get(record, "cover url"))
         existing = Item.objects.filter(
             source=Sources.MANUAL.value,
             media_type=media_type,
@@ -838,6 +1101,9 @@ class CLZImporter:
             title=title,
         ).first()
         if existing is not None:
+            if cover and not existing.image:
+                existing.image = cover
+                existing.save(update_fields=["image"])
             return existing
         return Item.objects.create(
             media_id=Item.generate_manual_id(),
@@ -845,8 +1111,25 @@ class CLZImporter:
             media_type=media_type,
             library_media_type=media_type,
             title=title,
-            image="",
+            image=cover,
         )
+
+    def _stored_cover(self, cover):
+        """Copy a CLZ cover into Floppy's data folder, or keep the link.
+
+        CLZ hosts the covers, so a link can stop working. A run that fails a
+        few times in a row (offline, blocked) stops trying and keeps links.
+        """
+        if not cover or self._cover_failures >= COVER_FAILURE_LIMIT:
+            return cover
+        if cover not in self._covers:
+            try:
+                self._covers[cover] = local_covers.fetch_cover(cover)
+                self._cover_failures = 0
+            except local_covers.CoverError:
+                self._covers[cover] = cover
+                self._cover_failures += 1
+        return self._covers[cover]
 
     def _title(self, record, issue_columns=ISSUE_COLUMNS):
         """Return the display title for a record.
@@ -862,6 +1145,9 @@ class CLZImporter:
         base = title or series
         if not base:
             return ""
+        if series and self.media_type == MediaTypes.MANGA.value:
+            # One manga series is one item; each volume is a copy of it.
+            return series
         if series and issue:
             return f"{series} #{issue}"
         if series and volume and not title:
@@ -891,9 +1177,28 @@ class CLZImporter:
             item=item,
             defaults={"added_by": self.user},
         )
+        if self.wishlist_tag:
+            self._tag_item(item, self.wishlist_tag)
+        if self.wishlist_status:
+            self._set_wishlist_status(item)
         if self.mode == "overwrite":
             self._note_mistyped_wishlist_item(item, record, media_type)
         logger.debug("CLZ wishlist row kept for %s", self._describe(record))
+
+    def _set_wishlist_status(self, item):
+        """Track a wishlist item with the status the user picked.
+
+        Only a missing entry is created: an item the user already tracks
+        keeps whatever status they gave it.
+        """
+        model = MODEL_MAP.get(item.media_type)
+        if model is None:
+            return
+        model.objects.get_or_create(
+            user=self.user,
+            item=item,
+            defaults={"status": self.wishlist_status},
+        )
 
     def _note_mistyped_wishlist_item(self, item, record, media_type):
         """Report a wishlist entry an earlier run may have added as another type.

@@ -541,6 +541,75 @@ class AnimeMigrationAtomicityTests(TransactionTestCase):
         self.assertEqual(raised.exception.code, anime_migration.AMBIGUOUS_CODE)
         self.assertEqual(self._table_snapshot(), before)
 
+    def _track_under_tmdb(self):
+        tmdb_item = Item.objects.create(
+            media_id="209867",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Frieren: Beyond Journey's End",
+        )
+        TV.objects.create(item=tmdb_item, user=self.user, status=Status.IN_PROGRESS.value)
+        return tmdb_item
+
+    def _assert_preflight_refused_without_writes(self):
+        before = self._table_snapshot()
+
+        with self.assertRaises(anime_migration.AnimeMigrationError) as raised:
+            self._preflight()
+
+        self.assertEqual(raised.exception.code, anime_migration.AMBIGUOUS_CODE)
+        self.assertEqual(self._table_snapshot(), before)
+
+    def test_show_tracked_under_the_mapped_tmdb_id_is_not_duplicated(self):
+        """Regression: migrating to TVDB created a second, TVDB-sourced show
+        beside the TMDB-sourced grouped show the user already tracked.
+        """
+        self._track_under_tmdb()
+        series_ids = {Sources.TVDB.value: "9350138", Sources.TMDB.value: "209867"}
+
+        with patch(
+            "app.services.anime_migration.anime_mapping.resolve_provider_series_id",
+            side_effect=lambda _mal_id, provider: series_ids[provider],
+        ):
+            self._assert_preflight_refused_without_writes()
+
+    def test_show_linked_to_the_tvdb_series_is_not_duplicated(self):
+        """A TMDB show linked to the TVDB series counts even without a mapping."""
+        tmdb_item = self._track_under_tmdb()
+        ItemProviderLink.objects.create(
+            item=tmdb_item,
+            provider=Sources.TVDB.value,
+            provider_media_id="9350138",
+            provider_media_type=MediaTypes.TV.value,
+        )
+        series_ids = {Sources.TVDB.value: "9350138", Sources.TMDB.value: None}
+
+        with patch(
+            "app.services.anime_migration.anime_mapping.resolve_provider_series_id",
+            side_effect=lambda _mal_id, provider: series_ids[provider],
+        ):
+            self._assert_preflight_refused_without_writes()
+
+    def test_regular_tv_tracking_on_the_grouped_item_is_ambiguous(self):
+        """A TV-library row on the same show must refuse, not crash.
+
+        Regression: converting a flat MAL anime whose grouped show was already
+        tracked as a normal TV show reached `bulk_create` and raised
+        IntegrityError on `unique(user, item)`.
+        """
+        self.grouped_item.delete()
+        tv_item = Item.objects.create(
+            media_id="9350138",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Frieren: Beyond Journey's End",
+        )
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        self._assert_preflight_refused_without_writes()
+
     def _concurrent_submit(self, preflight):
         barrier = Barrier(2)
 

@@ -25,7 +25,7 @@ from app.models import (
     WatchStateChange,
     WatchStateOrigin,
 )
-from app.services.watch_state import effective_state
+from app.services.watch_state import effective_state, record_state_change
 from integrations.models import (
     CAPABILITY_WATCHED_READ,
     StateConflict,
@@ -313,6 +313,37 @@ class ChangeFeedTests(WatchedStateAPITestCase):
         payload = self.client.get(reverse("api_sync_changes")).json()
 
         self.assertEqual(payload["results"], [])
+
+
+class ChangeFeedEpisodeIdentityTests(WatchedStateAPITestCase):
+    def test_an_episode_change_names_its_season_and_episode(self):
+        """Episodes share their show's media_id, so the feed must say which one."""
+        Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            provider_external_ids={"tmdb_id": 1396, "imdb_id": "tt0903747"},
+        )
+        episode = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode 3",
+            season_number=2,
+            episode_number=3,
+        )
+        record_state_change(
+            self.user,
+            episode,
+            watched=True,
+            origin_kind=WatchStateOrigin.LOCAL_API.value,
+        )
+
+        row = self.client.get(reverse("api_sync_changes")).json()["results"][-1]
+
+        self.assertEqual((row["season_number"], row["episode_number"]), (2, 3))
+        self.assertEqual(row["ids"], {"tmdb": "1396", "imdb": "tt0903747"})
 
 
 class ConnectionsTests(WatchedStateAPITestCase):

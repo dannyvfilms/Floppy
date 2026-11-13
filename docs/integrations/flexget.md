@@ -108,15 +108,25 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json
   "$FLOPPY/api/v1/media/tv/tmdb/1396/2/episodes/5/collection/"
 ```
 
-The body is optional. `resolution` is free text (at most 100 characters) and is
-shown as the entry's quality.
+The body and every field in it are optional. A repeat call changes only the
+fields it sends.
+
+| Field | Value |
+|---|---|
+| `resolution` | Free text, at most 100 characters, shown as the entry's quality |
+| `media_type` | Free text, at most 20 characters (`bluray`, `dvd`, `digital`) |
+| `hdr`, `audio_codec` | Free text, at most 30 characters |
+| `audio_channels` | Free text, at most 20 characters (`5.1`, `7.1.2`) |
+| `is_3d` | `true` or `false` |
+| `bitrate` | Audio bitrate in kbps, a whole number |
+| `collected_at` | ISO 8601 date and time (a time without an offset is read in Floppy's time zone); defaults to now |
 
 | Status | Meaning |
 |---|---|
 | `201` | Collected; the body is the new collection entry |
-| `200` | Already collected; the same entry is returned, with `resolution` updated if one was sent |
+| `200` | Already collected; the existing entry is returned, with the sent fields updated |
 | `204` | Removed (`DELETE`) |
-| `400` | Unsupported media type or source, a body that is not a JSON object, or a show without season and episode |
+| `400` | Unsupported media type or source, a body that is not a JSON object, an invalid field, or a show without season and episode |
 | `404` | The provider does not know the id, or (`DELETE`) there was nothing to remove |
 | `502` | The provider could not be reached; nothing was created, retry later |
 
@@ -124,10 +134,24 @@ shown as the entry's quality.
 upgrade, updates one entry instead of adding copies. Two calls arriving at the
 same moment still produce one entry.
 
+Until the API has created a copy, `PUT` reuses a copy added elsewhere (by hand
+or by an import) only when that copy has no `media_type` or the same one (case
+and punctuation are ignored, so `Blu-ray` matches `bluray`); without a sent
+`media_type`, any copy is reused. Otherwise it adds its own copy (`201`) and
+leaves the other one unchanged.
+
 `DELETE` removes only the copy the API created. A copy added by hand in
 Floppy (for example a disc with its own details) is left alone, and `DELETE`
 answers `404` when only such copies exist. Add `?all=true` to remove every
 copy of the title.
+
+Anime episodes can live in the anime library or, for a show Floppy has not
+seen before, in the default library. With `?library_media_type=anime` the API
+looks in the anime library first and falls back to the default library, so a
+call finds an episode wherever it was created. Add `&strict_library=true` to
+address only the named library: the default library is never searched or
+created in, and an item that is not there answers `404` (`LIBRARY_ITEM_NOT_FOUND`
+on `PUT`) so you can track it in that library first.
 
 Limits:
 

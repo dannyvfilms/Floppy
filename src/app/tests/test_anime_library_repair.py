@@ -3,7 +3,9 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from app.models import (
     TV,
@@ -15,6 +17,7 @@ from app.models import (
     Status,
 )
 from app.tasks_anime_library_repair import (
+    duplicate_pair_count,
     duplicate_pairs,
     repair_duplicated_anime_libraries_task,
 )
@@ -82,11 +85,54 @@ class DuplicateAnimeDetectionTests(TestCase):
 
         self.assertEqual(len(list(duplicate_pairs())), 1)
 
+    def test_duplicate_count_matches_pairs_and_is_user_scoped(self):
+        """The settings count uses one query but must agree with detection."""
+        self._add_plain_tv_row()
+
+        self.assertEqual(duplicate_pair_count(user_id=self.user.id), 1)
+        self.assertEqual(duplicate_pair_count(), 1)
+        self.assertEqual(duplicate_pair_count(user_id=self.user.id + 1), 0)
+
     def test_grouped_anime_is_not_a_duplicate(self):
         """A TV row already in the anime bucket is the same library, not a dupe."""
         self._add_plain_tv_row(bucket=MediaTypes.ANIME.value)
 
         self.assertEqual(list(duplicate_pairs()), [])
+
+    def test_user_scoped_detection_ignores_other_accounts(self):
+        """The settings-page repair only sees the signed-in user's pairs."""
+        other = get_user_model().objects.create_user(
+            username="scoped-other",
+            password="password",
+        )
+        other_anime_item = Item.objects.create(
+            media_id="28171",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Other Show",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=other_anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="88888",
+        )
+        Anime.objects.create(
+            item=other_anime_item,
+            user=other,
+            status=Status.IN_PROGRESS.value,
+        )
+        self._add_plain_tv_row()
+
+        self.assertEqual(
+            [pair[0].user_id for pair in duplicate_pairs(user_id=self.user.id)],
+            [self.user.id],
+        )
+        self.assertEqual(
+            list(duplicate_pairs(user_id=other.id)),
+            [],
+        )
 
     def test_another_users_tv_row_is_not_a_duplicate(self):
         """Duplicates are per user; another account's row is its own business."""
@@ -377,32 +423,133 @@ class AnimeShapeConversionPromptTests(TestCase):
         self.assertEqual(response.status_code, 302)
         mock_delay.assert_called_once_with(self.user.id)
 
-    def test_prompt_is_rendered_once_after_the_provider_changes(self):
-        """Saving a new provider surfaces the modal, and only on that load."""
+    def test_review_surface_stays_visible_after_the_provider_changes(self):
+        """The optional conversion is described persistently, not as a modal."""
         from django.urls import reverse
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
-            {"source": Sources.TMDB.value},
+            {
+                "source": Sources.TMDB.value,
+                "next": reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+            },
             follow=True,
         )
 
-        self.assertContains(response, "Convert your existing anime?")
-        self.assertContains(response, "Keep my library as it is")
+        anime_source = next(
+            source for source in response.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
+        self.assertContains(response, "Convert existing anime")
         self.assertContains(response, reverse("convert_anime_library"))
 
-        # A plain reload must not nag again.
-        again = self.client.get(reverse("metadata_settings"))
-        self.assertNotContains(again, "Convert your existing anime?")
+        again = self.client.get(
+            reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+        )
+        anime_source = next(
+            source for source in again.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
 
-    def test_no_prompt_when_the_provider_is_unchanged(self):
-        """Saving other preferences must not offer a conversion."""
+    def test_no_conversion_notice_when_the_library_matches_the_provider(self):
+        """A library already in the preferred shape needs no action."""
         from django.urls import reverse
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
-            {"source": Sources.MAL.value},
+            {
+                "source": Sources.MAL.value,
+                "next": reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+            },
             follow=True,
         )
 
-        self.assertNotContains(response, "Convert your existing anime?")
+        self.assertNotContains(response, "still in the other format")
+
+    def test_duplicate_repair_endpoint_queues_a_user_scoped_task(self):
+        """The duplicate card repairs only the signed-in account."""
+        from django.urls import reverse
+
+        with patch(
+            "app.tasks_anime_library_repair.repair_duplicated_anime_libraries_task.delay",
+        ) as mock_delay:
+            response = self.client.post(
+                reverse("repair_duplicate_anime_libraries"),
+            )
+
+        self.assertEqual(response.status_code, 302)
+        mock_delay.assert_called_once_with(user_id=self.user.id)
+
+    def test_duplicate_card_appears_with_a_repair_action(self):
+        """An affected user sees the repair option in Data Management."""
+        from django.urls import reverse
+
+        tv_item = Item.objects.create(
+            media_id="209867",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Frieren: Beyond Journey's End",
+            image="",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        response = self.client.get(reverse("data_management"))
+
+        self.assertContains(response, "Duplicate anime libraries")
+        self.assertContains(response, reverse("repair_duplicate_anime_libraries"))
+
+
+class DuplicateDetectionQueryCountTests(TestCase):
+    """Detection cost must not grow with the number of anime rows."""
+
+    def _anime(self, user, n, with_twin):
+        item = Item.objects.create(
+            media_id=str(n),
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title=f"Show {n}",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id=str(1000 + n),
+        )
+        Anime.objects.create(item=item, user=user, status=Status.IN_PROGRESS.value)
+        if with_twin:
+            tv_item = Item.objects.create(
+                media_id=str(1000 + n),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                library_media_type="",
+                title=f"Show {n}",
+                image="",
+            )
+            TV.objects.create(item=tv_item, user=user, status=Status.IN_PROGRESS.value)
+
+    def test_clean_library_costs_one_query_and_duplicates_still_found(self):
+        """No-duplicate libraries are one query; real pairs are still yielded."""
+        user = get_user_model().objects.create_user(username="qc", password="x")
+        for n in range(30):
+            self._anime(user, n, with_twin=False)
+        with CaptureQueriesContext(connection) as clean:
+            self.assertEqual(list(duplicate_pairs()), [])
+        self.assertEqual(len(clean), 1)
+
+        for n in (100, 101):
+            self._anime(user, n, with_twin=True)
+        with CaptureQueriesContext(connection) as sparse:
+            pairs = list(duplicate_pairs())
+        self.assertEqual(len(pairs), 2)
+        self.assertLessEqual(len(sparse), 1 + 2 * 2)
+        self.assertEqual(len(list(duplicate_pairs(batch_size=1))), 1)

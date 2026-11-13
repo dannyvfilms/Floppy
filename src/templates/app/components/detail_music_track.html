@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load ui_tags %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -80,7 +81,7 @@
       <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         <div class="flex flex-wrap gap-2 justify-center md:justify-start">
           {% for genre in track_genres %}
-            <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+            {% badge genre "tag" "genre" %}
           {% endfor %}
         </div>
       </div>
@@ -88,6 +89,10 @@
   </div>
 
   <div class="w-full md:w-3/4">
+    <div class="mb-4">
+      {% include "app/components/music_track_notes_button.html" with track=track %}
+    </div>
+    {% include "app/components/detail_notes_section.html" %}
     <section class="mb-8">
       <h2 class="text-xl font-bold mb-4">{% translate "Play history" %}</h2>
       {% if track_history %}

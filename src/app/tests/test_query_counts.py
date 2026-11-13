@@ -68,20 +68,23 @@ TV_LIST_TIME_LEFT_SORT_MAX_QUERIES = (
     26  # pinned after Fix 4 bulk runtime load (was ~400+ per-season queries)
 )
 TV_LIST_NEXT_EPISODE_SORT_MAX_QUERIES = (
-    33  # +2 fixed Item prefetches after compact Episode window selection;
+    35  # +1 narrow representative-glyph lookup for the alphabet rail;
+    # +2 fixed Item prefetches after compact Episode window selection;
     # keeps wide Item columns out of the history-sized window intermediates.
     # The untracked-season events of every show on the page are read in
     # one query; it was one per show plus one per event's item (49 for these
     # ten shows, 92 for sixty)
 )
-MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 14
+MOVIE_LIST_DEFAULT_SORT_MAX_QUERIES = 16  # +1 narrow alphabet-glyph lookup; +1 bulk tag options
 ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = (
     22  # +2 over the pre-credential-registry pin: resolving the MAL/TMDB
     # credentials reads the instance credential table and the viewer's personal
     # one, each once per cold cache (an hour in production, every test here).
 )
 ANIME_LIST_GROUPED_MAX_QUERIES = (
-    26  # +1 bulk Item prefetch after compact Episode window selection;
+    29  # +1 narrow alphabet-glyph lookup;
+    # +1 id-first window sort (covering-index membership scan, d95bf59e9);
+    # +1 bulk Item prefetch after compact Episode window selection;
     # grouped (TV-backed) anime adds no per-show runtime queries;
     # +1 for the page COUNT: the list is paged by the library-query engine
     # instead of counting a fully loaded list (#1248);
@@ -91,7 +94,7 @@ ANIME_LIST_GROUPED_MAX_QUERIES = (
 )
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 19  # +1 from the custom-list collaborators prefetch
-GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 18
+GAME_LIST_DEFAULT_SORT_MAX_QUERIES = 19  # +1 bulk tag options
 GAME_LIST_START_DATE_SORT_LIBRARY_SIZE = 150
 GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
     15  # pinned after the SQL pushdown fast path (#1004) — was scanning the
@@ -100,7 +103,7 @@ GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
 HOME_ROW_FRAGMENT_MAX_QUERIES = (
     123  # +2 from the Tags column Prefetch (#457); +1 from the provider-credential read
 )
-CUSTOM_LIST_DETAIL_MAX_QUERIES = 39  # +3 from prefilled release-year metadata;
+CUSTOM_LIST_DETAIL_MAX_QUERIES = 43  # +1 bulk tag options; +1 viewers prefetch; +1 narrow alphabet-glyph lookup; +1 id-first window sort (d95bf59e9); +3 from prefilled release-year metadata;
 # +1 from the custom-list collaborators prefetch; +1 from the sidebar's
 # saved-views read (#413); +3 from the filter menu's options (member ids,
 # member metadata, tag names) on a full page render (#806); +1 from the
@@ -437,7 +440,7 @@ class QueryCountTests(TestCase):
         """Second movie list request hits the media-list cache (issue #865)."""
         self.client.get("/medialist/movie")  # warm the cache
         self._assert_query_budget(
-            "/medialist/movie", 12, "movie list cache hit"
+            "/medialist/movie", 13, "movie list cache hit"
         )
 
     def test_movie_list_cache_hit_page_two_query_budget(self):

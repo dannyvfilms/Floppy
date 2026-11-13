@@ -1,8 +1,12 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% playback_card_react active_playback_card as playback_card %}
+{{ playback_card.props|json_script:playback_card.id }}
 
 <div data-active-playback-card
+     data-playback-card-root
+     data-props-id="{{ playback_card.id }}"
      data-playback-status="{{ active_playback_card.status }}"
      data-playback-image-source="{{ active_playback_card.image_source|default:'primary' }}"
      data-playback-offset="{{ active_playback_card.offset_seconds }}"
@@ -12,14 +16,60 @@
     <div class="min-w-0 flex-1">
       <h3 class="text-lg font-semibold leading-none text-[var(--color-text)]">{% translate "Now Playing" %}</h3>
     </div>
+    {% if active_playback_card.checkin_control %}
+      {% with control=active_playback_card.checkin_control %}
+        <div class="flex shrink-0 items-center gap-1">
+          {% if control.action == "pause" %}
+            <button type="button"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                    title="{% translate 'Pause check-in' %}"
+                    aria-label="{% translate 'Pause check-in' %}"
+                    hx-post="{% url 'checkin_action' source=control.source media_type=control.media_type media_id=control.media_id %}"
+                    hx-vals='{"action": "pause", "from_now_playing": "1", "checkin_token": "{{ control.token }}"}'
+                    hx-target="#active-playback-container"
+                    hx-swap="innerHTML"
+                    hx-sync="#active-playback-container:replace"
+                    hx-disabled-elt="this">
+              {% include "app/icons/pause.svg" with classes="w-4 h-4" %}
+            </button>
+          {% endif %}
+          <button type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                  title="{% translate 'Stop check-in' %}"
+                  aria-label="{% translate 'Stop check-in' %}"
+                  hx-post="{% url 'checkin_action' source=control.source media_type=control.media_type media_id=control.media_id %}"
+                  hx-vals='{"action": "{% if control.action == "pause" %}finish{% else %}stop{% endif %}", "from_now_playing": "1", "checkin_token": "{{ control.token }}"}'
+                  hx-target="#active-playback-container"
+                  hx-swap="innerHTML"
+                  hx-sync="#active-playback-container:replace"
+                  hx-disabled-elt="this">
+            {% include "app/icons/stop.svg" with classes="w-4 h-4" %}
+          </button>
+          {% if control.action == "stop" %}
+            <button type="button"
+                    class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                    title="{% translate 'Cancel check-in' %}"
+                    aria-label="{% translate 'Cancel check-in' %}"
+                    hx-post="{% url 'checkin_action' source=control.source media_type=control.media_type media_id=control.media_id %}"
+                    hx-vals='{"action": "cancel", "from_now_playing": "1", "checkin_token": "{{ control.token }}"}'
+                    hx-target="#active-playback-container"
+                    hx-swap="innerHTML"
+                    hx-sync="#active-playback-container:replace"
+                    hx-disabled-elt="this">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+          {% endif %}
+        </div>
+      {% endwith %}
+    {% endif %}
   </div>
 
   <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% card_subtitle_class active_playback_card.media_type %}"
-       style="aspect-ratio: 3/2 !important;">
+       style="aspect-ratio: 16/9 !important;">
     <div class="relative">
       <a href="{{ active_playback_card.details_url }}">
         <img alt="{{ active_playback_card.title }}"
-             class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)]{% if active_playback_card.image != IMG_NONE %} object-cover{% endif %}"
+             class="media-card-poster w-full aspect-[16/9] bg-[var(--color-surface-alt)]{% if active_playback_card.image != IMG_NONE %} object-cover{% endif %}"
              src="{{ active_playback_card.image|image_url }}">
       </a>
 
@@ -35,17 +85,10 @@
       <div class="media-card-title-row flex items-center gap-2 min-w-0">
         <a href="{{ active_playback_card.details_url }}"
            class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
-           title="{% if active_playback_card.episode_code %}{{ active_playback_card.episode_code }} {% endif %}{{ active_playback_card.episode_title|default:active_playback_card.title }}">
-          {% if active_playback_card.episode_code %}<span class="text-[var(--color-link)] font-medium">{{ active_playback_card.episode_code }}</span> {% endif %}{{ active_playback_card.episode_title|default:active_playback_card.title }}
-        </a>
+           title="{{ active_playback_card.title }}">{{ active_playback_card.title }}</a>
       </div>
-      {% card_lines active_playback_card.media_type active_playback_card active_playback_card %}
       <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
-        {% if active_playback_card.status == "paused" or active_playback_card.status == "stopped" %}
-          {% include "app/icons/clock.svg" with classes="w-3 h-3 inline-block align-text-bottom text-amber-400" %}
-        {% else %}
-          {% include "app/icons/pulse.svg" with classes="w-3 h-3 inline-block align-text-bottom text-[var(--color-link)]" %}
-        {% endif %}
+        {% if active_playback_card.episode_title %}<span>{{ active_playback_card.episode_title }} · </span>{% endif %}
         <span data-playback-time>{{ active_playback_card.progress_display }}</span>
       </p>
     </div>

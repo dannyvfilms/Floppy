@@ -87,7 +87,7 @@ install_docker() {
     if [ "$(docker_state)" = "missing" ]; then
         _docker_install_engine_apt
     fi
-    [ "$(docker_state)" = "ready" ] || fail "Docker is not usable yet ($(docker_state)). Fix that, then run the installer again."
+    [ "$(docker_state)" = "ready" ] || fail "Docker is not usable yet ($(docker_state_text "$(docker_state)")). Fix that, then run the installer again."
 
     step "Writing the installation's configuration"
 
@@ -165,5 +165,8 @@ floppy_commands_help() {
   Logs:    docker compose -f "$COMPOSE_FILE" logs -f
   Resume:  bash "$REPO_DIR/scripts/install/main.sh"
   Upgrade: docker compose -f "$COMPOSE_FILE" pull && docker compose -f "$COMPOSE_FILE" up -d
+  Before upgrading a pickle-era installation, drain old Celery workers and all
+  queues first. The command above does not drain jobs; undrained jobs can be lost.
+  See docs/security-hardening.md (Celery JSON transition).
 EOF
 }

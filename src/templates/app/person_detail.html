@@ -3,6 +3,7 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {{ person.name }} - Floppy
@@ -11,6 +12,7 @@
 {% block content %}
   {% include "app/components/filter_toolbar_scripts.html" %}
 
+  {% people_hero "person" %}
   <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-10 md:mb-8">
     <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
       <img
@@ -122,6 +124,7 @@
       </div>
     </div>
   </div>
+  {% endpeople_hero %}
 
   {% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}<div {% detail_section_attrs user "person" "content" "filmography" %}
        x-data="{
@@ -265,7 +268,7 @@
 
     <div id="loading-indicator" class="htmx-indicator text-center pt-8">
       <div class="inline-flex justify-center items-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        {% spinner 32 %}
       </div>
     </div>
   </div>

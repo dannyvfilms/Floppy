@@ -266,7 +266,13 @@ class EpisodeStatusTests(TestCase):
                 "episodes": [{"episode_number": 1}],
             },
             "related": {
-                "seasons": [{"season_number": 1}, {"season_number": 2}],
+                "seasons": [
+                    {"season_number": 1},
+                    {
+                        "season_number": 2,
+                        "first_air_date": datetime(2020, 1, 1, tzinfo=UTC),
+                    },
+                ],
             },
         }
         mock_get_metadata.return_value = mock_metadata

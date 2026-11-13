@@ -1,0 +1,49 @@
+
+  #detail-secondary-content [data-detail-section="cast"] ul,
+  #detail-secondary-content [data-detail-section="crew"] ul {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  #detail-secondary-content [data-detail-section="cast"] h3,
+  #detail-secondary-content [data-detail-section="crew"] h3,
+  #detail-secondary-content [data-detail-section="recommendations"] h3 {
+    line-height: 28px;
+  }
+  /* Rail owns item width after mounting; avoid applying the phone column calculation twice. */
+  @media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+    #detail-secondary-content [data-detail-section="seasons"] [data-rails-row-root][data-react-mounted="true"] .home-row-card,
+    #detail-secondary-content [data-detail-section="recommendations"] [data-rails-row-root][data-react-mounted="true"] .home-row-card {
+      width: 100% !important;
+    }
+  }
+  #detail-secondary-content [data-detail-section="cast"] .media-card-title,
+  #detail-secondary-content [data-detail-section="crew"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] ul {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  [data-detail-section="cast"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="crew"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="seasons"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="recommendations"] .search-result-card .media-card-year.media-card-year.media-card-year {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 15px;
+    font-weight: 400;
+    text-shadow: none;
+  }

@@ -96,6 +96,7 @@ class MemoryDetectionTests(SimpleTestCase):
         with mock.patch.multiple(
             runtime_profile,
             _CGROUP_V2_MEMORY_MAX=path,
+            _CGROUP_V1_MEMORY_MAX=self.tmp_v2 / "absent-v1-memory.limit_in_bytes",
             _PROC_MEMINFO=meminfo,
         ):
             self.assertEqual(runtime_profile.detect_memory_bytes(), 8 * GIB)
@@ -111,6 +112,7 @@ class MemoryDetectionTests(SimpleTestCase):
         )
         with mock.patch.multiple(
             runtime_profile,
+            _CGROUP_V2_MEMORY_MAX=self.tmp_v2 / "absent-v2-memory.max",
             _CGROUP_V1_MEMORY_MAX=path,
             _PROC_MEMINFO=meminfo,
         ):
@@ -413,7 +415,9 @@ class SizingTests(SimpleTestCase):
         self.assertIn("background=on(celery,discover)", stderr.getvalue())
         self.assertIn("interactive=on(interactive)", stderr.getvalue())
         self.assertIn("discover=off(merged)", stderr.getvalue())
-        self.assertIn("export FLOPPY_START_INTERACTIVE_WORKER='true'", stdout.getvalue())
+        self.assertIn(
+            "export FLOPPY_START_INTERACTIVE_WORKER='true'", stdout.getvalue()
+        )
 
 
 class SizingSourceTests(SimpleTestCase):
@@ -449,7 +453,9 @@ class SizingSourceTests(SimpleTestCase):
                 self.subTest(environment=environment),
                 mock.patch.dict(runtime_profile.os.environ, environment, clear=True),
             ):
-                self.assertEqual(runtime_profile.sizing_source("WEB_CONCURRENCY"), "auto")
+                self.assertEqual(
+                    runtime_profile.sizing_source("WEB_CONCURRENCY"), "auto"
+                )
 
     def test_a_number_is_an_override_and_a_word_is_invalid(self):
         """A value that cannot be parsed is ignored, so it must be reported."""
@@ -534,6 +540,8 @@ class SizingSourceTests(SimpleTestCase):
         ):
             runtime_profile.emit_env(profile)
 
-        self.assertIn("export FLOPPY_WEB_CONCURRENCY_SOURCE='override'", stdout.getvalue())
+        self.assertIn(
+            "export FLOPPY_WEB_CONCURRENCY_SOURCE='override'", stdout.getvalue()
+        )
         self.assertIn("export FLOPPY_GUNICORN_THREADS_SOURCE='auto'", stdout.getvalue())
         self.assertIn("WEB_CONCURRENCY=2 is set explicitly", stderr.getvalue())

@@ -95,6 +95,8 @@ git -C "$REPO_ROOT" rev-parse --verify --quiet "${FROM_TAG}^{commit}" >/dev/null
   || die "Unknown from-tag ref: $FROM_TAG"
 git -C "$REPO_ROOT" rev-parse --verify --quiet "${TO_REF}^{commit}" >/dev/null \
   || die "Unknown to-ref: $TO_REF"
+# Resolve before entering the detached worktree: HEAD there points at FROM_TAG.
+TO_REF="$(git -C "$REPO_ROOT" rev-parse "${TO_REF}^{commit}")"
 
 RUN_SQLITE=0
 RUN_POSTGRES=0
@@ -131,7 +133,10 @@ checkout_ref() {
 run_manage_sqlite() {
   (
     cd "$WORKTREE_DIR/src"
-    SECRET=dev DEBUG=True \
+    SECRET=upgrade-replay-only DEBUG=True \
+      FLOPPY_DATA_DIR="$WORKTREE_DIR/src/db" \
+      FLOPPY_DB_PATH="$WORKTREE_DIR/src/db/db.sqlite3" \
+      DB_HOST= \
       uv run --project "$REPO_ROOT" --no-sync python manage.py "$@"
   )
 }
@@ -144,7 +149,7 @@ start_postgres() {
     -e POSTGRES_USER=postgres \
     -e POSTGRES_PASSWORD=postgres \
     -e POSTGRES_DB=postgres \
-    -p 0:5432 \
+    -p 127.0.0.1:0:5432 \
     postgres:16-alpine >/dev/null
 
   REPLAY_PORT="$(
@@ -177,13 +182,15 @@ run_manage_postgres() {
   shift
   (
     cd "$WORKTREE_DIR/src" && \
-      SECRET=dev \
+      SECRET=upgrade-replay-only \
       DEBUG=True \
       DB_HOST=127.0.0.1 \
       DB_NAME="$db_name" \
       DB_USER=postgres \
       DB_PASSWORD=postgres \
       DB_PORT="$REPLAY_PORT" \
+      DB_POOL_ENABLED=False \
+      FLOPPY_DATA_DIR="$WORKTREE_DIR/src/db" \
       uv run --project "$REPO_ROOT" --no-sync python manage.py "$@"
   )
 }
@@ -194,9 +201,18 @@ run_sqlite_replay() {
   checkout_ref "$FROM_TAG"
   rm -f "$WORKTREE_DIR/src/db/db.sqlite3"
   run_manage_sqlite migrate --noinput
+  FLOPPY_UPGRADE_FIXTURE=seed FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/sqlite-snapshot.json" \
+    run_manage_sqlite shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
 
   checkout_ref "$TO_REF"
   run_manage_sqlite migrate --noinput
+  run_manage_sqlite migrate --check --noinput
+  FLOPPY_UPGRADE_FIXTURE=verify FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/sqlite-snapshot.json" \
+    run_manage_sqlite shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
+  # A second startup must neither change data nor need another migration.
+  run_manage_sqlite migrate --noinput
+  FLOPPY_UPGRADE_FIXTURE=verify FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/sqlite-snapshot.json" \
+    run_manage_sqlite shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
 }
 
 run_postgres_replay() {
@@ -206,9 +222,17 @@ run_postgres_replay() {
   checkout_ref "$FROM_TAG"
   create_pg_db "$replay_db"
   run_manage_postgres "$replay_db" migrate --noinput
+  FLOPPY_UPGRADE_FIXTURE=seed FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/postgres-snapshot.json" \
+    run_manage_postgres "$replay_db" shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
 
   checkout_ref "$TO_REF"
   run_manage_postgres "$replay_db" migrate --noinput
+  run_manage_postgres "$replay_db" migrate --check --noinput
+  FLOPPY_UPGRADE_FIXTURE=verify FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/postgres-snapshot.json" \
+    run_manage_postgres "$replay_db" shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
+  run_manage_postgres "$replay_db" migrate --noinput
+  FLOPPY_UPGRADE_FIXTURE=verify FLOPPY_UPGRADE_SNAPSHOT="$WORKTREE_DIR/postgres-snapshot.json" \
+    run_manage_postgres "$replay_db" shell < "$REPO_ROOT/scripts/upgrade_fixture.py"
 }
 
 run_postgres_drift_scenarios() {

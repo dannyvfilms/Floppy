@@ -1,9 +1,12 @@
 __pycache__
+**/.DS_Store
 *.pyc
 .env
 .coverage*
 venv
 .venv/
+.venv-*/
+*.sqlite3
 src/staticfiles
 src/db/db.sqlite3
 db.sqlite3-shm
@@ -19,6 +22,7 @@ TODO.txt
 # Agent worktrees carry a full copy of the repo each, including their own
 # .venv and database dumps -- 700+ MB of build context that can never be part
 # of the image.
+.worktrees/
 .claude
 # Database dumps live beside the repo for local restores, never in the image.
 *.sql.gz
@@ -37,12 +41,22 @@ TODO.txt
 .env.*
 # Runtime databases, backup directories and logs are never release inputs.
 src/db/
+src/backups/
 db/
 src/logs/
 .v2c/
 .video_agent/
+/floppy-film/
 reports/
 wiki/
 node_modules/
+/native-proof/
+/src/static/native-proof/
 .pytest_cache/
 .ruff_cache/
+
+# Local audit reports are review notes, not release inputs or cache artifacts.
+/*_AUDIT.md
+/*_FOLLOWUP.md
+/*_REVIEW.md
+/*_CLOSEOUT.md

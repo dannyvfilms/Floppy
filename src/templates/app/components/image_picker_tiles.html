@@ -1,0 +1,22 @@
+{% load i18n %}
+{% load app_tags %}
+{# Tiles for image_picker.html. Each one reports its link to the picker's pick(). #}
+{% for candidate in candidates %}
+  <button type="button"
+          class="relative w-32 sm:w-36 shrink-0 text-left cursor-pointer"
+          data-url="{{ candidate.image }}"
+          title="{{ candidate.title }}"
+          @click="pick($el.dataset.url)">
+    <img src="{{ candidate.image|image_url }}"
+         alt="{{ candidate.title }}"
+         loading="lazy"
+         onerror="this.closest('button').remove()"
+         class="w-full aspect-[2/3] rounded-md object-cover bg-[var(--color-surface-alt)] ring-2"
+         :class="choice.value === $el.closest('button').dataset.url ? 'ring-[var(--color-accent)]' : 'ring-transparent'">
+    <span class="absolute top-1 right-1 rounded bg-[var(--color-accent)] px-1.5 text-xs text-[var(--color-accent-contrast)]"
+          x-show="choice.value === $el.closest('button').dataset.url" x-cloak>&#10003;</span>
+    <span class="mt-1 block text-xs text-[var(--color-text-muted)] line-clamp-2">{{ candidate.title }}</span>
+  </button>
+{% empty %}
+  <p class="self-center text-sm text-[var(--color-text-muted)]">{% translate "No other covers found." %}</p>
+{% endfor %}

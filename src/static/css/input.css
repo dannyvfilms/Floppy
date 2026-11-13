@@ -1,4 +1,5 @@
 @import "tailwindcss" source("../../");
+@source not "../ui";
 
 @theme {
   --breakpoint-xs: 30rem;
@@ -76,8 +77,70 @@
   }
 }
 
+/* Only Safari's measured side rail gets document overflow. The app shell keeps
+   its viewport width; this column has no content or touch targets. */
+html[data-safari-rail] {
+  overflow-x: hidden;
+}
+
+html[data-safari-rail]:not([data-safari-rail-zoomed]),
+html[data-safari-rail]:not([data-safari-rail-zoomed]) body {
+  touch-action: pan-y pinch-zoom;
+}
+
+#safari-rail {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  overflow: clip;
+  pointer-events: none;
+}
+
+#safari-rail > .safari-rail__header {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 50;
+  /* A sticky/fixed copy is excluded from Safari's rail paint. Move ordinary
+     document paint with the root scroll timeline to follow the real header. */
+  animation: safari-rail-header linear both;
+  animation-timeline: scroll(root block);
+}
+
+/* Safari samples a fixed black scrim as an opaque rail tint. Paint the same
+   clickable scrim in document space instead, spanning both page and rail. */
+html[data-safari-rail] .app-menu-overlay {
+  position: absolute;
+  right: calc(-1 * var(--safari-rail-width));
+  bottom: auto;
+  height: var(--safari-rail-height);
+}
+
+html[data-safari-rail] .detail-mobile-hero {
+  overflow: visible;
+}
+
+html[data-safari-rail] .detail-mobile-hero__backdrop {
+  /* Grow symmetrically so artwork stays centred on the original safe area.
+     The left excess is off-screen; only the right side fills the rail. */
+  left: calc(-1 * var(--safari-rail-width));
+  right: calc(-1 * var(--safari-rail-width));
+  /* The blur's scale also scales its mask past the clipping edge. Fade the
+     unscaled wrapper to zero there so no horizontal seam remains. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
+}
+
+@keyframes safari-rail-header {
+  to {
+    transform: translateY(var(--rail-scroll));
+  }
+}
+
 :root {
   /* Screen edges the camera or system UI covers; 0 on screens without them. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-safe-top: var(--safe-top);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --color-surface: #2a2f35;
@@ -493,15 +556,13 @@ html.custom {
   color-scheme: dark;
 }
 
-html :where(
-  .rounded,
+html :where(.rounded,
   .rounded-sm,
   .rounded-md,
   .rounded-lg,
   .rounded-xl,
   .rounded-2xl,
-  .rounded-3xl
-) {
+  .rounded-3xl) {
   border-radius: var(--theme-radius);
 }
 
@@ -510,6 +571,7 @@ html :where(
     opacity: 0;
     transform: translateY(var(--motion-distance));
   }
+
   to {
     opacity: 1;
     transform: none;
@@ -521,13 +583,14 @@ html :where(
     opacity: 0;
     transform: translateY(var(--motion-distance)) scale(0.992);
   }
+
   to {
     opacity: 1;
     transform: none;
   }
 }
 
-main > .container,
+main>.container,
 .preferences-page {
   /*
    * `backwards`, not `both`: the `to` keyframe (opacity:1, transform:none)
@@ -550,15 +613,13 @@ main > .container,
   transition-timing-function: var(--motion-ease);
 }
 
-:where(
-  .media-card,
+:where(.media-card,
   .search-result-card,
   .search-result-card-square,
   .media-card-poster,
   .preferences-section,
   [class*="bg-[var(--color-surface)]"],
-  [class*="bg-[var(--color-panel)]"]
-) {
+  [class*="bg-[var(--color-panel)]"]) {
   transition:
     transform var(--motion-duration) var(--motion-ease),
     box-shadow var(--motion-duration) var(--motion-ease),
@@ -566,9 +627,18 @@ main > .container,
     background-color var(--motion-duration) var(--motion-ease);
 }
 
-.media-grid > *,
-.detail-media-grid > *,
-.home-row-scrollbar-hidden > * {
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.media-grid>*,
+.detail-media-grid>*,
+.home-row-scrollbar-hidden>* {
   /* See the `theme-reveal` animation above for why this is `backwards`,
      not `both`: it's the same containing-block hazard, and this is the
      more impactful instance of it, since it pins every card's grid
@@ -577,10 +647,21 @@ main > .container,
   animation: theme-soft-pop var(--motion-duration) var(--motion-ease) backwards;
 }
 
-.media-grid > :nth-child(2n),
-.detail-media-grid > :nth-child(2n) { animation-delay: 35ms; }
-.media-grid > :nth-child(3n),
-.detail-media-grid > :nth-child(3n) { animation-delay: 70ms; }
+.media-grid> :nth-child(2n),
+.detail-media-grid> :nth-child(2n) {
+  animation-delay: 35ms;
+}
+
+.media-grid> :nth-child(3n),
+.detail-media-grid> :nth-child(3n) {
+  animation-delay: 70ms;
+}
+
+/* Cached posters must not replay the page/card entrance on every navigation. */
+main > .container:has(img[data-artwork-ready="true"]),
+:is(.media-grid, .detail-media-grid, .home-row-scrollbar-hidden) > :has(img[data-artwork-ready="true"]) {
+  animation: none;
+}
 
 .media-card-hover-outline::after {
   content: "";
@@ -607,12 +688,8 @@ main > .container,
    * still hovered (see issue #1205). The poster is a leaf node with no
    * modal markup inside it, so it can't cause that.
    */
-  :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1));
-  }
-
   html.plex :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1)) scale(1.018);
+    transform: scale(1.018);
   }
 
   html.oled :where(.media-card, .search-result-card, .search-result-card-square):hover {
@@ -637,11 +714,9 @@ main > .container,
 }
 
 html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"] {
-  background-color: color-mix(
-    in srgb,
-    var(--color-surface) var(--theme-surface-opacity),
-    transparent
-  );
+  background-color: color-mix(in srgb,
+      var(--color-surface) var(--theme-surface-opacity),
+      transparent);
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
@@ -653,21 +728,32 @@ html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"] {
  * (via their `bg-[var(--color-surface)]` class) and nest fixed modal
  * overlays, so under glass/custom themes every card would permanently
  * capture its own modal instead of letting it use the viewport. Keep the
- * tinted background but drop the blur specifically on cards.
+ * tinted background but drop the blur specifically on cards. Use `:is` so
+ * this override matches the surface rule's specificity; `:where` loses to it.
  */
-html:is(.glass, .custom) :where(.media-card, .search-result-card, .search-result-card-square) {
+html:is(.glass, .custom) :is(.media-card, .search-result-card, .search-result-card-square) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
-  background-color: color-mix(
-    in srgb,
-    var(--color-panel) var(--theme-surface-opacity),
-    transparent
-  );
+  background-color: color-mix(in srgb,
+      var(--color-panel) var(--theme-surface-opacity),
+      transparent);
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
+}
+
+/*
+ * Floating menus and suggestion lists sit over page content, so under glass and
+ * custom themes they stay solid: a translucent panel lets the text behind it
+ * show through and hurts readability.
+ */
+html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"][class~="z-50"],
+html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"][class~="z-50"] {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 html.glass [class*="bg-[var(--color-sidebar)]"] {
@@ -685,18 +771,53 @@ html.glass [class*="bg-[var(--color-sidebar)]"] {
   background: linear-gradient(135deg, #f8f9fa 0 50%, #212529 50%);
 }
 
-.theme-swatch-light { background: linear-gradient(135deg, #f8f9fa 0 65%, #4f46e5 65%); }
-.theme-swatch-dark { background: linear-gradient(135deg, #212529 0 65%, #4a9eff 65%); }
-.theme-swatch-catppuccin_mocha { background: linear-gradient(135deg, #1e1e2e 0 52%, #cba6f7 52% 76%, #89b4fa 76%); }
-.theme-swatch-dracula { background: linear-gradient(135deg, #282a36 0 52%, #bd93f9 52% 76%, #ff79c6 76%); }
-.theme-swatch-nord { background: linear-gradient(135deg, #2e3440 0 52%, #88c0d0 52% 76%, #eceff4 76%); }
-.theme-swatch-gruvbox { background: linear-gradient(135deg, #282828 0 52%, #fabd2f 52% 76%, #83a598 76%); }
-.theme-swatch-oled { background: linear-gradient(135deg, #000000 0 65%, #22d3ee 65%); }
-.theme-swatch-glass { background: radial-gradient(circle at 30% 25%, #67e8f9, transparent 38%), linear-gradient(135deg, #0d1122 0 55%, #8b7cff 100%); }
-.theme-swatch-plex { background: linear-gradient(135deg, #0f0f0f 0 65%, #e5a00d 65%); }
-.theme-swatch-projector { background: linear-gradient(135deg, #15130f 0 65%, #f2a93b 65%); }
-.theme-swatch-video_store { background: linear-gradient(135deg, #10132b 0 50%, #ff4fa3 50% 75%, #58e1d4 75%); }
-.theme-swatch-custom { background: conic-gradient(#ff4fa3, #58e1d4, #f2a93b, #4f46e5, #ff4fa3); }
+.theme-swatch-light {
+  background: linear-gradient(135deg, #f8f9fa 0 65%, #4f46e5 65%);
+}
+
+.theme-swatch-dark {
+  background: linear-gradient(135deg, #212529 0 65%, #4a9eff 65%);
+}
+
+.theme-swatch-catppuccin_mocha {
+  background: linear-gradient(135deg, #1e1e2e 0 52%, #cba6f7 52% 76%, #89b4fa 76%);
+}
+
+.theme-swatch-dracula {
+  background: linear-gradient(135deg, #282a36 0 52%, #bd93f9 52% 76%, #ff79c6 76%);
+}
+
+.theme-swatch-nord {
+  background: linear-gradient(135deg, #2e3440 0 52%, #88c0d0 52% 76%, #eceff4 76%);
+}
+
+.theme-swatch-gruvbox {
+  background: linear-gradient(135deg, #282828 0 52%, #fabd2f 52% 76%, #83a598 76%);
+}
+
+.theme-swatch-oled {
+  background: linear-gradient(135deg, #000000 0 65%, #22d3ee 65%);
+}
+
+.theme-swatch-glass {
+  background: radial-gradient(circle at 30% 25%, #67e8f9, transparent 38%), linear-gradient(135deg, #0d1122 0 55%, #8b7cff 100%);
+}
+
+.theme-swatch-plex {
+  background: linear-gradient(135deg, #0f0f0f 0 65%, #e5a00d 65%);
+}
+
+.theme-swatch-projector {
+  background: linear-gradient(135deg, #15130f 0 65%, #f2a93b 65%);
+}
+
+.theme-swatch-video_store {
+  background: linear-gradient(135deg, #10132b 0 50%, #ff4fa3 50% 75%, #58e1d4 75%);
+}
+
+.theme-swatch-custom {
+  background: conic-gradient(#ff4fa3, #58e1d4, #f2a93b, #4f46e5, #ff4fa3);
+}
 
 /* Theme toggle icon swap: mirrors the dark/light/system resolution used for
    the --color-* tokens above, so the button's icon matches the active theme
@@ -725,6 +846,24 @@ html.light .theme-toggle-icon-moon {
 
 [x-cloak] {
   display: none !important;
+}
+
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
 }
 
 /* Navigation progress for boosted links.
@@ -771,6 +910,7 @@ html.light .theme-toggle-icon-moon {
 /* Movement is the signal here, so remove it when the reader asks for less
    motion and hold a steady bar instead. */
 @media (prefers-reduced-motion: reduce) {
+
   .nav-progress-bar,
   .nav-progress.is-complete .nav-progress-bar {
     transition: none;
@@ -917,7 +1057,7 @@ html.light .theme-toggle-icon-moon {
   gap: 0.75rem;
 }
 
-.preferences-grid > div {
+.preferences-grid>div {
   min-width: 0;
   margin: 0;
   padding: 0.8rem;
@@ -925,17 +1065,17 @@ html.light .theme-toggle-icon-moon {
   border-radius: 0.375rem;
 }
 
-.preferences-grid > div > div:first-child {
+.preferences-grid>div>div:first-child {
   min-width: 0;
 }
 
-.preferences-grid > div label,
-.preferences-grid > div > div:first-child label {
+.preferences-grid>div label,
+.preferences-grid>div>div:first-child label {
   line-height: 1.35;
 }
 
-.preferences-grid > div .relative > button,
-.preferences-section > .p-4 > button {
+.preferences-grid>div .relative>button,
+.preferences-section>.p-4>button {
   min-height: 2.25rem;
 }
 
@@ -1036,6 +1176,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .preferences-actions,
   .preferences-actions-status-dot {
     transition: none !important;
@@ -1057,11 +1198,11 @@ html.light .theme-toggle-icon-moon {
       "chips chips";
   }
 
-  .preferences-metadata-grid > div:nth-child(3) {
+  .preferences-metadata-grid>div:nth-child(3) {
     grid-column: 1 / -1;
   }
 
-  .preferences-metadata-grid > div:nth-child(3) > .grid {
+  .preferences-metadata-grid>div:nth-child(3)>.grid {
     gap: 0.75rem;
   }
 }
@@ -1071,7 +1212,7 @@ html.light .theme-toggle-icon-moon {
     grid-template-areas: none;
   }
 
-  .preferences-display-grid > div {
+  .preferences-display-grid>div {
     grid-area: auto !important;
   }
 
@@ -1080,12 +1221,12 @@ html.light .theme-toggle-icon-moon {
     flex-direction: column;
   }
 
-  .preferences-actions > div:last-child,
+  .preferences-actions>div:last-child,
   .preferences-actions button {
     width: 100%;
   }
 
-  .preferences-actions > div:last-child {
+  .preferences-actions>div:last-child {
     justify-content: flex-end;
   }
 }
@@ -1366,7 +1507,7 @@ html.light .theme-toggle-icon-moon {
    classes it needs for the non-carousel branch's sm:contents mobile
    reordering (see detail_score_and_actions.html); neutralize them here so
    they don't inflate this header row's height. */
-.detail-carousel-grid__header .shrink-0 > div {
+.detail-carousel-grid__header .shrink-0>div {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -1380,7 +1521,7 @@ html.light .theme-toggle-icon-moon {
    classes it needs for the non-carousel branch's sm:contents mobile
    reordering (see detail_score_and_actions.html); neutralize them here so
    they don't stack with this grid item's own margin-top. */
-.detail-carousel-grid__chips > div {
+.detail-carousel-grid__chips>div {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -1438,7 +1579,7 @@ html.light .theme-toggle-icon-moon {
 @media (max-width: 767.98px) {
   .detail-carousel-grid,
   .detail-flat-top {
-    --hero-line: calc(47dvh - 4rem);
+    --hero-line: calc(47dvh - 4rem - var(--header-safe-top));
     --hero-pad-y: 1.5rem;
     --hero-gutter-l: max(1rem, var(--safe-left));
     --hero-gutter-r: max(1rem, var(--safe-right));
@@ -1596,6 +1737,10 @@ html.light .theme-toggle-icon-moon {
     padding-top: 3.25rem;
   }
 
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title {
+    padding-top: 3.25rem;
+  }
+
   .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title h1 {
     position: absolute;
     width: 1px;
@@ -1621,6 +1766,11 @@ html.light .theme-toggle-icon-moon {
      above it) or their content shows through the popup. */
   .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
     z-index: 3;
+  }
+
+  /* An open season menu must escape the title's lower stacking layer. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title:has([aria-haspopup="listbox"][aria-expanded="true"]) {
+    z-index: 4;
   }
 
   /* Hero metadata uses one wrapping line at every phone width. */
@@ -1662,13 +1812,19 @@ html.light .theme-toggle-icon-moon {
     top: calc(-1 * var(--hero-pad-y));
     right: calc(-1 * var(--hero-gutter-r));
     left: calc(-1 * var(--hero-gutter-l));
-    height: calc(100dvh - 4rem);
+    height: calc(100dvh - 4rem - var(--header-safe-top));
     overflow: hidden;
     pointer-events: none;
   }
 
   .detail-mobile-hero img {
     position: absolute;
+  }
+
+  .detail-mobile-hero__backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
 
   .detail-mobile-hero__blur {
@@ -1716,12 +1872,31 @@ html.light .theme-toggle-icon-moon {
    beside the title, actions and chips instead of stacking them: the desktop
    arrangement at phone size. Compact only; the backdrop hero is already full width. */
 @media (min-width: 600px) and (max-width: 767.98px) {
+  :root {
+    --header-safe-top: 0px;
+  }
+
   /* Leave a four-rem gap centred on the unfolded screen's horizontal crease. */
   .detail-carousel-grid:has(.detail-mobile-hero__logo) {
-    --hero-line: calc(50dvh - 6rem);
+    --hero-line: calc(50dvh - 6rem - var(--header-safe-top));
+  }
+
+  .detail-mobile-hero__logo {
+    top: calc(var(--hero-line) - 2.5rem);
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button,
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-mobile-meta {
+    font-size: 1rem;
+    line-height: 1.5;
+    letter-spacing: normal;
   }
 
   .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title {
+    padding-top: 6.75rem;
+  }
+
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title {
     padding-top: 6.75rem;
   }
 
@@ -1783,6 +1958,11 @@ html.light .theme-toggle-icon-moon {
     width: 2.75rem;
   }
 
+  /* Seven icons need 356px at the default gap; the column beside the poster is 334px at 600px. */
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)) .detail-carousel-grid__actions > div > .mt-4 > .flex {
+    gap: 0.25rem;
+  }
+
   .detail-carousel-grid__actions [data-track-action-root],
   .detail-carousel-grid__actions [x-data*="editTrackOpen"] {
     width: auto;
@@ -1838,6 +2018,31 @@ html.light .theme-toggle-icon-moon {
 
   .detail-flat-top__info > .mb-6 {
     grid-column: 1 / -1;
+  }
+}
+
+/* Keep the unfolded portrait hero's proportions when its outer display is
+   rotated to landscape. Only the viewport becomes shorter; controls stay below
+   the fold and remain available by scrolling. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: landscape) {
+  .app-topbar__inner {
+    padding-right: 1rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) {
+    --hero-line: calc(70vw - 6rem - var(--header-safe-top));
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-mobile-hero {
+    height: calc(140vw - 4rem - var(--header-safe-top));
+  }
+}
+
+/* The unfolded display's iOS status controls share the navigation row. Reserve
+   their width only when the device reports a top system inset. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: portrait) {
+  .app-topbar__inner {
+    padding-right: max(1rem, var(--safe-right), min(8rem, calc(var(--safe-top) * 4)));
   }
 }
 
@@ -2078,22 +2283,108 @@ html.light .theme-toggle-icon-moon {
 
   /* Reveal-on-hover only where there is a real hover; a tap leaves :hover stuck on touch. */
   @media (hover: hover) {
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
       max-height: 1rem;
       opacity: 1;
       transform: translateY(0);
     }
+  }
+}
+
+@media (min-width: 600px) and (max-width: 767.98px) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-promoted-content {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .detail-promoted-facts:not([hidden]) {
+    display: contents;
+  }
+
+  .detail-promoted-fact {
+    min-width: 0;
+    max-width: 24rem;
+  }
+
+  .detail-promoted-fact__label,
+  .detail-promoted-fact__value {
+    display: block;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+  }
+
+  .detail-promoted-fact__label {
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .detail-promoted-fact__full-label,
+  .detail-promoted-fact__runtime-separator {
+    display: none;
+  }
+
+  .detail-promoted-fact__compact-label {
+    display: inline;
+  }
+
+  .detail-promoted-fact__compact-break {
+    display: initial;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-fact--promoted,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-details:not(:has(.detail-sidebar-fact:not(.detail-sidebar-fact--promoted))) {
+    display: none;
+  }
+
+  .detail-secondary-sidebar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 1rem;
+  }
+
+  .detail-secondary-sidebar > * {
+    grid-column: 1 / -1;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]):not([hidden]) {
+    grid-column: auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]) > .rounded-lg {
+    flex: 1;
+    text-align: left;
+  }
+
+  .detail-sidebar-genres > h2,
+  .detail-sidebar-studios > h2 {
+    display: flex;
+    align-items: center;
+    min-height: 2rem;
+  }
+
+  .detail-sidebar-genres > .rounded-lg > div {
+    justify-content: flex-start;
   }
 }
 
@@ -2119,6 +2410,25 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-grid__header {
     margin-top: 0;
+  }
+
+  /* Deferred galleries reserve their final rows before HTMX responds. The
+     hidden preview and strip keep the initial grid from switching after the
+     poster and metadata have already painted. */
+  .detail-carousel-pending {
+    visibility: hidden;
+  }
+
+  .detail-carousel-grid.detail-hero-pending #detail-carousel-logo-slot {
+    display: flex;
+    align-items: flex-end;
+    min-height: 7rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) #detail-carousel-logo-slot:has(.detail-carousel-overview-logo) {
+    display: flex;
+    align-items: flex-end;
+    min-height: 7rem;
   }
 
   /* Carousel confirmed non-empty: expand to the carousel's own two-row
@@ -2212,11 +2522,11 @@ html.light .theme-toggle-icon-moon {
     min-height: 0;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-overview-logo) {
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) {
     isolation: isolate;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-carousel-overview-logo) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar):has(.detail-carousel-preview--overview)) {
     grid-template-areas:
       "poster preview"
       "strip strip"
@@ -2228,7 +2538,7 @@ html.light .theme-toggle-icon-moon {
     overflow-x: clip;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-overview-logo) .detail-carousel-grid__poster {
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) .detail-carousel-grid__poster {
     position: relative;
     z-index: 2;
   }
@@ -2248,14 +2558,15 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 {
     display: block;
+    flex: none;
     width: 100%;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
     display: none;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
     display: block;
     margin-bottom: 0.75rem;
   }
@@ -2266,7 +2577,9 @@ html.light .theme-toggle-icon-moon {
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header * {
+  /* The overlay is click-through so the carousel arrows beneath it work. Only
+     its controls take clicks; wide wrappers such as the logo slot must not. */
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex]) {
     pointer-events: auto;
   }
 
@@ -2419,12 +2732,12 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-overview-caption {
     position: absolute;
-    right: 2px;
-    bottom: 2px;
-    left: 2px;
-    padding: 1rem 0.25rem 0.25rem;
-    border-radius: 0 0 0.25rem 0.25rem;
-    background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 78%));
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.25rem;
+    background: linear-gradient(to bottom, transparent 20%, rgb(0 0 0 / 8%) 40%, rgb(0 0 0 / 28%) 60%, rgb(0 0 0 / 55%) 80%, rgb(0 0 0 / 78%));
   }
 
   .detail-carousel-strip-nav {
@@ -2533,8 +2846,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2576,8 +2889,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2612,8 +2925,8 @@ html.light .theme-toggle-icon-moon {
     pointer-events: none;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
     max-height: 1rem;
     opacity: 1;
     transform: translateY(0);
@@ -2767,18 +3080,52 @@ html.light .theme-toggle-icon-moon {
   color: var(--color-text);
 }
 
+.detail-progress-card__sub {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
 .detail-progress-card__bar {
+  position: relative;
   height: 0.5rem;
-  overflow: hidden;
   border-radius: 9999px;
   background: var(--color-surface-muted);
 }
 
-.detail-progress-card__bar > span {
+.detail-progress-card__bar > span:not(.progress-glow) {
   display: block;
   height: 100%;
   border-radius: inherit;
   background: #10b981;
+}
+
+/* An open rewatch pass: a bright glowing line drawn over the watched-once bar. */
+.progress-glow {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 9999px;
+  background: #a7f3d0;
+  box-shadow: 0 0 6px 1px rgb(110 231 183 / 85%), 0 0 14px 3px rgb(16 185 129 / 55%);
+  animation: progress-glow 2.4s ease-in-out infinite;
+}
+
+/* The same glow on an episode already watched again in the open pass. */
+.progress-glow-chip {
+  box-shadow: 0 0 6px 1px rgb(110 231 183 / 70%);
+}
+
+@keyframes progress-glow {
+  50% {
+    box-shadow: 0 0 9px 2px rgb(110 231 183 / 100%), 0 0 20px 5px rgb(16 185 129 / 70%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-glow {
+    animation: none;
+  }
 }
 
 .detail-progress-card__value {
@@ -2976,6 +3323,20 @@ html.light .theme-toggle-icon-moon {
 
 .media-card .media-status-chip {
   z-index: 6;
+}
+
+.media-card-next-episode-compact {
+  display: none;
+}
+
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  body[data-mobile-grid="compact"] .media-card-next-episode-full {
+    display: none;
+  }
+
+  body[data-mobile-grid="compact"] .media-card-next-episode-compact {
+    display: inline;
+  }
 }
 
 [data-quick-season-mobile="false"] .media-card-progress {
@@ -3393,6 +3754,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 @supports (interpolate-size: allow-keywords) {
+
   .search-result-card .media-card-year,
   .search-result-card-square .media-card-year {
     interpolate-size: allow-keywords;
@@ -3432,6 +3794,7 @@ html.light .theme-toggle-icon-moon {
  * so nothing moves until the card is actually opened.
  */
 @media (pointer: coarse) {
+
   .search-result-card:hover .media-card-title-row,
   .search-result-card-square:hover .media-card-title-row {
     max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
@@ -3479,6 +3842,7 @@ html.light .theme-toggle-icon-moon {
   }
 
   @supports (interpolate-size: allow-keywords) {
+
     .search-result-card.media-card-revealed:not(.media-card-subtitle-always) .media-card-year,
     .search-result-card-square.media-card-revealed:not(.media-card-subtitle-always) .media-card-year {
       max-height: max-content;
@@ -3915,8 +4279,10 @@ html.light .theme-toggle-icon-moon {
 
 /* Keep phone cards the same size when rotating or unfolding: extra width
    reveals more cards. Only screens too narrow for the preferred column count
-   reduce the size. Touch tablets share these widths in either orientation. */
-@media (max-width: 768px), (pointer: coarse) and (max-width: 1600px) and (max-height: 1100px), (hover: none) and (max-width: 1600px) and (max-height: 1100px) {
+   reduce the size. Tablets keep the desktop card size: their extra room goes
+   to more cards, not smaller ones, and phone-sized cards leave the progress
+   controls wider than the card. */
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
   body {
     --card-cols: 3;
     --card-cap: 6.75rem;
@@ -4087,6 +4453,19 @@ html.light .theme-toggle-icon-moon {
   transition: opacity 150ms ease-in-out;
 }
 
+/* Follow the tracking fragment as HTMX updates an episode in place. */
+.episode-card-actions:has([data-episode-has-data="true"]) {
+  grid-column: 2;
+  justify-self: end;
+}
+
+/* Centered under the text on mobile only; right-aligned from the md breakpoint. */
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
+}
+
 .media-card-rate-empty .media-card-rate-star svg {
   fill: none;
 }
@@ -4096,7 +4475,8 @@ html.light .theme-toggle-icon-moon {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .media-card:hover .media-card-rate-empty {
+  .media-card:hover .media-card-rate-empty,
+  .episode-card:hover .media-card-rate-empty {
     opacity: 1;
   }
 }
@@ -4188,11 +4568,20 @@ button.tier-label:focus-visible .tier-label-edit {
   padding: 0.375rem;
 }
 
+/* Every title rests on one line so all tiles share a baseline; hover lets a long
+   title wrap. The line height matches .media-card-title below. */
 .tier-tile .search-result-card .media-card-title-row,
 .tier-tile .search-result-card:hover .media-card-title-row {
   flex-wrap: wrap;
   gap: 0 0.25rem;
-  max-height: none;
+}
+
+.tier-tile .search-result-card .media-card-title-row {
+  max-height: calc(var(--card-title-rest-lines, 1) * 1.2 * 0.6875rem);
+}
+
+.tier-tile .search-result-card:hover .media-card-title-row {
+  max-height: calc(var(--card-title-hover-lines, 3) * 1.2 * 0.6875rem);
 }
 
 .tier-tile .media-card-title {
@@ -4254,5 +4643,63 @@ button.tier-label:focus-visible .tier-label-edit {
 
   .tier-tile {
     width: 4.25rem;
+  }
+}
+
+/* Video thumbnails retain their image; only dedicated video rows are wide. */
+.search-result-card.video-card-landscape {
+  aspect-ratio: 16 / 9;
+}
+.search-result-card.video-card .media-card-poster {
+  object-fit: contain !important;
+}
+
+/* Landscape video needs more width than poster artwork at the same density. */
+.media-grid.media-grid-video {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)) !important;
+}
+.home-row-card.home-row-card-video {
+  width: 17rem;
+}
+/* Mixed shelves share the poster height while retaining native artwork shapes. */
+.home-row-card.home-row-card-mixed-square {
+  width: 16.5rem;
+}
+.home-row-card.home-row-card-mixed-video {
+  width: 29.333333rem;
+}
+.home-row-card-mixed-video .video-card {
+  aspect-ratio: 16 / 9;
+}
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  [data-mobile-grid] .media-grid.media-grid-video {
+    grid-template-columns: repeat(auto-fill, min(calc((100% - 0.75rem) / 2), 10.5rem)) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-video {
+    width: min(calc((100% - 1rem) / 2), 10.5rem) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-square {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 1.5) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-video {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 8 / 3) !important;
+  }
+}
+
+/* Video channels use square artwork in the shared details layout. */
+.video-channel-avatar {
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 4rem;
+}
+@media (min-width: 768px) {
+  .detail-carousel-grid:has(.video-channel-avatar):has(.detail-carousel-preview--overview) .detail-carousel-grid__title {
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
 }

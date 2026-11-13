@@ -21,6 +21,8 @@ from dataclasses import field as dataclass_field
 from django.conf import settings
 from django.core.cache import cache
 
+from app.log_safety import redact_secrets
+
 logger = logging.getLogger(__name__)
 
 CACHE_KEY = "provider_credentials_instance"
@@ -84,8 +86,10 @@ class ProviderCredentialSpec:
     user_scope: bool = False
     user_storage: str = USER_STORAGE_GENERIC
     logo_slug: str = ""
+    media_tags: tuple[str, ...] = ()
     validator: object = None
     user_fields: tuple[str, ...] = dataclass_field(default_factory=tuple)
+    setup_hint: str = ""
 
     def personal_fields(self):
         """Return the fields a user may override personally."""
@@ -97,6 +101,47 @@ class ProviderCredentialSpec:
 
 
 VALIDATION_TIMEOUT = 10
+
+
+def _probe_reason(response):
+    """Return the provider's own explanation for a rejected credential.
+
+    The status code alone cannot tell a user why a key failed: Hardcover says
+    "Missing scopes: read:me" in its error body. Read the common JSON shapes
+    and fall back to a short, redacted slice of the response text.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        # OAuth-style errors, like Hardcover's insufficient_scope body.
+        for key in ("error_description", "message"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return redact_secrets(value.strip())
+        # Some providers wrap the message in an error object.
+        error = payload.get("error")
+        if isinstance(error, str) and error.strip():
+            return redact_secrets(error.strip())
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return redact_secrets(message.strip())
+        # GraphQL errors array, used by several metadata providers.
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            messages = [
+                item.get("message", "").strip()
+                for item in errors
+                if isinstance(item, dict) and item.get("message")
+            ]
+            if messages:
+                return redact_secrets("; ".join(messages))
+    text = getattr(response, "text", "") or ""
+    if not isinstance(text, str):
+        text = ""
+    return redact_secrets(text.strip()[:200])
 
 
 def _probe(method, url, **kwargs):
@@ -123,12 +168,26 @@ def _probe(method, url, **kwargs):
         requests.codes.forbidden,
         requests.codes.bad_request,
     }:
+        reason = _probe_reason(response)
+        logger.warning(
+            "Credential probe rejected by %s (HTTP %s): %s",
+            url,
+            response.status_code,
+            reason or "no response body",
+        )
+        if reason:
+            return f"the provider rejected that credential ({reason})"
         return "the provider rejected that credential"
     return None
 
 
 def _validate_hardcover(values):
-    """Check a Hardcover token with a minimal GraphQL query."""
+    """Check a Hardcover token with the catalog query metadata uses.
+
+    Hardcover's ``me`` query needs the read:me scope, but metadata search and
+    lookup only need read:catalog. Probing ``me`` rejected valid read:catalog
+    tokens with an unexplained failure (#1857).
+    """
     token = values.get("api_key", "")
     if not token:
         return None
@@ -137,7 +196,7 @@ def _validate_hardcover(values):
     return _probe(
         "POST",
         "https://api.hardcover.app/v1/graphql",
-        json={"query": "{ me { id } }"},
+        json={"query": "{ books_by_pk(id: 1) { id } }"},
         headers={"Authorization": token},
     )
 
@@ -265,6 +324,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
     for spec in (
         ProviderCredentialSpec(
             slug="tvdb",
+            media_tags=("screen", "anime_manga"),
             user_scope=True,
             validator=_validate_tvdb,
             label="TheTVDB",
@@ -277,15 +337,21 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="hardcover",
+            media_tags=("reading",),
             user_scope=True,
             validator=_validate_hardcover,
             label="Hardcover",
             description="Book metadata. Free tier is metered per account.",
             docs_url="https://hardcover.app/account/api",
+            setup_hint=(
+                "The token needs the read:catalog scope for book metadata. "
+                "Add read:me as well to import your own Hardcover library."
+            ),
             fields=(CredentialField("api_key", "API token", "HARDCOVER_API"),),
         ),
         ProviderCredentialSpec(
             slug="googlebooks",
+            media_tags=("reading",),
             user_scope=True,
             validator=_validate_googlebooks,
             label="Google Books",
@@ -295,6 +361,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="steam",
+            media_tags=("games",),
             group=GROUP_ACCOUNTS,
             user_scope=True,
             validator=_validate_steam,
@@ -305,6 +372,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="lastfm",
+            media_tags=("music",),
             group=GROUP_ACCOUNTS,
             user_scope=True,
             label="Last.fm",
@@ -314,6 +382,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="tmdb",
+            media_tags=("screen", "anime_manga"),
             user_scope=True,
             validator=_validate_tmdb,
             label="TMDB",
@@ -323,19 +392,47 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="mal",
+            media_tags=("anime_manga",),
             user_scope=True,
             label="MyAnimeList",
             logo_slug="myanimelist",
-            description="Anime and manga metadata.",
+            description="Anime and manga metadata, and syncing watch status back.",
             docs_url="https://myanimelist.net/apiconfig",
-            fields=(CredentialField("client_id", "Client ID", "MAL_API"),),
+            fields=(
+                CredentialField("client_id", "Client ID", "MAL_API"),
+                CredentialField(
+                    "client_secret",
+                    "Client secret",
+                    "MAL_API_SECRET",
+                    required=False,
+                    placeholder="Sync to MyAnimeList: set with the Client ID from the same app",
+                ),
+            ),
+        ),
+        ProviderCredentialSpec(
+            slug="wetrakr",
+            media_tags=("screen",),
+            group=GROUP_ACCOUNTS,
+            user_scope=True,
+            label="WeTrakr",
+            description="Sending your plays, statuses and ratings to WeTrakr.",
+            docs_url="https://api.wetrakr.com/",
+            fields=(CredentialField("client_id", "App key", "WETRAKR_CLIENT_ID"),),
         ),
         ProviderCredentialSpec(
             slug="igdb",
+            media_tags=("games",),
             user_scope=True,
             label="IGDB",
             description="Game metadata, authenticated through Twitch.",
-            docs_url="https://api-docs.igdb.com/#account-creation",
+            docs_url="https://dev.twitch.tv/console/apps/create",
+            setup_hint=(
+                "Register an application with the Twitch Developer Console. "
+                "Set OAuth Redirect URL to https://localhost (Floppy only uses "
+                "client credentials, so it is never called), Category to "
+                "Application Integration, and Client Type to Confidential. "
+                "Then click Manage and New Secret."
+            ),
             fields=(
                 CredentialField("client_id", "Client ID", "IGDB_ID"),
                 CredentialField("client_secret", "Client secret", "IGDB_SECRET"),
@@ -343,6 +440,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="steamgriddb",
+            media_tags=("games",),
             user_scope=True,
             validator=_validate_steamgriddb,
             label="SteamGridDB",
@@ -352,15 +450,17 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="thegamesdb",
+            media_tags=("games",),
             user_scope=True,
             validator=_validate_thegamesdb,
             label="TheGamesDB",
             description="Extra coverage. Clear logos and fanart.",
-            docs_url="https://forums.thegamesdb.net/viewforum.php?f=10",
+            docs_url="https://api.thegamesdb.net/key.php",
             fields=(CredentialField("api_key", "API key", "THEGAMESDB_API_KEY"),),
         ),
         ProviderCredentialSpec(
             slug="screenscraper",
+            media_tags=("games",),
             user_scope=True,
             label="ScreenScraper",
             description="Retro artwork. An account raises your limits.",
@@ -373,6 +473,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="opencritic",
+            media_tags=("games",),
             user_scope=True,
             label="OpenCritic",
             description="Critic scores for games. The free RapidAPI plan is enough.",
@@ -380,7 +481,24 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             fields=(CredentialField("api_key", "RapidAPI key", "OPENCRITIC_API_KEY"),),
         ),
         ProviderCredentialSpec(
+            slug="podcastindex",
+            media_tags=("podcasts",),
+            user_scope=True,
+            label="Podcast Index",
+            description="Open podcast directory. Finds shows other sources miss.",
+            docs_url="https://api.podcastindex.org/signup",
+            fields=(
+                CredentialField("api_key", "API key", "PODCASTINDEX_API_KEY"),
+                CredentialField(
+                    "api_secret",
+                    "API secret",
+                    "PODCASTINDEX_API_SECRET",
+                ),
+            ),
+        ),
+        ProviderCredentialSpec(
             slug="bgg",
+            media_tags=("games",),
             user_scope=True,
             label="BoardGameGeek",
             description="Board game metadata.",
@@ -389,6 +507,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="comicvine",
+            media_tags=("reading",),
             user_scope=True,
             label="Comic Vine",
             description="Comic and graphic novel metadata.",
@@ -397,6 +516,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="gcd",
+            media_tags=("reading",),
             user_scope=True,
             validator=_validate_gcd,
             label="Grand Comics Database",
@@ -412,6 +532,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="trakt",
+            media_tags=("screen",),
             group=GROUP_ACCOUNTS,
             user_scope=True,
             validator=_validate_trakt,
@@ -431,6 +552,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="anilist",
+            media_tags=("anime_manga",),
             group=GROUP_ACCOUNTS,
             user_scope=True,
             label="AniList",
@@ -443,10 +565,11 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="simkl",
+            media_tags=("screen", "anime_manga"),
             group=GROUP_ACCOUNTS,
             user_scope=True,
             label="SIMKL",
-            description="SIMKL account import.",
+            description="SIMKL account import. Needs a “Server apps & services” app's Client ID and secret.",
             docs_url="https://simkl.com/settings/developer/",
             fields=(
                 CredentialField("client_id", "Client ID", "SIMKL_ID"),
@@ -460,8 +583,9 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
 # Threading a user argument through every provider function would mean touching
 # ~150 signatures across TMDB, TVDB and friends. Instead the request-serving
 # user is published here, mirroring services.interactive_request_scope(). A
-# Celery task runs no middleware, so this stays unset there and background work
-# keeps using the instance key.
+# Celery task runs no middleware, so a task acting for one user (an import, a
+# webhook, a sync) must open this scope itself; work that does not keeps using
+# the instance key.
 _current_user: contextvars.ContextVar = contextvars.ContextVar(
     "_provider_credential_user",
     default=None,
@@ -689,6 +813,31 @@ def get(slug, field_name, user=None):
     )
 
 
+def get_together(slug, field_names, user=None):
+    """Return several fields from the first tier that supplies all of them.
+
+    For credentials that only work as a set, like an OAuth client ID and
+    secret: resolving each field on its own can pair values from two
+    different apps. Returns empty strings when no single tier has them all.
+    """
+    user = _resolve_user(user)
+    spec = REGISTRY.get(slug)
+    fields = [get_field(slug, name) for name in field_names]
+    if spec is None or None in fields:
+        return tuple("" for _ in field_names)
+    tiers = (
+        lambda field: user_value(spec, field, user),
+        env_value,
+        lambda field: _instance_map().get(slug, {}).get(field.name, ""),
+        default_value,
+    )
+    for tier in tiers:
+        values = tuple(tier(field) for field in fields)
+        if all(values):
+            return values
+    return tuple("" for _ in field_names)
+
+
 def cache_suffix(slug, *field_names, user=None):
     """Return a stable digest of the credentials a cached token was minted from.
 
@@ -718,6 +867,23 @@ def instance_value(slug, field_name):
     return _instance_map().get(slug, {}).get(field_name, "")
 
 
+def _note_game_artwork_key(slug, user=None):
+    """Let games that lack artwork look again once a game artwork key is saved.
+
+    A game page that found nothing waits hours before asking again, so without
+    this a freshly added key would seem to do nothing.
+    """
+    from app import game_artwork
+
+    if slug not in game_artwork.CREDENTIAL_PROVIDERS:
+        return
+    try:
+        game_artwork.keys_saved(user)
+    except Exception:
+        # The key is already saved; a missed note only delays the new lookup.
+        logger.warning("Could not note game artwork key for %s", slug, exc_info=True)
+
+
 def set_instance(slug, values, actor=None):
     """Store instance credentials for a provider.
 
@@ -745,6 +911,7 @@ def set_instance(slug, values, actor=None):
                 field=field_name,
             ).delete()
     invalidate_cache()
+    _note_game_artwork_key(slug)
 
 
 def clear_instance(slug):
@@ -797,6 +964,7 @@ def set_user(slug, user, values):
                 field=field_name,
             ).delete()
     invalidate_user_cache(user)
+    _note_game_artwork_key(slug, user)
 
 
 def clear_user(slug, user):

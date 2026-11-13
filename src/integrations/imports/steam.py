@@ -8,6 +8,7 @@ import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import credentials, services
 from app.providers.igdb import ExternalGameSource, describe_credentials, external_game
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -68,7 +69,9 @@ class SteamImporter:
             logger.info("No games found for Steam user %s", self.steam_id)
             return {}, ""
 
-        for game_data in owned_games:
+        total = len(owned_games)
+        for index, game_data in enumerate(owned_games, start=1):
+            import_progress.report(index, total, "Steam")
             self._process_game(game_data)
 
         helpers.bulk_create_media(self.bulk_media, self.user)
@@ -78,6 +81,8 @@ class SteamImporter:
             app.models.Game.objects.bulk_update(
                 self.to_update, fields=["progress", "status"]
             )
+            # bulk_update sends no save signal; publish these rows' days.
+            helpers.note_bulk_rows(self.to_update)
             logger.info(
                 "Updated %d existing games for user %s",
                 len(self.to_update),

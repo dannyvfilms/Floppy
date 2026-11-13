@@ -29,7 +29,8 @@ JELLYFIN_EVENT_MAP = {
     "Pause": "media.pause",
     "Stop": "media.stop",
 }
-JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted"}
+# ItemRemoved is the unofficial Webhooks plugin's name for ItemDeleted.
+JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted", "ItemRemoved"}
 JELLYFIN_COLLECTION_SOURCE = "jellyfin"
 JELLYFIN_RATING_EVENT = "UserDataSaved"
 JELLYFIN_RATING_MAX = 10
@@ -142,11 +143,12 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             playback_media_type,
         )
 
-        position_seconds, _ = self._get_playback_progress(payload)
+        position_seconds, duration_seconds = self._get_playback_progress(payload)
         if not self._should_record(
             "mark" if self._is_manual_mark(payload) else JELLYFIN_EVENT_MAP[event_type],
             played=self._is_played(payload),
             position_seconds=position_seconds,
+            duration_seconds=duration_seconds,
         ):
             return
 
@@ -946,6 +948,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             duration_seconds=duration_seconds,
             store_progress=event_type != "media.stop",
             provider_completed=provider_completed,
+            event_ts=getattr(self, "_event_ts", None),
         )
         return {
             "event_type": event_type,
@@ -953,4 +956,5 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             "view_offset_seconds": offset_seconds,
             "duration_seconds": duration_seconds,
             "provider_completed": provider_completed,
+            "event_at": getattr(self, "_event_ts", None),
         }

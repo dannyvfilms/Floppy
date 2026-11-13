@@ -28,16 +28,32 @@ _SECRET_NAME_KEYWORDS = (
     "api_key",
     "api-key",
     "sessionid",
+    "session_id",
 )
 # Match the keyword alone and let the name prefix stay where it is. The rules
 # below require a "=" or a ":" directly after the keyword, so the keyword must
 # be the last part of the name: "token_count=512", "status_code=200" and
 # "tokenizer_config=default" stay readable.
-_SECRET_NAME_PATTERN = "|".join(
-    re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS
-)
+_SECRET_NAME_PATTERN = "|".join(re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS)
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        # These routes authenticate with a bearer value in the path. Django's
+        # request/error logs include that path even when no query is logged.
+        re.compile(
+            r"(?i)(/(?:webhook/(?:jellyfin|plex|emby|jellyseerr|kodi)|"
+            r"stremio-addon|import/(?:plex|audiobookshelf)/cover|"
+            r"calendar/download|rss|image-cache)/)"
+            r"[^/\s?\#\"'<>]+",
+        ),
+        r"\1[REDACTED]",
+    ),
+    (
+        # OAuth callbacks logged by Django's development server carry short
+        # lived authorization credentials in their query strings.
+        re.compile(r"(?i)([?&](?:code|state|device_code|user_code)=)[^&\s\"'<>]+"),
+        r"\1[REDACTED]",
+    ),
     (
         re.compile(r"(?i)\bBearer\s+[A-Za-z0-9\-_.~+/]+=*"),
         "Bearer [REDACTED]",
@@ -296,3 +312,22 @@ def stable_hmac(value: str, *, namespace: str, length: int | None = None) -> str
     if length is not None:
         return digest[:length]
     return digest
+
+
+# Routine chatter: Celery's per-task lines and the scheduler's wake-ups, plus
+# any line about the health/ping endpoints. Hidden from the console; the log
+# file always keeps them (#1831).
+_NOISY_LOGGER_PREFIXES = ("celery.app.trace", "celery.worker", "celery.beat")
+_NOISY_PATH_PATTERN = re.compile(r"/(?:health|ping)(?:/|\b)")
+
+
+class ConsoleNoiseFilter(logging.Filter):
+    """Drop routine below-WARNING records from the console handler only."""
+
+    def filter(self, record):
+        """Keep warnings and errors, and anything not routine."""
+        if record.levelno >= logging.WARNING:
+            return True
+        if record.name.startswith(_NOISY_LOGGER_PREFIXES):
+            return False
+        return not _NOISY_PATH_PATTERN.search(record.getMessage())

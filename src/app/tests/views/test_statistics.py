@@ -43,6 +43,7 @@ from app.models import (
     Status,
     Studio,
 )
+from app.templatetags.app_tags import media_url
 from users.templatetags.user_tags import user_date_format
 
 
@@ -223,6 +224,82 @@ class StatisticsViewTests(TestCase):
         self.assertIn("status_pie_chart_data", response.context)
         self.assertIn("daily_hours_by_media_type", response.context)
 
+    def test_statistics_view_builds_shared_react_props(self):
+        """The web adapters receive server-shaped summary and chart models."""
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        props = response.context["statistics_react_props"]
+        self.assertIn("all", props["summary"])
+        self.assertIn("highlights", props["summary"])
+        for name in ("overview", "heatmap", "hours", "status", "breakdown"):
+            group = props["charts"][name]
+            self.assertEqual(group["group"], name)
+            self.assertIn("all", group)
+            self.assertIn("types", group)
+
+    def test_statistics_react_props_include_play_highlights(self):
+        """Highlights and summary values are built from tracked play data."""
+        played_on = timezone.localdate() - timedelta(days=2)
+        self._create_movie_play("tt-react-props", "React Props Movie", played_on, 120)
+
+        response = self.client.get(
+            reverse("statistics")
+            + f"?start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        props = response.context["statistics_react_props"]
+        self.assertGreaterEqual(props["summary"]["all"]["total"], 1)
+        titles = [card["title"] for card in props["summary"]["highlights"]["all"]]
+        self.assertIn("React Props Movie", titles)
+
+    def test_statistics_react_props_include_comparison_and_media_overviews(self):
+        """The shared sections receive server comparison rows and per-media models."""
+        played_on = timezone.localdate() - timedelta(days=1)
+        self._create_movie_play("tt-react-sections", "React Sections Movie", played_on, 95)
+
+        response = self.client.get(
+            reverse("statistics")
+            + f"?start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+            + "&compare=previous_period"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sections = response.context["statistics_react_props"]["sections"]
+        self.assertEqual(sections["comparison"]["selected"], "previous_period")
+        self.assertIn("previous_period", [
+            option["value"] for option in sections["comparison"]["options"]
+        ])
+        self.assertTrue(any(
+            row["type"] == "movie" and row["currentLabel"]
+            for row in sections["comparison"]["rows"]
+        ))
+        movie = sections["overviews"]["movie"]
+        self.assertEqual(movie["typeLabel"], "Movies")
+        self.assertEqual(movie["panels"][0]["title"], "Most Played")
+        self.assertEqual(movie["panels"][0]["items"][0]["title"], "React Sections Movie")
+
+    def test_statistics_json_model_matches_the_shared_props(self):
+        """The native/browser transport can read the same server-shaped model."""
+        played_on = timezone.localdate() - timedelta(days=1)
+        self._create_movie_play("tt-react-json", "React JSON Movie", played_on, 30)
+
+        response = self.client.get(
+            reverse("statistics") + "?format=json"
+            + f"&start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        model = response.json()["model"]
+        self.assertIn("all", model["summary"])
+        self.assertIn("overview", model["charts"])
+        self.assertIn("comparison", model["sections"])
+        self.assertEqual(
+            model["sections"]["overviews"]["movie"]["panels"][0]["items"][0]["title"],
+            "React JSON Movie",
+        )
+
     def test_statistics_view_custom_date_range(self):
         """Test the statistics view with custom date range."""
         start_date = "2023-01-01"
@@ -351,7 +428,7 @@ class StatisticsViewTests(TestCase):
                     "album_slug": "stats-album",
                 },
             ),
-            count=2,
+            count=4,
         )
 
     def test_statistics_view_invalid_date_format(self):
@@ -584,7 +661,9 @@ class StatisticsViewTests(TestCase):
         # On the 1st the month-to-date range is one day and is correctly
         # labelled "Today", so pin "today" to the 15th of last month.
         real_localdate = timezone.localdate
-        today = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=15)
+        today = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(
+            day=15
+        )
         month_start = today.replace(day=1)
         last_year_today = today - relativedelta(years=1)
 
@@ -2191,6 +2270,74 @@ class StatisticsViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.statistics_compare_mode, "previous_period")
 
+    def test_statistics_view_uses_saved_media_type_preference(self):
+        """The statistics filter starts from the user's last saved selection."""
+        self.user.statistics_default_media_types = "game,movie"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_media_types"], "movie,game")
+        self.assertContains(response, "initialSelectedMediaTypes: 'movie,game'")
+
+    def test_statistics_view_ignores_invalid_saved_media_types(self):
+        """Unknown or non-statistics types in the preference are dropped."""
+        self.user.statistics_default_media_types = "movie,bogus,season"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.context["selected_media_types"], "movie")
+
+    def test_update_statistics_media_types_updates_preference(self):
+        """Statistics media-type autosave should persist the canonical order."""
+        self.user.statistics_default_media_types = ""
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": "game,movie"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["changed"])
+        self.assertEqual(payload["media_types"], "movie,game")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "movie,game")
+
+    def test_update_statistics_media_types_can_clear_the_preference(self):
+        """Selecting All media should clear the saved media-type filter."""
+        self.user.statistics_default_media_types = "movie,game"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": ""},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["media_types"], "")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "")
+
+    def test_update_statistics_media_types_rejects_invalid_value(self):
+        """Statistics media-type autosave should reject values the page cannot show."""
+        self.user.statistics_default_media_types = "movie"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": "movie,bogus"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "movie")
+
     def test_statistics_view_cached_render_avoids_n_plus_one_item_queries(self):
         """Warmed statistics cache should not fetch Item rows one-by-one during render."""
         cache.clear()
@@ -2265,7 +2412,7 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(item_relation_queries, [])
 
     def test_statistics_view_lazyloads_media_list_images(self):
-        """Statistics list cards should lazyload their thumbnails instead of eager-loading them."""
+        """Statistics thumbnails expose their URL while staying natively lazy."""
         cache.clear()
         self.client.login(**self.credentials)
         played_at = timezone.make_aware(
@@ -2340,30 +2487,16 @@ class StatisticsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         response_body = response.content.decode()
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-album\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-album\.jpg"'
-        )
+        for media_kind in ("movie", "game", "artist", "album"):
+            with self.subTest(media_kind=media_kind):
+                self.assertRegex(
+                    response_body,
+                    rf'<img[^>]+loading="lazy"[^>]+src="http://example\.com/lazy-{media_kind}\.jpg"',
+                )
+                self.assertNotIn(
+                    f'data-src="http://example.com/lazy-{media_kind}.jpg"',
+                    response_body,
+                )
 
     @patch("app.tasks.enqueue_credits_backfill_items")
     def test_statistics_top_talent_uses_episode_credits_with_show_fallback(
@@ -3284,6 +3417,94 @@ class StatisticsViewTests(TestCase):
             "Cached Genre Anime Show",
         )
 
+    def test_grouped_anime_season_stays_out_of_tv_top_rated(self):
+        """A grouped anime season must not roll into the TV activity card."""
+        cache.clear()
+        watched_at = timezone.now()
+        show_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show",
+            image="http://example.com/grouped-top-rated.jpg",
+        )
+        tv = TV.objects.create(
+            item=show_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            score=8,
+        )
+        season_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show Season 1",
+            image="http://example.com/grouped-top-rated-s1.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.COMPLETED.value,
+            score=8,
+        )
+        episode_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show Episode 1",
+            image="http://example.com/grouped-top-rated-s1e1.jpg",
+            season_number=1,
+            episode_number=1,
+            runtime_minutes=24,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=watched_at,
+        )
+
+        statistics_cache.invalidate_statistics_cache(self.user.id)
+        stats_data = statistics_cache.refresh_statistics_cache(
+            self.user.id, "This Year"
+        )
+
+        self.assertNotIn("season", stats_data["media_count"])
+        self.assertEqual(stats_data["media_count"]["anime"], 1)
+
+        tv_titles = [
+            media.item.title for media in stats_data["top_rated_by_type"].get("tv", [])
+        ]
+        self.assertNotIn("Grouped Top Rated Show", tv_titles)
+        self.assertNotIn("Grouped Top Rated Show Season 1", tv_titles)
+
+        anime_titles = [
+            media.item.title
+            for media in stats_data["top_rated_by_type"].get("anime", [])
+        ]
+        self.assertIn("Grouped Top Rated Show", anime_titles)
+        grouped_media = next(
+            media
+            for media in stats_data["top_rated_by_type"]["anime"]
+            if media.item.title == "Grouped Top Rated Show"
+        )
+        expected_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.ANIME.value,
+                "media_id": "grouped-top-rated-show",
+                "title": "grouped-top-rated-show",
+            },
+        )
+        self.assertEqual(media_url(grouped_media.item), expected_url)
+        top_played = stats_data["top_played"]["anime"][0]["media"]
+        self.assertEqual(media_url(top_played.item), expected_url)
+
 
 class StatisticsTalentFragmentTests(TestCase):
     """The talent section is served as a cached HTMX fragment."""
@@ -3300,6 +3521,20 @@ class StatisticsTalentFragmentTests(TestCase):
         self.assertContains(response, 'id="talent-section"')
         self.assertContains(response, reverse("statistics_talent_fragment"))
         self.assertNotIn("top_talent", response.context)
+
+    def test_talent_fragment_exposes_shared_section_props_as_json(self):
+        """The shared talent sections read one server-shaped JSON model."""
+        response = self.client.get(
+            reverse("statistics_talent_fragment")
+            + "?start-date=all&end-date=all&format=json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("roleLeaders", payload["talent"])
+        self.assertIn("studioFootprint", payload["talent"])
+        self.assertIn("tasteSignals", payload["talent"])
+        self.assertIn("selected", payload["talent"]["roleLeaders"])
 
     def test_fragment_context_is_cached_per_user(self):
         """A second fragment request must not recompute the featured player."""

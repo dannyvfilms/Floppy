@@ -232,6 +232,14 @@ if BASE_URL:
 
 USE_X_FORWARDED = config("USE_X_FORWARDED", default=False, cast=bool)
 
+# External artwork and links must not receive private page paths or query strings.
+# Keep same-origin referrers for Django's HTTPS CSRF fallback when Origin is absent.
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Opt in for HTTPS deployments; HTTP LAN installations must remain usable.
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+
 SECURE_PROXY_SSL_HEADER = (
     ("HTTP_X_FORWARDED_PROTO", "https")
     if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool))
@@ -310,6 +318,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",
         "api.authentication.APIKeyAuthentication",
+        # The native client signs in through allauth and calls the API with
+        # that session, like the web islands do. HasScope already treats a
+        # session (request.auth is None) as full access, and DRF still enforces
+        # CSRF on unsafe methods. Keep this last so token clients are unchanged.
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.
@@ -337,15 +350,33 @@ if ENABLE_DEBUG_TOOLBAR:
 # Performance instrumentation: thresholded request and task summaries.
 PERF_LOG_ENABLED = config("PERF_LOG_ENABLED", default=True, cast=bool)
 PERF_LOG_SLOW_REQUEST_MS = config("PERF_LOG_SLOW_REQUEST_MS", default=500, cast=int)
+# A request still running after this long is logged once as stalled_request
+# with its stack, before it finishes. 0 disables the watchdog.
+PERF_STALL_WARN_MS = config("PERF_STALL_WARN_MS", default=10000, cast=int)
+PERF_STALL_MAX_REPORTS_PER_MINUTE = config(
+    "PERF_STALL_MAX_REPORTS_PER_MINUTE", default=10, cast=int
+)
 PERF_LOG_SLOW_TASK_MS = config("PERF_LOG_SLOW_TASK_MS", default=5000, cast=int)
+# A transaction open longer than this is logged with its request/task and
+# duration. SQLite has one writer, so a long transaction is the usual reason
+# every other writer waits out busy_timeout (#1609).
+PERF_LOG_SLOW_TRANSACTION_MS = config(
+    "PERF_LOG_SLOW_TRANSACTION_MS",
+    default=1000,
+    cast=int,
+)
 PERF_LOG_QUERY_COUNT_THRESHOLD = config(
     "PERF_LOG_QUERY_COUNT_THRESHOLD",
     default=75,
     cast=int,
 )
 TRAKT_IMPORT_CHUNK_ROWS = config("TRAKT_IMPORT_CHUNK_ROWS", default=100, cast=int)
-TRAKT_IMPORT_CHUNK_TARGET_MS = config("TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int)
-TRAKT_IMPORT_STAGING_BYTES = config("TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int)
+TRAKT_IMPORT_CHUNK_TARGET_MS = config(
+    "TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int
+)
+TRAKT_IMPORT_STAGING_BYTES = config(
+    "TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int
+)
 
 # High-water memory attribution (app/memory_envelope.py). Separate from the
 # slow-request log above: that one answers "what was slow", this one answers
@@ -419,6 +450,7 @@ MIDDLEWARE = [
     "app.middleware.UserLanguageMiddleware",
     "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "app.middleware.DemoAccountGuardMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     # Answer htmx requests with HX-Redirect instead of a followable 302 to the
@@ -535,13 +567,34 @@ else:
     )
     SQLITE_JOURNAL_MODE = config("SQLITE_JOURNAL_MODE", default="WAL")
     SQLITE_SYNCHRONOUS = config("SQLITE_SYNCHRONOUS", default="NORMAL")
+    # Read-side tuning. SQLite's own defaults (a 2 MiB page cache per connection,
+    # no memory map, spill files for sorts) make every big library query re-read
+    # the file from disk; on slow storage that is the cold-load cost. All three
+    # are upper bounds, not allocations: pages are cached only as they are read.
+    SQLITE_CACHE_SIZE_MIB = config(
+        "SQLITE_CACHE_SIZE_MIB",
+        default=by_tier(8, 24, 64),
+        cast=int,
+    )
+    SQLITE_MMAP_SIZE_MIB = config(
+        "SQLITE_MMAP_SIZE_MIB",
+        default=by_tier(0, 256, 1024),
+        cast=int,
+    )
+    SQLITE_TEMP_STORE = config("SQLITE_TEMP_STORE", default="MEMORY")
 
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.sqlite3",
+            "ENGINE": "config.sqlite_backend",
             "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
+                # Take the write lock when a transaction starts. A plain BEGIN
+                # defers it to the first write, and a transaction that read
+                # first and then writes after another process committed fails
+                # at once with "database is locked", ignoring the timeout
+                # above. IMMEDIATE queues behind the other writer instead.
+                "transaction_mode": "IMMEDIATE",
             },
             # Reuse a thread's connection across requests instead of opening
             # one (plus the PRAGMAs below) for every request. Idle autocommit
@@ -572,6 +625,10 @@ else:
             cursor.execute(
                 f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}",
             )
+            cursor.execute(f"PRAGMA cache_size={-1024 * int(SQLITE_CACHE_SIZE_MIB)}")
+            cursor.execute(f"PRAGMA mmap_size={(1 << 20) * int(SQLITE_MMAP_SIZE_MIB)}")
+            if SQLITE_TEMP_STORE.upper() in {"DEFAULT", "FILE", "MEMORY"}:
+                cursor.execute(f"PRAGMA temp_store={SQLITE_TEMP_STORE.upper()}")
             if actual_journal_mode.lower() != SQLITE_JOURNAL_MODE.lower():
                 # A connection stuck on a different journal mode than its
                 # siblings (e.g. WAL requested but filesystem doesn't support
@@ -625,6 +682,7 @@ CACHES = {
         "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "COMPRESSOR": "app.cache_safety.SizedZlibCompressor",
             "REDIS_CLIENT_CLASS": "app.cache_safety.CacheRedis",
             "CONNECTION_POOL_CLASS": "app.cache_safety.CacheConnectionPool",
             # A cache is allowed to be unavailable. Without this, a slow or full
@@ -714,11 +772,17 @@ LOG_DIR = config("LOG_DIR", default=str(FLOPPY_DATA_DIR / "logs"))
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
 
+# With DEBUG off the console hides routine chatter (see ConsoleNoiseFilter). The
+# log file always keeps the full record at INFO (DEBUG when DEBUG is on), so the
+# download in Settings > Advanced is complete without asking anyone to change a
+# setting before reporting a problem (#1831).
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
         "cache_cooldown": {"()": "app.cache_safety.CacheCooldownLogFilter"},
+        "console_noise": {"()": "app.log_safety.ConsoleNoiseFilter"},
     },
     "loggers": {
         "django_redis.cache": {
@@ -747,6 +811,7 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
+            "filters": [] if DEBUG else ["console_noise"],
         },
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
@@ -770,6 +835,8 @@ LANGUAGES = [
     ("de", "Deutsch"),
     ("es", "Español"),
     ("fr", "Français"),
+    ("ru", "Русский"),
+    ("it", "Italiano"),
 ]
 
 LOCALE_PATHS = [BASE_DIR / "locale"]
@@ -1116,6 +1183,25 @@ BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 # exports above, which cannot replace a physically damaged db.sqlite3. Rides
 # the same BACKUP_DIR volume mount installs already have.
 DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+# Daily PRAGMA optimize so SQLite always has planner statistics (SQLite only).
+# analysis_limit bounds each ANALYZE to a row sample, keeping the first run on a
+# multi-GB database short.
+DB_OPTIMIZE_ENABLED = config("DB_OPTIMIZE_ENABLED", default=True, cast=bool)
+# Sequential read of the SQLite file at worker start and hourly, so cold page
+# loads hit the OS cache (app/tasks_db_warm.py). The host shares that cache with
+# everything else it runs, so a database on a slow disk falls out of it within
+# an hour or two of other activity. Budget is further capped at 25% of free
+# memory; the standard tier covers the whole file of a large library.
+DB_WARM_ENABLED = config("DB_WARM_ENABLED", default=True, cast=bool)
+DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 8192), cast=int)
+DB_WARM_PAUSE_MS = config("DB_WARM_PAUSE_MS", default=20, cast=int)
+# Below this sequential read speed the warm logs a "slow_disk" warning.
+DB_SLOW_DISK_MIB_PER_SECOND = config("DB_SLOW_DISK_MIB_PER_SECOND", default=60, cast=int)
+DB_OPTIMIZE_ANALYSIS_LIMIT = config(
+    "DB_OPTIMIZE_ANALYSIS_LIMIT",
+    default=1000,
+    cast=int,
+)
 # How long an idempotency receipt stays replayable. A client that retries after
 # this window gets a fresh operation, not the prior result, so keep it longer
 # than the longest client backoff. Measure real retry intervals before lowering.
@@ -1246,6 +1332,29 @@ MAL_API = config(
 )
 MAL_NSFW = config("MAL_NSFW", default=False, cast=bool)
 
+# Only used to sync watch status back to MyAnimeList. Unlike MAL_API (search),
+# OAuth requires a redirect URI registered to a specific app, so this can't
+# ship a shared default the way IGDB_SECRET does - each user or instance
+# needs their own MyAnimeList API application (see integrations.mal_sync).
+MAL_API_SECRET = config(
+    "MAL_API_SECRET",
+    default=secret(
+        "MAL_API_SECRET_FILE",
+        "",
+    ),
+)
+
+# The application key a WeTrakr account is connected with. WeTrakr issues these
+# on request, so each user or instance brings their own (Settings > Metadata);
+# nothing ships with the image.
+WETRAKR_CLIENT_ID = config(
+    "WETRAKR_CLIENT_ID",
+    default=secret(
+        "WETRAKR_CLIENT_ID_FILE",
+        "",
+    ),
+)
+
 MU_NSFW = config("MU_NSFW", default=False, cast=bool)
 
 MANGABAKA_NSFW = config("MANGABAKA_NSFW", default=False, cast=bool)
@@ -1303,6 +1412,17 @@ GOOGLE_BOOKS_API_KEY = config(
 OPENCRITIC_API_KEY = config(
     "OPENCRITIC_API_KEY",
     default=secret("OPENCRITIC_API_KEY_FILE", ""),
+)
+
+# Podcast Index (podcastindex.org) is free but asks every app for its own key
+# and secret, so there is no shared default.
+PODCASTINDEX_API_KEY = config(
+    "PODCASTINDEX_API_KEY",
+    default=secret("PODCASTINDEX_API_KEY_FILE", ""),
+)
+PODCASTINDEX_API_SECRET = config(
+    "PODCASTINDEX_API_SECRET",
+    default=secret("PODCASTINDEX_API_SECRET_FILE", ""),
 )
 
 COMICVINE_API = config(
@@ -1550,16 +1670,20 @@ if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
     )
 else:
     CELERY_IMPORTS = (
+        "app.tasks_game_groups",
         "integrations.tasks._change_log",
         "integrations.tasks._jellyfin_pull",
         "integrations.tasks._koito",
         "integrations.tasks._lastfm",
+        "integrations.tasks._mal_sync",
         "integrations.tasks._media_imports",
         "integrations.tasks._plex_collection",
         "integrations.tasks._plex_sections",
         "integrations.tasks._receipts",
+        "integrations.tasks._ratings",
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
+        "integrations.tasks._wetrakr_export",
     )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
@@ -1667,6 +1791,16 @@ STATISTICS_SYNC_HEAVY_SETTLE_SECONDS = config(
 STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS = config(
     "STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS", default=600, cast=int
 )
+# A credits backfill finishes a batch roughly every minute, and marking every
+# batch made the Statistics sync run back to back for the whole backfill -
+# competing with the credits writes for SQLite's single writer and the CPU
+# (#1706). Credits changes are coalesced to this interval, with one trailing
+# mark so the last credits written are still published. Kept at the heavy-range
+# max delay: a shorter interval would make every mark settle the heavy ranges
+# sooner and rebuild them more often than today.
+STATISTICS_CREDITS_MARK_SECONDS = config(
+    "STATISTICS_CREDITS_MARK_SECONDS", default=600, cast=int
+)
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=None) or REDIS_URL
@@ -1675,20 +1809,22 @@ CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-serializer
-CELERY_TASK_SERIALIZER = "pickle"
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-accept_content
-CELERY_ACCEPT_CONTENT = [
-    "application/json",
-    "application/x-python-serialize",
-    "application/x-pickle",
-]
+# Old pickle queues must be drained before upgrading; see docs/security-hardening.md.
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_ROUTES = {
     "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Cleanup task results": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair Celery broker bindings": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Cleanup image cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Purge expired Discover caches": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Write database snapshot": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Optimize database planner statistics": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
     "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure watch provider backfill reconcile": {
@@ -1700,12 +1836,20 @@ CELERY_TASK_ROUTES = {
     "Ensure podcast website backfill reconcile": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND,
     },
+    "Ensure watch state repair": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh IMDB game credits from datasets": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # A user is watching a spinner for this. It makes many provider calls, so
+    # it stays off the single-slot interactive worker, but it must not queue
+    # behind metadata backfills on the background worker.
+    "Preview sync to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
+    # A per-item push is one quick API call that follows a watch or an edit.
+    # At default priority it starved behind back-to-back statistics syncs.
+    "Sync status to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1732,22 +1876,29 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
-    # Budget-bounded, and yields to webhooks. See
-    # docs/architecture/statistics-sync.md.
+    # Budget-bounded bulk derived work: ordinary syncs stay off the interactive
+    # lane so webhooks and manual refreshes never wait behind a range aggregate.
+    # The task itself overrides the queue to interactive for urgent requests.
+    # See docs/architecture/statistics-sync.md.
     "app.tasks.statistics_sync_task": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # The trailing half of the credits Statistics debounce: one state update
+    # and a sync enqueue, so a delayed mark never waits behind background work.
+    "app.tasks.mark_credits_statistics_refresh": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
-    # Rebuilds a talent section the viewer already sees a stale copy of; same
-    # priority as the sync so webhook scrobbles still run first.
+    # Rebuilds a talent section the viewer already sees a stale copy of. It is a
+    # full talent scan, so it belongs with the other bulk derived work.
     "Refresh statistics talent fragment": {
-        "queue": "interactive",
+        "queue": "celery",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
-    # Cheap (one query, then enqueues). On the interactive worker so a long
-    # import on the background worker cannot delay recovery of lost syncs.
+    # Periodic recovery is not awaited by a page. Keep its sweeps off the
+    # interactive worker; viewer-requested syncs select that lane separately.
     "Reconcile statistics sync": {
-        "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
     # History cache rebuilds now bound their inline work (see
@@ -1766,6 +1917,10 @@ CELERY_TASK_ROUTES = {
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
     "Process Stremio playback webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    "Process Stremio tracker event": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
@@ -1844,6 +1999,16 @@ WARMUP_USER_LIMIT = config(
     default=by_tier(10, 20, 50),
     cast=int,
 )
+# History day payloads built ahead of a visit: the days of the last
+# HISTORY_COVERAGE_WINDOW_DAYS (and at least one page), in the user's own game
+# logging style. Older days and the other style are built when a page asks.
+# 0 warms every day; True below also warms the style the user does not use.
+HISTORY_COVERAGE_WINDOW_DAYS = config(
+    "HISTORY_COVERAGE_WINDOW_DAYS", default=62, cast=int
+)
+HISTORY_COVERAGE_BOTH_STYLES = config(
+    "HISTORY_COVERAGE_BOTH_STYLES", default=False, cast=bool
+)
 METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
 # The nightly calendar reload queues a metadata backfill rather than running one
 # inline at up to 5000 items, which used to hold a worker while filling the cache
@@ -1912,6 +2077,18 @@ CELERY_BEAT_SCHEDULE = {
     "reconcile_statistics_sync": {
         "task": "Reconcile statistics sync",
         "schedule": 60,
+        # DatabaseScheduler owns this safety-net lifetime: replace any old
+        # absolute expiry with a rolling lifetime. The next fresh tick rechecks
+        # durable state, so stale ticks need not replay database work.
+        "expires": None,
+        "options": {"expire_seconds": 60},
+    },
+    # Outbound deliveries (watched state, ratings) retry through their own
+    # next_attempt_at and recover from a lost broker message only if something
+    # sweeps them. Without this entry a transient failure was never retried.
+    "sweep_watched_state_deliveries": {
+        "task": "Sweep pending watched state deliveries",
+        "schedule": 60,
     },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
@@ -1931,6 +2108,20 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_image_cache": {
         "task": "Cleanup image cache",
         "schedule": crontab(hour=4, minute=0),
+    },
+    "purge_expired_discover_caches": {
+        "task": "Purge expired Discover caches",
+        "schedule": crontab(hour=4, minute=15),
+    },
+    # Interval, not crontab: a never-run interval entry is due as soon as beat
+    # starts, so a database with no statistics is fixed on the first boot.
+    "optimize_database_statistics": {
+        "task": "Optimize database planner statistics",
+        "schedule": 60 * 60 * 24,
+    },
+    "warm_database_page_cache": {
+        "task": "Warm database page cache",
+        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
@@ -2013,6 +2204,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Ensure podcast website backfill reconcile",
         "schedule": RECONCILE_INTERVAL_SECONDS,
     },
+    # One-shot like the podcast sweep: the startup hook starts it, and this
+    # resumes a library too large to finish in one run (app/tasks_watch_state.py).
+    "ensure_watch_state_repair": {
+        "task": "Ensure watch state repair",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+    },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
         "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),
@@ -2025,14 +2222,13 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Refresh Discover Profiles",
         "schedule": crontab(hour=4, minute=0),  # every day at 4 AM
     },
-    "migrate_tv_shows_to_preferred_provider": {
-        "task": "Migrate TV shows to preferred metadata provider",
-        "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
-        "kwargs": {"batch_size": _scaled(200)},
-    },
     "sync_imdb_ratings": {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
+    },
+    "backfill_youtube_game_tags": {
+        "task": "Backfill YouTube game tags",
+        "schedule": 60 * 30,  # 20 videos per run keeps requests to YouTube slow
     },
     "sync_mal_ratings": {
         "task": "Sync MAL ratings from API",
@@ -2112,6 +2308,16 @@ SOCIALACCOUNT_PROVIDERS = config(
 SOCIALACCOUNT_ONLY = config("SOCIALACCOUNT_ONLY", default=False, cast=bool)
 if SOCIALACCOUNT_ONLY:
     ACCOUNT_EMAIL_VERIFICATION = "none"
+
+# The built-in Floppy app signs social and OIDC accounts in through the OAuth
+# device flow under a fixed client id. When this is on, the person is told on
+# the approval page that the app gets full access, and its token may then manage
+# the account except for credential disclosure/issuance (including URL secrets,
+# OAuth approval, password/authenticator/recovery and admin credential changes),
+# which require a session (password sign-in). Off: the app gets a scoped token like
+# any other application, and tokens already issued lose full access at once.
+# See integrations.oauth_scope_info.has_full_account_access.
+FLOPPY_APP_FULL_ACCESS = config("FLOPPY_APP_FULL_ACCESS", default=True, cast=bool)
 
 REGISTRATION = config("REGISTRATION", default=True, cast=bool)
 if not REGISTRATION:

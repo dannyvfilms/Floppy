@@ -1,3 +1,4 @@
+(() => {
 // Mirrors app/config.py's MEDIA_TYPE_CONFIG stats_color + svg_icon fields so
 // the Average Rating card's icons match the rest of the app without a round
 // trip to the server for markup that's identical across every user.
@@ -43,6 +44,9 @@ const MEDIA_TYPE_VISUALS = {
     icon: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/>',
   },
 };
+// statistics-charts.js reads this by bare name, so it must stay global
+// even though this file is wrapped in an IIFE.
+window.MEDIA_TYPE_VISUALS = MEDIA_TYPE_VISUALS;
 
 // Icon shapes for the combined "Consumption" card's primary/secondary metrics,
 // rendered via x-html the same way MEDIA_TYPE_VISUALS.icon is above.
@@ -61,8 +65,10 @@ function dateRangePicker(options = {}) {
     initialEndDate = "",
     initialCompareMode = "previous_period",
     initialMediaTypeOptions = [],
+    initialSelectedMediaTypes = "",
     refreshUrl = "",
     compareModeUpdateUrl = "",
+    mediaTypesUpdateUrl = "",
     csrfToken = "",
     ratingScaleMax = 10,
   } = options;
@@ -128,7 +134,11 @@ function dateRangePicker(options = {}) {
       const totalMinutes = s.total_minutes || 0;
       const totalHours = Math.round(totalMinutes / 60);
       const totalDays = Math.floor(totalMinutes / 60 / 24);
-      return { ...s, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
+      // Match the charts: format weekday names for the current UI locale,
+      // even when a warm statistics snapshot stores the English name.
+      const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(s.most_active_day);
+      const weekdayLabel = weekday < 0 ? s.most_active_day : new Date(2024, 0, weekday + 1).toLocaleDateString(document.documentElement.lang || undefined, { weekday: "long" });
+      return { ...s, most_active_day_label: weekdayLabel, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
     },
 
     get currentConsumption() {
@@ -268,9 +278,13 @@ function dateRangePicker(options = {}) {
       this.detectRangeFromDates(initialRangeName);
       this.compareMode = this.normalizeCompareMode(compareParam || initialCompareMode);
 
+      const mediaTypesSource = mediaTypeParam !== null
+        ? mediaTypeParam
+        : initialSelectedMediaTypes;
       this.selectedMediaTypes = this.normalizeMediaTypes(
-        StatsMediaMerge.parseMediaTypeParam(mediaTypeParam, this.mediaTypeValues()),
+        StatsMediaMerge.parseMediaTypeParam(mediaTypesSource, this.mediaTypeValues()),
       );
+      this.mediaTypesSavePromise = Promise.resolve();
 
       const summaryEl = document.getElementById("summary_stats_by_type");
       if (summaryEl) {
@@ -388,6 +402,7 @@ function dateRangePicker(options = {}) {
         url.searchParams.delete("media-type");
       }
       window.history.replaceState({}, "", url.toString());
+      this.saveMediaTypesPreference(this.selectedMediaTypes);
       this.$nextTick(() => {
         this.updateFilteredCharts();
         window.dispatchEvent(new CustomEvent("stats-media-type-changed"));
@@ -667,6 +682,38 @@ function dateRangePicker(options = {}) {
       }
     },
 
+    saveMediaTypesPreference(types) {
+      if (!mediaTypesUpdateUrl) {
+        return;
+      }
+
+      const body = new URLSearchParams();
+      body.set("media_types", StatsMediaMerge.formatMediaTypeParam(types));
+
+      const save = () => fetch(mediaTypesUpdateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+      }).then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || gettext("Failed to save media types"));
+        }
+      });
+
+      // Rapid ticks must reach the server in the order they happened.
+      this.mediaTypesSavePromise = this.mediaTypesSavePromise
+        .catch(() => {})
+        .then(save);
+      this.mediaTypesSavePromise.catch((error) => {
+        console.error("Failed to save statistics media types:", error);
+      });
+    },
+
     formatDisplayDate(dateString) {
       if (!dateString || dateString === "all") {
         return gettext("All time");
@@ -687,8 +734,8 @@ function dateRangePicker(options = {}) {
     },
 
     getDateFormat() {
-      const scriptTag = document.querySelector("script[data-date-format]");
-      const selectedFormat = scriptTag?.dataset.dateFormat;
+      const formatElement = document.querySelector("[data-date-format]");
+      const selectedFormat = formatElement?.dataset.dateFormat;
       const dateFormats = this.getDateFormatValues();
 
       if (
@@ -961,3 +1008,5 @@ if (typeof window !== "undefined") {
   // The separate asset is loaded outside the inline Alpine scope.
   window.dateRangePicker = dateRangePicker;
 }
+
+})();

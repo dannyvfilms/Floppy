@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.db import OperationalError
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -39,6 +40,10 @@ class StatisticsSyncTestCase(TestCase):
 
     def setUp(self):
         cache.clear()
+        # Non-eager tests must not inspect the developer's live broker queues.
+        self.enterContext(
+            patch("app.statistics_sync.higher_priority_task_waiting", return_value=False)
+        )
         self.user = get_user_model().objects.create_user(
             username=f"sync-{self.id()[-40:]}", password="secret123"
         )
@@ -136,6 +141,24 @@ class MarkingTests(StatisticsSyncTestCase):
         self.assertIsNotNone(self.state().full_sweep_requested_at)
         enqueue.assert_called_once()
 
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_inline_refresh_that_hits_a_lock_leaves_durable_work(self, enqueue):
+        before = self.state().generation
+        with (
+            patch.object(
+                statistics_sync,
+                "_claim_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            result = statistics_sync.refresh_range_inline(self.user.id, "Today")
+        self.assertIsNone(result)
+        self.assertGreater(self.state().generation, before)
+        self.assertIsNotNone(self.state().full_sweep_requested_at)
+        enqueue.assert_called_once()
+
     def test_repeated_marks_keep_one_row_per_day_and_rotate_its_token(self):
         self.mark([self.day(3)])
         first = StatisticsDirtyDay.objects.get(user_id=self.user.id, day=self.day(3))
@@ -188,6 +211,21 @@ class BulkImportStatisticsTests(StatisticsSyncTestCase):
             changes["unchanged"] = True
         self.assertEqual(self.state().generation, before)
         self.assertIsNone(self.state().full_sweep_requested_at)
+
+    def test_scoped_import_spends_the_sweep_it_requested_up_front(self):
+        self.full_sync()
+        with statistics_sync.coalesce_import_changes(self.user.id) as changes:
+            self.mark([self.day(3)])
+            changes["scoped"] = True
+        self.assertIsNone(self.state().full_sweep_requested_at)
+        self.assertTrue(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
+    def test_scoped_import_leaves_a_sweep_that_was_already_pending(self):
+        statistics_sync.mark_aggregate(self.user.id, full_sweep=True)
+        pending = self.state().full_sweep_requested_at
+        with statistics_sync.coalesce_import_changes(self.user.id) as changes:
+            changes["scoped"] = True
+        self.assertEqual(self.state().full_sweep_requested_at, pending)
 
     def test_noop_import_cannot_erase_concurrent_tracking(self):
         self.full_sync()
@@ -265,7 +303,8 @@ class BulkImportStatisticsTests(StatisticsSyncTestCase):
     def test_sqlite_defers_other_users_but_postgres_does_not(self):
         other = get_user_model().objects.create_user(username="other-import")
         ImportRun.objects.create(user=other, source="mdblist")
-        self.assertTrue(statistics_sync._bulk_import_active(self.user.id))
+        with patch.object(statistics_sync.connection, "vendor", "sqlite"):
+            self.assertTrue(statistics_sync._bulk_import_active(self.user.id))
         with patch.object(statistics_sync.connection, "vendor", "postgresql"):
             self.assertFalse(statistics_sync._bulk_import_active(self.user.id))
 
@@ -417,6 +456,81 @@ class SyncTests(StatisticsSyncTestCase):
             ).exists()
         )
 
+    def test_a_lock_error_ends_the_sync_quietly_and_leaves_the_work_queued(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_build_days",
+                side_effect=OperationalError("database is locked"),
+            ),
+            patch(SYNC_TASK) as enqueue,
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "locked")
+        self.assertIn("stats_sync_locked", logs.output[0])
+        enqueue.assert_not_called()
+        self.assertIsNone(self.state().lease_expires_at)
+        self.assertEqual(self.state().last_error, "")
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(user=self.user, day=self.day(3)).exists()
+        )
+        self.assertIn(self.user.id, statistics_sync.users_needing_sync())
+
+    def test_a_lock_while_claiming_the_lease_ends_the_sync_quietly(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_claim_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "locked")
+        self.assertIn("stats_sync_locked", logs.output[0])
+        self.assertIsNone(self.state().lease_expires_at)
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(user=self.user, day=self.day(3)).exists()
+        )
+
+    def test_a_lock_while_releasing_the_lease_does_not_fail_the_sync(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_release_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "done")
+        self.assertTrue(any("stats_sync_release_locked" in line for line in logs.output))
+
+    def test_other_database_errors_still_fail_the_sync(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_build_days",
+                side_effect=OperationalError("no such table"),
+            ),
+            self.assertRaises(OperationalError),
+        ):
+            statistics_sync.run_sync(self.user.id)
+
+        self.assertIn("no such table", self.state().last_error)
+
     def test_an_aggregate_only_change_rebuilds_no_old_day(self):
         self.full_sync()
         with self.captureOnCommitCallbacks(execute=False):
@@ -533,6 +647,52 @@ class SyncTests(StatisticsSyncTestCase):
         enqueue.assert_called_once()
 
 
+class SlowHostContinuationTests(StatisticsSyncTestCase):
+    """Days found by the stale-score scan must not be rebuilt from scratch forever."""
+
+    def test_scan_found_days_make_progress_across_continuations(self):
+        self.full_sync()
+        StatisticsSyncState.objects.filter(user_id=self.user.id).update(
+            synced_day=self.day(5)
+        )
+        stale = {self.day(offset) for offset in (3, 4, 5, 6, 7, 8)}
+        built = []
+        from app.statistics_day_builder import build_stats_for_day as real_build
+
+        clock = {"now": 0.0}
+
+        def slow_build(user_id, day, **kwargs):
+            built.append(day)
+            clock["now"] += 4  # each day costs 4 s against a 10 s budget
+            return real_build(user_id, day, **kwargs)
+
+        with (
+            patch(
+                "app.statistics_cache._collect_stale_reading_score_days",
+                # Rebuilding does not always clear the flag (a score the day
+                # payload cannot show), so the scan keeps naming the same days.
+                return_value=stale,
+            ),
+            patch(
+                "app.statistics_day_builder.build_stats_for_day", side_effect=slow_build
+            ),
+            patch(
+                "app.statistics_sync.time.monotonic",
+                side_effect=lambda: clock["now"],
+            ),
+            patch("app.statistics_sync.ensure_sync"),
+        ):
+            statuses = [
+                statistics_sync.run_sync(self.user.id, budget_seconds=10)["status"]
+                for _ in range(6)
+            ]
+
+        self.assertEqual(statuses[0], "continued")
+        self.assertEqual(statuses[-1], "done")
+        stale_built = [day for day in built if day in stale]
+        self.assertEqual(len(stale_built), len(set(stale_built)))
+
+
 class SliceBoundTests(StatisticsSyncTestCase):
     """A sync gives way to webhooks and stops starting ranges it cannot finish."""
 
@@ -582,6 +742,14 @@ class SliceBoundTests(StatisticsSyncTestCase):
                 cache.get(statistics_sync._range_cost_key(self.user.id, range_name))
             )
 
+    def test_a_range_summary_says_how_much_was_day_building(self):
+        with self.assertLogs("app.statistics_sync", level="INFO") as logs:
+            self.full_sync()
+
+        line = next(row for row in logs.output if "stats_range_summary" in row)
+        self.assertIn("missing_days=", line)
+        self.assertIn("days_ms=", line)
+
     def test_a_sync_far_past_its_budget_names_its_slowest_range(self):
         with (
             patch.object(statistics_sync, "OVERRUN_WARNING_SECONDS", -1000),
@@ -616,11 +784,17 @@ class HighlightHistoryDayTests(StatisticsSyncTestCase):
 
 class ReconcilerTests(StatisticsSyncTestCase):
     @NON_EAGER
+    # The recovered sync must finish in one task; the default 10s budget
+    # leaves it "continued" on a slower machine.
+    @override_settings(STATISTICS_SYNC_TASK_BUDGET_SECONDS=600)
     def test_a_dropped_sync_message_is_recovered(self):
         """#1272: the message that should rebuild the page never arrives."""
         with patch(SYNC_TASK) as dropped, self.captureOnCommitCallbacks(execute=True):
             statistics_sync.mark_days(self.user.id, [self.day(0)], reason="scrobble")
         dropped.assert_called_once()  # published, then lost
+        # A message waits for the task to start; only after the pending window
+        # expires does the reconciler treat it as lost and publish a retry.
+        cache.delete(statistics_sync._pending_key(self.user.id))
 
         with patch(SYNC_TASK) as enqueue:
             queued = statistics_sync.reconcile()
@@ -633,6 +807,43 @@ class ReconcilerTests(StatisticsSyncTestCase):
             "hours_per_media_type",
             statistics_cache.get_statistics_data(self.user, None, None, "Today"),
         )
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_reconcile_queues_once_while_a_message_waits_behind_the_worker(self, enqueue):
+        self.mark([self.day(3)])
+
+        self.assertEqual(statistics_sync.reconcile(), 1)
+        self.assertEqual(statistics_sync.reconcile(), 0)
+        self.assertEqual(statistics_sync.reconcile(), 0)
+        self.assertEqual(enqueue.call_count, 1)
+        self.assertIsNotNone(cache.get(statistics_sync._pending_key(self.user.id)))
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_starting_the_task_clears_the_pending_marker(self, _enqueue):
+        self.mark([self.day(3)])
+        statistics_sync.reconcile()
+
+        with patch.object(
+            statistics_sync, "run_sync", return_value={"status": "done", "published": {}}
+        ):
+            statistics_sync.sync_task_body(self.user.id)
+
+        self.assertIsNone(cache.get(statistics_sync._pending_key(self.user.id)))
+        # Durable work is still unfinished, so the next tick can queue again.
+        self.assertEqual(statistics_sync.reconcile(), 1)
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_reconcile_retries_after_the_pending_window_expires(self, enqueue):
+        self.mark([self.day(3)])
+        self.assertEqual(statistics_sync.reconcile(), 1)
+
+        cache.delete(statistics_sync._pending_key(self.user.id))
+
+        self.assertEqual(statistics_sync.reconcile(), 1)
+        self.assertEqual(enqueue.call_count, 2)
 
     def test_a_live_lease_is_left_alone_and_an_expired_one_is_retried(self):
         self.mark([self.day(3)])
@@ -648,10 +859,28 @@ class ReconcilerTests(StatisticsSyncTestCase):
     def test_midnight_rollover_is_found_without_any_change(self):
         self.full_sync()
         self.assertEqual(statistics_sync.users_needing_sync(), [])
+        generation = self.state().generation
 
         tomorrow = timezone.now() + timedelta(days=1)
         with patch("django.utils.timezone.now", return_value=tomorrow):
             self.assertEqual(statistics_sync.users_needing_sync(), [self.user.id])
+            result = self.full_sync()
+            self.assertEqual(self.state().generation, generation)
+            self.assertEqual(
+                set(result["published"]),
+                set(statistics_sync.HOT_RANGES + statistics_sync.HEAVY_RANGES),
+            )
+            # Even All Time contains today's history card and calendar label.
+            # An unchanged generation alone cannot make yesterday's payload fresh.
+            for payload in result["published"].values():
+                self.assertEqual(
+                    payload["history_highlights"]["today_day"],
+                    timezone.localdate().day,
+                )
+                self.assertEqual(
+                    payload["history_highlights"]["today_month"],
+                    timezone.localdate().month,
+                )
 
     def test_users_without_state_are_bootstrapped_for_warming(self):
         StatisticsSyncState.objects.filter(user_id=self.user.id).delete()
@@ -660,14 +889,71 @@ class ReconcilerTests(StatisticsSyncTestCase):
 
         self.assertIn(self.user.id, statistics_sync.users_needing_sync())
 
-    def test_reconcile_is_scheduled_every_minute_on_the_interactive_lane(self):
+    def test_reconcile_is_scheduled_every_minute_on_the_default_lane(self):
         from django.conf import settings
 
         entry = settings.CELERY_BEAT_SCHEDULE["reconcile_statistics_sync"]
         self.assertEqual(entry["task"], "Reconcile statistics sync")
         self.assertLessEqual(entry["schedule"], 60)
+        self.assertEqual(entry["options"]["expire_seconds"], entry["schedule"])
         route = settings.CELERY_TASK_ROUTES["Reconcile statistics sync"]
-        self.assertEqual(route["queue"], "interactive")
+        self.assertNotIn("queue", route)
+
+
+
+class ReconcilerSchedulePersistenceTests(TransactionTestCase):
+    """The real scheduler may close connections; exercise it in autocommit."""
+
+    def test_beat_updates_existing_reconciler_with_a_message_lifetime(self):
+        from celery import Celery
+        from django.conf import settings
+        from django_celery_beat.models import IntervalSchedule, PeriodicTask
+        from django_celery_beat.schedulers import DatabaseScheduler
+
+        self.assertEqual(
+            settings.CELERY_BEAT_SCHEDULER,
+            "django_celery_beat.schedulers:DatabaseScheduler",
+        )
+        interval, _ = IntervalSchedule.objects.get_or_create(
+            every=60, period=IntervalSchedule.SECONDS
+        )
+        periodic = PeriodicTask.objects.create(
+            name="reconcile_statistics_sync",
+            task="Reconcile statistics sync",
+            interval=interval,
+        )
+        tomorrow = timezone.now() + timedelta(days=1)
+        for absolute_expiry, enabled in ((None, True), (tomorrow, True), (tomorrow, False)):
+            with self.subTest(absolute_expiry=absolute_expiry, enabled=enabled):
+                periodic.expires = absolute_expiry
+                periodic.expire_seconds = None
+                periodic.enabled = enabled
+                periodic.save()
+                with Celery("reconciler_schedule_test", set_as_current=False) as app:
+                    app.conf.update(
+                        broker_url="memory://",
+                        result_expires=None,
+                        beat_schedule={
+                            periodic.name: settings.CELERY_BEAT_SCHEDULE[periodic.name],
+                        },
+                    )
+                    scheduler = DatabaseScheduler(app=app)
+                    try:
+                        periodic.refresh_from_db()
+                        self.assertIsNone(periodic.expires)
+                        self.assertEqual(periodic.expire_seconds, 60)
+                        self.assertEqual(periodic.enabled, enabled)
+                        self.assertEqual(
+                            PeriodicTask.objects.get(name=periodic.name).pk, periodic.pk
+                        )
+                        if enabled:
+                            self.assertEqual(
+                                scheduler.schedule[periodic.name].options["expires"], 60
+                            )
+                        else:
+                            self.assertNotIn(periodic.name, scheduler.schedule)
+                    finally:
+                        scheduler.close()
 
 
 class ReadPathTests(StatisticsSyncTestCase):
@@ -853,3 +1139,64 @@ class SnapshotSerializationTests(StatisticsSyncTestCase):
                 for movie in entry["data"].get("top_rated", [])
             )
         )
+
+
+class CreditsStatisticsCoalescingTests(StatisticsSyncTestCase):
+    """A credits backfill must not rebuild Statistics back to back (#1706)."""
+
+    def setUp(self):
+        super().setUp()
+        statistics_sync._ensure_state(self.user.id)
+        self.before = self.state().generation
+
+    def request(self):
+        return statistics_sync.request_credits_statistics_refresh(self.user.id)
+
+    def test_the_first_credits_batch_marks_the_generation(self):
+        self.assertTrue(self.request())
+        self.assertEqual(self.state().generation, self.before + 1)
+
+    @patch("app.tasks_interactive.mark_credits_statistics_refresh.apply_async")
+    def test_later_batches_are_coalesced_and_schedule_one_trailing_mark(self, enqueue):
+        self.assertTrue(self.request())
+        marked = self.state().generation
+
+        self.assertFalse(self.request())
+        self.assertFalse(self.request())
+
+        self.assertEqual(self.state().generation, marked)
+        enqueue.assert_called_once_with(args=[self.user.id], countdown=600)
+
+    def test_the_trailing_mark_publishes_the_last_coalesced_credits(self):
+        self.request()
+        marked = self.state().generation
+        cache.delete(statistics_sync._credits_mark_key(self.user.id))
+
+        statistics_sync.mark_credits_statistics_refresh(self.user.id)
+
+        self.assertEqual(self.state().generation, marked + 1)
+
+    def test_the_trailing_mark_does_not_duplicate_a_fresh_mark(self):
+        self.request()
+        marked = self.state().generation
+
+        statistics_sync.mark_credits_statistics_refresh(self.user.id)
+
+        self.assertEqual(self.state().generation, marked)
+
+    @patch("app.tasks_interactive.mark_credits_statistics_refresh.apply_async")
+    def test_credits_batches_coalesce_through_the_backfill_scheduler(self, enqueue):
+        from app.models import MetadataBackfillField
+        from app.tasks_backfill_state import _schedule_metadata_statistics_refresh
+
+        items = [movie.item for movie in self.movies]
+        _schedule_metadata_statistics_refresh(
+            items, MetadataBackfillField.CREDITS, "credits_backfill"
+        )
+        marked = self.state().generation
+        _schedule_metadata_statistics_refresh(
+            items, MetadataBackfillField.CREDITS, "credits_backfill"
+        )
+
+        self.assertEqual(self.state().generation, marked)
+        enqueue.assert_called_once()

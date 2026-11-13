@@ -22,8 +22,16 @@ import app
 from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
-from app.models import Episode, MediaTypes, Status
+from app.models import Episode, MediaTypes, Sources, Status
+from app.models.tv import _UNSET_END_DATE
+from app.public_errors import PublicMessageError
+from app.services import podcast_plays
 from app.services.completion import normalize_completed_entries
+from app.services.watch_state import (
+    PROJECTED_MEDIA_TYPES,
+    project_watch_states_bulk,
+)
+from app.signals import importer_replacing_rows
 from integrations import import_progress
 from integrations.models import ImportRun
 
@@ -46,7 +54,102 @@ def watchlist_only_scope(enabled):
         watchlist_only.reset(token)
 
 
-class MediaImportError(Exception):
+# Rows an import wrote with bulk_create, which sends no post_save signal. Set by
+# record_bulk_rows() for importers whose catch-up is scoped to what they wrote.
+_bulk_rows: ContextVar[list | None] = ContextVar("import_bulk_rows", default=None)
+
+
+@contextmanager
+def record_bulk_rows():
+    """Collect the rows ``bulk_create_media`` writes inside the block."""
+    rows = []
+    token = _bulk_rows.set(rows)
+    try:
+        yield rows
+    finally:
+        _bulk_rows.reset(token)
+
+
+def note_bulk_rows(rows):
+    """Record rows written without a save signal, so the import publishes their days."""
+    sink = _bulk_rows.get()
+    if sink is not None:
+        sink.extend(rows)
+
+
+# Noted by an importer whose write moved rows between libraries, which no day
+# list describes; publishing then falls back to dropping every cached day.
+FULL_REFRESH = object()
+
+
+def note_full_refresh():
+    """Ask the import to drop every cached day when it publishes."""
+    note_bulk_rows([FULL_REFRESH])
+
+
+def publish_everything(user_id):
+    """Drop every cached History and Statistics day for one user."""
+    from app import history_cache, statistics_cache
+
+    # Importers rely on bulk_create_with_history, which bypasses model signals.
+    # Force-clear history cache so month view index pages don't keep stale
+    # "empty month" payloads after imports.
+    history_cache.invalidate_history_cache(user_id, force=True)
+    # The same bypass leaves statistics days unmarked: drop every day payload;
+    # the background sync rebuilds them in budgeted slices while the last
+    # published numbers keep being served.
+    statistics_cache.invalidate_all_statistics_days(user_id, reason="media_import")
+
+
+def publish_bulk_rows(user_id, rows):
+    """Refresh History and Statistics for just the days bulk-written rows sit on.
+
+    The blanket alternative drops every cached day, and a library of thousands
+    of days then takes hours to rebuild, so a recurring poll that adds one row
+    kept the worker busy until the next poll. Every day a row's dates
+    touch is a superset of the days any History or Statistics placement uses.
+    Undated rows have no day to refresh, but their status and score still feed
+    the range totals, so they re-aggregate those.
+
+    Returns whether the refresh stayed scoped; False means it dropped every day
+    (see ``note_full_refresh``), so the sweep the import requested must stand.
+    """
+    from app import history_cache, statistics_sync
+
+    if FULL_REFRESH in rows:
+        publish_everything(user_id)
+        return False
+
+    day_keys = set()
+    has_undated = False
+    for row in rows:
+        start, end = getattr(row, "start_date", None), getattr(row, "end_date", None)
+        row_keys = set(history_cache.history_day_keys_for_range(start, end))
+        row_keys.update(
+            key for key in map(history_cache.history_day_key, (start, end)) if key
+        )
+        has_undated = has_undated or not row_keys
+        day_keys.update(row_keys)
+    if day_keys:
+        history_cache.invalidate_history_days(
+            user_id, day_keys=sorted(day_keys), force=True, reason="import_rows"
+        )
+        statistics_sync.mark_days(user_id, day_keys, reason="import_rows")
+    if has_undated:
+        statistics_sync.mark_aggregate(user_id, reason="import_rows")
+    return True
+
+
+# The Trakt export stage loop always runs in full; only New vs Overwrite changes
+# behaviour. Selective modes (watchlist, update_collection) would silently
+# import everything, so they are refused (#1873).
+TRAKT_EXPORT_MODES = ("new", "overwrite")
+TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE = (
+    "The Trakt data export import supports only the 'new' and 'overwrite' modes."
+)
+
+
+class MediaImportError(PublicMessageError):
     """Custom exception for import errors."""
 
 
@@ -161,6 +264,8 @@ def get_or_create_item_across_buckets(
 # them for a whole library (``watch_providers`` is ~146 KiB a title) ran a large
 # Trakt export import out of memory before it wrote anything (#1252).
 PRELOAD_DEFERRED_ITEM_FIELDS = history_deferred_item_fields("item")
+# Items projected per query after a bulk import.
+PROJECTION_BATCH_SIZE = 500
 
 
 def get_existing_media(user):
@@ -298,7 +403,8 @@ def cleanup_existing_media(to_delete, user):
                     user=user,
                 ).delete()
 
-            deleted_count, _ = retry_on_lock(delete_media)
+            with importer_replacing_rows():
+                deleted_count, _ = retry_on_lock(delete_media)
             total_deleted += deleted_count
 
         if total_deleted > 0:
@@ -451,9 +557,9 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
     Bulk imports persist Season instances via bulk_create, which bypasses
     Season.save() and the episode-completion fan-out it normally performs
     (see Season.save() in app/models/tv.py). A season imported directly as
-    Completed with no per-episode history (e.g. a rating-only import) would
-    otherwise end up with zero Episode rows, making it invisible to
-    exports/statistics that key off episode data.
+    Completed with no per-episode history (e.g. a season watched at title
+    level) would otherwise end up with zero Episode rows, making it invisible
+    to exports/statistics that key off episode data.
 
     Returns warning messages for seasons that could not be backfilled, so
     the importer can surface them to the user instead of only logging.
@@ -481,7 +587,22 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             continue
         try:
             season_metadata = _fetch_season_metadata_with_retry(season)
-            episodes_to_create.extend(season.get_remaining_eps(season_metadata))
+            episodes_to_create.extend(
+                season.get_remaining_eps(
+                    season_metadata,
+                    # A season that arrived with a known watched date fans out
+                    # to that date. Without this the fabricated episodes take
+                    # the user's preference, which defaults to "now" — so an
+                    # import of old history stamps every invented episode with
+                    # the import time and the show reads as watched today.
+                    # A rating-only season carries only its history date.
+                    end_date=getattr(
+                        season,
+                        "_pending_end_date",
+                        getattr(season, "_history_date", _UNSET_END_DATE),
+                    ),
+                ),
+            )
         except (
             providers.services.ProviderAPIError,
             RequestException,
@@ -510,6 +631,7 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             Episode,
             batch_size=500,
         )
+        note_bulk_rows(created_episodes)
         normalize_completed_entries(created_episodes)
 
     return warnings
@@ -554,6 +676,82 @@ def _deduplicate_unique_user_item_rows(model, bulk_media):
         _merge_duplicate_media_row(existing, media_obj)
 
     return deduplicated
+
+
+def _unique_identity_fields(model):
+    """Return the DB columns that identify one of ``model``'s unique rows.
+
+    Only the tracking models imports bulk-create have a uniqueness contract:
+    a TV show is one row per user/item, and a season is one row per
+    user/related TV/item. Everything else (movies, episodes, plays) may
+    legitimately have several rows for the same item.
+    """
+    constraints = {
+        tuple(getattr(constraint, "fields", ()))
+        for constraint in model._meta.constraints
+    }
+    if ("user", "item") in constraints:
+        return ("user_id", "item_id")
+    if ("related_tv", "item") in constraints:
+        return ("user_id", "related_tv_id", "item_id")
+    return None
+
+
+def _reuse_persisted_unique_rows(model, bulk_media):
+    """Drop queued rows that another writer already stored during the import.
+
+    Importers decide what is new against a snapshot taken at the start of the
+    run. A tracking row written in the meantime - by a webhook, a sync, or a
+    second import - is missing from that snapshot, so the queued duplicate
+    hits the unique constraint at save time and aborts the import (#1518).
+    The database is authoritative: reuse the stored row, keeping its values,
+    and skip the queued insert.
+    """
+    identity_fields = _unique_identity_fields(model)
+    if identity_fields is None or not bulk_media:
+        return bulk_media
+
+    manager = getattr(model, "all_objects", model._default_manager)
+    stored = {}
+    for start in range(0, len(bulk_media), PROJECTION_BATCH_SIZE):
+        filters = defaultdict(set)
+        for row in bulk_media[start : start + PROJECTION_BATCH_SIZE]:
+            for field in identity_fields:
+                value = getattr(row, field)
+                if value is not None:
+                    filters[field].add(value)
+        if len(filters) != len(identity_fields):
+            continue
+        for row in manager.filter(
+            **{f"{field}__in": values for field, values in filters.items()},
+        ):
+            stored[tuple(getattr(row, field) for field in identity_fields)] = row
+    if not stored:
+        return bulk_media
+
+    retained = []
+    reused = 0
+    for row in bulk_media:
+        key = tuple(getattr(row, field) for field in identity_fields)
+        existing = stored.get(key)
+        if existing is None:
+            retained.append(row)
+            continue
+
+        # Mirror the stored row so callers (chunk receipts, parent hydration)
+        # see an already-persisted instance instead of an unsaved duplicate.
+        for field in model._meta.concrete_fields:
+            setattr(row, field.attname, getattr(existing, field.attname))
+        row._state.adding = False
+        reused += 1
+
+    if reused:
+        logger.info(
+            "Reused %s existing %s rows written during the import",
+            reused,
+            model._meta.model_name,
+        )
+    return retained
 
 
 def _deduplicate_season_related_tv_item_rows(seasons):
@@ -711,6 +909,7 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
                 if getattr(row, "status", None) == Status.PLANNING.value
                 and media_type not in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
             ]
+    projected_item_ids = set()
     if not prepared:
         prepare_bulk_media(bulk_media_list, user)
 
@@ -792,6 +991,11 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             logger.info("Updating references for podcasts to existing episodes")
             update_podcast_references(bulk_media)
 
+        bulk_media = _reuse_persisted_unique_rows(model, bulk_media)
+        bulk_media_list[media_type] = bulk_media
+        if not bulk_media:
+            continue
+
         # Imports are written as the user, so the reason is what tells an
         # imported status apart from one the user set (#1133).
         change_reason = (
@@ -815,8 +1019,15 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             )
 
         created_media = retry_on_lock(create_media)
+        if media_type == MediaTypes.PODCAST.value:
+            podcast_plays.create_plays_for_trackers(created_media)
+        note_bulk_rows(created_media)
         if normalize:
             normalize_completed_entries(created_media)
+        if media_type in PROJECTED_MEDIA_TYPES:
+            projected_item_ids.update(
+                row.item_id for row in created_media if row.item_id is not None
+            )
 
     # Run after every media type (including any episodes the importer supplied
     # directly) has been persisted, so the "does this season already have
@@ -828,7 +1039,171 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
                 lambda: _backfill_completed_season_episodes(bulk_seasons),
             ),
         )
+        _project_season_episodes(bulk_seasons)
+    project_imported_watch_state(user, projected_item_ids)
+    _warm_imported_game_artwork(bulk_media_list)
     return warnings
+
+
+def _warm_imported_game_artwork(bulk_media_list):
+    """Prefetch artwork for imported IGDB games in the background."""
+    from app.carousel import schedule_game_artwork_warm
+
+    media_ids = {
+        game.item.media_id
+        for game in bulk_media_list.get(MediaTypes.GAME.value) or ()
+        if game.item.source == Sources.IGDB.value
+    }
+    if media_ids:
+        schedule_game_artwork_warm(media_ids)
+
+
+def _item_key(spec):
+    return (
+        spec["media_id"],
+        spec["source"],
+        spec["media_type"],
+        spec["library_media_type"] or spec["media_type"],
+        spec["season_number"],
+        spec["episode_number"],
+    )
+
+
+def bulk_resolve_items(specs):
+    """Return ``{key: Item}`` for specs, creating the missing Items in bulk.
+
+    Replaces a ``get_or_create`` per row (a SELECT, a SAVEPOINT, an INSERT and
+    the Item post_save work) with one read plus one insert per chunk. Each spec
+    is a dict with ``media_id``, ``source``, ``media_type``,
+    ``library_media_type``, ``season_number``, ``episode_number``, ``title`` and
+    ``image``. Existing rows are never changed. The backfills the Item post_save
+    handler would queue for a new Item are queued together afterwards.
+    """
+    item_model = app.models.Item
+    by_key = {_item_key(spec): spec for spec in specs}
+    if not by_key:
+        return {}
+
+    def fetch(keys):
+        found = {}
+        media_ids = list({key[0] for key in keys})
+        for start in range(0, len(media_ids), PROJECTION_BATCH_SIZE):
+            for item in item_model.objects.filter(
+                media_id__in=media_ids[start : start + PROJECTION_BATCH_SIZE],
+            ).defer("watch_providers"):
+                key = (
+                    item.media_id,
+                    item.source,
+                    item.media_type,
+                    item.library_media_type,
+                    item.season_number,
+                    item.episode_number,
+                )
+                if key in keys:
+                    found[key] = item
+        return found
+
+    found = fetch(by_key.keys())
+    missing = [key for key in by_key if key not in found]
+    if missing:
+        item_model.objects.bulk_create(
+            [
+                item_model(
+                    media_id=key[0],
+                    source=key[1],
+                    media_type=key[2],
+                    library_media_type=key[3],
+                    season_number=key[4],
+                    episode_number=key[5],
+                    title=by_key[key]["title"],
+                    image=by_key[key]["image"],
+                )
+                for key in missing
+            ],
+            ignore_conflicts=True,
+        )
+        created = fetch(set(missing))
+        found.update(created)
+        _enqueue_new_item_backfills(list(created.values()))
+    return found
+
+
+def _enqueue_new_item_backfills(items):
+    """Queue what Item's post_save handler queues for a brand-new Item."""
+    from app import signals as app_signals
+    from app.tasks_credits import enqueue_credits_backfill_items
+    from app.tasks_genre import enqueue_genre_backfill_items
+    from app.tasks_runtime import enqueue_runtime_backfill_items
+
+    if settings.TESTING or app_signals.media_change_side_effects_suppressed():
+        return
+    sources = app_signals
+    runtime_ids, genre_ids, credit_ids = [], [], []
+    for item in items:
+        media_type = item.media_type
+        if (
+            item.source in sources.RUNTIME_BACKFILL_SOURCES
+            and media_type
+            in (MediaTypes.MOVIE.value, MediaTypes.TV.value, MediaTypes.ANIME.value)
+            and item.runtime_minutes in (None, 0)
+        ):
+            runtime_ids.append(item.id)
+        if (
+            item.source in sources.GENRE_BACKFILL_SOURCES
+            and media_type
+            in (
+                MediaTypes.MOVIE.value,
+                MediaTypes.TV.value,
+                MediaTypes.ANIME.value,
+                MediaTypes.GAME.value,
+                MediaTypes.BOARDGAME.value,
+            )
+            and not item.genres
+        ):
+            genre_ids.append(item.id)
+        if item.source == "tmdb" and media_type in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.SEASON.value,
+        ):
+            credit_ids.append(item.id)
+    if runtime_ids:
+        enqueue_runtime_backfill_items(runtime_ids)
+    if genre_ids:
+        enqueue_genre_backfill_items(genre_ids)
+    if credit_ids:
+        enqueue_credits_backfill_items(credit_ids)
+
+
+def project_imported_watch_state(user, item_ids):
+    """Project canonical watched state for items an import bulk-created rows for.
+
+    bulk_create fires no save signals, so the projection that
+    app.signals_watch_state keeps for every other write never sees these rows.
+    """
+    item_ids = sorted(item_ids)
+    for start in range(0, len(item_ids), PROJECTION_BATCH_SIZE):
+        project_watch_states_bulk(
+            user,
+            list(
+                app.models.Item.objects.filter(
+                    id__in=item_ids[start : start + PROJECTION_BATCH_SIZE],
+                ),
+            ),
+        )
+
+
+def _project_season_episodes(seasons):
+    """Project the episodes under seasons whose Completed backfill added rows."""
+    seasons = [season for season in seasons if season.pk is not None]
+    users = {season.user_id: season.user for season in seasons}
+    item_ids = defaultdict(set)
+    for user_id, item_id in Episode.objects.filter(
+        related_season__in=seasons, item__isnull=False,
+    ).values_list("related_season__user_id", "item_id"):
+        item_ids[user_id].add(item_id)
+    for user_id, ids in item_ids.items():
+        project_imported_watch_state(users[user_id], ids)
 
 
 def backfill_completed_seasons(season_ids):
@@ -836,8 +1211,10 @@ def backfill_completed_seasons(season_ids):
     if not season_ids:
         return []
     season_model = apps.get_model(app_label="app", model_name=MediaTypes.SEASON.value)
-    seasons = season_model.objects.filter(pk__in=season_ids)
-    return retry_on_lock(lambda: _backfill_completed_season_episodes(seasons))
+    seasons = list(season_model.objects.filter(pk__in=season_ids).select_related("user"))
+    warnings = retry_on_lock(lambda: _backfill_completed_season_episodes(seasons))
+    _project_season_episodes(seasons)
+    return warnings
 
 
 def create_import_schedule(
@@ -859,11 +1236,10 @@ def create_import_schedule(
         so the schedule does not keep a dead token.
     """
     try:
+        # The entered time is already in the app's timezone; no conversion.
         import_time = (
             datetime.datetime.strptime(import_time, "%H:%M")
-            .astimezone(
-                timezone.get_default_timezone(),
-            )
+            .replace(tzinfo=timezone.get_default_timezone())
             .time()
         )
     except ValueError:
@@ -946,15 +1322,61 @@ def decrypt(token):
     return fernet().decrypt(token.encode()).decode()
 
 
+def stamp_entry_source(media, label):
+    """Record where an entry came from when nothing is recorded yet.
+
+    A value the user typed, or one an earlier sync set, is never replaced.
+    """
+    if label and not media.entry_source:
+        media.entry_source = label
+        media.save(update_fields=["entry_source"])
+    return media
+
+
 def decrypt_or_raise(token):
     """Decrypt a stored credential, raising a friendly MediaImportError on failure."""
     try:
         return decrypt(token)
     except InvalidToken as error:
         logger.exception("Failed to decrypt stored credential")
-        msg = (
-            "Stored credentials could not be decrypted. This usually happens "
-            "after the app's encryption key changes. Please reconnect this "
-            "integration."
-        )
+        msg = "Saved credentials can't be read. Reconnect this integration."
         raise MediaImportError(msg) from error
+
+
+def season_last_episode_number(season_metadata):
+    """Return the number of a season's final episode.
+
+    A season's ``max_progress`` is how many episodes it has. Anime seasons
+    that continue the numbering (51-100) end on a number larger than that
+    count, so completion checks compare against this instead.
+    """
+    last = season_metadata.get("last_episode_number")
+    if last:
+        return last
+    numbers = [
+        episode["episode_number"]
+        for episode in season_metadata.get("episodes") or []
+        if isinstance(episode, dict) and episode.get("episode_number") is not None
+    ]
+    if numbers:
+        return max(numbers)
+    return season_metadata.get("max_progress")
+
+
+def season_episode_numbers(season_metadata):
+    """Return the episode numbers that make up a season's ``max_progress``.
+
+    Episodes past the provider's count (a future episode it lists but does not
+    count yet) are left out, as they were when this was ``range(1, count + 1)``.
+    """
+    count = int(season_metadata.get("max_progress") or 0)
+    numbers = sorted(
+        {
+            int(episode["episode_number"])
+            for episode in season_metadata.get("episodes") or []
+            if isinstance(episode, dict) and episode.get("episode_number") is not None
+        },
+    )
+    if numbers and count:
+        return set(numbers[:count])
+    return set(range(1, count + 1))

@@ -6,6 +6,8 @@ from django.db import IntegrityError
 from django.http import JsonResponse
 from django.template.response import ContentNotRenderedError, TemplateResponse
 
+from api.errors import database_busy_response
+
 logger = logging.getLogger(__name__)
 
 # TV, movies etc. are unique per user and item; a season per show and item.
@@ -175,6 +177,10 @@ class ApiJsonErrorMiddleware:
 
         if not path.startswith("/api/"):
             return None
+
+        busy = database_busy_response(exception, request=request)
+        if busy is not None:
+            return busy
 
         if _is_media_collection_post(request, path) and is_tracked_media_unique_error(
             exception,

@@ -213,9 +213,9 @@ def _select_history_entry_for_day(
     return _history_entry_card_payload(entry)
 
 
-def _get_today_history_entries(user, media_type_filter=None):
+def _get_today_history_entries(user, media_type_filter=None, memo=None):
     today = timezone.localdate()
-    day_keys = _get_history_index_days(user)
+    day_keys = _get_history_index_days(user, memo)
     matching_dates = []
     for day_key in day_keys:
         try:
@@ -232,7 +232,7 @@ def _get_today_history_entries(user, media_type_filter=None):
         candidates = matching_dates[:]
         random.shuffle(candidates)
         for candidate in candidates[:12]:
-            payload = _get_history_day_payload(user, candidate)
+            payload = _get_history_day_payload(user, candidate, memo)
             entry = _select_history_entry_for_day(
                 payload, media_type_filter=media_type_filter
             )
@@ -249,32 +249,33 @@ def _get_today_history_entries(user, media_type_filter=None):
     if not selected_date:
         return None, None
 
-    day_payload = _get_history_day_payload(user, selected_date)
+    day_payload = _get_history_day_payload(user, selected_date, memo)
     return _select_history_entry_for_day(day_payload), selected_year
 
 
-def _get_today_release_entry(user, media_type_filter=None):
-    today = timezone.localdate()
-    active_types = list(getattr(user, "get_active_media_types", list)())
-    if not active_types:
-        active_types = list(MediaTypes.values)
-    include_podcasts = MediaTypes.PODCAST.value in active_types
-    active_types = [
-        media_type
-        for media_type in active_types
-        if media_type not in (MediaTypes.EPISODE.value, MediaTypes.PODCAST.value)
-    ]
-    if media_type_filter:
-        if media_type_filter == MediaTypes.TV.value:
-            allowed = _TV_FAMILY - {MediaTypes.EPISODE.value}
-        elif media_type_filter == MediaTypes.ANIME.value:
-            allowed = _ANIME_FAMILY
-        else:
-            allowed = {media_type_filter}
-        active_types = [mt for mt in active_types if mt in allowed]
-        include_podcasts = (
-            include_podcasts and media_type_filter == MediaTypes.PODCAST.value
-        )
+# The candidate scan is library-wide (no date index can narrow it to a
+# month/day), and one range aggregation asks for it once per media type. Keep
+# the handful of matching items for a few minutes so the ranges of a sync pass
+# share one scan instead of repeating it per range and per type.
+TODAY_RELEASE_CACHE_TIMEOUT = 60 * 5
+
+
+def _today_release_candidates(
+    user,
+    today,
+    active_types,
+    *,
+    include_episodes,
+    include_podcasts,
+):
+    key = (
+        f"stats:highlights:release:{user.id}:{today.isoformat()}:"
+        f"{','.join(sorted(active_types))}:{int(include_episodes)}:"
+        f"{int(include_podcasts)}"
+    )
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
 
     items_by_year = defaultdict(list)
     seen_item_ids = set()
@@ -312,7 +313,6 @@ def _get_today_release_entry(user, media_type_filter=None):
                 }
             )
 
-    include_episodes = not media_type_filter or media_type_filter == MediaTypes.TV.value
     Episode = apps.get_model("app", "Episode")
     episode_qs = (
         Episode.all_objects.filter(
@@ -438,6 +438,41 @@ def _get_today_release_entry(user, media_type_filter=None):
                 }
             )
 
+    cache.set(key, items_by_year, timeout=TODAY_RELEASE_CACHE_TIMEOUT)
+    return items_by_year
+
+
+def _get_today_release_entry(user, media_type_filter=None):
+    today = timezone.localdate()
+    active_types = list(getattr(user, "get_active_media_types", list)())
+    if not active_types:
+        active_types = list(MediaTypes.values)
+    include_podcasts = MediaTypes.PODCAST.value in active_types
+    active_types = [
+        media_type
+        for media_type in active_types
+        if media_type not in (MediaTypes.EPISODE.value, MediaTypes.PODCAST.value)
+    ]
+    if media_type_filter:
+        if media_type_filter == MediaTypes.TV.value:
+            allowed = _TV_FAMILY - {MediaTypes.EPISODE.value}
+        elif media_type_filter == MediaTypes.ANIME.value:
+            allowed = _ANIME_FAMILY
+        else:
+            allowed = {media_type_filter}
+        active_types = [mt for mt in active_types if mt in allowed]
+        include_podcasts = (
+            include_podcasts and media_type_filter == MediaTypes.PODCAST.value
+        )
+
+    include_episodes = not media_type_filter or media_type_filter == MediaTypes.TV.value
+    items_by_year = _today_release_candidates(
+        user,
+        today,
+        active_types,
+        include_episodes=include_episodes,
+        include_podcasts=include_podcasts,
+    )
     if not items_by_year:
         return None, None
 
@@ -453,7 +488,22 @@ def _get_today_release_entry(user, media_type_filter=None):
     return selected_item, selected_year
 
 
-def _get_history_index_days(user):
+def _get_history_index_days(user, memo=None):
+    """Return the user's History day keys.
+
+    ``memo`` is a caller-owned dict that lives for one Statistics pass: every
+    range, and every media type inside a range, asks for the same index and a
+    handful of the same days. It is never written to the cache.
+    """
+    if memo is not None and "history_index" in memo:
+        return memo["history_index"]
+    day_keys = _load_history_index_days(user)
+    if memo is not None:
+        memo["history_index"] = day_keys
+    return day_keys
+
+
+def _load_history_index_days(user):
     logging_style = history_cache._normalize_logging_style(None, user)
     cache_entry = cache.get(history_cache._cache_key(user.id, logging_style))
     if isinstance(cache_entry, dict):
@@ -471,19 +521,31 @@ def _get_history_index_days(user):
     return day_keys
 
 
-def _get_history_day_payload(user, day_value):
-    logging_style = history_cache._normalize_logging_style(None, user)
+def _get_history_day_payload(user, day_value, memo=None):
+    """Return one History day; ``memo`` as in ``_get_history_index_days``.
+
+    Callers only read a memoized day: the cards built from it are new dicts.
+    """
     day_key = history_cache._day_key_from_value(day_value)
     if not day_key:
         return None
+    days = None if memo is None else memo.setdefault("history_days", {})
+    if days is not None and day_key in days:
+        return days[day_key]
 
+    logging_style = history_cache._normalize_logging_style(None, user)
     cache_key = history_cache._day_cache_key(user.id, logging_style, day_key)
     cached_payload = cache.get(cache_key)
     if cached_payload:
-        return history_cache._deserialize_history_day(cached_payload)
+        payload = history_cache._deserialize_history_day(cached_payload)
+        if days is not None:
+            days[day_key] = payload
+        return payload
 
     # Keep the day it had to build. Every range of a Statistics sync picks its
     # own random day, and an uncached day cost ~80 ms each time it came up.
+    # A day built here is not memoized: the next read returns the cached form,
+    # so a pass publishes the same cards with or without the memo.
     return history_cache._build_and_cache_history_day(
         user,
         day_key,
@@ -491,14 +553,14 @@ def _get_history_day_payload(user, day_value):
     )
 
 
-def _get_range_history_boundary_days(user, start_date, end_date):
+def _get_range_history_boundary_days(user, start_date, end_date, memo=None):
     # Deferred import: _normalize_day_value lives in statistics_cache; importing
     # at module level would create a load-time circular dependency.
     from app.statistics_cache import _normalize_day_value
 
     start_day = _normalize_day_value(start_date)
     end_day = _normalize_day_value(end_date)
-    index_day_keys = _get_history_index_days(user)
+    index_day_keys = _get_history_index_days(user, memo)
     if not index_day_keys:
         return None, None
 

@@ -5,6 +5,12 @@ name: Migration Order
 # break latest. A pull request that touches a migration now has to contain every
 # migration already on latest. Pull requests without migrations always pass.
 #
+# The same job then merges latest into the branch and loads Django's migration
+# graph, so two migrations that merge without a text conflict (different file
+# names, same parent) still fail here with a clear message instead of only
+# after the full test run. Merging latest is not a fix for that: the migration
+# the pull request adds must be pointed at the new latest migration.
+#
 # Needs "migration-order" added to the required status checks of the ruleset on
 # latest. It runs on every pull request, with no path filter, so a docs or
 # workflow-only pull request still gets the (passing) result.
@@ -30,8 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pull request head
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
@@ -48,6 +55,48 @@ jobs:
           # can be re-run after latest has moved.
           git fetch --no-tags origin latest
           python3 scripts/check_migration_order.py HEAD origin/latest
+
+      - name: Find out whether the pull request changes migrations
+        id: migrations
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          changed=false
+          if [ "$BASE_REF" = "latest" ] && [ -n "$(git diff --name-only \
+              "$(git merge-base HEAD origin/latest)" HEAD -- 'src/*/migrations/*.py')" ]; then
+            changed=true
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Merge latest into the branch
+        if: steps.migrations.outputs.changed == 'true'
+        run: |
+          git config user.name "migration-order"
+          git config user.email "migration-order@users.noreply.github.com"
+          if ! git merge --no-edit origin/latest; then
+            echo "::error::This branch conflicts with latest. Resolve the conflict first."
+            exit 1
+          fi
+
+      - name: Set up Python
+        if: steps.migrations.outputs.changed == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        if: steps.migrations.outputs.changed == 'true'
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+
+      - name: Check the migration graph with latest merged in
+        if: steps.migrations.outputs.changed == 'true'
+        env:
+          SECRET: ci-migration-graph-only-not-a-production-secret
+        run: |
+          uv sync --locked
+          uv run --no-sync python src/manage.py check_migration_hygiene --no-strict
 
   recheck-open-pull-requests:
     if: github.event_name == 'push'

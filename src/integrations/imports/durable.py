@@ -19,6 +19,8 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from app.models import Item, Status
+from app.services.watch_state import PROJECTED_MEDIA_TYPES
+from app.signals import importer_replacing_rows
 from integrations import import_progress
 from integrations.models import (
     ImportChunkReceipt,
@@ -356,6 +358,17 @@ def hydrate(entries, user):
     return rows
 
 
+def _fingerprint_fields(row):
+    """Serialize a row for the overwrite fingerprint, minus bookkeeping stamps.
+
+    ``updated_at`` moves on list/tag/episode changes that are not edits of the
+    row, so it cannot tell whether the row itself changed since the snapshot.
+    """
+    fields = serialize(row)["fields"]
+    fields.pop("updated_at", None)
+    return fields
+
+
 def snapshot_overwrite(run, owner, scopes, user):
     """Retain original deletion identities, including dependent tracking rows."""
     # A pre-seal retry may have left only a partial snapshot. None of these
@@ -396,7 +409,7 @@ def snapshot_overwrite(run, owner, scopes, user):
     batch = []
     for model, rows in ordered:
         for row in rows:
-            fields = serialize(row)["fields"]
+            fields = _fingerprint_fields(row)
             batch.append(ImportOverwriteTarget(run=run, ordinal=ordinal, model_label=model._meta.label_lower,
                                                original_pk=row.pk, fingerprint=digest(fields)))
             ordinal += 1
@@ -432,7 +445,7 @@ def delete_overwrite(run, owner):
                 metrics["rows_deleted"] = len(rows)
                 fingerprints = {target.original_pk: target.fingerprint for target in targets}
                 for row in rows:
-                    fields = serialize(row)["fields"]
+                    fields = _fingerprint_fields(row)
                     if digest(fields) != fingerprints[row.pk]:
                         message = "Overwrite target changed after preparation; import stopped without deleting the changed row."
                         raise helpers.MediaImportError(message)
@@ -451,7 +464,8 @@ def delete_overwrite(run, owner):
                     if pks - known:
                         message = "Overwrite scope received new dependent rows; import stopped without deleting them."
                         raise helpers.MediaImportError(message)
-                model.objects.filter(pk__in=identities).delete()
+                with importer_replacing_rows():
+                    model.objects.filter(pk__in=identities).delete()
                 ImportOverwriteTarget.objects.filter(pk__in=[target.pk for target in targets]).update(deleted=True)
                 ImportChunkReceipt.objects.create(run=run, phase="delete", start=targets[0].ordinal,
                                                  end=targets[-1].ordinal + 1, digest=chunk_digest, fence=run.fence)
@@ -512,6 +526,10 @@ def persist(run, owner, user):
                     bulk_create_with_history(rows, rows[0].__class__, batch_size=run.chunk_rows)
                     if first.operation == "backfill_create":
                         normalize_completed_entries(normalize_rows)
+                    # bulk_create fires no save signal, so project here as
+                    # bulk_create_media does for the main manifest.
+                    if rows[0]._meta.model_name in PROJECTED_MEDIA_TYPES:
+                        helpers.project_imported_watch_state(user, {row.item_id for row in rows})
                 else:
                     bulk_update_with_history(rows, rows[0].__class__, fields=["status"],
                                              default_change_reason=f"Trakt import ({run.prepared_state['mode']})" if first.operation == "update" else None)

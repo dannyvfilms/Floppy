@@ -153,6 +153,9 @@ function trackModalGetStateKeyFromExpression(expression) {
   if (expression.includes("trackOpen")) {
     return "trackOpen";
   }
+  if (expression.includes("historyOpen")) {
+    return "historyOpen";
+  }
 
   return null;
 }
@@ -202,6 +205,9 @@ function trackModalFindStateTarget(target) {
           }
           if (Object.prototype.hasOwnProperty.call(data, "trackOpen")) {
             return { host: node, stateKey: "trackOpen" };
+          }
+          if (Object.prototype.hasOwnProperty.call(data, "historyOpen")) {
+            return { host: node, stateKey: "historyOpen" };
           }
         }
       } catch {
@@ -307,6 +313,31 @@ function trackModalCreateToast(detail) {
 
 window.closeTrackModal = function closeTrackModal(target) {
   return trackModalSetOpen(target, false);
+};
+
+// Lets the shared Track dialog mirror the Alpine open flag when its host was
+// swapped into a card (episode tracking) and has no legacy modal root to watch.
+window.watchTrackModalOpen = function watchTrackModalOpen(target, callback) {
+  const stateTarget = trackModalFindStateTarget(target);
+  if (!stateTarget || !window.Alpine) {
+    return null;
+  }
+
+  try {
+    const data = Alpine.$data(stateTarget.host);
+    const runner = Alpine.effect(() => {
+      callback(Boolean(data[stateTarget.stateKey]));
+    });
+    return () => {
+      try {
+        Alpine.release(runner);
+      } catch {
+        // The effect is already gone with its component.
+      }
+    };
+  } catch {
+    return null;
+  }
 };
 
 window.openTrackModal = function openTrackModal(target) {

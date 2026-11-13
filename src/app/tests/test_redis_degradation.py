@@ -416,6 +416,74 @@ class BackfillQueueBehaviourTests(TestCase):
         self.assertFalse(more)
         self.assertEqual(backfill_queue.depth(self.QUEUE), 0)
 
+    def test_take_holds_the_queue_claim_while_a_batch_runs(self):
+        """A concurrent enqueue must not start a drain alongside the running one."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1, 2, 3], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        batch, _ = backfill_queue.take(self.QUEUE, self.SCHEDULED, 2)
+        self.assertEqual(len(batch), 2)
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [4], ttl=60, drain_task=drain
+        )
+        drain.apply_async.assert_not_called()
+
+    def test_drain_schedules_the_continuation_only_after_the_batch(self):
+        """The next drain must not start while this one still fetches metadata."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, range(4), ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 2, drain_task=drain
+        ) as batch:
+            self.assertEqual(len(batch), 2)
+            drain.apply_async.assert_not_called()
+
+        drain.apply_async.assert_called_once_with(countdown=10, kwargs={})
+
+    def test_drain_releases_the_claim_when_the_queue_is_empty(self):
+        """An empty queue must be claimable again by the next enqueue."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 10, drain_task=drain
+        ) as batch:
+            self.assertEqual(batch, [1])
+        drain.apply_async.assert_not_called()
+
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [2], ttl=60, drain_task=drain
+        )
+        drain.apply_async.assert_called_once()
+
+    def test_drain_picks_up_work_enqueued_while_it_ran(self):
+        """Work that lands mid-batch is drained after it, not lost or doubled."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 10, drain_task=drain
+        ) as batch:
+            self.assertEqual(batch, [1])
+            backfill_queue.enqueue(
+                self.QUEUE, self.SCHEDULED, [2], ttl=60, drain_task=drain
+            )
+            drain.apply_async.assert_not_called()
+        drain.apply_async.assert_called_once()
+
     def test_string_members_survive_the_round_trip(self):
         """Episode season keys are encoded tokens, not integers."""
         drain = mock.Mock()

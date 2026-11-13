@@ -12,6 +12,7 @@ from django.utils import timezone
 from app.models import (
     TV,
     Anime,
+    DeletedMedia,
     Episode,
     Item,
     MediaTypes,
@@ -269,6 +270,52 @@ class ImportSimkl(TestCase):
             datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC),
         )
         self.assertIsNone(self.importer._get_date(None))
+
+    @patch("integrations.imports.simkl.SimklImporter._get_user_list")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_importer_does_not_bring_back_a_show_the_user_deleted(
+        self,
+        mock_tv_with_seasons,
+        mock_user_list,
+    ):
+        """A recurring Simkl sync leaves a deleted show deleted (#1133)."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="1396",
+        )
+        mock_tv_with_seasons.return_value = {
+            "title": "Breaking Bad",
+            "image": "https://image.tmdb.org/t/p/w500/test.jpg",
+            "season/1": {"image": "", "max_progress": 1, "episodes": []},
+        }
+        mock_user_list.return_value = {
+            "shows": [
+                {
+                    "last_watched_at": "2023-01-15T00:00:00Z",
+                    "show": {"title": "Breaking Bad", "ids": {"tmdb": 1396}},
+                    "status": "watching",
+                    "user_rating": None,
+                    "seasons": [
+                        {
+                            "number": 1,
+                            "episodes": [
+                                {"number": 1, "watched_at": "2023-01-01T00:00:00Z"},
+                            ],
+                        },
+                    ],
+                    "memo": {},
+                },
+            ],
+            "movies": [],
+            "anime": [],
+        }
+
+        importer = simkl.SimklImporter(helpers.encrypt("token"), self.user, "new")
+        importer.import_data()
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
 
     @patch("integrations.imports.simkl.SimklImporter._get_user_list")
     @patch("app.providers.tmdb.tv_with_seasons")

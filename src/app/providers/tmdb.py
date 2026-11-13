@@ -59,6 +59,11 @@ CAROUSEL_CACHE_TTL_SUCCESS = 60 * 60 * 24 * 7
 CAROUSEL_CACHE_TTL_ABSENT = 60 * 60 * 24
 
 
+def enabled(user=None):
+    """Return whether TMDB is configured."""
+    return credentials.is_configured("tmdb", user)
+
+
 def base_params(language=None):
     """Return the base TMDB request params for the given (or default) language."""
     return {
@@ -114,7 +119,9 @@ def _episode_cache_key(media_id, season_number, episode_number, language=None):
     )
 
 
-def metadata_cache_keys(media_id, media_type, season_number=None, episode_number=None):
+def metadata_cache_keys(
+    media_id, media_type, season_number=None, episode_number=None, language=None
+):
     """Return the versioned TMDB cache keys for an item.
 
     The movie and season keys carry a strategy version, so callers that clear
@@ -123,17 +130,17 @@ def metadata_cache_keys(media_id, media_type, season_number=None, episode_number
     """
     keys = []
     if media_type == MediaTypes.MOVIE.value:
-        keys.append(_movie_cache_key(media_id))
+        keys.append(_movie_cache_key(media_id, language))
     elif media_type == MediaTypes.TV.value:
-        keys.append(_tv_cache_key(media_id))
+        keys.append(_tv_cache_key(media_id, language))
     elif media_type == MediaTypes.SEASON.value and season_number is not None:
-        keys.append(_season_cache_key(media_id, season_number))
+        keys.append(_season_cache_key(media_id, season_number, language))
     elif (
         media_type == MediaTypes.EPISODE.value
         and season_number is not None
         and episode_number is not None
     ):
-        keys.append(_episode_cache_key(media_id, season_number, episode_number))
+        keys.append(_episode_cache_key(media_id, season_number, episode_number, language))
     return keys
 
 
@@ -194,10 +201,11 @@ def get_external_links(external_ids, tmdb_id=None):
 def _tvdb_override_cache_key(media_id):
     """Return cache key for a preferred TVDB override on a TMDB show.
 
-    The ``v2`` drops overrides written before #1312, when Jellyfin/Emby
-    episode TVDB ids were saved here as if they were the show's.
+    The version drops overrides that saved an episode TVDB id as if it were
+    the show's: ``v2`` those from Jellyfin/Emby (#1312), ``v3`` those from
+    modern-agent Plex episodes.
     """
-    return f"{Sources.TMDB.value}_tvdb_override_v2_{media_id}"
+    return f"{Sources.TMDB.value}_tvdb_override_v3_{media_id}"
 
 
 def get_tvdb_id_override(media_id):
@@ -745,7 +753,7 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
         if episode.get("episode_number") is not None
     ]
     max_progress = season_data.get("max_progress") or (
-        max(episode_numbers) if episode_numbers else None
+        len(set(episode_numbers)) if episode_numbers else None
     )
 
     runtimes = [
@@ -962,6 +970,34 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     return episode_images
 
 
+def _store_fetched_episode_counts(media_id, tv_data, seasons):
+    """Keep stored episode counts in step with payloads just fetched.
+
+    `seasons` maps "season/<number>" to its payload. See
+    `metadata_utils.store_provider_episode_count`.
+    """
+    from app import metadata_utils
+
+    for season_key, season_data in seasons.items():
+        season_number = season_key.removeprefix("season/")
+        episodes = season_data.get("episodes")
+        if season_number.isdecimal() and isinstance(episodes, list):
+            metadata_utils.store_provider_episode_count(
+                media_id,
+                Sources.TMDB.value,
+                len(episodes),
+                season_number=int(season_number),
+            )
+    if tv_data:
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TMDB.value,
+            metadata_utils.extract_item_metadata_values(tv_data)[
+                "provider_episode_count"
+            ],
+        )
+
+
 def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *, missing_seasons=None):
     """Fetch uncached seasons from API and cache them."""
     url = f"{base_url}/tv/{media_id}"
@@ -1006,6 +1042,11 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *,
             handle_error(error)
 
         if is_first_batch:
+            # tv() records the backdrop it already fetched; do the same here so
+            # a season/episode page doesn't pay a second /tv request for it.
+            backdrops.remember_tmdb_backdrop(
+                MediaTypes.TV.value, media_id, response.get("backdrop_path")
+            )
             # Always refresh the root TV payload from the same TMDB response
             # so season fetches can pick up updated external_ids (including
             # tvdb_id) even when the show cache already existed before this
@@ -1108,6 +1149,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *,
                 fetched_tv_data,
             )
 
+    _store_fetched_episode_counts(media_id, fetched_tv_data, result_data)
     return result_data, fetched_tv_data
 
 
@@ -1431,7 +1473,10 @@ def process_season(response, providers_response, credits_response=None):
         "source": Sources.TMDB.value,
         "media_type": MediaTypes.SEASON.value,
         "season_title": response["name"],
-        "max_progress": episodes[-1]["episode_number"] if episodes else 0,
+        # Count, not the last number: anime seasons continue the numbering
+        # (51-100), so the last number is not how many episodes the season has.
+        "max_progress": len(episodes),
+        "last_episode_number": episodes[-1]["episode_number"] if episodes else 0,
         "image": get_image_url(response["poster_path"]),
         "season_number": response["season_number"],
         "synopsis": get_synopsis(response["overview"]),
@@ -2596,6 +2641,7 @@ def episode(media_id, season_number, episode_number, language=None):
             "season_title": season_metadata.get("season_title")
             or f"Season {season_number}",
             "episode_title": response.get("name") or f"Episode {episode_number}",
+            "synopsis": get_synopsis(response.get("overview")),
             "score": round(vote_average, 1) if vote_average else None,
             "score_count": vote_count or None,
             "cast": get_cast_credits({"cast": cast_rows}),
@@ -2716,7 +2762,8 @@ def pinned_provider_matches(item, pinned_names):
     if not item or not pinned_names or not item.watch_providers:
         return []
 
-    pinned_set = set(pinned_names)
+    # The pin endpoint stores trimmed names, so compare trimmed on both sides.
+    pinned_set = {str(name).strip() for name in pinned_names}
     providers = {}
     for region_data in item.watch_providers.values():
         if not isinstance(region_data, dict):
@@ -2725,7 +2772,7 @@ def pinned_provider_matches(item, pinned_names):
             *region_data.get("flatrate", []),
             *region_data.get("free", []),
         ]:
-            if provider.get("provider_name") not in pinned_set:
+            if str(provider.get("provider_name") or "").strip() not in pinned_set:
                 continue
             providers[provider.get("provider_id")] = provider
 

@@ -553,6 +553,12 @@ Reusable component for displaying album cards:
 - `album_track_modal.html`: Same pattern for albums
 - `fill_track_song.html`: Same pattern as `fill_track_episode.html` for tracks
 
+Track notes are edited from album track rows or the track detail page through
+`GET/POST music/track/<track_id>/notes/`. They use the current user's `Music.notes`
+and the shared Markdown editor. Notes saves do not create listen history rows;
+an unplayed track gets a Planning entry without a listen, and its first listen
+completes that entry while preserving its notes.
+
 ### Music List (`src/templates/app/media_list.html`)
 
 When `is_artist_list=True`:

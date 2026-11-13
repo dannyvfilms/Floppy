@@ -1,7 +1,7 @@
-import json
 import logging
 
 from app import live_playback
+from app.log_safety import mapping_keys
 from app.models import MediaTypes, Sources
 
 from .base import BaseWebhookProcessor
@@ -33,8 +33,9 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
     def process_payload(self, payload, user):
         """Process the incoming Emby webhook payload."""
         logger.debug(
-            "Processing Emby webhook payload: %s",
-            json.dumps(payload, indent=2),
+            "Processing Emby webhook payload keys=%s item_keys=%s",
+            mapping_keys(payload),
+            mapping_keys(payload.get("Item")),
         )
 
         event_type = payload.get("Event")
@@ -57,6 +58,9 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             EMBY_EVENT_MAP[event_type],
             played=self._is_played(payload),
             position_seconds=self._get_position_seconds(payload),
+            duration_seconds=_ticks_to_seconds(
+                (payload.get("Item") or {}).get("RunTimeTicks"),
+            ),
         ):
             return
 
@@ -239,6 +243,7 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             duration_seconds=duration_seconds,
             store_progress=event_type != "media.stop",
             provider_completed=provider_completed,
+            event_ts=getattr(self, "_event_ts", None),
         )
         return {
             "event_type": event_type,
@@ -246,4 +251,5 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             "view_offset_seconds": offset_seconds,
             "duration_seconds": duration_seconds,
             "provider_completed": provider_completed,
+            "event_at": getattr(self, "_event_ts", None),
         }

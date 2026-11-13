@@ -3,7 +3,7 @@
 {% load app_tags %}
 
 {% if edition.image %}
-  <img src="{{ edition.image|image_url }}"
+  <img data-media-artwork decoding="sync" src="{{ edition.image|image_url }}"
        alt=""
        loading="lazy"
        class="object-cover w-10 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">

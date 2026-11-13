@@ -294,13 +294,20 @@ class Command(BaseCommand):
             )
 
         failures = []
+        if strict and base_ref is None:
+            failures.append(
+                "Strict migration hygiene requires a resolvable base ref; "
+                "fetch it or pass --base-ref explicitly."
+            )
         if multi_leaf_apps:
             lines = ["Multiple migration leaf nodes detected:"]
             for app, nodes in sorted(multi_leaf_apps.items()):
                 rendered_nodes = ", ".join(nodes) if nodes else "<none>"
                 lines.append(f"- {app}: {rendered_nodes}")
                 lines.append(
-                    f"  Fix: python src/manage.py makemigrations {app} --merge"
+                    f"  Fix: point the migration your branch adds at the other leaf "
+                    f"and renumber it. Only when both leaves are already on latest, "
+                    f"run python src/manage.py makemigrations {app} --merge"
                 )
             failures.append("\n".join(lines))
 

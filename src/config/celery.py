@@ -3,11 +3,15 @@ import os
 
 from celery import Celery, Task, states
 from celery.exceptions import Ignore
-from celery.signals import worker_process_init, worker_ready
+from celery.signals import (
+    worker_before_create_process,
+    worker_process_init,
+    worker_ready,
+    worker_shutting_down,
+)
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
-
 
 
 class FloppyTask(Task):
@@ -23,12 +27,12 @@ class FloppyTask(Task):
         """Skip the task when its tracked row was cancelled, else run it."""
         from django_celery_results.models import TaskResult
 
-        from app.signals import TRACKED_TASK_NAMES
+        from app.signals import _is_tracked_task
 
         task_id = self.request.id
         if (
             task_id
-            and self.name in TRACKED_TASK_NAMES
+            and _is_tracked_task(self.name)
             and TaskResult.objects.filter(
                 task_id=task_id,
                 status=states.REVOKED,
@@ -59,25 +63,62 @@ def _enable_fault_log(**_kwargs):
 
 
 @worker_ready.connect
+def _warm_database_on_start(**_kwargs):
+    """Queue a page-cache warm now instead of waiting for the hourly schedule.
+
+    A restart is when the cache is coldest. The interactive worker skips it:
+    the task runs on the background queue and one request is enough.
+    """
+    if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
+        return
+    import logging
+
+    try:
+        app.send_task("Warm database page cache", ignore_result=True)
+    except Exception:  # a start must not fail because the broker is slow
+        logging.getLogger(__name__).debug("startup warm not queued", exc_info=True)
+
+
+@worker_shutting_down.connect
+def _log_shutdown(sig=None, how=None, **_kwargs):
+    """Record which tasks were running when the worker was told to stop."""
+    import logging
+
+    from config import run_state
+
+    try:
+        run_state.log_worker_shutdown(sig, how)
+    except Exception:  # diagnostics must never block a shutdown
+        logging.getLogger(__name__).debug("shutdown note failed", exc_info=True)
+
+
+_parent_image_frozen = False
+
+
+@worker_before_create_process.connect
+@worker_ready.connect
 def _freeze_parent_image(**_kwargs):
-    """Move this worker's imported image out of the garbage collector's reach.
+    """Freeze the imported image before the first prefork child is created.
 
     The prefork pool forks its children from this process, so whatever is
     imported here starts shared between them. Collection un-shares it: a pass
     writes to the header of every object it examines, and a written page stops
     being shared.
 
-    Production measured every Python process in the container converging on
-    the same ~30 MiB of still-shared memory after three hours, down from
-    60-76 MiB. That it is the same floor for the interactive child, the web
-    workers and the gunicorn master -- processes with nothing in common but a
-    fork and a garbage collector -- is what identifies collection as the
-    cause rather than any particular workload.
+    Waiting for worker_ready lets the initial children collect an unfrozen
+    image first, copying pages that replacement children keep shared. Keep
+    worker_ready as a fallback for pools without the before-create signal.
 
-    Objects created after this point are still collected normally.
+    Freeze only once: replacement forks must not freeze transient parent
+    state. Objects created after this point are still collected normally.
     """
+    global _parent_image_frozen  # noqa: PLW0603 - once per worker parent
+
+    if _parent_image_frozen:
+        return
     gc.collect()
     gc.freeze()
+    _parent_image_frozen = True
 
 
 @worker_process_init.connect

@@ -5,6 +5,9 @@ Missing or partial saves fall back to ``default_profile``, which matches the
 shared card's current year line.
 """
 
+import contextlib
+from functools import cache
+
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
@@ -32,29 +35,65 @@ _EXTRA = "extra_query"
 _CHEAP = "cheap"
 
 
-def _field(label, types, cost=_CHEAP):
-    """Build one registry entry."""
-    return {"label": label, "types": frozenset(types), "cost": cost}
+def _field(label, types=(), cost=_CHEAP, metadata=None):
+    """Build one registry entry.
+
+    ``metadata`` names the item metadata field this property reads. When it
+    is set, the property is offered for every media type whose metadata fields
+    include it, so the per-type picker follows that registry automatically.
+    """
+    return {
+        "label": label,
+        "types": frozenset(types),
+        "cost": cost,
+        "metadata": metadata,
+    }
 
 
 CARD_FIELDS = {
     "release_year": _field("Release year", _ALL_MEDIA),
     "episode_code": _field("Season and episode", {"episode", "season", "tv"}),
-    "genres": _field("Genres", _ALL_MEDIA),
-    "runtime": _field("Runtime", _ALL_MEDIA),
+    "genres": _field("Genres", _ALL_MEDIA, metadata="genres"),
+    "platforms": _field("Platform", metadata="platforms"),
+    "runtime": _field("Runtime", _ALL_MEDIA, metadata="runtime"),
     "progress": _field("Progress", _ALL_MEDIA),
     "series_position": _field("Series position", {"book"}),
-    "status": _field("Status", _ALL_MEDIA),
+    "status": _field("Status", _ALL_MEDIA, metadata="status"),
     "rating": _field("Score", _ALL_MEDIA),
     "last_played": _field("Last played", _ALL_MEDIA),
-    "synopsis": _field("Synopsis", _ALL_MEDIA),
+    "date_added": _field("Date added", _ALL_MEDIA),
+    "start_date": _field("Start date", _ALL_MEDIA),
+    "end_date": _field("End date", _ALL_MEDIA),
+    "synopsis": _field("Synopsis", _ALL_MEDIA, metadata="synopsis"),
     "artist": _field("Artist", {"music"}, _EXTRA),
     "album": _field("Album", {"music"}, _EXTRA),
     "track_number": _field("Track number", {"music"}, _EXTRA),
     "show_name": _field("Show", {"episode", "season"}, _EXTRA),
-    "author": _field("Author", {"book", "comic", "manga"}, _EXTRA),
+    "author": _field("Author", {"book", "comic", "manga"}, _EXTRA, metadata="authors"),
     "role": _field("Role", {PERSON}),
 }
+
+
+@cache
+def field_types(field_id):
+    """Return the media types that can show ``field_id``.
+
+    Card-only properties declare their types. Metadata-backed properties also
+    inherit every type that has the field, which keeps the card picker in step
+    with the metadata registry instead of requiring a second list per property.
+    """
+    spec = CARD_FIELDS[field_id]
+    types = set(spec["types"])
+    metadata = spec["metadata"]
+    if metadata:
+        from app.custom_metadata import MEDIA_TYPE_FIELD_ORDER
+
+        types.update(
+            media_type
+            for media_type, fields in MEDIA_TYPE_FIELD_ORDER.items()
+            if metadata in fields
+        )
+    return frozenset(types)
 
 
 def _default_field_ids(media_type):
@@ -138,9 +177,7 @@ def parse_card_metadata(raw_payload):
         if not isinstance(entry, dict):
             continue
         allowed = {
-            field_id
-            for field_id, spec in CARD_FIELDS.items()
-            if media_type in spec["types"]
+            field_id for field_id in CARD_FIELDS if media_type in field_types(field_id)
         }
         display = entry.get("display")
         if display not in DISPLAY_CHOICES:
@@ -160,7 +197,23 @@ def resolve_profile(user, media_type):
     """Return the saved profile for ``media_type``, or the default."""
     if media_type not in PROFILE_TYPES:
         media_type = MediaTypes.MOVIE.value
-    saved = _saved_types(user).get(media_type)
+    saved_types = _saved_types(user)
+    saved = saved_types.get(media_type)
+    # A page resolves the same profile for every card; parse it once per user
+    # instance (callers treat it as read-only). The identity check drops the memo when the saved map is replaced.
+    memo = getattr(user, "_card_profile_memo", None)
+    if memo is None or memo.get("saved_types") is not saved_types:
+        memo = {"saved_types": saved_types}
+        with contextlib.suppress(AttributeError):
+            user._card_profile_memo = memo
+    if media_type in memo:
+        return memo[media_type]
+    profile = _resolve_profile_uncached(user, media_type, saved)
+    memo[media_type] = profile
+    return profile
+
+
+def _resolve_profile_uncached(user, media_type, saved):
     if not isinstance(saved, dict):
         base = default_profile(media_type)
         if not _saved_types(user):
@@ -471,6 +524,20 @@ def _genres(item, media, user):
     return ", ".join(names[:3]) or None
 
 
+def _platforms(item, media, user):
+    values = (
+        _from_obj(media, "card_collection_platforms")
+        or _from_obj(item, "card_collection_platforms")
+        or _from_obj(item, "platforms")
+        or _from_obj(media, "platforms")
+        or []
+    )
+    if isinstance(values, str):
+        return _text(values)
+    names = [str(value).strip() for value in values if str(value).strip()]
+    return ", ".join(names[:3]) or None
+
+
 def _runtime(item, media, user):
     runtime = _from_obj(item, "runtime") or _from_obj(media, "runtime_display")
     if runtime:
@@ -553,7 +620,8 @@ def _format_episode_code(season_number, episode_number):
 
 def _show_episode_code(media):
     """Return the show's next episode, or the furthest one it already has."""
-    if media is None or not hasattr(media, "seasons"):
+    seasons = getattr(media, "seasons", None)
+    if seasons is None:
         return None
     target = getattr(media, "next_episode_target", None)
     if callable(target):
@@ -565,7 +633,7 @@ def _show_episode_code(media):
             if code and episode_number is not None:
                 return code
     best = None
-    for season in media.seasons.all():
+    for season in seasons.all():
         season_number = _from_obj(getattr(season, "item", None), "season_number")
         if not season_number:
             continue
@@ -631,6 +699,29 @@ def _last_played(item, media, user):
     from users.templatetags.user_tags import user_datetime_format
 
     return _text(user_datetime_format(played, user))
+
+
+def _entry_date(media, user, *names):
+    """Return the first of ``names`` set on the entry, in the user's date format."""
+    for name in names:
+        value = _from_obj(media, name)
+        if value:
+            from users.templatetags.user_tags import user_date_format
+
+            return _text(user_date_format(value, user)) if user else _text(value)
+    return None
+
+
+def _date_added(item, media, user):
+    return _entry_date(media, user, "aggregated_created_at", "created_at")
+
+
+def _start_date(item, media, user):
+    return _entry_date(media, user, "aggregated_start_date", "start_date")
+
+
+def _end_date(item, media, user):
+    return _entry_date(media, user, "aggregated_end_date", "end_date")
 
 
 def _synopsis(item, media, user):
@@ -750,6 +841,7 @@ def _role(item, media, user):
 _RENDERERS = {
     "release_year": _release_year,
     "genres": _genres,
+    "platforms": _platforms,
     "runtime": _runtime,
     "progress": _progress,
     "series_position": _series_position,
@@ -757,6 +849,9 @@ _RENDERERS = {
     "rating": _rating,
     "episode_code": _episode_code,
     "last_played": _last_played,
+    "date_added": _date_added,
+    "start_date": _start_date,
+    "end_date": _end_date,
     "synopsis": _synopsis,
     "artist": _artist,
     "album": _album,
@@ -815,7 +910,7 @@ def editor_catalog():
     for media_type in PROFILE_TYPES:
         fields = []
         for field_id, spec in CARD_FIELDS.items():
-            if media_type not in spec["types"]:
+            if media_type not in field_types(field_id):
                 continue
             fields.append(
                 {

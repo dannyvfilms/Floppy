@@ -45,6 +45,61 @@ class CardMetadataTests(SimpleTestCase):
         self.assertEqual(movie["display"], "always")
         self.assertTrue(movie["options"]["rating"]["hide_zero"])
 
+    def test_metadata_fields_are_offered_where_the_media_type_has_them(self):
+        """A metadata-backed property follows the media type's field registry."""
+        from users.card_metadata import editor_catalog
+
+        fields_by_type = {
+            entry["id"]: {field["id"] for field in entry["fields"]}
+            for entry in editor_catalog()
+        }
+        self.assertIn("platforms", fields_by_type["game"])
+        self.assertNotIn("platforms", fields_by_type["movie"])
+        self.assertNotIn("platforms", fields_by_type["boardgame"])
+
+    def test_parser_drops_a_metadata_field_the_type_does_not_have(self):
+        """Platform cannot be saved onto a movie profile."""
+        parsed = parse_card_metadata(
+            {
+                "version": 1,
+                "types": {
+                    "game": {"fields": ["platforms", "release_year"]},
+                    "movie": {"fields": ["platforms", "release_year"]},
+                },
+            }
+        )
+        self.assertEqual(parsed["types"]["game"]["fields"], ["platforms", "release_year"])
+        self.assertEqual(parsed["types"]["movie"]["fields"], ["release_year"])
+
+    def test_platform_line_reads_the_item_platforms(self):
+        """A game card shows its platforms, joined when there are several."""
+        from users.card_metadata import card_lines
+
+        user = SimpleNamespace(
+            card_metadata=parse_card_metadata(
+                {"version": 1, "types": {"game": {"fields": ["platforms"]}}}
+            )
+        )
+        item = SimpleNamespace(platforms=["PC", "PlayStation 5", "Switch"])
+        self.assertEqual(
+            card_lines(user, "game", item, None)[0]["text"],
+            "PC, PlayStation 5, Switch",
+        )
+
+    def test_platform_line_prefers_collection_platforms(self):
+        from users.card_metadata import card_lines
+
+        user = SimpleNamespace(
+            card_metadata=parse_card_metadata(
+                {"version": 1, "types": {"game": {"fields": ["platforms"]}}}
+            )
+        )
+        item = SimpleNamespace(platforms=["PC", "Switch"])
+        media = SimpleNamespace(card_collection_platforms=["PlayStation 5", "Switch"])
+        self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PlayStation 5, Switch")
+        media.card_collection_platforms = []
+        self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PC, Switch")
+
     def test_legacy_seed_removes_progress_when_the_bar_is_off(self):
         """progress_bar false drops the progress field on every type."""
         seeded = profiles_from_legacy("always", False, True)
@@ -146,3 +201,60 @@ class HandRolledCardTests(SimpleTestCase):
         classes = card_title_classes({"user": edited}, "music")
         self.assertIn("media-card-title-wrap", classes)
         self.assertIn("media-card-title-rest-2", classes)
+
+    def test_date_fields_show_the_entry_dates_in_the_user_format(self):
+        """Date added, start and end read the entry and follow the date format."""
+        from datetime import UTC, datetime
+
+        from users.card_metadata import card_lines
+
+        user = self._user(
+            {
+                "movie": {
+                    "lines": [
+                        {"fields": ["date_added"], "display": "dormant"},
+                        {"fields": ["start_date", "end_date"], "display": "dormant"},
+                    ]
+                }
+            }
+        )
+        user.date_format = "iso_8601"
+        user.time_format = "24"
+        entry = SimpleNamespace(
+            created_at=datetime(2026, 1, 2, 12, tzinfo=UTC),
+            start_date=datetime(2026, 3, 4, 12, tzinfo=UTC),
+            end_date=datetime(2026, 5, 6, 12, tzinfo=UTC),
+        )
+        lines = card_lines(user, "movie", None, entry)
+        self.assertEqual(
+            [line["text"] for line in lines],
+            ["2026-01-02", "2026-03-04 · 2026-05-06"],
+        )
+
+    def test_date_fields_prefer_the_aggregated_dates_and_skip_blanks(self):
+        """A grouped list row shows the whole item's dates; empty dates vanish."""
+        from datetime import UTC, datetime
+
+        from users.card_metadata import card_lines
+
+        user = self._user(
+            {"game": {"lines": [{"fields": ["start_date"], "display": "dormant"}]}}
+        )
+        user.date_format = "iso_8601"
+        grouped = SimpleNamespace(
+            start_date=datetime(2026, 3, 4, 12, tzinfo=UTC),
+            aggregated_start_date=datetime(2026, 1, 1, 12, tzinfo=UTC),
+        )
+        self.assertEqual(card_lines(user, "game", None, grouped)[0]["text"], "2026-01-01")
+        self.assertEqual(card_lines(user, "game", None, SimpleNamespace()), [])
+
+    def test_every_non_person_type_can_pick_the_date_fields(self):
+        """The picker offers the three date properties for each media type."""
+        from users.card_metadata import PERSON, editor_catalog
+
+        for entry in editor_catalog():
+            ids = {field["id"] for field in entry["fields"]}
+            expected = set() if entry["id"] == PERSON else {
+                "date_added", "start_date", "end_date"
+            }
+            self.assertEqual(ids & {"date_added", "start_date", "end_date"}, expected)

@@ -1,0 +1,16 @@
+{% load i18n %}
+<div class="ui-account-action">
+  <div{% if user.import_frequency == 'once' %} hidden{% endif %}><span class="provider-media-chip" title="{{ file_import.oneTime.title }}">{{ file_import.oneTime.label }}</span></div>
+  <p>{{ file_import.description }}{% if file_import.docs %} <a href="{{ file_import.docs.url }}" target="_blank" rel="noopener">{{ file_import.docs.label }}</a>{% endif %}</p>
+  <form class="ui-form" method="post" action="{{ file_import.action }}" enctype="multipart/form-data">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ file_import.next }}">
+    {% for field in file_import.postFields %}<input type="hidden" name="{{ field.name }}" data-import-preference="{{ field.key }}" value="{% if field.key == 'frequency' %}{{ file_import.values.frequency }}{% elif field.key == 'time' %}{{ file_import.values.time }}{% else %}{{ file_import.values.mode }}{% endif %}">{% endfor %}
+    {% if file_import.note %}<p class="provider-small">{{ file_import.note }}</p>{% endif %}
+    {% for field in file_import.textFields %}<div class="ui-field"><label for="fallback-{{ field.name }}">{{ field.label }}</label><input id="fallback-{{ field.name }}" type="{{ field.type }}" name="{{ field.name }}" placeholder="{{ field.placeholder }}" autocomplete="off"{% if field.required %} required{% endif %}></div>{% endfor %}
+    {% if file_import.files %}{% for file in file_import.files %}<div class="ui-field"><label for="fallback-{{ file.field }}">{{ file.label }}</label><input id="fallback-{{ file.field }}" type="file" name="{{ file.field }}" accept="{{ file.accept }}"></div>{% endfor %}
+    {% elif file_import.fileField %}<div class="ui-field"><label for="file-import-fallback">{{ file_import.selectLabel }}</label>
+      <input id="file-import-fallback" type="file" name="{{ file_import.fileField }}" accept="{{ file_import.accept }}"{% if file_import.multiple %} multiple{% endif %} required>
+    </div>{% endif %}
+    <button type="submit" class="ui-button">{{ file_import.submitLabel }}</button>
+  </form>
+</div>

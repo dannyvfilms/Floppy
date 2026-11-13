@@ -2,14 +2,21 @@ services:
   floppy:
     container_name: floppy
     # Image defaults to :latest tag (latest commit on the latest branch)
-    # Use :release or :vX.X.X for stable builds from the release branch/GitHub Releases
+    # Use :release or :X.X.X for builds from the release branch/GitHub Releases
     image: ghcr.io/dannyvfilms/floppy:latest
     restart: unless-stopped
+    # A running celery task gets up to 60 s to finish and the web server 30 s.
+    # Docker's default 10 s stop timeout kills the container mid-shutdown.
+    stop_grace_period: 150s
     depends_on:
       - redis
     environment:
       - TZ=Europe/Berlin
-      - SECRET=longstring
+      # Required. Put SECRET=<a long random string> in a .env file beside this one.
+      # Already running from an older copy of this file? It shipped
+      # SECRET=longstring. Keep that value, or Floppy can no longer read your
+      # saved integration credentials, then rotate it deliberately later.
+      - SECRET=${SECRET:?Set SECRET in .env. Upgrading from an older copy of this file? Its key was longstring - see the comment above SECRET}
       - REDIS_URL=redis://redis:6379
       - ADMIN_ENABLED=False
       # Off by default: otherwise a publicly known demo/demodemo
@@ -36,6 +43,23 @@ services:
       - "8000:8000"
     networks:
       - floppy-net
+
+  # Optional LAN discovery. The host network is required for mDNS multicast;
+  # the app itself stays on the normal bridge network. Set
+  # FLOPPY_ADVERTISE_PORT when the host-side port is not 8000.
+  floppy-discovery:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    restart: unless-stopped
+    profiles: [discovery]
+    network_mode: host
+    depends_on:
+      floppy:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.discovery_advertiser"]
+    environment:
+      FLOPPY_ADVERTISE_HOST: ${FLOPPY_ADVERTISE_HOST:-}
+      FLOPPY_ADVERTISE_PORT: ${FLOPPY_ADVERTISE_PORT:-8000}
+      FLOPPY_ADVERTISE_NAME: ${FLOPPY_ADVERTISE_NAME:-Floppy}
 
   redis:
     container_name: floppy-redis

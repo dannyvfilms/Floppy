@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.db import OperationalError
 from django.utils import timezone
 
+from app import db_retry
 from app.discover import cache_repo, tab_cache
 from app.discover.adapters import TMDB_ADAPTER
 from app.discover.artwork import (
@@ -51,7 +52,10 @@ from app.discover.movie_comfort import (
     _entry_phase_evidence,
     _phase_affinity_maps,
 )
-from app.discover.profile import get_or_compute_taste_profile
+from app.discover.profile import (
+    get_or_compute_taste_profile,
+    preload_tv_activity_dates,
+)
 from app.discover.provider_candidates import (
     _mal_anime_fallback_candidates,
     _provider_row_candidates,
@@ -168,9 +172,11 @@ def _recent_completed_tag_coverage(
         recent_queryset = recent_queryset.filter(
             _activity_filter_query(model, cutoff, newer_than=True),
         )
+    recent_entries = list(recent_queryset.order_by(*_activity_ordering(model))[:300])
+    preload_tv_activity_dates(recent_entries)
     recent_entries = [
         entry
-        for entry in recent_queryset.order_by(*_activity_ordering(model))[:300]
+        for entry in recent_entries
         if (
             _entry_activity_datetime(entry)
             and _entry_activity_datetime(entry) >= cutoff
@@ -231,6 +237,10 @@ def _comfort_candidates(
             _activity_filter_query(model, unrated_cutoff, newer_than=False),
         )
     unrated_queryset = unrated_queryset[:COMFORT_LIBRARY_ENTRY_LIMIT]
+
+    rated_queryset = list(rated_queryset)
+    unrated_queryset = list(unrated_queryset)
+    preload_tv_activity_dates(rated_queryset + unrated_queryset)
 
     rated_entries = []
     for entry in rated_queryset:
@@ -1165,13 +1175,16 @@ def _build_and_cache_row(
     try:
         current_activity_version = tab_cache.get_activity_version(user.id, media_type)
         if current_activity_version == build_activity_version:
-            cache_repo.set_row_cache(
-                user.id,
-                media_type,
-                row_definition.key,
-                cache_payload,
-                ttl_seconds=_row_ttl_seconds(row_definition),
-            )
+            # On a page load this gives up at once if SQLite's writer is busy;
+            # the row is served anyway and the next refresh task saves it.
+            with db_retry.optional_save():
+                cache_repo.set_row_cache(
+                    user.id,
+                    media_type,
+                    row_definition.key,
+                    cache_payload,
+                    ttl_seconds=_row_ttl_seconds(row_definition),
+                )
         else:
             logger.info(
                 "discover_row_cache_skip_stale_build user_id=%s media_type=%s row_key=%s "

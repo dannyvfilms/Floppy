@@ -23,6 +23,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.episode_runtimes import usable_runtime_minutes
 from app.providers import services
 from integrations import import_progress
 from integrations import models as integration_models
@@ -431,7 +432,9 @@ class PocketCastsImporter:
             # model hydration, no save. Production evidence (2026-09-14): four
             # runs of ~1,019 seconds each walked ~11,000 episodes across 12
             # shows and imported nothing.
-            catalog_index = self._load_catalog_index(show)
+            catalog_index = self._load_catalog_index(
+                show, incoming_uuids=full_metadata.keys()
+            )
             play_states = self._fetch_show_play_states(podcast_uuid)
             for metadata_ep in full_metadata.values():
                 catalog_episode_data = self._build_catalog_episode_data(
@@ -710,24 +713,6 @@ class PocketCastsImporter:
             self.user.username,
             imported_counts,
         )
-
-        # Trigger cache refresh if any podcasts were imported
-        # (bulk_create doesn't trigger signals, so we need to manually refresh)
-        if (
-            MediaTypes.PODCAST.value in imported_counts
-            and imported_counts[MediaTypes.PODCAST.value] > 0
-        ):
-            from app import statistics_cache
-            from app.history_cache import schedule_history_refresh
-
-            logger.debug(
-                "Triggering cache refresh for user %s after podcast import",
-                self.user.username,
-            )
-            schedule_history_refresh(self.user.id)
-            statistics_cache.invalidate_all_statistics_days(
-                self.user.id, reason="pocketcasts_import"
-            )
 
         return imported_counts, "\n".join(self.warnings) if self.warnings else ""
 
@@ -1056,8 +1041,11 @@ class PocketCastsImporter:
 
         for episode in episode_items:
             duration_seconds = None
-            if episode.item and episode.item.runtime_minutes:
-                duration_seconds = episode.item.runtime_minutes * 60
+            minutes = usable_runtime_minutes(
+                episode.item.runtime_minutes if episode.item else None,
+            )
+            if minutes:
+                duration_seconds = minutes * 60
 
             history_items.append((episode.end_date, duration_seconds, "episode", True))
 
@@ -1071,8 +1059,9 @@ class PocketCastsImporter:
 
         for movie in movie_items:
             duration_seconds = None
-            if movie.item and movie.item.runtime_minutes:
-                duration_seconds = movie.item.runtime_minutes * 60
+            minutes = usable_runtime_minutes(movie.item.runtime_minutes)
+            if minutes:
+                duration_seconds = minutes * 60
 
             history_items.append((movie.end_date, duration_seconds, "movie", False))
 
@@ -1636,7 +1625,7 @@ class PocketCastsImporter:
                 e.response is not None
                 and e.response.status_code == HTTPStatus.UNAUTHORIZED
             ):
-                msg = "Pocket Casts token expired during import — please retry"
+                msg = "Pocket Casts token expired during import. Please retry"
                 raise MediaImportError(msg) from e
             logger.warning(
                 "HTTP error fetching play states for podcast %s: %s", podcast_uuid, e
@@ -1677,7 +1666,7 @@ class PocketCastsImporter:
                     e.response is not None
                     and e.response.status_code == HTTPStatus.UNAUTHORIZED
                 ):
-                    msg = "Pocket Casts token expired during import — please retry"
+                    msg = "Pocket Casts token expired during import. Please retry"
                     raise MediaImportError(msg) from e
                 logger.warning(
                     "HTTP error fetching full metadata for podcast %s (page %d): %s",
@@ -1980,16 +1969,21 @@ class PocketCastsImporter:
         ("episode_type", "episodeType"),
     )
 
-    def _load_catalog_index(self, show):
+    def _load_catalog_index(self, show, incoming_uuids=None):
         """Read one show's stored catalog as rows, not model instances.
 
         Keyed by episode UUID. ``values()`` rather than model objects because
         this exists to answer "has anything changed?" for a whole catalog at
         once - hydrating thousands of episodes to answer it is the cost being
         removed.
+
+        ``incoming_uuids`` (the provider UUIDs about to be compared) lets the
+        freshness check recognise an episode the sync would resolve onto an
+        existing row by title/date instead of creating - see
+        ``_catalog_alias_row``.
         """
         fields = [stored for stored, _ in self._CATALOG_COMPARISON_FIELDS]
-        return {
+        index = {
             row["episode_uuid"]: row
             for row in PodcastEpisode.objects.filter(show=show).values(
                 "episode_uuid",
@@ -1998,6 +1992,102 @@ class PocketCastsImporter:
                 *fields,
             )
         }
+        self._alias_state = None
+        if incoming_uuids is not None:
+            missing = [uuid for uuid in incoming_uuids if uuid and uuid not in index]
+            # A provider UUID stored under another show makes the sync merge
+            # rather than alias, so those are never aliased here.
+            foreign = set()
+            for start in range(0, len(missing), 500):
+                foreign.update(
+                    PodcastEpisode.objects.filter(
+                        episode_uuid__in=missing[start : start + 500]
+                    ).values_list("episode_uuid", flat=True)
+                )
+            self._alias_state = {"foreign": foreign, "lookups": None}
+        return index
+
+    def _alias_lookups(self, catalog_index):
+        """Build, once per show, the title/date maps the sync fallbacks query."""
+        state = self._alias_state
+        if state["lookups"] is not None:
+            return state["lookups"]
+        by_title_date, by_title, by_number_date = {}, {}, {}
+        for row in catalog_index.values():
+            title = self._fold_title(row["title"])
+            published = row["published"]
+            local_date = (
+                timezone.localtime(published).date() if published else None
+            )
+            by_title.setdefault(title, []).append(row)
+            if local_date:
+                by_title_date.setdefault((title, local_date), []).append(row)
+                if row["episode_number"] is not None:
+                    by_number_date.setdefault(
+                        (row["episode_number"], local_date), []
+                    ).append(row)
+        # Tracked identity the sync keeps instead of rewriting the UUID.
+        tracked = set(
+            Podcast.objects.filter(episode__isnull=False).values_list(
+                "episode__episode_uuid", flat=True
+            )
+        )
+        tracked.update(
+            app.models.Item.objects.filter(
+                source=Sources.POCKETCASTS.value,
+                media_type=MediaTypes.PODCAST.value,
+            ).values_list("media_id", flat=True)
+        )
+        state["lookups"] = (by_title_date, by_title, by_number_date, tracked)
+        return state["lookups"]
+
+    @staticmethod
+    def _fold_title(title):
+        """Mirror ``iexact`` where it is safe; non-ASCII stays case-exact."""
+        title = (title or "").strip()
+        return title.lower() if title.isascii() else title
+
+    def _catalog_alias_row(self, episode_data, catalog_index):
+        """Return the stored row the sync would resolve this episode onto.
+
+        Recurring polls re-attempted the same title/date fallback for every
+        episode whose provider UUID differs from the stored canonical UUID
+        (~30,000 queries, 4,570 index misses, nothing imported). Only a
+        unique in-memory match whose UUID the sync would keep is returned;
+        anything else - ambiguous, untracked (UUID would be rewritten), or a
+        UUID stored under another show (merge) - returns None and takes the
+        full sync, so a genuinely new or changed episode is never skipped.
+        """
+        if getattr(self, "_alias_state", None) is None:
+            return None
+        incoming_uuid = episode_data.get("uuid")
+        if incoming_uuid in self._alias_state["foreign"]:
+            return None
+        title = (episode_data.get("title") or "").strip()
+        if not title:
+            return None
+        published = None
+        published_ts = self._parse_history_timestamp(episode_data.get("published"))
+        if published_ts is not None:
+            published = datetime.fromtimestamp(published_ts, tz=UTC)
+        by_title_date, by_title, by_number_date, tracked = self._alias_lookups(
+            catalog_index
+        )
+        folded = self._fold_title(title)
+        candidate_sets = []
+        if published:
+            candidate_sets.append(by_title_date.get((folded, published.date()), []))
+        candidate_sets.append(by_title.get(folded, []))
+        number = self._coerce_nonnegative_int(
+            episode_data.get("episodeNumber", episode_data.get("episode_number"))
+        )
+        if published and number is not None:
+            candidate_sets.append(by_number_date.get((number, published.date()), []))
+        for candidates in candidate_sets:
+            if len(candidates) == 1:
+                row = candidates[0]
+                return row if row["episode_uuid"] in tracked else None
+        return None
 
     def _differs(self, reason):
         """Count why an episode failed the freshness check, and report False.
@@ -2018,7 +2108,10 @@ class PocketCastsImporter:
         """
         stored = catalog_index.get(episode_data.get("uuid"))
         if stored is None:
-            return self._differs("index_miss")
+            stored = self._catalog_alias_row(episode_data, catalog_index)
+            if stored is None:
+                return self._differs("index_miss")
+            self._count("alias_matched")
 
         if stored["is_deleted"] != episode_data.get("isDeleted", False):
             return self._differs("is_deleted")
@@ -2817,7 +2910,7 @@ class PocketCastsImporter:
         # Check for duplicate history entry by comparing end_date (actual play completion time)
         # instead of history_date (when the history record was created)
         latest_history = (
-            podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
+            podcast.plays.filter(end_date__isnull=False).order_by("-end_date").first()
         )
         if latest_history and latest_history.end_date and import_time:
             # Check if we're trying to record history with the same or very similar end_date

@@ -23,8 +23,9 @@ the thread that would deliver them is gone".
 
 It survives ``spawn``, the results pickle fine (188 KB for a whole run), and it
 is intermittent and load-dependent. Nobody has root-caused it. What makes it
-expensive is that the CI job has no ``timeout-minutes``, so a hung run holds a
-runner for GitHub's six-hour default and reports nothing.
+expensive was that the CI job had no ``timeout-minutes``, so a hung run could
+hold a runner for GitHub's six-hour default and report nothing. The current
+application job also has a 120-minute timeout as an outer bound.
 
 So this subclass does not try to fix the race. It makes the *collection* side
 unable to hang on it:
@@ -54,8 +55,14 @@ import multiprocessing
 import multiprocessing.pool as mp_pool
 import os
 import time
+from collections import defaultdict
 
+from django.db import DEFAULT_DB_ALIAS, connections
+from django.db.models.signals import pre_migrate
 from django.test.runner import DiscoverRunner, ParallelTestSuite
+from django.test.utils import iter_test_cases
+
+from config import test_db_template
 
 logger = logging.getLogger(__name__)
 
@@ -353,3 +360,102 @@ class ResilientDiscoverRunner(DiscoverRunner):
         """Override whatever ``--parallel`` asked for with the configured value."""
         super().__init__(*args, **kwargs)
         self.parallel = _configured_parallel(self.parallel)
+
+    def _template_applies(self, aliases) -> bool:
+        """Whether this run builds the one in-memory SQLite test database."""
+        if not test_db_template.requested() or self.keepdb:
+            return False
+        if aliases is not None and DEFAULT_DB_ALIAS not in aliases:
+            return False
+        if list(connections) != [DEFAULT_DB_ALIAS]:
+            return False
+        connection = connections[DEFAULT_DB_ALIAS]
+        return connection.vendor == "sqlite" and connection.creation.is_in_memory_db(
+            connection.creation._get_test_db_name()
+        )
+
+    def setup_databases(self, **kwargs):
+        """Restore a saved migrated database when its inputs are unchanged.
+
+        See ``config.test_db_template``. Django's own setup runs either way, so
+        ``migrate`` still executes against a restored database; there it must
+        find nothing to apply.
+        """
+        if not self._template_applies(kwargs.get("aliases")):
+            return super().setup_databases(**kwargs)
+
+        connection = connections[DEFAULT_DB_ALIAS]
+        key = test_db_template.current_key()
+        template = test_db_template.find(key)
+        keeper = None
+        if template is not None:
+            keeper = test_db_template.restore(
+                template, connection.creation._get_test_db_name()
+            )
+            if keeper is None:
+                self.log(
+                    f"[test-db] saved database {template.name} was damaged and "
+                    "has been deleted; replaying migrations."
+                )
+
+        planned = []
+
+        def record_plan(sender, plan=None, **_kwargs):
+            planned.extend(str(migration) for migration, _backwards in plan or [])
+
+        pre_migrate.connect(record_plan, weak=False)
+        try:
+            old_config = super().setup_databases(**kwargs)
+        finally:
+            pre_migrate.disconnect(record_plan)
+
+        connection.ensure_connection()
+        raw = connection.connection
+        if keeper is None:
+            saved = test_db_template.save(raw, key)
+            self.log(f"[test-db] replayed migrations; saved {saved.name} for reuse.")
+            return old_config
+
+        keeper.close()
+        problem = None
+        if planned:
+            problem = (
+                f"migrate applied {len(set(planned))} migration(s) to it, "
+                f"starting with {planned[0]}"
+            )
+        elif test_db_template.fingerprint(raw) != test_db_template.expected_fingerprint(
+            template
+        ):
+            problem = "its contents changed when migrate ran"
+        if problem:
+            template.unlink(missing_ok=True)
+            message = (
+                f"[test-db] the saved database {template.name} does not match "
+                f"this checkout: {problem}. It has been deleted and no test "
+                "ran. Run again to rebuild it from real migrations, or set "
+                "FLOPPY_TEST_DB_TEMPLATE=0."
+            )
+            raise test_db_template.TemplateMismatchError(message)
+        self.log(f"[test-db] restored {template.name}; migrate found nothing to apply.")
+        return old_config
+
+    def run_suite(self, suite, **kwargs):
+        """Keep Django's individual durations and also summarize module costs."""
+        test_modules = (
+            {str(test): test.__class__.__module__ for test in iter_test_cases(suite)}
+            if self.durations is not None
+            else {}
+        )
+        result = super().run_suite(suite, **kwargs)
+        if self.durations is not None:
+            modules = defaultdict(float)
+            for test, elapsed in result.collectedDurations:
+                modules[test_modules.get(test, "<unattributed>")] += elapsed
+            self.log(
+                "Slowest test modules (test method time, including setUp/tearDown):"
+            )
+            for module, elapsed in sorted(
+                modules.items(), key=lambda item: item[1], reverse=True
+            )[:20]:
+                self.log(f"{elapsed:9.3f}s {module}")
+        return result

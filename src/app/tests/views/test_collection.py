@@ -7,6 +7,8 @@ from django.urls import reverse
 from app.models import (
     TV,
     CollectionEntry,
+    CollectionField,
+    CollectionFieldGroup,
     Episode,
     Game,
     Item,
@@ -17,6 +19,8 @@ from app.models import (
     Status,
     Video,
 )
+from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_models
 from integrations.models import CollectionSourceState
 
 
@@ -42,6 +46,115 @@ class CollectionListViewTest(TestCase):
         self.client.login(**self.credentials)
         response = self.client.get(reverse("collection_list"))
         self.assertEqual(response.status_code, 200)
+
+    def test_initial_layout_does_not_wait_for_alpine(self):
+        """Cached posters need their grid width before any script initializes."""
+        self.client.login(**self.credentials)
+        for layout in ("grid", "table"):
+            with self.subTest(layout=layout):
+                response = self.client.get(
+                    reverse("collection_list"), {"layout": layout}
+                )
+                expected = "media-grid" if layout == "grid" else ""
+                self.assertRegex(
+                    response.content.decode(),
+                    rf'id="collection-view"[^>]*\sclass="{expected}"',
+                )
+
+    def test_grid_embeds_shared_browser_props(self):
+        """The web grid receives the shared browser's card models, not re-derived fields."""
+        Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=8.5,
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+            purchase_location="Shelf A",
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["resultCount"], 1)
+        self.assertEqual(props["nextUrl"], "")
+        item = props["items"][0]
+        self.assertEqual(item["title"], "Test Movie")
+        self.assertEqual(item["mediaType"], MediaTypes.MOVIE.value)
+        self.assertEqual(item["card"]["statusChip"]["kind"], "status")
+        self.assertEqual(item["card"]["rating"]["label"], "8.5")
+        self.assertIn("actions", item["card"])
+
+    def test_table_layout_uses_the_shared_browser(self):
+        """The shared browser owns the table and its paginated JSON pages."""
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"layout": "table"})
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["filters"]["view"], "table")
+        self.assertEqual(props["items"][0]["format"], "Blu-ray")
+        self.assertEqual(props["items"][0]["resolution"], "1080p")
+
+    def test_grouped_view_uses_the_shared_browser_rows(self):
+        """Grouped rows carry per-row loading URLs into the shared browser."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"group": "type"})
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(len(props["groups"]), 1)
+        group = props["groups"][0]
+        self.assertEqual(group["key"], MediaTypes.MOVIE.value)
+        self.assertEqual(group["loadedCount"], 20)
+        self.assertEqual(group["total"], 21)
+        self.assertIn("row_type=", group["nextUrl"])
+        self.assertIn("json=1", group["nextUrl"])
+
+        response = self.client.get(group["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
+
+    def test_json_page_returns_the_next_browser_url(self):
+        """Browser load-more pages use the JSON contract and stop at the last page."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"json": "1"})
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 20)
+        self.assertEqual(payload["resultCount"], 21)
+        self.assertIn("page=2", payload["nextUrl"])
+        self.assertIn("json=1", payload["nextUrl"])
+
+        response = self.client.get(payload["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
 
     def test_collection_list_unauthenticated(self):
         """Test unauthenticated user is redirected to login."""
@@ -158,10 +271,11 @@ class CollectionListViewTest(TestCase):
         response = self.client.get(reverse("collection_list"))
 
         content = response.content.decode()
-        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
-        self.assertIn(">8.5</span>", content)
-        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
-        self.assertIn('class="media-status-chip ', content)
+        model = card_models(content)[0]
+        self.assertEqual(model["ratingId"], item_slot_id("media-card-rating", movie.item))
+        self.assertEqual(model["rating"]["label"], "8.5")
+        self.assertEqual(model["statusId"], item_slot_id("media-status-chip", movie.item))
+        self.assertEqual(model["statusChip"]["kind"], "status")
 
     def test_collection_card_for_untracked_item_has_no_rating_or_status(self):
         """An owned but untracked item shows no status chip and no rating."""
@@ -172,7 +286,7 @@ class CollectionListViewTest(TestCase):
 
         content = response.content.decode()
         self.assertIn("Test Movie", content)
-        self.assertNotIn("media-card-rating-", content)
+        self.assertNotIn("media-card-rate-button", content)
         self.assertNotIn('class="media-status-chip ', content)
 
     def test_collection_card_rating_ignores_other_users_tracking(self):
@@ -193,7 +307,8 @@ class CollectionListViewTest(TestCase):
 
         response = self.client.get(reverse("collection_list"))
 
-        self.assertNotContains(response, "media-card-rating-")
+        self.assertNotContains(response, "media-card-rate-button")
+        self.assertNotContains(response, "text-yellow-300")
 
     def test_collection_card_lookup_does_not_grow_with_page_size(self):
         """Loading ratings for the page is a fixed number of queries, not one per card."""
@@ -228,7 +343,6 @@ class CollectionListViewTest(TestCase):
         large_page = count_queries()
 
         self.assertEqual(small_page, large_page)
-
 
     def test_collection_episode_cards_do_not_query_per_episode(self):
         """Episode cards read their season; it is loaded with the page, not per card."""
@@ -283,6 +397,7 @@ class CollectionListViewTest(TestCase):
         large_page = count_queries()
 
         self.assertEqual(small_page, large_page)
+
 
 class CollectionCompletenessTest(TestCase):
     """Test the collection page's partial/full collection filter and badge."""
@@ -871,6 +986,42 @@ class CollectionModalViewTest(TestCase):
             image="http://example.com/image.jpg",
         )
 
+    def test_modal_embeds_shared_copy_and_custom_field_props(self):
+        """The modal ships plain props for the shared copy and field adapters."""
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Edition")
+        field = CollectionField.objects.create(
+            group=group,
+            label="Volume",
+            field_type="text",
+            media_types=[MediaTypes.MOVIE.value],
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            custom_field_values={str(field.id): "3"},
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "1234",
+                },
+            ),
+        )
+
+        self.assertContains(response, "data-collection-context-root")
+        self.assertContains(response, reverse("api_media_collection_entries", args=["movie", "tmdb", "1234"]))
+        self.assertContains(response, "Test Movie")
+        self.assertContains(response, "data-collection-copy-fields-root")
+        self.assertContains(response, "data-collection-fields-root")
+        self.assertContains(response, "data-collection-field-inputs-root")
+        self.assertContains(response, "Volume")
+
     def test_collection_modal_new_entry(self):
         """Test modal for new entry (no existing collection)."""
         self.client.login(**self.credentials)
@@ -1279,3 +1430,285 @@ class CollectionModalViewTest(TestCase):
         )
         self.assertContains(response, 'aria-label="Remove collection entry"', count=2)
         self.assertNotContains(response, ">Collection Entry<", html=True)
+
+
+class CollectionEditUiTest(TestCase):
+    """Collected copies can be edited from the Collection tab (issue #1207)."""
+
+    def setUp(self):
+        """Set up a movie with two copies and a show with episodes."""
+        self.client = Client()
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.movie = Item.objects.create(
+            media_id="1234",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="http://example.com/image.jpg",
+        )
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Condition")
+        self.field = CollectionField.objects.create(
+            group=group, label="Grade", media_types=["movie"]
+        )
+
+    def _movie_modal(self):
+        return self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "1234",
+                },
+            ),
+        )
+
+    def _show_with_episodes(self):
+        for season_number in (1, 2):
+            Item.objects.create(
+                media_id="tv-1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=season_number,
+                title=f"Season {season_number}",
+                image="http://example.com/s.jpg",
+            )
+        Item.objects.create(
+            media_id="tv-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+            image="http://example.com/show.jpg",
+        )
+        episodes = {}
+        for season_number, episode_number in ((1, 1), (1, 2), (2, 1)):
+            item = Item.objects.create(
+                media_id="tv-1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+                title=f"Episode {season_number}-{episode_number}",
+                image="http://example.com/e.jpg",
+            )
+            episodes[(season_number, episode_number)] = CollectionEntry.objects.create(
+                user=self.user, item=item, media_type="digital", resolution="720p"
+            )
+        return episodes
+
+    def test_modal_offers_an_edit_form_for_each_copy_prefilled(self):
+        """Each existing copy gets its own pre-filled form posting to update."""
+        digital = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital", resolution="1080p"
+        )
+        bluray = CollectionEntry.objects.create(
+            user=self.user,
+            item=self.movie,
+            media_type="bluray",
+            custom_field_values={str(self.field.id): "Mint"},
+        )
+
+        response = self._movie_modal()
+
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        for entry in (digital, bluray):
+            update_url = reverse("collection_update", args=[entry.id])
+            self.assertContains(response, f'action="{update_url}')
+            self.assertContains(response, f'id="collection-edit-form-{entry.id}"')
+            self.assertEqual(
+                response.context["visible_existing_entries"][0].edit_form.instance.pk
+                in (digital.id, bluray.id),
+                True,
+            )
+        html = response.content.decode()
+        self.assertIn('value="1080p"', html)
+        self.assertIn('value="Mint"', html)
+        # Edit widgets must not reuse the add form's ids.
+        self.assertEqual(html.count('id="id_resolution"'), 1)
+        self.assertIn(f'id="id_edit_{digital.id}_resolution"', html)
+
+    def test_modal_without_copies_has_no_edit_form(self):
+        """Nothing to edit until a copy exists."""
+        response = self._movie_modal()
+        self.assertNotContains(response, "Edit collection entry")
+        self.assertNotContains(response, "Edit Copy")
+
+    def test_editing_one_copy_leaves_the_other_alone(self):
+        """Saving the edit form changes only that copy, custom fields included."""
+        first = CollectionEntry.objects.create(
+            user=self.user,
+            item=self.movie,
+            media_type="digital",
+            custom_field_values={str(self.field.id): "Mint"},
+        )
+        second = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital"
+        )
+
+        response = self.client.post(
+            reverse("collection_update", args=[second.id]),
+            {
+                "item": self.movie.id,
+                "media_type": "bluray",
+                "resolution": "4k",
+                f"custom_field_{self.field.id}": "Good",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(second.media_type, "bluray")
+        self.assertEqual(second.resolution, "4k")
+        self.assertEqual(second.custom_field_values[str(self.field.id)], "Good")
+        self.assertEqual(first.media_type, "digital")
+        self.assertEqual(first.custom_field_values[str(self.field.id)], "Mint")
+
+    def test_edit_can_clear_a_value(self):
+        """Emptying a field in the edit form clears it (the Digital to unknown case)."""
+        entry = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital", resolution="1080p"
+        )
+        self.client.post(
+            reverse("collection_update", args=[entry.id]),
+            {"item": self.movie.id, "media_type": "", "resolution": "1080p"},
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.media_type, "")
+        self.assertEqual(entry.resolution, "1080p")
+
+    def test_show_modal_season_rows_edit_all_their_episodes(self):
+        """Season summary rows edit every collected episode of that season only."""
+        episodes = self._show_with_episodes()
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "tv-1",
+                },
+            ),
+        )
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        self.assertContains(
+            response,
+            reverse("collection_update_season", args=[season_one.id]),
+        )
+
+        before = {key: entry.updated_at for key, entry in episodes.items()}
+        response = self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "bluray", "resolution": "1080p"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        for key in ((1, 1), (1, 2)):
+            episodes[key].refresh_from_db()
+            self.assertEqual(episodes[key].media_type, "bluray")
+            self.assertEqual(episodes[key].resolution, "1080p")
+        episodes[(2, 1)].refresh_from_db()
+        self.assertEqual(episodes[(2, 1)].media_type, "digital")
+        for key in ((1, 1), (1, 2)):
+            self.assertGreater(episodes[key].updated_at, before[key])
+        self.assertEqual(episodes[(2, 1)].updated_at, before[(2, 1)])
+
+    def test_season_edit_form_keeps_the_stored_format_selected(self):
+        """A stored value missing from the format choices still shows as selected."""
+        self._show_with_episodes()
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "tv-1",
+                },
+            ),
+        )
+        row = response.context["season_audit_entries"][0]
+        self.assertEqual(row["edit_form"]["media_type"].value(), "digital")
+        self.assertIn(
+            "digital",
+            [
+                value
+                for value, _label in row["edit_form"]
+                .fields["media_type"]
+                .widget.choices
+            ],
+        )
+        self.assertContains(response, "Edit all episodes in this season")
+
+    def test_season_update_skips_other_users_and_missing_seasons(self):
+        """Only the requester's episodes change, and an empty season reports 404."""
+        episodes = self._show_with_episodes()
+        other = get_user_model().objects.create_user(username="o", password="12345")
+        theirs = CollectionEntry.objects.create(
+            user=other,
+            item=episodes[(1, 1)].item,
+            media_type="digital",
+        )
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+        self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "bluray"},
+        )
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.media_type, "digital")
+
+        CollectionEntry.objects.filter(user=self.user).delete()
+        response = self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "dvd"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_season_update_requires_post_and_a_season_item(self):
+        """GET is refused and a non-season item id is a 404."""
+        episodes = self._show_with_episodes()
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("collection_update_season", args=[season_one.id])
+            ).status_code,
+            405,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("collection_update_season", args=[episodes[(1, 1)].item_id]),
+                {"media_type": "dvd"},
+            ).status_code,
+            404,
+        )
+
+    def test_season_modal_episode_rows_are_editable(self):
+        """Episode rows in a season modal edit that one episode."""
+        episodes = self._show_with_episodes()
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "tv-1",
+                },
+            ),
+            {"season_number": 1},
+        )
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        self.assertContains(
+            response,
+            reverse("collection_update", args=[episodes[(1, 1)].id]),
+        )
+        self.assertNotContains(response, 'form="collection-edit-form-')

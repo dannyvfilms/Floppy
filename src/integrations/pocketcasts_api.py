@@ -47,13 +47,6 @@ def login(email: str, password: str) -> dict[str, Any]:
         # Log response keys for debugging (but not the actual values for security)
         if isinstance(data, dict):
             logger.debug("Pocket Casts login response keys: %s", list(data.keys()))
-            # Log a sanitized version of the response (hide token values)
-            sanitized = {
-                k: ("***" if "token" in k.lower() or "password" in k.lower() else v)
-                for k, v in data.items()
-                if not isinstance(v, (dict, list))
-            }
-            logger.debug("Pocket Casts login response (sanitized): %s", sanitized)
         else:
             logger.debug("Pocket Casts login response type: %s", type(data).__name__)
 
@@ -89,16 +82,10 @@ def login(email: str, password: str) -> dict[str, Any]:
                     "Login response missing accessToken. Response keys: %s",
                     list(data.keys()),
                 )
-                # Check for error messages in the response
-                if "error" in data:
-                    error_msg = f"Pocket Casts error: {data['error']}"
-                elif "message" in data:
-                    error_msg = f"Pocket Casts message: {data['message']}"
             else:
                 logger.error(
-                    "Login response is not a dict. Type: %s, Value (first 200 chars): %s",
+                    "Login response is not a dict. Type: %s",
                     type(data).__name__,
-                    str(data)[:200],
                 )
             raise PocketCastsAuthError(error_msg)
 
@@ -162,18 +149,7 @@ def refresh_token(refresh_token: str) -> dict[str, Any]:
         # falsy: compare against None, not truthiness.
         response = e.response
         status_code = response.status_code if response is not None else None
-        try:
-            error_body = response.text[:500] if response is not None else "No response"
-            logger.exception(
-                "Token refresh failed with status %s. Response: %s",
-                status_code,
-                error_body,
-            )
-        except Exception:
-            logger.exception(
-                "Token refresh failed with status %s (could not read response body)",
-                status_code,
-            )
+        logger.warning("Token refresh failed with status %s", status_code)
 
         if status_code == HTTPStatus.UNAUTHORIZED:
             msg = "Refresh token is invalid or expired"

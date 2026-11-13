@@ -2,7 +2,9 @@
 {% load i18n %}
 {% load app_tags %}
 
-<section id="discover-row-{{ row.key }}" data-discover-row-key="{{ row.key }}">
+{% if not discover_debug %}{% discover_row_react row selected_media_type show_more discover_debug as discover_row_props %}{% endif %}
+<section id="discover-row-{{ row.key }}" data-discover-row-key="{{ row.key }}"{% if not discover_debug %} data-discover-row-root data-props-id="{{ discover_row_props.id }}"{% endif %}>
+  {% if not discover_debug %}{{ discover_row_props.props|json_script:discover_row_props.id }}{% endif %}
   <div class="mb-3 flex items-start justify-between gap-4">
     <div class="min-w-0">
       <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate row.title %}</h2>
@@ -124,7 +126,7 @@
           <div class="space-y-1">
             {% for debug_item in row.debug_payload.top_candidates %}
               <p>
-                #{{ debug_item.rank }} {{ debug_item.title }} —
+                #{{ debug_item.rank }} {{ debug_item.title }}:
                 raw {{ debug_item.raw_final_score|floatformat:3 }},
                 display {{ debug_item.display_score|floatformat:3 }},
                 library {{ debug_item.library_fit|floatformat:3 }},
@@ -250,7 +252,7 @@
         <div class="space-y-1">
           {% for debug_item in row.debug_payload.top_candidates %}
             <p>
-              #{{ debug_item.rank }} {{ debug_item.title }} —
+              #{{ debug_item.rank }} {{ debug_item.title }}:
               raw {{ debug_item.raw_final_score|floatformat:3 }},
               display {{ debug_item.display_score|floatformat:3 }},
               phase {{ debug_item.phase_fit|floatformat:3 }},

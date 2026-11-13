@@ -170,7 +170,7 @@ def _is_resolvable_media_id(row, media_type):
 
 
 def _find_item_after_integrity_error(lookup, original_exc):
-    """Return the Item that caused a UniqueViolation during update_or_create.
+    """Return the Item that caused a UniqueViolation during get_or_create.
 
     Two-stage search:
     1. Exact match on all lookup fields (covers PostgreSQL race-window case).
@@ -222,6 +222,8 @@ class YamtrackImporter:
 
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
+        # Items resolved for a whole chunk of rows at once (see _preload_items).
+        self._item_cache = {}
         self.music_tracker_counts = defaultdict(int)
         self.list_map = {}
         self.smart_lists = []
@@ -324,18 +326,78 @@ class YamtrackImporter:
 
     def _process_phase(self, phase, *, media_type=None):
         """Process one dependency-safe row phase from the staged CSV."""
+        chunk = []
         for row_number, row in enumerate(self._iter_rows(), start=1):
             row_type = (row.get("row_type") or "").strip().lower()
             if phase == "media":
                 row_media_type = (row.get("media_type") or "").strip().lower()
                 if row_type not in ("", "media") or row_media_type != media_type:
                     continue
+                chunk.append((row_number, row))
+                if len(chunk) >= YAMTRACK_IMPORT_BATCH_SIZE:
+                    self._process_media_chunk(chunk)
+                    chunk = []
             elif row_type != phase:
                 continue
+            else:
+                self._process_row_with_error_handling(row, row_number)
+        if chunk:
+            self._process_media_chunk(chunk)
 
+    def _process_media_chunk(self, chunk):
+        """Resolve the chunk's Items together, then process its rows."""
+        self._preload_items([row for _, row in chunk])
+        for row_number, row in chunk:
             self._process_row_with_error_handling(row, row_number)
-            if phase == "media":
-                self._flush_media_batch_if_needed()
+            self._flush_media_batch_if_needed()
+        self._item_cache.clear()
+
+    def _preload_items(self, rows):
+        """Resolve Items for rows that already carry their own metadata."""
+        specs = []
+        for row in rows:
+            media_type = (row.get("media_type") or "").strip().lower()
+            if (
+                media_type in ("music_artist", "music_album")
+                or _is_ragged_row(row)
+                or not _is_resolvable_media_id(row, media_type)
+            ):
+                continue
+            try:
+                season_number = (
+                    int(row["season_number"]) if row["season_number"] != "" else None
+                )
+                episode_number = (
+                    int(row["episode_number"])
+                    if row["episode_number"] != ""
+                    else None
+                )
+                specs.append(
+                    {
+                        "media_id": row["media_id"],
+                        "source": row["source"],
+                        "media_type": media_type,
+                        "library_media_type": (
+                            (row.get("library_media_type") or "").strip().lower()
+                        ),
+                        "season_number": season_number,
+                        "episode_number": episode_number,
+                        "title": row["title"],
+                        "image": row["image"],
+                    },
+                )
+            except (KeyError, ValueError, TypeError):
+                continue
+        specs = [
+            spec
+            for spec in specs
+            if spec["title"] != ""
+            and spec["image"] != ""
+            and spec["media_id"] != ""
+            and spec["source"] in Sources.values
+            and spec["media_type"] in MediaTypes.values
+        ]
+        self._item_cache = helpers.bulk_resolve_items(specs)
 
     def _process_unknown_rows(self):
         """Preserve warnings for row types not handled by known phases."""
@@ -882,7 +944,20 @@ class YamtrackImporter:
         season_number,
         episode_number,
     ):
-        """Get or update the Item referenced by a CSV row."""
+        """Reuse shared metadata without letting a user's CSV overwrite it."""
+        cached = self._item_cache.get(
+            (
+                row["media_id"],
+                row["source"],
+                media_type,
+                library_media_type or media_type,
+                season_number,
+                episode_number,
+            ),
+        )
+        if cached is not None:
+            self._apply_item_tags(cached, row.get("item_tags"))
+            return cached
         item_lookup = {
             "media_id": row["media_id"],
             "source": row["source"],
@@ -893,7 +968,7 @@ class YamtrackImporter:
         }
         try:
             item, _ = helpers.retry_on_lock(
-                lambda: app.models.Item.objects.update_or_create(
+                lambda: app.models.Item.objects.get_or_create(
                     **item_lookup,
                     defaults={"title": row["title"], "image": row["image"]},
                 ),

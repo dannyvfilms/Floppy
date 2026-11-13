@@ -8,6 +8,12 @@ SCORED_AT_HELP = (
     "or when the rating predates this field."
 )
 
+UPDATED_AT_HELP = (
+    "When this entry last changed in any way (status, score, progress, dates, "
+    "notes, lists, tags, episodes watched). Use it with `updated_since` on the "
+    "media list to sync only what changed."
+)
+
 
 @extend_schema_field(
     {"oneOf": [{"type": "string"}, {"type": "integer"}]}
@@ -177,6 +183,9 @@ class NextEpisodeSerializer(serializers.Serializer):
     image = serializers.CharField(allow_null=True, allow_blank=True)
     ids = serializers.DictField(child=serializers.CharField())
     url = serializers.CharField(allow_null=True)
+    is_rewatch = serializers.BooleanField(
+        help_text="True when this episode belongs to an open rewatch pass.",
+    )
 
 
 class ShowSerializer(serializers.Serializer):
@@ -200,6 +209,10 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     parent_id = serializers.CharField(allow_null=True)
     tracked = serializers.BooleanField()
     created_at = serializers.DateTimeField(allow_null=True)
+    updated_at = serializers.DateTimeField(
+        allow_null=True,
+        help_text=UPDATED_AT_HELP,
+    )
     score = serializers.FloatField(allow_null=True)
     scored_at = serializers.DateTimeField(
         allow_null=True,
@@ -343,6 +356,111 @@ class DetailErrorSerializer(serializers.Serializer):
     errors = serializers.JSONField(required=False)
 
 
+class CaseInsensitiveChoiceField(serializers.ChoiceField):
+    """Accept a choice in any case with surrounding spaces."""
+
+    def to_internal_value(self, data):
+        """Normalize a string before matching it against the choices."""
+        if isinstance(data, str):
+            data = data.strip().lower()
+        return super().to_internal_value(data)
+
+
+class ListItemsReorderRequestSerializer(serializers.Serializer):
+    """Move one list item to the front, back, next or last position."""
+
+    ACTIONS = ("first", "back", "next", "last")
+
+    item_id = serializers.IntegerField(
+        min_value=1,
+        help_text=(
+            "Floppy's numeric Item id, the `id` field of an entry in "
+            "GET /api/v1/lists/{list_id}/items/ (not the `item_id` string)."
+        ),
+    )
+    action = CaseInsensitiveChoiceField(
+        choices=ACTIONS,
+        help_text=(
+            "first: move to the top. back: swap with the item above. "
+            "next: swap with the item below. last: move to the bottom."
+        ),
+    )
+
+
+class ListItemsOrderRequestSerializer(serializers.Serializer):
+    """Replace the order of a list's items."""
+
+    item_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        min_length=1,
+        help_text=(
+            "Floppy's numeric Item ids in the new order, the `id` field of an "
+            "entry in GET /api/v1/lists/{list_id}/items/ (not the `item_id` "
+            "string). Send every item of the list, or only a subset: the "
+            "listed items take the positions they already occupy, in the "
+            "order given, and the other items stay where they are. Each id "
+            "must appear once and belong to this list; otherwise the request "
+            "is rejected with 400 and nothing changes."
+        ),
+    )
+
+
+class ListItemRankSerializer(serializers.Serializer):
+    """One item's rank in an outside ranking."""
+
+    item_id = serializers.IntegerField(
+        min_value=1,
+        help_text=(
+            "Floppy's numeric Item id, the `id` field of an entry in "
+            "GET /api/v1/lists/{list_id}/items/ (not the `item_id` string)."
+        ),
+    )
+    rank = serializers.IntegerField(
+        min_value=1,
+        max_value=2_147_483_647,
+        allow_null=True,
+        help_text="The item's rank, such as 81 for #81. null clears its rank.",
+    )
+
+
+class ListItemsRanksRequestSerializer(serializers.Serializer):
+    """Set or clear the ranks of some items in a list."""
+
+    ranks = serializers.ListField(
+        child=ListItemRankSerializer(),
+        allow_empty=False,
+        min_length=1,
+        help_text=(
+            "Only the items listed change; every other item keeps its rank. "
+            "Each item_id may appear once and must belong to this list; "
+            "otherwise the request is rejected with 400 and nothing changes. "
+            "Different items may share a rank (a tie). Saving the ranks also "
+            "puts the ranked items of the list in rank order."
+        ),
+    )
+
+
+class ListItemResponseSerializer(TrackedMediaResponseSerializer):
+    """A list entry: the tracked media plus its rank in this list."""
+
+    rank = serializers.IntegerField(
+        allow_null=True,
+        help_text=(
+            "The item's rank in an outside ranking, set with PUT "
+            "/api/v1/lists/{list_id}/items/ranks/; null when it has none. "
+            "The order of the entries is the list's custom order."
+        ),
+    )
+
+
+class ListItemsEnvelopeSerializer(serializers.Serializer):
+    """Paginated list entries."""
+
+    pagination = PaginationSerializer()
+    results = ListItemResponseSerializer(many=True)
+
+
 class ListenBrainzErrorSerializer(serializers.Serializer):
     """ListenBrainz-compatible error body."""
 
@@ -363,6 +481,129 @@ class ListenBrainzTokenSerializer(serializers.Serializer):
     message = serializers.CharField()
     valid = serializers.BooleanField()
     user_name = serializers.CharField()
+
+
+class ListenBrainzListenSerializer(serializers.Serializer):
+    """One recorded listen in ListenBrainz's response shape."""
+
+    listened_at = serializers.IntegerField()
+    track_metadata = serializers.DictField()
+
+
+class ListenBrainzListensPayloadSerializer(serializers.Serializer):
+    """Page of listens for a user."""
+
+    count = serializers.IntegerField()
+    listens = ListenBrainzListenSerializer(many=True)
+    latest_listen_ts = serializers.IntegerField()
+    oldest_listen_ts = serializers.IntegerField()
+
+
+class ListenBrainzListensSerializer(serializers.Serializer):
+    """ListenBrainz `user/listens` response wrapper."""
+
+    payload = ListenBrainzListensPayloadSerializer()
+
+
+class ListenBrainzStatsPayloadSerializer(serializers.Serializer):
+    """Fields every ListenBrainz user statistics page carries."""
+
+    count = serializers.IntegerField()
+    offset = serializers.IntegerField()
+    range = serializers.CharField()
+    from_ts = serializers.IntegerField()
+    to_ts = serializers.IntegerField()
+    last_updated = serializers.IntegerField()
+    user_id = serializers.CharField()
+
+
+class ListenBrainzUserArtistSerializer(serializers.Serializer):
+    """One artist in a user's ranking."""
+
+    artist_mbid = serializers.CharField(allow_null=True)
+    artist_name = serializers.CharField()
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserArtistsPayloadSerializer(ListenBrainzStatsPayloadSerializer):
+    """Page of a user's top artists."""
+
+    artists = ListenBrainzUserArtistSerializer(many=True)
+    total_artist_count = serializers.IntegerField()
+
+
+class ListenBrainzUserArtistsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/artists` response wrapper."""
+
+    payload = ListenBrainzUserArtistsPayloadSerializer()
+
+
+class ListenBrainzUserReleaseGroupSerializer(serializers.Serializer):
+    """One release group in a user's ranking."""
+
+    artist_mbids = serializers.ListField(child=serializers.CharField())
+    artist_name = serializers.CharField()
+    release_group_mbid = serializers.CharField(allow_null=True)
+    release_group_name = serializers.CharField()
+    caa_id = serializers.IntegerField(allow_null=True)
+    caa_release_mbid = serializers.CharField(allow_null=True)
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserReleaseGroupsPayloadSerializer(
+    ListenBrainzStatsPayloadSerializer,
+):
+    """Page of a user's top release groups."""
+
+    release_groups = ListenBrainzUserReleaseGroupSerializer(many=True)
+    total_release_group_count = serializers.IntegerField()
+
+
+class ListenBrainzUserReleaseGroupsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/release-groups` response wrapper."""
+
+    payload = ListenBrainzUserReleaseGroupsPayloadSerializer()
+
+
+class ListenBrainzUserRecordingSerializer(serializers.Serializer):
+    """One recording in a user's ranking."""
+
+    artist_mbids = serializers.ListField(child=serializers.CharField())
+    artist_name = serializers.CharField()
+    recording_mbid = serializers.CharField(allow_null=True)
+    release_mbid = serializers.CharField(allow_null=True)
+    release_name = serializers.CharField(allow_null=True)
+    track_name = serializers.CharField()
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserRecordingsPayloadSerializer(
+    ListenBrainzStatsPayloadSerializer,
+):
+    """Page of a user's top recordings."""
+
+    recordings = ListenBrainzUserRecordingSerializer(many=True)
+    total_recording_count = serializers.IntegerField()
+
+
+class ListenBrainzUserRecordingsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/recordings` response wrapper."""
+
+    payload = ListenBrainzUserRecordingsPayloadSerializer()
+
+
+class ListenBrainzGenreActivityEntrySerializer(serializers.Serializer):
+    """Plays of one genre in one hour of the day."""
+
+    genre = serializers.CharField()
+    hour = serializers.IntegerField(min_value=0, max_value=23)
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzGenreActivitySerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/genre-activity` response."""
+
+    result = ListenBrainzGenreActivityEntrySerializer(many=True)
 
 
 class RecommendationSerializer(serializers.Serializer):

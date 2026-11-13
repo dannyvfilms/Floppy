@@ -240,10 +240,13 @@ class ImportXbox(TestCase):
                 side_effect=self.search_stub(media_id="1"),
             ),
         ):
-            xbox.importer(None, self.user, "overwrite")
+            with helpers.record_bulk_rows() as recorded:
+                xbox.importer(None, self.user, "overwrite")
 
         game = Game.objects.get(user=self.user, item=item)
         self.assertEqual(game.progress, 1250)
+        # bulk_update sends no signal, so the import must name the row it changed.
+        self.assertEqual([row.pk for row in recorded], [game.pk])
 
     def test_overwrite_preserves_completed_status(self):
         """A manually completed game keeps its status on re-sync."""
@@ -1051,7 +1054,7 @@ class XboxViewTests(TestCase):
             {"api_key": "openxbl-key", "frequency": "once", "mode": "new"},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_called_once_with("openxbl-key")
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
@@ -1097,7 +1100,7 @@ class XboxViewTests(TestCase):
         """Submitting an empty key is rejected before calling OpenXBL."""
         response = self.client.post(reverse("xbox_connect"), {})
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_not_called()
         self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
 
@@ -1150,7 +1153,7 @@ class XboxViewTests(TestCase):
 
         response = self.client.post(reverse("xbox_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
         self.assertFalse(
             PeriodicTask.objects.filter(

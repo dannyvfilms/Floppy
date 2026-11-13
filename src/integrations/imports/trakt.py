@@ -460,6 +460,10 @@ class TraktMetadataResolverMixin:
     Requires the including class to maintain a ``self.warnings`` list.
     """
 
+    # Entries kept per import. File exports replay a whole library in date
+    # order, so shows and seasons interleave and a tiny memo refetches them.
+    metadata_memo_size = METADATA_MEMO_SIZE
+
     def _get_tmdb_id(self, entry_data, media_type):
         """Extract TMDB ID from entry data, falling back to a title search."""
         # A fresh source decision for each entry observes corrections made
@@ -562,6 +566,20 @@ class TraktMetadataResolverMixin:
         if not title:
             return None
 
+        # Every episode of one show repeats this search; ask TMDB once.
+        memo_key = (media_type, title, entry_data.get("year"))
+        if not hasattr(self, "_title_search_memo"):
+            self._title_search_memo = {}
+        if memo_key not in self._title_search_memo:
+            self._title_search_memo[memo_key] = self._title_search_uncached(
+                media_type,
+                title,
+                entry_data,
+            )
+        return self._title_search_memo[memo_key]
+
+    def _title_search_uncached(self, media_type, title, entry_data):
+        """Run the TMDB title search behind ``_search_tmdb_id_by_title``."""
         try:
             results = services.search(
                 media_type,
@@ -633,7 +651,7 @@ class TraktMetadataResolverMixin:
                     break
             else:
                 self._metadata_memo[key] = metadata
-                if len(self._metadata_memo) > METADATA_MEMO_SIZE:
+                if len(self._metadata_memo) > self.metadata_memo_size:
                     self._metadata_memo.popitem(last=False)
         except (TypeError, ValueError):
             pass  # Non-JSON metadata remains usable, just not memoized.
@@ -1221,6 +1239,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         if not tmdb_id:
             return
 
+        watched_at = entry["watched_at"]
+        watched_at_dt = _parse_watched_at(watched_at)
+
         # Check if we should process this movie based on mode
         if not helpers.should_process_media(
             self.existing_media,
@@ -1230,6 +1251,11 @@ class TraktImporter(TraktMetadataResolverMixin):
             tmdb_id,
             self.mode,
             deleted_media=self.deleted_media,
+            # Like episodes, each movie watch is judged by the play dedupe
+            # below, so an older Trakt watch of a tracked movie is kept (#1423).
+            # An undated watch cannot be deduped, so a tracked movie keeps
+            # skipping it or every re-import would add another row.
+            skip_existing=watched_at_dt is None,
         ):
             return
 
@@ -1239,8 +1265,6 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         item = self._get_or_create_item(MediaTypes.MOVIE.value, tmdb_id, metadata)
         self._remember_trakt_reference(movie, MediaTypes.MOVIE.value, item)
-        watched_at = entry["watched_at"]
-        watched_at_dt = _parse_watched_at(watched_at)
 
         self.existing_movie_play_times.record_runtime(tmdb_id, item.runtime_minutes)
         if self.existing_movie_play_times.is_duplicate(tmdb_id, watched_at_dt):
@@ -1523,7 +1547,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         watched_at_dt,
     ):
         """Update completion status for season and TV show if applicable."""
-        if episode_number == season_metadata["max_progress"]:
+        if episode_number == helpers.season_last_episode_number(season_metadata):
             season_obj.status = Status.COMPLETED.value
             if season_obj.pk:
                 self.completed_seasons.append(season_obj)
@@ -1721,7 +1745,11 @@ class TraktImporter(TraktMetadataResolverMixin):
         self._remember_trakt_reference(show, MediaTypes.TV.value, tv_item)
         show_reference = self._get_trakt_reference(show, MediaTypes.TV.value)
 
+        # Rolled-up season/show entries keep the newest historical date.
+        show_collected_at = _parse_watched_at(entry.get("last_collected_at", ""))
+
         for season_entry in entry.get("seasons", []):
+            season_collected_at = None
             season_number = season_entry["number"]
             mapped_season, _ = external_references.map_episode_coordinates(
                 show_reference,
@@ -1789,13 +1817,23 @@ class TraktImporter(TraktMetadataResolverMixin):
                     MediaTypes.EPISODE.value,
                     episode_item,
                 )
+                episode_collected_at = _parse_watched_at(
+                    episode_entry.get("collected_at", ""),
+                )
+                if episode_collected_at:
+                    if not season_collected_at or (
+                        episode_collected_at > season_collected_at
+                    ):
+                        season_collected_at = episode_collected_at
+                    if not show_collected_at or (
+                        episode_collected_at > show_collected_at
+                    ):
+                        show_collected_at = episode_collected_at
                 trakt_collection.upsert_collection_entry(
                     self.user,
                     episode_item,
                     mode=self.mode,
-                    collected_at=_parse_watched_at(
-                        episode_entry.get("collected_at", ""),
-                    ),
+                    collected_at=episode_collected_at,
                     metadata=episode_entry.get("metadata"),
                 )
 
@@ -1806,6 +1844,8 @@ class TraktImporter(TraktMetadataResolverMixin):
                 season_item,
                 tv_metadata,
                 season_metadata,
+                collected_at=season_collected_at,
+                show_collected_at=show_collected_at,
             )
 
     def _supports_hidden_sections(self):

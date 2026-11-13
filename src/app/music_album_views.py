@@ -1,10 +1,9 @@
 import json
 import logging
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -12,7 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
-from app import fork_services_music, helpers
+from app import fork_services_music, helpers, image_cache
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import AlbumTrackerForm
 from app.models import (
@@ -99,6 +98,14 @@ def list_music_releases(request, album_id):
         user=request.user,
         album=album,
     ).first()
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "pickerType": "music",
+            "results": [
+                {**release, "image": image_cache.rewrite_image_url(release.get("image"))}
+                for release in releases
+            ],
+        })
     return render(
         request,
         "app/components/hardcover_edition_results.html",
@@ -243,10 +250,7 @@ def album_save(request):
             % {"value_1": album.title, "value_2": form.errors},
         )
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST
@@ -267,10 +271,7 @@ def album_delete(request):
             gettext("Removed %(value_1)s from your library") % {"value_1": album.title},
         )
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST
@@ -309,9 +310,7 @@ def song_save(request):
                 )
                 return response
             messages.error(request, message)
-            # Return to the album rather than following ?next=. The value is
-            # unvalidated where the success path uses it, and an error page is
-            # not the place to widen that.
+            # Return to the album so the invalid listen can be entered again.
             return redirect(_music_album_detail_url(album))
 
     existed_before = Music.objects.filter(
@@ -449,10 +448,7 @@ def song_save(request):
         response["Expires"] = "0"
         return response
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST
@@ -524,109 +520,44 @@ def delete_all_artist_plays_view(request, artist_id):
 @require_POST
 def sync_album_metadata_view(request, album_id):
     """Manually trigger metadata sync for an album."""
+    from app.services.music import sync_album_metadata
+
     album = get_object_or_404(Album, id=album_id)
+    result = sync_album_metadata(
+        album,
+        get_release=musicbrainz.get_release,
+        ensure_release_id=ensure_album_has_release_id,
+    )
 
-    from django.core.cache import cache as django_cache
-
-    if album.musicbrainz_release_group_id:
-        # Force re-derivation of the release: a previous sync may have
-        # locked in the wrong pressing (e.g. a partial reissue instead of
-        # the full release), so drop the cached group->release pick and
-        # the release_id itself before re-resolving.
-        django_cache.delete(
-            f"musicbrainz_release_for_group_{album.musicbrainz_release_group_id}"
+    if result["merged_into"] is not None:
+        messages.success(
+            request,
+            gettext("Merged duplicate into %(value_1)s")
+            % {"value_1": result["album"].title},
         )
-        album.musicbrainz_release_id = ""
-
-    ensure_album_has_release_id(album)
-
-    if album.musicbrainz_release_id:
-        try:
-            django_cache.delete(f"musicbrainz_release_{album.musicbrainz_release_id}")
-            release_data = musicbrainz.get_release(album.musicbrainz_release_id)
-
-            # If this album is missing its release-group ID (e.g. created via
-            # search before the fix), check whether a canonical album already
-            # exists for that release-group and merge into it.
-            fetched_release_group_id = release_data.get("release_group_id")
-            if fetched_release_group_id and album.artist_id:
-                needs_group_id = not album.musicbrainz_release_group_id
-                canonical = (
-                    Album.objects.filter(
-                        artist_id=album.artist_id,
-                        musicbrainz_release_group_id=fetched_release_group_id,
-                    )
-                    .exclude(pk=album.pk)
-                    .first()
-                )
-                if canonical:
-                    # Re-point any user Music entries to the canonical album.
-                    Music.objects.filter(album=album).update(album=canonical)
-                    # Ensure canonical has a release_id for track fetching.
-                    if not canonical.musicbrainz_release_id:
-                        canonical.musicbrainz_release_id = album.musicbrainz_release_id
-                        canonical.save(update_fields=["musicbrainz_release_id"])
-                    album.delete()
-                    messages.success(
-                        request,
-                        gettext("Merged duplicate into %(value_1)s")
-                        % {"value_1": canonical.title},
-                    )
-                    # Use HX-Redirect so HTMX performs a full browser navigation
-                    # (plain redirect() returns 302, which HTMX follows internally
-                    # but doesn't update the browser URL or stop the spinner).
-                    response = HttpResponse(status=204)
-                    response["HX-Redirect"] = _music_album_detail_url(canonical)
-                    return response
-                if needs_group_id:
-                    # No duplicate — just backfill the missing fields.
-                    album.musicbrainz_release_group_id = fetched_release_group_id
-                    album.release_type = release_data.get("release_type", "")
-                    album.save(
-                        update_fields=["musicbrainz_release_group_id", "release_type"]
-                    )
-
-            new_image = release_data.get("image", "")
-            if new_image and new_image != settings.IMG_NONE:
-                album.image = new_image
-
-            if release_data.get("genres"):
-                album.genres = release_data.get("genres")
-
-            tracks_data = release_data.get("tracks", [])
-            # Clear any tracks left over from a previous, differently-shaped
-            # release (e.g. fewer discs/tracks) before rebuilding.
-            Track.objects.filter(album=album).delete()
-            for track_data in tracks_data:
-                Track.objects.update_or_create(
-                    album=album,
-                    disc_number=track_data.get("disc_number", 1),
-                    track_number=track_data.get("track_number"),
-                    defaults={
-                        "title": track_data.get("title", "Unknown Track"),
-                        "musicbrainz_recording_id": track_data.get("recording_id"),
-                        "duration_ms": track_data.get("duration_ms"),
-                        "genres": track_data.get("genres", [])
-                        or release_data.get("genres", []),
-                    },
-                )
-
-            album.tracks_populated = True
-            album.save(update_fields=["tracks_populated", "image", "genres"])
-
-            messages.success(
-                request,
-                gettext("Synced %(value_1)s tracks for %(value_2)s")
-                % {"value_1": len(tracks_data), "value_2": album.title},
-            )
-        except Exception as e:
-            logger.warning("Failed to sync album %s: %s", album.title, e)
-            messages.error(
-                request, gettext("Failed to sync album: %(value_1)s") % {"value_1": e}
-            )
-    else:
+        # Use HX-Redirect so HTMX performs a full browser navigation
+        # (plain redirect() returns 302, which HTMX follows internally
+        # but doesn't update the browser URL or stop the spinner).
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = _music_album_detail_url(result["album"])
+        return response
+    if result["missing_release"]:
         messages.warning(
             request, gettext("Could not find a MusicBrainz release for this album")
+        )
+    elif result["error"]:
+        messages.error(
+            request,
+            gettext("Failed to sync album: %(value_1)s") % {"value_1": result["error"]},
+        )
+    else:
+        messages.success(
+            request,
+            gettext("Synced %(value_1)s tracks for %(value_2)s")
+            % {
+                "value_1": result["synced_tracks"],
+                "value_2": result["album"].title,
+            },
         )
 
     response = HttpResponse(status=204)

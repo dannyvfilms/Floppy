@@ -171,6 +171,7 @@ class CeleryDispatchRoutingTests(SimpleTestCase):
         self.background_task = _register("Backfill item metadata")
         self.followup_task = _register("Import from Radarr (Recurring)")
         self.interactive_task = _register("Process media server webhook")
+        self.reconcile_task = _register("Reconcile statistics sync")
         self.fallback_task = _register("Unclassified priority test task")
 
     def _dispatch_and_capture(self, dispatch):
@@ -229,6 +230,27 @@ class CeleryDispatchRoutingTests(SimpleTestCase):
         call = self._dispatch_and_capture(self.fallback_task.delay)
 
         self.assertEqual(self._priority(call), settings.CELERY_TASK_PRIORITY_DEFAULT)
+
+    def test_periodic_reconciler_uses_default_queue_for_direct_and_beat_dispatch(self):
+        self.assertNotIn("queue", settings.CELERY_TASK_ROUTES[self.reconcile_task.name])
+        entry = ScheduleEntry(
+            name="reconcile_statistics_sync",
+            task=self.reconcile_task.name,
+            schedule=60,
+            options={"expires": 60},
+        )
+        scheduler = Scheduler(app=self.app, schedule={}, lazy=True)
+        for dispatch in (
+            self.reconcile_task.delay,
+            lambda: scheduler.apply_async(entry, advance=False),
+        ):
+            with self.subTest(dispatch=dispatch):
+                call = self._dispatch_and_capture(dispatch)
+                queue = call.kwargs.get("queue") or self.app.amqp.default_queue
+                self.assertEqual(queue.name, "celery")
+                self.assertEqual(
+                    self._priority(call), settings.CELERY_TASK_PRIORITY_STATISTICS_SYNC
+                )
 
     def test_explicit_priority_remains_a_contextual_override(self):
         call = self._dispatch_and_capture(

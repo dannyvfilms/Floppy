@@ -5,14 +5,17 @@ from django import template
 from django.templatetags.static import static
 from django.utils import formats, timezone
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext, gettext_noop, ngettext
 
+from users import currency
 from users.appearance import (
     BASIC_THEME_KEYS,
     THEME_PRESETS,
     custom_theme_css,
     resolved_detail_layouts,
 )
+from users.media_tags import MEDIA_TAG_KEYS, MEDIA_TAGS
 from users.models import DateFormatChoices, TimeFormatChoices
 
 register = template.Library()
@@ -160,6 +163,10 @@ SOURCES_CONFIG = {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
     },
+    "playnite": {
+        "name": "Playnite",
+        "logo": static("img/playnite-logo.svg"),
+    },
     "grouvee": {
         "name": "Grouvee",
         "logo": static("img/grouvee_logo.png"),
@@ -222,7 +229,7 @@ SOURCES_CONFIG = {
     },
     "gpodder": {
         "name": "GPodder",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "logo": static("img/gpodder-logo.svg"),
     },
     "lastfm": {
         "name": "Last.fm",
@@ -259,6 +266,10 @@ SOURCES_CONFIG = {
     "storygraph": {
         "name": "StoryGraph",
         "logo": static("img/storygraph-logo.svg"),
+    },
+    "youtube": {
+        "name": "YouTube",
+        "logo": static("img/youtube-logo.svg"),
     },
     "tvtime": {
         "name": "TV Time",
@@ -299,34 +310,33 @@ def source_name(slug):
 
 
 @register.simple_tag
-def source_display(source_name):
-    """Generate HTML display for a media source with logo and name."""
+def source_display(source_name, label=None, heading_level=4):
+    """Render the shared source identity, with a label fallback for catalog entries."""
     info = SOURCES_CONFIG.get(source_name)
+    name = label or (info["name"] if info else source_name)
+    heading = f"h{heading_level}" if heading_level in {2, 3, 4} else "span"
     if not info:
-        return ""
-
-    html = f"""
-        <div class="flex items-center">
-            <img alt="{info["name"]}" class="w-6 h-6 mr-2" src="{info["logo"]}">
-            <h4 class="font-medium">{info["name"]}</h4>
-        </div>
-    """
-
-    return format_html(html)
+        return format_html('<{} class="font-medium min-w-0 break-words">{}</{}>', heading, name, heading)
+    return format_html(
+        '<div class="flex items-center min-w-0">'
+        '<img alt="{}" class="w-6 h-6 mr-2 shrink-0" src="{}">'
+        '<{} class="font-medium min-w-0 break-words">{}</{}></div>',
+        name, info["logo"], heading, name, heading,
+    )
 
 
 @register.filter
 def date_format_display(format_value):
     """Display the human-readable name for date format values."""
     format_display_map = {
-        "system_default": "System default — Aug 12, 2025 / 12 Aug 2025",
-        "iso_8601": "ISO 8601 — 2025-08-12",
-        "month_d_yyyy": "Month D, YYYY — Aug 12, 2025",
-        "d_mon_yyyy": "D Mon YYYY — 12 Aug 2025",
-        "m_d_yyyy": "M/D/YYYY — 08/12/2025",
-        "d_m_yyyy": "D/M/YYYY — 12/08/2025",
-        "dd_mm_yyyy": "DD.MM.YYYY — 12.08.2025",
-        "yyyy_mm_dd": "YYYY/MM/DD — 2025/08/12",
+        "system_default": "System default: Aug 12, 2025 / 12 Aug 2025",
+        "iso_8601": "ISO 8601: 2025-08-12",
+        "month_d_yyyy": "Month D, YYYY: Aug 12, 2025",
+        "d_mon_yyyy": "D Mon YYYY: 12 Aug 2025",
+        "m_d_yyyy": "M/D/YYYY: 08/12/2025",
+        "d_m_yyyy": "D/M/YYYY: 12/08/2025",
+        "dd_mm_yyyy": "DD.MM.YYYY: 12.08.2025",
+        "yyyy_mm_dd": "YYYY/MM/DD: 2025/08/12",
     }
     return format_display_map.get(format_value, format_value)
 
@@ -382,11 +392,11 @@ def detail_layout_family(media_type):
 def time_format_display(format_value):
     """Display the human-readable name for time format values."""
     format_display_map = {
-        "system_default": "System default — 6:45 PM / 18:45",
-        "h_mm_ampm": "12-hour (h:mm AM/PM) — 6:45 PM",
-        "hh_mm_ampm": "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM",
-        "hh_mm": "24-hour (HH:mm) — 18:45",
-        "hh_mm_ss": "24-hour with seconds (HH:mm:ss) — 18:45:00",
+        "system_default": "System default: 6:45 PM / 18:45",
+        "h_mm_ampm": "12-hour (h:mm AM/PM): 6:45 PM",
+        "hh_mm_ampm": "12-hour, leading zero (hh:mm AM/PM): 06:45 PM",
+        "hh_mm": "24-hour (HH:mm): 18:45",
+        "hh_mm_ss": "24-hour with seconds (HH:mm:ss): 18:45:00",
     }
     return format_display_map.get(format_value, format_value)
 
@@ -402,7 +412,7 @@ def user_uses_12_hour_format(user):
 
 @register.filter
 def user_date_format(date, user):
-    """Format a date according to user's date format preference."""
+    """Use the preferred date layout with month names in the active UI language."""
     if not date or not user:
         return ""
 
@@ -427,9 +437,9 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.ISO_8601:
             return local_dt.strftime("%Y-%m-%d")
         if user.date_format == DateFormatChoices.MONTH_D_YYYY:
-            return local_dt.strftime("%b %d, %Y")
+            return formats.date_format(local_dt, "M d, Y")
         if user.date_format == DateFormatChoices.D_MON_YYYY:
-            return local_dt.strftime("%d %b %Y")
+            return formats.date_format(local_dt, "d M Y")
         if user.date_format == DateFormatChoices.M_D_YYYY:
             return f"{local_dt.month}/{local_dt.day}/{local_dt.year}"
         if user.date_format == DateFormatChoices.D_M_YYYY:
@@ -439,7 +449,7 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.YYYY_MM_DD:
             return f"{local_dt.year}/{local_dt.month:02d}/{local_dt.day:02d}"
         if user.date_format == DateFormatChoices.LONG_EU:
-            return f"{local_dt.day} {local_dt.strftime('%b')}, {local_dt.year}"
+            return formats.date_format(local_dt, "j M, Y")
         # Default to system format
         return formats.date_format(local_dt, "DATE_FORMAT")
 
@@ -545,3 +555,36 @@ def user_datetime_format(datetime_obj, user):
             return str(datetime_obj)
     else:
         return f"{date_part} {time_part}"
+
+
+@register.simple_tag(takes_context=True)
+def user_price(context, amount):
+    """Format a collection price in the user's currency (#1100)."""
+    code = currency.resolve_currency(context.get("user"), context.get("request"))
+    return currency.format_price(amount, code)
+
+
+@register.simple_tag
+def media_tag_choices(keys=""):
+    """Return the media type filter options, limited to ``keys`` when given.
+
+    ``keys`` is a space-separated list so a page can offer only the groups it
+    has cards for. The options keep the canonical order from MEDIA_TAGS.
+    """
+    wanted = set(keys.split()) if keys else None
+    return [
+        {"key": key, "label": gettext(label)}
+        for key, label in MEDIA_TAGS
+        if wanted is None or key in wanted
+    ]
+
+
+@register.filter
+def media_tag_list(tags):
+    """Render media tag keys as a JS array literal that is safe in an attribute.
+
+    Single quotes keep it valid inside a double-quoted Alpine expression, and
+    unknown keys are dropped so nothing user-controlled can reach the page.
+    """
+    keys = [tag for tag in tags or [] if tag in MEDIA_TAG_KEYS]
+    return mark_safe("[" + ", ".join(f"'{key}'" for key in keys) + "]")  # noqa: S308

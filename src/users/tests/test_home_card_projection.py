@@ -269,11 +269,12 @@ class HomeCardProjectionTests(TestCase):
         Episode.objects.bulk_create([
             Episode(item=item, related_season=season, end_date=timezone.now()) for item in items
         ])
-        HomeScreenRow.objects.create(
+        tv_row = HomeScreenRow.objects.create(
             user=self.user, media_type=MediaTypes.TV.value,
             row_type=HomeScreenRowTypeChoices.RECENTLY_UNRATED,
         )
         self.client.force_login(self.user)
+        row_fragment_url = reverse("home_row_fragment", args=[tv_row.id])
         results = []
         for projection in (False, True, False, True):
             with patch("users.home_screen.HOME_CARD_UNREAD_ITEM_FIELDS", ("watch_providers",) if projection else ()):
@@ -300,7 +301,7 @@ class HomeCardProjectionTests(TestCase):
         # Prime persistent configuration and template compilation equally;
         # every measured request still rebuilds the row from a cold cache.
         self.client.get(reverse("home"))
-        self.client.get(reverse("home_rest_fragment"))
+        self.client.get(row_fragment_url)
         for projection in (False, True, False, True):
             cache.clear()
             with patch("users.home_screen.HOME_CARD_UNREAD_ITEM_FIELDS", ("watch_providers",) if projection else ()):
@@ -310,7 +311,7 @@ class HomeCardProjectionTests(TestCase):
                 profile.enable()
                 with CaptureQueriesContext(connection) as captured:
                     home = self.client.get(reverse("home"))
-                    rest = self.client.get(reverse("home_rest_fragment"))
+                    rest = self.client.get(row_fragment_url)
                 profile.disable()
                 elapsed = time.perf_counter() - started
                 _current, peak = tracemalloc.get_traced_memory()
@@ -331,7 +332,7 @@ class HomeCardProjectionTests(TestCase):
                 started_cpu = time.thread_time()
                 with CaptureQueriesContext(connection) as captured:
                     home = self.client.get(reverse("home"))
-                    rest = self.client.get(reverse("home_rest_fragment"))
+                    rest = self.client.get(row_fragment_url)
                 untraced_requests.append({
                     "projection": projection, "elapsed_seconds": time.perf_counter() - started,
                     "thread_cpu_seconds": time.thread_time() - started_cpu,

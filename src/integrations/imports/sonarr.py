@@ -8,7 +8,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
-from app.models import CollectionEntry, Item, MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 from app.providers import services
 from integrations import connection_health, import_progress
 from integrations.imports.helpers import (
@@ -21,6 +21,7 @@ from integrations.imports.helpers import (
 from integrations.models import SonarrInstance
 from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import (
+    prune_collection_source_states,
     remove_collection_source_state,
     upsert_collection_source_state,
 )
@@ -135,6 +136,8 @@ class SonarrImporter:
     def import_data(self):
         """Sync Sonarr ownership into Floppy collection rows."""
         imported_counts = defaultdict(int)
+        owned_item_ids = set()
+        complete = True
 
         try:
             series_rows = self.client.series()
@@ -162,11 +165,25 @@ class SonarrImporter:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
 
-            if not self._sync_series_episode_collection(item, row):
+            synced_item_ids = self._sync_series_episode_collection(item, row)
+            if synced_item_ids is None:
+                # A failed episode fetch must not make the whole series look
+                # deleted, so skip the reconciliation for this run.
+                complete = False
                 continue
-            imported_counts[item.media_type] += 1
+            owned_item_ids.update(synced_item_ids)
+            imported_counts["collection"] += 1
             imported_counts["updated"] += 1
 
+        if complete:
+            removed = prune_collection_source_states(
+                user=self.user,
+                source="sonarr",
+                source_instance_id=self.instance.pk,
+                keep_item_ids=owned_item_ids,
+            )
+            if removed:
+                imported_counts["removed"] += removed
         self.instance.last_sync_at = timezone.now()
         connection_health.record_success(self.instance, extra_fields=["last_sync_at"])
 
@@ -174,85 +191,88 @@ class SonarrImporter:
 
     def _find_series_item(self, row):
         """Find an existing Floppy show item without creating one."""
-        tmdb_id = row.get("tmdbId")
-        tvdb_id = row.get("tvdbId")
-
-        if tmdb_id:
-            return find_item_across_buckets(
-                media_id=str(tmdb_id),
-                source=Sources.TMDB.value,
+        for source, media_id in self._series_ids(row):
+            item = find_item_across_buckets(
+                media_id=media_id,
+                source=source,
                 media_type=MediaTypes.TV.value,
             )
-
-        if tvdb_id:
-            return find_item_across_buckets(
-                media_id=str(tvdb_id),
-                source=Sources.TVDB.value,
-                media_type=MediaTypes.TV.value,
-            )
-
+            if item:
+                return item
         return None
+
+    def _series_ids(self, row):
+        """Return (source, id) pairs for a series, the user's provider first.
+
+        Sonarr indexes by TVDB, so a user who prefers TheTVDB must not get a
+        second TMDB copy of a show they already track there (#1911).
+        """
+        pairs = []
+        if row.get("tvdbId"):
+            pairs.append((Sources.TVDB.value, str(row["tvdbId"])))
+        if row.get("tmdbId"):
+            pairs.append((Sources.TMDB.value, str(row["tmdbId"])))
+        if self._preferred_source(row) != Sources.TVDB.value:
+            pairs.reverse()
+        return pairs
+
+    def _preferred_source(self, row):
+        """Return the metadata source the user wants for TV shows."""
+        return self.user.tv_metadata_source_default
 
     def _resolve_series_item(self, row):
-        tvdb_id = row.get("tvdbId")
-        tmdb_id = row.get("tmdbId")
+        pairs = self._series_ids(row)
+        existing = self._find_series_item(row)
+        if existing:
+            return existing
+        if not pairs:
+            return None
 
-        if tmdb_id:
-            existing = find_item_across_buckets(
-                media_id=str(tmdb_id),
-                source=Sources.TMDB.value,
-                media_type=MediaTypes.TV.value,
+        # Nothing tracked yet: create it on the user's preferred provider.
+        source, media_id = pairs[0]
+        if source == Sources.TVDB.value and self._preferred_source(row) != source:
+            # No TMDB id and the user does not use TheTVDB: nothing to create.
+            return None
+        try:
+            metadata = services.get_media_metadata(
+                MediaTypes.TV.value,
+                media_id,
+                source,
             )
-            if existing:
-                return existing
-
-            try:
-                metadata = services.get_media_metadata(
-                    MediaTypes.TV.value,
-                    str(tmdb_id),
-                    Sources.TMDB.value,
+        except services.ProviderAPIError as error:
+            if getattr(error, "status_code", None) == HTTP_STATUS_NOT_FOUND:
+                title = row.get("title") or row.get("sortTitle") or media_id
+                self.warnings.append(
+                    f"{title}: not found in {Sources(source).label} "
+                    f"with ID {media_id}.",
                 )
-            except services.ProviderAPIError as error:
-                if getattr(error, "status_code", None) == HTTP_STATUS_NOT_FOUND:
-                    title = row.get("title") or row.get("sortTitle") or tmdb_id
-                    self.warnings.append(
-                        (
-                            f"{title}: not found in {Sources.TMDB.label} "
-                            f"with ID {tmdb_id}."
-                        ),
-                    )
-                    return None
-                raise
+                return None
+            raise
 
-            defaults = {
-                "title": metadata["title"],
-                "image": metadata.get("image") or settings.IMG_NONE,
-                "release_datetime": metadata.get("release_datetime"),
-                "genres": metadata.get("genres") or [],
-                "original_title": metadata.get("original_title") or metadata["title"],
-                "localized_title": metadata.get("localized_title") or metadata["title"],
-            }
-            item, _ = retry_on_lock(
-                lambda: Item.objects.update_or_create(
-                    media_id=str(tmdb_id),
-                    source=Sources.TMDB.value,
-                    media_type=MediaTypes.TV.value,
-                    defaults=defaults,
-                ),
-            )
-            return item
-
-        if tvdb_id:
-            return find_item_across_buckets(
-                media_id=str(tvdb_id),
-                source=Sources.TVDB.value,
+        defaults = {
+            "title": metadata["title"],
+            "image": metadata.get("image") or settings.IMG_NONE,
+            "release_datetime": metadata.get("release_datetime"),
+            "genres": metadata.get("genres") or [],
+            "original_title": metadata.get("original_title") or metadata["title"],
+            "localized_title": metadata.get("localized_title") or metadata["title"],
+        }
+        item, _ = retry_on_lock(
+            lambda: Item.objects.update_or_create(
+                media_id=media_id,
+                source=source,
                 media_type=MediaTypes.TV.value,
-            )
-
-        return None
+                defaults=defaults,
+            ),
+        )
+        return item
 
     def _sync_series_episode_collection(self, show_item, row):
-        """Create episode-level Sonarr collection ownership for a show."""
+        """Own the series' episodes, returning the item ids now kept.
+
+        Returns None when the episode list could not be read, so the caller
+        can skip reconciliation instead of treating the series as deleted.
+        """
         series_id = row.get("id")
         if series_id in (None, ""):
             upsert_collection_source_state(
@@ -263,14 +283,14 @@ class SonarrImporter:
                 quality_label="",
                 source_updated_at=self._parse_source_timestamp(row),
             )
-            return True
+            return {show_item.id}
 
         try:
             episode_rows = self.client.episodes(series_id)
         except MediaImportError as error:
             title = row.get("title") or row.get("sortTitle") or show_item.title
             self.warnings.append(f"{title}: failed to fetch Sonarr episodes ({error}).")
-            return False
+            return None
 
         self._ensure_season_items(show_item, row, episode_rows)
 
@@ -297,7 +317,19 @@ class SonarrImporter:
             show_item,
             keep_episode_item_ids=collected_episode_item_ids,
         )
-        return True
+        if not collected_episode_item_ids:
+            return collected_episode_item_ids
+
+        # The show gets its own entry so it lists under TV Shows, as Plex does.
+        upsert_collection_source_state(
+            user=self.user,
+            item=show_item,
+            source="sonarr",
+            source_instance_id=self.instance.pk,
+            quality_label="",
+            source_updated_at=self._parse_source_timestamp(row),
+        )
+        return collected_episode_item_ids | {show_item.id}
 
     def _child_bucket(self, show_item, default_bucket):
         """Return the library bucket a show's season/episode rows belong in.
@@ -502,37 +534,13 @@ class SonarrImporter:
             )
 
         if keep_episode_item_ids:
-            self._retire_legacy_series_collection_entry(show_item)
+            return
 
         remove_collection_source_state(
             user=self.user,
             item=show_item,
             source="sonarr",
             source_instance_id=self.instance.pk,
-        )
-
-    def _retire_legacy_series_collection_entry(self, show_item):
-        """Delete the legacy show-level Sonarr row once episode rows exist."""
-        if not show_item.source_states.filter(
-            user=self.user,
-            source="sonarr",
-            source_instance_id=self.instance.pk,
-        ).exists():
-            return
-
-        legacy_entry_ids = list(
-            CollectionEntry.objects.filter(
-                user=self.user,
-                item=show_item,
-            )
-            .order_by("-updated_at", "-collected_at", "-id")
-            .values_list("id", flat=True)
-        )
-        if len(legacy_entry_ids) != 1:
-            return
-
-        retry_on_lock(
-            lambda: CollectionEntry.objects.filter(id=legacy_entry_ids[0]).delete(),
         )
 
     def _parse_episode_release_datetime(self, row):

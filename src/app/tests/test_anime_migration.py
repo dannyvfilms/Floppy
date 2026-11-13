@@ -158,6 +158,44 @@ class AnimeMigrationTests(TestCase):
     @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
     @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
     @patch("app.services.anime_migration.services.get_media_metadata")
+    def test_migration_keeps_a_dropped_status(
+        self,
+        mock_get_media_metadata,
+        mock_resolve_provider_series_id,
+        mock_find_entries_for_mal_id,
+    ):
+        """A dropped or paused flat entry must not come back as in progress."""
+        Anime.objects.filter(pk=self.flat_entry.pk).update(status=Status.DROPPED.value)
+        mock_resolve_provider_series_id.return_value = "9350138"
+        mock_find_entries_for_mal_id.return_value = [
+            {
+                "mal_id": "52991",
+                "tvdb_id": "9350138",
+                "tvdb_season": 1,
+                "tvdb_epoffset": 0,
+            },
+        ]
+        mock_get_media_metadata.return_value = {
+            "related": {"seasons": [{"season_number": 1}]},
+            "season/1": {
+                "season_number": 1,
+                "episodes": [{"episode_number": number} for number in range(1, 13)],
+            },
+        }
+
+        result = anime_migration.migrate_flat_anime_to_grouped(
+            self.user,
+            self.flat_item,
+            Sources.TVDB.value,
+        )
+
+        season = Season.objects.get(related_tv=result.grouped_tv)
+        self.assertEqual(result.grouped_tv.status, Status.DROPPED.value)
+        self.assertEqual(season.status, Status.DROPPED.value)
+
+    @patch("app.services.anime_migration.anime_mapping.find_entries_for_mal_id")
+    @patch("app.services.anime_migration.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.anime_migration.services.get_media_metadata")
     def test_grouped_anime_progress_appears_in_warm_history_immediately(
         self,
         mock_get_media_metadata,

@@ -37,6 +37,7 @@ docs/upstream-review.md
 
 # Pinned tailwindcss CLI (see package.json) — keeps generated main.css reproducible
 node_modules/
+src/static/native-proof/
 
 # Brand masters are kept outside the repo; only the web-sized derivatives
 # under docs/brand/ and src/static/img/ are committed.
@@ -64,3 +65,15 @@ dump.rdb
 # Local agent session state; not part of the application or PR.
 .v2c/
 .video_agent/
+# The wiki is an independent repository; historical review notes stay private.
+/wiki/
+/*_AUDIT.md
+/*_FOLLOWUP.md
+/*_REVIEW.md
+/*_CLOSEOUT.md
+
+# Temporary agent storage (see AGENTS.md Documentation Policy)
+/docs/plans/
+
+# App-generated database backups (BACKUP_DIR default)
+/src/backups/

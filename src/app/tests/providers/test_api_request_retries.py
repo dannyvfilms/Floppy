@@ -5,6 +5,8 @@ provider that kept rate-limiting held a Celery worker - which runs at
 concurrency 1, so the whole queue - sleeping indefinitely.
 """
 
+import threading
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 
 import requests
@@ -13,6 +15,7 @@ from django.test import SimpleTestCase
 
 from app.providers import services
 from app.providers.services import (
+    COMICVINE_REQUEST_TIMEOUT,
     RATE_LIMIT_DEFAULT_WAIT_SECONDS,
     RATE_LIMIT_MAX_COOLDOWN_SECONDS,
     RATE_LIMIT_MAX_RETRIES,
@@ -27,6 +30,24 @@ from app.providers.services import (
 )
 
 
+@contextmanager
+def own_thread_sleep():
+    """Patch ``time.sleep`` but count only sleeps made by the calling thread.
+
+    ``time.sleep`` is process-wide, so a plain patch also counts a background
+    thread that happens to sleep while the test runs.
+    """
+    owner = threading.get_ident()
+    calls = Mock()
+
+    def fake_sleep(*args, **kwargs):
+        if threading.get_ident() == owner:
+            calls(*args, **kwargs)
+
+    with patch.object(services.time, "sleep", fake_sleep):
+        yield calls
+
+
 class CooldownIsolationMixin:
     """Cooldowns outlive a request by design, so clear them between tests."""
 
@@ -36,10 +57,12 @@ class CooldownIsolationMixin:
         self.addCleanup(cache.clear)
 
 
-def rate_limited_response(retry_after="1"):
-    """Return a 429 response that raise_for_status() will raise on."""
+def rate_limited_response(retry_after="1", status_code=None):
+    """Return a rate-limit response that raise_for_status() will raise on."""
     response = Mock()
-    response.status_code = requests.codes.too_many_requests
+    response.status_code = (
+        requests.codes.too_many_requests if status_code is None else status_code
+    )
     response.headers = {} if retry_after is None else {"Retry-After": retry_after}
     error = requests.exceptions.HTTPError(response=response)
     response.raise_for_status.side_effect = error
@@ -93,7 +116,7 @@ class RateLimitRetryTests(CooldownIsolationMixin, SimpleTestCase):
         get = Mock(return_value=rate_limited_response())
         with (
             patch.object(services.session, "get", get),
-            patch.object(services.time, "sleep") as sleep,
+            own_thread_sleep() as sleep,
             self.assertRaises(requests.exceptions.HTTPError),
         ):
             api_request("mal", "GET", "https://example.test/x")
@@ -101,6 +124,28 @@ class RateLimitRetryTests(CooldownIsolationMixin, SimpleTestCase):
         # One initial attempt plus RATE_LIMIT_MAX_RETRIES retries.
         self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES + 1)
         self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES)
+
+    def test_comicvine_420_uses_the_rate_limit_retry_path(self):
+        """Comic Vine answers quota failures with 420, not 429."""
+        get = Mock(return_value=rate_limited_response(status_code=420))
+        with (
+            patch.object(services.session, "get", get),
+            own_thread_sleep() as sleep,
+            self.assertRaises(requests.exceptions.HTTPError),
+        ):
+            api_request("comicvine", "GET", "https://example.test/x")
+
+        self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES + 1)
+        self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES)
+
+    @patch.object(services.session, "get")
+    def test_comicvine_uses_a_bounded_background_timeout(self, get):
+        get.side_effect = requests.exceptions.Timeout()
+
+        with self.assertRaises(ProviderAPIError):
+            api_request("comicvine", "GET", "https://example.test/x")
+
+        self.assertEqual(get.call_args.kwargs["timeout"], COMICVINE_REQUEST_TIMEOUT)
 
     def test_a_wait_longer_than_the_budget_is_not_retried_at_all(self):
         """Hardcover answers an exhausted daily quota with hours (#1025).
@@ -111,7 +156,7 @@ class RateLimitRetryTests(CooldownIsolationMixin, SimpleTestCase):
         get = Mock(return_value=rate_limited_response(retry_after="86400"))
         with (
             patch.object(services.session, "get", get),
-            patch.object(services.time, "sleep") as sleep,
+            own_thread_sleep() as sleep,
             self.assertRaises(ProviderAPIError),
         ):
             api_request("mal", "GET", "https://example.test/x")
@@ -205,7 +250,7 @@ class InteractiveRequestScopeTests(CooldownIsolationMixin, SimpleTestCase):
         get = Mock(return_value=rate_limited_response(retry_after="4"))
         with (
             patch.object(services.session, "get", get),
-            patch.object(services.time, "sleep") as sleep,
+            own_thread_sleep() as sleep,
             self.assertRaises(requests.exceptions.HTTPError),
             interactive_request_scope(),
         ):
@@ -233,7 +278,7 @@ class InteractiveRequestScopeTests(CooldownIsolationMixin, SimpleTestCase):
         get.reset_mock()
         with (
             patch.object(services.session, "get", get),
-            patch.object(services.time, "sleep") as sleep,
+            own_thread_sleep() as sleep,
             self.assertRaises(requests.exceptions.HTTPError),
         ):
             api_request("mal", "GET", "https://example.test/x")

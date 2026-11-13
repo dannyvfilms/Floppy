@@ -1,8 +1,8 @@
 """Horizontal (16:9) backdrop resolution shared by the web UI and the API.
 
 Item.image holds a portrait poster (TMDB w500); backdrops are never stored on
-the model, only fetched from the provider and cached in Redis for 7 days by
-``lists.models.CustomList``.
+the model, only fetched from the provider and cached in Redis for 7 days.
+TMDB fetching and its cache contract live here; IGDB still delegates to lists.
 
 ``resolve_backdrop`` returns ``None`` when no backdrop exists, leaving the
 choice of fallback to the caller: the web UI falls back to the poster so a
@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 # How long a queued warm suppresses another request for the same item.
 BACKDROP_WARM_GUARD_SECONDS = 60 * 10
-# Matches lists.models.CustomList._get_tmdb_backdrop.
 TMDB_BACKDROP_BASE_URL = "https://image.tmdb.org/t/p/w1280"
 TMDB_BACKDROP_TTL = 60 * 60 * 24 * 7
 
@@ -72,8 +71,49 @@ def _usable(backdrop):
 
 
 def _tmdb_backdrop_key(media_type, media_id) -> str:
-    """Redis key ``lists.models.CustomList._get_tmdb_backdrop`` caches under."""
+    """Shared key for TMDB detail responses, list covers, and backdrop reads."""
     return f"tmdb_backdrop_{media_type}_{media_id}"
+
+
+def get_tmdb_backdrop(media_type, media_id):
+    """Fetch TMDB artwork, caching success for seven days and absence for one.
+
+    Returns the placeholder on provider failure or missing artwork. Presentation
+    callers choose their own fallback after filtering that placeholder.
+    """
+    cache_key = _tmdb_backdrop_key(media_type, media_id)
+    cached_backdrop = cache.get(cache_key)
+    if cached_backdrop is not None:
+        return cached_backdrop
+
+    try:
+        from app.providers import services, tmdb
+
+        if media_type == MediaTypes.MOVIE.value:
+            url = f"{tmdb.base_url}/movie/{media_id}"
+        else:
+            url = f"{tmdb.base_url}/tv/{media_id}"
+
+        params = dict(tmdb.base_params())
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            url,
+            params=params,
+        )
+
+        backdrop_path = response.get("backdrop_path")
+        if backdrop_path:
+            backdrop_url = f"{TMDB_BACKDROP_BASE_URL}{backdrop_path}"
+            # Cache for 7 days (same as TMDB metadata cache)
+            cache.set(cache_key, backdrop_url, TMDB_BACKDROP_TTL)
+            return backdrop_url
+    except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
+        pass
+
+    # Cache the absence of backdrop to avoid repeated failed calls
+    cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
+    return settings.IMG_NONE
 
 
 def _backdrop_cache_key(item) -> str | None:
@@ -153,29 +193,26 @@ def resolve_backdrop(item, *, allow_network=True) -> str | None:
         return None
     source, media_type, media_id = identity
 
-    try:
-        from lists.models import CustomList
-    except Exception:
-        return None
-
-    custom_list = CustomList()
-
     if source == Sources.TMDB.value and media_type in _SHOW_LEVEL_TYPES:
-        return _fetch(custom_list._get_tmdb_backdrop, MediaTypes.TV.value, media_id)
+        return _fetch(get_tmdb_backdrop, MediaTypes.TV.value, media_id)
 
     if source == Sources.TMDB.value and media_type in (
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
     ):
-        return _fetch(custom_list._get_tmdb_backdrop, media_type, media_id)
+        return _fetch(get_tmdb_backdrop, media_type, media_id)
 
     if source == Sources.TVDB.value and media_type in _TVDB_TYPES:
         tmdb_id = _tvdb_tmdb_id(item)
         if tmdb_id:
-            return _fetch(custom_list._get_tmdb_backdrop, MediaTypes.TV.value, tmdb_id)
+            return _fetch(get_tmdb_backdrop, MediaTypes.TV.value, tmdb_id)
 
     if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
-        return _fetch(custom_list._get_igdb_backdrop, media_id)
+        try:
+            from lists.models import CustomList
+        except Exception:
+            return None
+        return _fetch(CustomList()._get_igdb_backdrop, media_id)
 
     return None
 

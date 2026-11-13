@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers, history_cache
 from app.activity_builders import _build_detail_activity_state
+from app.card_events import card_update_event
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
 from app.history_processor import USER_EDIT_REASON
@@ -38,6 +39,7 @@ from app.models import (
 from app.providers import services
 from app.request_timing import boundary
 from app.services import metadata_resolution
+from app.services.completion import select_preferred_activity_entry
 from app.services.episode_coordinates import (
     InvalidEpisodeCoordinateError,
     cleanup_episode_history_for_route,
@@ -48,6 +50,7 @@ from app.templatetags.app_tags import media_url
 from app.track_modal_views import (
     _render_standard_track_modal,
 )
+from integrations.state.ratings import rating_edit
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,7 @@ DETAILS_ROUTE_MIN_SEGMENTS = 2  # "details", "<source>", ... in the URL path
 
 
 @require_POST
+@rating_edit
 def media_save(request):
     """Save or update media data to the database."""
     media_id = request.POST["media_id"]
@@ -453,7 +457,7 @@ def media_save(request):
                 return render_to_string(
                     "app/components/media_card_rating_oob.html",
                     {
-                        "media_instance_id": media.id,
+                        "item": media.item,
                         "rating_media_type": media.item.media_type,
                         "rating_value": media.formatted_score,
                         "rate_url": reverse(
@@ -469,6 +473,7 @@ def media_save(request):
                 return render_to_string(
                     "app/components/media_card_status_chip.html",
                     {
+                        "item": media.item,
                         "media": media,
                         "status_chip_oob": True,
                     },
@@ -537,6 +542,11 @@ def media_save(request):
             }
             if home_row_id and instance_id and old_status != media.status:
                 htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            htmx_trigger["floppyCardUpdate"] = card_update_event(
+                media.item,
+                media,
+                request.user,
+            )
             response["HX-Trigger"] = json.dumps(
                 htmx_trigger,
             )
@@ -566,14 +576,32 @@ def media_save(request):
                 return_url=return_url,
                 track_action_update=True,
             )
+            # A failed create has no saved row of its own; a movie or game
+            # button belongs to the entry the page already shows.
+            shown_instance = media
+            if media.pk is None and media_type in (
+                MediaTypes.MOVIE.value,
+                MediaTypes.GAME.value,
+            ):
+                shown_instance = (
+                    select_preferred_activity_entry(
+                        BasicMedia.objects.filter_media_prefetch(
+                            request.user,
+                            media_id,
+                            media_type,
+                            source,
+                        ),
+                    )
+                    or media
+                )
             response = render(
                 request,
                 "app/components/detail_track_action.html",
                 {
                     "media": media.item,
-                    "current_instance": media,
+                    "current_instance": shown_instance,
                     "return_url": return_url,
-                    "track_open": True,
+                    "track_open": "edit" if instance_id else "create",
                     "track_modal_content": modal_response.content.decode(),
                     "track_action_update": True,
                     "swap_oob": True,
@@ -627,8 +655,10 @@ def media_delete(request):
             "HX-Request",
         ):
             related_season._sync_status_after_episode_change()
-            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            cache_utils.clear_library_view_caches(
+                related_season.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
             history_day_key = history_cache.history_day_key(
                 end_date or start_date or created_at,
             )
@@ -753,6 +783,14 @@ def media_rewatch(request):
     media = get_object_or_404(model, pk=instance_id, user=request.user)
 
     if action == "stop":
+        from app.services.progress_breakdown import build_progress_breakdown
+        from app.services.rewatch_progress import cancel_run, resolve_rewatch
+
+        tv = media if media_type == MediaTypes.TV.value else media.related_tv
+        breakdown = build_progress_breakdown(tv=tv)
+        inferred = resolve_rewatch(tv, breakdown.seasons, include_explicit=False, include_candidates=True)
+        if inferred is not None:
+            cancel_run(tv, inferred)
         # Each model resolves its own season(s) against their own episode
         # counts — a show's seasons can have different lengths.
         media.stop_rewatch()
@@ -767,9 +805,9 @@ def media_rewatch(request):
         except RewatchAlreadyCompleteError as error:
             # htmx doesn't swap a non-2xx response, so without an explicit
             # trigger the button click would just silently do nothing.
-            response = HttpResponseBadRequest(str(error))
+            response = HttpResponseBadRequest(error.message)
             response["HX-Trigger"] = json.dumps(
-                {"showToast": {"message": str(error), "type": "error"}},
+                {"showToast": {"message": error.message, "type": "error"}},
             )
             return response
         if skipped_seasons:
@@ -788,13 +826,13 @@ def media_rewatch(request):
             messages.warning(
                 request,
                 gettext(
-                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                    "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
                 )
                 % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, media_types=(media_type,))
 
     redirect_response = helpers.redirect_back(request)
     if request.headers.get("HX-Request"):
@@ -1034,6 +1072,17 @@ def _write_episode_save_oob(
         )
     response.write(
         render_to_string(
+            "app/components/detail_episode_collection_button.html",
+            {
+                "episode": episode,
+                "collection_button_oob": True,
+                "detail_return_url": parsed_next,
+            },
+            request=request,
+        ),
+    )
+    response.write(
+        render_to_string(
             "app/components/detail_episode_history_line.html",
             {
                 "episode": episode,
@@ -1048,7 +1097,10 @@ def _write_episode_save_oob(
         {
             "detail-progress-updated": {
                 "id": related_season.id,
+                "tv_id": related_season.related_tv_id,
                 "completed": related_season.completed_episode_count,
+                "watched_once": len(related_season.watched_once_numbers),
+                "rewatching": related_season.is_rewatching,
             },
         },
     )
@@ -1058,6 +1110,7 @@ def _write_episode_save_oob(
 
 
 @require_POST
+@rating_edit
 def episode_save(request):
     """Handle the creation, deletion, and updating of episodes for a season."""
     media_id = request.POST["media_id"]
@@ -1144,14 +1197,16 @@ def episode_save(request):
                 notes=form.cleaned_data.get("notes") or "",
             )
         except fork_services_episode.EpisodeWatchConflictError as error:
-            return HttpResponse(str(error), status=409)
+            return HttpResponse(error.code, status=409)
         episode = result.episode
     if episode_instance and hasattr(related_season, "_episode_stats_cache"):
         delattr(related_season, "_episode_stats_cache")
     if episode_instance:
         related_season._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+        cache_utils.clear_library_view_caches(
+            related_season.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     if request.headers.get("HX-Request"):
         episode_history = list(
@@ -1320,6 +1375,7 @@ def episode_drop(request):
 
 
 POLL_LOOKBACK_SECONDS = 45  # > poll interval, tolerates jitter/delay
+POLL_MAX_GAP_SECONDS = 24 * 60 * 60  # hidden-tab catch-up cap
 
 
 @require_GET
@@ -1331,7 +1387,12 @@ def episode_history_poll(request, season_id):
     so the season page polls this endpoint to catch up.
     """
     related_season = get_object_or_404(Season, pk=season_id, user=request.user)
-    since = timezone.now() - timedelta(seconds=POLL_LOOKBACK_SECONDS)
+    try:
+        gap = min(max(int(request.GET.get("gap", 0)), 0), POLL_MAX_GAP_SECONDS)
+    except ValueError:
+        gap = 0
+    lookback = gap + POLL_LOOKBACK_SECONDS
+    since = timezone.now() - timedelta(seconds=lookback)
 
     recent_item_ids = (
         Episode.objects.filter(related_season=related_season, created_at__gte=since)
@@ -1374,6 +1435,17 @@ def episode_history_poll(request, season_id):
             )
         response.write(
             render_to_string(
+                "app/components/detail_episode_collection_button.html",
+                {
+                    "episode": episode,
+                    "collection_button_oob": True,
+                    "detail_return_url": request.GET.get("return_url", ""),
+                },
+                request=request,
+            ),
+        )
+        response.write(
+            render_to_string(
                 "app/components/detail_episode_history_line.html",
                 {"episode": episode, "user": request.user, "history_oob": True},
                 request=request,
@@ -1385,7 +1457,10 @@ def episode_history_poll(request, season_id):
         {
             "detail-progress-updated": {
                 "id": related_season.id,
+                "tv_id": related_season.related_tv_id,
                 "completed": related_season.completed_episode_count,
+                "watched_once": len(related_season.watched_once_numbers),
+                "rewatching": related_season.is_rewatching,
             },
         },
     )
@@ -1431,7 +1506,7 @@ def episode_bulk_save(request):
             )
             return response
         messages.error(request, gettext("Start and end dates are required."))
-        return redirect(request.POST.get("return_url") or "/")
+        return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))
 
     try:
         first_season_number = int(request.POST["first_season_number"])
@@ -1451,7 +1526,7 @@ def episode_bulk_save(request):
             )
             return response
         messages.error(request, gettext("Invalid episode range."))
-        return redirect(request.POST.get("return_url") or "/")
+        return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))
 
     episode_count = max(int(request.POST.get("episode_count") or 0), 0)
     write_mode = request.POST.get("write_mode", "add")
@@ -1503,4 +1578,4 @@ def episode_bulk_save(request):
         request,
         gettext("Adding plays to %(value_1)s episodes.") % {"value_1": episode_count},
     )
-    return redirect(request.POST.get("return_url") or "/")
+    return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))

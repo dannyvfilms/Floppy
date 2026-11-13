@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.template import engines
+from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import translation
@@ -21,7 +22,9 @@ from app.templatetags.app_tags import (
     media_status_readable,
     media_type_readable,
     media_type_readable_plural,
+    month_abbreviation,
     progress_unit_label,
+    translate_activity_text,
 )
 
 
@@ -37,6 +40,19 @@ class GermanPresentationTests(SimpleTestCase):
             self.assertEqual(choices["Planning"], "Geplant")
             self.assertEqual(Status.PLANNING.value, "Planning")
             self.assertEqual(MediaTypes.MOVIE.label, "Movie")
+
+    def test_reworded_messages_render_from_compiled_german_catalog(self):
+        """Punctuation-only source edits retain their existing translations."""
+        template = engines["django"].from_string(
+            '{% load i18n %}'
+            '{% translate "Welcome to Floppy: create your first account" %}'
+            '|{% translate "Provider search results (shared instance-wide)" %}',
+        )
+        with translation.override("de"):
+            html = template.render()
+        self.assertIn("Willkommen bei Floppy: erstelle dein erstes Konto", html)
+        self.assertIn("Suchergebnisse der Datenanbieter", html)
+        self.assertNotIn("Provider search results", html)
 
     def test_progress_units_have_german_plurals_and_stable_raw_values(self):
         with translation.override("de"):
@@ -153,3 +169,77 @@ class FrenchPreferencesTests(TestCase):
         self.assertContains(response, "Paramètres")
         catalog = self.client.get(reverse("javascript-catalog"))
         self.assertContains(catalog, "Aujourd'hui")
+
+
+class SpanishPresentationTests(SimpleTestCase):
+    """Common Spanish screens use compiled catalogs without changing stored values."""
+
+    def test_common_screen_labels_are_translated(self):
+        with translation.override("es"):
+            for message in (
+                "Completed Items", "Average Rating", "Most Active Day",
+                "Your History", "Watched once", "No results found",
+                "Save appearance", "Refresh statistics",
+            ):
+                with self.subTest(message=message):
+                    self.assertNotEqual(translation.gettext(message), message)
+            self.assertEqual(Status.COMPLETED.value, "Completed")
+            self.assertEqual(media_status_readable(Status.COMPLETED), "Completado")
+
+    def test_cached_recap_label_translates_at_render_time(self):
+        highlights = {
+            "today_card": {"label": "TODAY IN HISTORY", "entry": None},
+        }
+        with translation.override("es"):
+            html = render_to_string(
+                "app/components/statistics/highlight_set.html",
+                {"highlights": highlights},
+            )
+        self.assertIn("HOY EN LA HISTORIA", html)
+        self.assertEqual(highlights["today_card"]["label"], "TODAY IN HISTORY")
+
+    def test_cached_activity_labels_translate_without_rebuilding_statistics(self):
+        with translation.override("es"):
+            self.assertEqual(month_abbreviation("Jan"), "Ene")
+            self.assertEqual(month_abbreviation("Aug"), "Ago")
+            self.assertEqual(month_abbreviation(""), "")
+            self.assertEqual(translate_activity_text("Up 9.8%"), "Sube un 9.8%")
+            self.assertEqual(translate_activity_text("Down 2%"), "Baja un 2%")
+
+
+class EpisodeFeedPluralTests(SimpleTestCase):
+    """Countdowns use the selected language's real catalog."""
+
+    def test_day_plurals(self):
+        for language, singular, plural in (
+            ("de", "Tag", "Tage"),
+            ("es", "día", "días"),
+            ("fr", "jour", "jours"),
+            ("it", "giorno", "giorni"),
+        ):
+            with self.subTest(language=language), translation.override(language):
+                self.assertEqual(translation.ngettext("day", "days", 1), singular)
+                self.assertEqual(translation.ngettext("day", "days", 2), plural)
+
+
+class ItalianPlaceholderTests(SimpleTestCase):
+    """Compiled Italian messages keep the interpolation values supplied by Django."""
+
+    def test_repaired_messages_accept_runtime_values(self):
+        with translation.override("it"):
+            for message, values, expected in (
+                ("%(format)s series status", {"format": "TV"}, ("TV",)),
+                ("%(value_1)s%% done", {"value_1": 75}, ("75%",)),
+                (
+                    "%(value_1)s %(value_2)s already fully watched from that date. "
+                    "Left as is.",
+                    {"value_1": "S1", "value_2": "E2"},
+                    ("S1", "E2"),
+                ),
+            ):
+                with self.subTest(message=message):
+                    localized = translation.gettext(message)
+                    self.assertNotEqual(localized, message)
+                    rendered = localized % values
+                    for value in expected:
+                        self.assertIn(value, rendered)

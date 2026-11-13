@@ -9,7 +9,8 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Max, Min
 from django.db.utils import OperationalError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,11 +26,14 @@ from app import (
     custom_metadata,
     helpers,
     history_cache,
+    image_cache,
     metadata_utils,
 )
+from app.cover_views import user_has_item
 from app.db_retry import is_retryable_error, run_retryable_db_operation
 from app.log_safety import exception_summary, safe_url
 from app.models import (
+    Anime,
     CollectionEntry,
     Episode,
     HardcoverEditionPreference,
@@ -123,13 +127,10 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
         )
         messages.success(request, gettext("Metadata provider updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -159,20 +160,22 @@ def update_metadata_language_preference(request, source, media_type, media_id):
     if language and language not in valid_codes:
         messages.error(request, gettext("That metadata language is not available."))
     else:
-        MetadataProviderPreference.objects.update_or_create(
+        preference, _ = MetadataProviderPreference.objects.get_or_create(
             user=request.user,
             item=item,
-            defaults={"language": language},
         )
+        if preference.language != language:
+            from app.tasks_metadata_language import reset_metadata_language_repair
+
+            preference.language = language
+            preference.save(update_fields=["language"])
+            reset_metadata_language_repair(request.user.pk)
         messages.success(request, gettext("Metadata language updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -211,6 +214,10 @@ def search_remap_candidates(request, source, media_type, media_id):
         )
         results = (response or {}).get("results") or []
 
+    return_url = helpers.normalize_navigation_url(request.GET.get("return_url"))
+    provider_label = (
+        metadata_resolution.metadata_provider_label(provider) if provider else ""
+    )
     return render(
         request,
         "app/components/remap_search_results.html",
@@ -220,11 +227,89 @@ def search_remap_candidates(request, source, media_type, media_id):
             "source": source,
             "media_type": media_type,
             "media_id": media_id,
-            "return_url": helpers.normalize_navigation_url(
-                request.GET.get("return_url")
-            ),
+            "return_url": return_url,
+            "remap_results_props": {
+                "labels": {
+                    "useMatch": gettext("Use this match"),
+                    "noMatches": gettext("No matches found. Try a different search."),
+                },
+                "model": {
+                    "variant": "remap",
+                    "provider": provider,
+                    "providerLabel": provider_label,
+                    "query": query,
+                    "results": [
+                        {
+                            "id": str(result.get("media_id", "")),
+                            "title": str(result.get("title", "")),
+                            "image": image_cache.rewrite_image_url(
+                                result.get("image") or "",
+                            ),
+                            "meta": provider_label,
+                        }
+                        for result in results
+                    ],
+                    "returnUrl": return_url,
+                },
+                "csrf": get_token(request),
+                "actions": {
+                    "choose": reverse(
+                        "remap_metadata_provider",
+                        kwargs={
+                            "source": source,
+                            "media_type": media_type,
+                            "media_id": media_id,
+                        },
+                    ),
+                },
+            },
         },
     )
+
+
+def _library_move_results_props(
+    request, item, results=None, query="", error="", move_context=None, return_url="",
+):
+    """Localized props for the shared library-move result choices."""
+    move_context = move_context or {}
+    labels = {
+        "moveIntro": gettext(
+            "Confirm the exact title before moving your tracking identity."
+        ),
+        "moveTo": gettext("Move"),
+        "moving": gettext("Moving..."),
+        "noMatches": gettext("No matching titles found."),
+    }
+    target_source = move_context.get("target_source", "")
+    target_source_label = move_context.get("target_source_label", "")
+    return {
+        "labels": labels,
+        "model": {
+            "variant": "libraryMove",
+            "query": query,
+            "error": error,
+            "results": [
+                {
+                    "id": str(result.get("media_id", "")),
+                    "title": str(result.get("title", "")),
+                    "image": image_cache.rewrite_image_url(result.get("image") or ""),
+                    "meta": " · ".join(
+                        part for part in (
+                            target_source_label,
+                            str(result.get("year") or ""),
+                        ) if part
+                    ),
+                }
+                for result in (results or [])
+            ],
+            "target": "#library-move-results",
+            "targetSource": target_source,
+            "targetMediaType": move_context.get("target_media_type", ""),
+            "returnUrl": return_url,
+        },
+        "csrf": get_token(request),
+        "actions": {"choose": reverse("move_library_item", kwargs={"item_id": item.id})},
+    }
 
 
 @login_required
@@ -256,6 +341,7 @@ def search_library_move_candidates(request, item_id):
                 exc_info=True,
             )
 
+    return_url = helpers.normalize_navigation_url(request.GET.get("return_url"))
     return render(
         request,
         "app/components/library_move_results.html",
@@ -263,10 +349,12 @@ def search_library_move_candidates(request, item_id):
             "results": results,
             "item_id": item.id,
             "query": query,
-            "return_url": helpers.normalize_navigation_url(
-                request.GET.get("return_url"),
-            ),
+            "return_url": return_url,
             **(move_context or {}),
+            "library_move_results_props": _library_move_results_props(
+                request, item, results=results, query=query,
+                move_context=move_context, return_url=return_url,
+            ),
         },
     )
 
@@ -304,6 +392,14 @@ def move_library_item(request, item_id):
                         "The database is busy with another operation. "
                         "Nothing was changed; please try Move again."
                     ),
+                    "library_move_results_props": _library_move_results_props(
+                        request,
+                        item,
+                        error=(
+                            "The database is busy with another operation. "
+                            "Nothing was changed; please try Move again."
+                        ),
+                    ),
                 },
             )
         raise
@@ -312,7 +408,12 @@ def move_library_item(request, item_id):
             return render(
                 request,
                 "app/components/library_move_results.html",
-                {"error": str(error)},
+                {
+                    "error": str(error),
+                    "library_move_results_props": _library_move_results_props(
+                        request, item, error=str(error),
+                    ),
+                },
             )
         messages.error(request, str(error))
         if return_url and url_has_allowed_host_and_scheme(
@@ -352,6 +453,59 @@ def move_library_item(request, item_id):
     return redirect(destination_url)
 
 
+def _tv_provider_switch_props(request, item, source_label, switch=None, error=None):
+    """Localized props for the shared provider-move confirmation."""
+    labels = {
+        "moveTracking": gettext("Move tracking"),
+        "confirmation": gettext("Confirm the move"),
+        "matchedOn": gettext("Matched on"),
+        "trackedSeasons": gettext("Tracked seasons"),
+        "watchedEpisodes": gettext("Watched episodes"),
+        "missing": gettext("Missing:"),
+        "cancel": gettext("Cancel"),
+        "back": gettext("Back"),
+    }
+    back_url = reverse(
+        "media_details",
+        kwargs={
+            "source": item.source,
+            "media_type": item.media_type,
+            "media_id": item.media_id,
+            "title": item.get_display_title(request.user) or "item",
+        },
+    )
+    model = {
+        "itemTitle": item.title,
+        "error": error or "",
+        "backUrl": back_url,
+        "cancelUrl": back_url,
+    }
+    if switch is not None:
+        model.update({
+            "sourceLabel": source_label,
+            "targetLabel": switch.target_label,
+            "targetTitle": switch.target_title,
+            "seasons": switch.seasons,
+            "episodes": switch.episodes,
+            "missing": switch.missing,
+            "missingTitle": gettext(
+                "%(target)s is missing some of what you track, so this show can't be moved yet."
+            ) % {"target": switch.target_label},
+            "moveLabel": gettext("Move to %(target)s") % {"target": switch.target_label},
+            "copy": gettext(
+                "This show is tracked on %(source)s. Moving it keeps your status, ratings, "
+                "notes and every watched episode, and only changes which provider "
+                "(%(target)s) supplies its seasons and episodes."
+            ) % {"source": source_label, "target": switch.target_label},
+        })
+    return {
+        "labels": labels,
+        "model": model,
+        "csrf": get_token(request),
+        "actions": {"move": request.path},
+    }
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def switch_tv_provider(request, item_id):
@@ -363,7 +517,13 @@ def switch_tv_provider(request, item_id):
         return render(
             request,
             "app/tv_provider_switch.html",
-            {"item": item, "error": str(error)},
+            {
+                "item": item,
+                "error": str(error),
+                "tv_provider_switch_props": _tv_provider_switch_props(
+                    request, item, "", error=str(error),
+                ),
+            },
         )
 
     if request.method == "POST" and switch.plan is not None:
@@ -398,13 +558,17 @@ def switch_tv_provider(request, item_id):
                 title=target_item.get_display_title(request.user) or "item",
             )
 
+    source_label = metadata_resolution.metadata_provider_label(item.source)
     return render(
         request,
         "app/tv_provider_switch.html",
         {
             "item": item,
             "switch": switch,
-            "source_label": metadata_resolution.metadata_provider_label(item.source),
+            "source_label": source_label,
+            "tv_provider_switch_props": _tv_provider_switch_props(
+                request, item, source_label, switch=switch,
+            ),
         },
     )
 
@@ -450,13 +614,10 @@ def remap_metadata_provider(request, source, media_type, media_id):
         )
         messages.success(request, gettext("Remapped to the selected match."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -490,6 +651,14 @@ def list_hardcover_editions(request, media_id):
                 for field in ("title", "language", "format", "publisher")
             ).lower()
         ]
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "pickerType": "hardcover",
+            "results": [
+                {**edition, "image": image_cache.rewrite_image_url(edition.get("image"))}
+                for edition in editions
+            ],
+        })
     return render(
         request,
         "app/components/hardcover_edition_results.html",
@@ -541,13 +710,10 @@ def set_hardcover_edition(request, item_id):
         )
         messages.success(request, gettext("Edition updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -563,13 +729,12 @@ def set_hardcover_edition(request, item_id):
 @login_required
 @require_POST
 def update_item_image(request, item_id):
-    """Persist an image URL override for an item the user already tracks."""
+    """Persist an image URL override for an item the user tracks or has collected."""
     return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
     image_url = (request.POST.get("image_url") or "").strip()
 
     item = get_object_or_404(Item, id=item_id)
-    media_model = apps.get_model("app", item.media_type)
-    if not media_model.objects.filter(user=request.user, item=item).exists():
+    if not user_has_item(request.user, item):
         messages.error(
             request, gettext("You can only update images for items in your library.")
         )
@@ -586,13 +751,10 @@ def update_item_image(request, item_id):
     else:
         messages.success(request, gettext("Image URL already matches this item."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -612,7 +774,7 @@ def update_manual_item_metadata(request, item_id):
         owned = media_model.objects.filter(related_season__user=request.user, item=item)
     else:
         owned = media_model.objects.filter(user=request.user, item=item)
-    if not owned.exists():
+    if not owned.exists() and not user_has_item(request.user, item):
         messages.error(
             request, gettext("You can only update metadata for items in your library.")
         )
@@ -641,13 +803,10 @@ def update_manual_item_metadata(request, item_id):
         logger.error(form.errors.as_json())
         helpers.form_error_messages(form, request)
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -855,7 +1014,7 @@ def _build_missing_season_metadata(
             },
         )
 
-    max_episode_number = max(episode_numbers) if episode_numbers else None
+    max_episode_number = len(set(episode_numbers)) if episode_numbers else None
     details = {}
     if max_episode_number:
         details["episodes"] = max_episode_number
@@ -1421,8 +1580,19 @@ def _build_flat_anime_episode_preview(
         (row["season_number"], row["provider_episode_number"]) for row in preview_rows
     }
     preview_season_numbers = sorted({row["season_number"] for row in preview_rows})
+    # A flat entry records progress, not episodes, so the rows it covers show
+    # as watched without converting the entry to grouped tracking.
+    flat_progress = 0
 
     if request.user.is_authenticated:
+        if detail_item is not None:
+            flat_progress = (
+                Anime.objects.filter(user=request.user, item=detail_item).aggregate(
+                    progress=Max("progress"),
+                )["progress"]
+                or 0
+            )
+
         tracked_episodes = list(
             Episode.objects.filter(
                 related_season__related_tv__user=request.user,
@@ -1545,6 +1715,7 @@ def _build_flat_anime_episode_preview(
                 "overview": raw_episode.get("overview") or "",
                 "runtime": runtime,
                 "history": history_by_episode_key.get(episode_key, []),
+                "watched_by_progress": episode_number <= flat_progress,
                 "item": item_by_episode_key.get(episode_key),
                 "collection_entry": collection_entry_by_episode_key.get(
                     episode_key,
@@ -1568,7 +1739,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             return HttpResponse(
                 status=204,
                 headers={
-                    "HX-Redirect": request.POST["next"],
+                    "HX-Redirect": helpers.safe_return_url(
+                        request, request.POST.get("next", "/")
+                    ),
                 },
             )
         return helpers.redirect_back(request)
@@ -1590,7 +1763,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         return HttpResponse(
             msg,
             status=400,
-            headers={"HX-Redirect": request.POST.get("next", "/")},
+            headers={
+                "HX-Redirect": helpers.safe_return_url(
+                    request, request.POST.get("next", "/")
+                )
+            },
         )
 
     if media_type == MediaTypes.PODCAST.value:
@@ -1616,12 +1793,39 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         media_type,
         source=source,
     )
+    item_qs = Item.objects.filter(
+        media_id=media_id,
+        source=source,
+        media_type=tracking_media_type,
+        season_number=season_number,
+    )
+    library_media_type_param = request.POST.get("library_media_type")
+    if tracking_media_type in (
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.EPISODE.value,
+    ):
+        if library_media_type_param == MediaTypes.ANIME.value:
+            item_qs = item_qs.filter(library_media_type=MediaTypes.ANIME.value)
+        else:
+            item_qs = item_qs.exclude(library_media_type=MediaTypes.ANIME.value)
+    if item_qs.count() > 1:
+        logger.warning(
+            "Multiple Item rows for media_id=%s source=%s media_type=%s season=%s — using oldest",
+            media_id,
+            source,
+            tracking_media_type,
+            season_number,
+        )
+    item = item_qs.order_by("id").first()
+    language = metadata_resolution.metadata_language_default(request.user, item)
     provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
         source,
         tracking_media_type,
         media_id,
         season_number=season_number,
         route_media_type=media_type,
+        language=language,
     )
     cache_key = provider_cache_keys[0]
 
@@ -1643,6 +1847,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 media_id,
                 source,
                 [season_number],
+                language=language,
             )
         except (requests.exceptions.RequestException, services.ProviderAPIError) as exc:
             _restore_cached_metadata(cache_key, cached_metadata, ttl)
@@ -1672,31 +1877,6 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 "details", {}
             ).get("number_of_pages")
 
-        item_qs = Item.objects.filter(
-            media_id=media_id,
-            source=source,
-            media_type=tracking_media_type,
-            season_number=season_number,
-        )
-        library_media_type_param = request.POST.get("library_media_type")
-        if tracking_media_type in (
-            MediaTypes.TV.value,
-            MediaTypes.SEASON.value,
-            MediaTypes.EPISODE.value,
-        ):
-            if library_media_type_param == MediaTypes.ANIME.value:
-                item_qs = item_qs.filter(library_media_type=MediaTypes.ANIME.value)
-            else:
-                item_qs = item_qs.exclude(library_media_type=MediaTypes.ANIME.value)
-        if item_qs.count() > 1:
-            logger.warning(
-                "Multiple Item rows for media_id=%s source=%s media_type=%s season=%s — using oldest",
-                media_id,
-                source,
-                tracking_media_type,
-                season_number,
-            )
-        item = item_qs.order_by("id").first()
         library_media_type_value = (
             library_media_type_param or metadata.get("library_media_type") or media_type
         )
@@ -1803,7 +1983,24 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                             hasattr(air_date, "year")
                             and air_date.year > MIN_PLAUSIBLE_AIR_YEAR
                         ):
-                            episode_item.release_datetime = air_date
+                            local_air_date = timezone.localtime(air_date)
+                            if (
+                                local_air_date.hour,
+                                local_air_date.minute,
+                                local_air_date.second,
+                                local_air_date.microsecond,
+                            ) == (0, 0, 0, 0):
+                                # process_episodes anchors a date-only value at
+                                # local midnight. Store the unknown-time
+                                # sentinel so release state treats it as an
+                                # all-day date, not as released at midnight.
+                                from events.calendar.helpers import date_parser
+
+                                episode_item.release_datetime = date_parser(
+                                    local_air_date.date(),
+                                )
+                            else:
+                                episode_item.release_datetime = air_date
                         else:
                             episode_item.release_datetime = None
                     # If air_date is None, don't update release_datetime (keep existing or None)

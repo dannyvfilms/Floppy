@@ -26,8 +26,8 @@ from functools import reduce
 from operator import and_, or_
 from typing import TYPE_CHECKING
 
-from django.db.models import Exists, OuterRef, Q, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import CharField, Exists, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Coalesce, Concat
 from django.db.models.lookups import (
     GreaterThanOrEqual,
     In,
@@ -35,6 +35,7 @@ from django.db.models.lookups import (
     LessThanOrEqual,
 )
 
+from app.library_query.alphabet import initial_condition, normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, FilterValues
 from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
@@ -87,6 +88,9 @@ class FilterDef:
     # Runs once per scan batch before ``predicate``, for bulk annotation that
     # only some candidates need.
     prepare: Callable[[list, FilterValues, TypeContext], None] | None = None
+    # The predicate reads nothing from a show's tracker row beyond what
+    # ``app.tv_show_facts.TrackedShow`` carries (see ``SortDef.tv_facts``).
+    tv_facts: bool = False
 
 
 def _norm(value) -> str:
@@ -296,6 +300,24 @@ def _date_added_row(values: FilterValues, source: TrackerSource, ctx: TypeContex
     return condition
 
 
+def _updated_since(values: FilterValues) -> datetime.datetime | None:
+    text = str(values.updated_since or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _updated_since_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
+    # Episode rows have no stamp of their own; changing one moves the season
+    # and show that own it (see app.library_changes).
+    if not source.has_field("updated_at"):
+        return Q(pk__in=[])
+    return Q(updated_at__gte=_updated_since(values))
+
+
 def _completed_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
     date_from = _date(values.completed_date_from)
     date_to = _date(values.completed_date_to)
@@ -374,22 +396,33 @@ def shows_with_collected_episodes(user):
     the collected episodes' ids before the exact (media id, source) pair is
     checked, so no other user's items are visited.
     """
-    collected_episodes = CollectionEntry.objects.filter(
-        user=user,
-        item__media_type=MediaTypes.EPISODE.value,
+    # Keep SQLite on the owner's collection index. A bare item media_type
+    # predicate picks the catalogue type index and probes the collection once
+    # per episode in the entire database (even for a small collection).
+    collected_episodes = (
+        CollectionEntry.objects.filter(user=user)
+        .alias(_collection_media_type=Concat("item__media_type", Value("")))
+        .filter(_collection_media_type=MediaTypes.EPISODE.value)
     )
+    # One non-correlated pair set: SQLite evaluates it once. A correlated
+    # Exists here re-walks the collected episodes per candidate (143 s on a
+    # 100k-episode collection, 0.1 s as a set).
+    pair = Concat("media_id", Value("\x1f"), "source", output_field=CharField())
     return (
         Item.objects.filter(
             media_type__in=SHOW_COLLECTION_MEDIA_TYPES,
             media_id__in=collected_episodes.values("item__media_id"),
         )
+        .annotate(_show_pair=pair)
         .filter(
-            Exists(
-                collected_episodes.filter(
-                    item__media_id=OuterRef("media_id"),
-                    item__source=OuterRef("source"),
+            _show_pair__in=collected_episodes.annotate(
+                _pair=Concat(
+                    "item__media_id",
+                    Value("\x1f"),
+                    "item__source",
+                    output_field=CharField(),
                 ),
-            ),
+            ).values("_pair"),
         )
         .values("pk")
     )
@@ -541,7 +574,22 @@ def _text(key: str):
     return lambda values: bool(_norm(getattr(values, key)))
 
 
+def _game_group_sql(values, ctx):
+    if ctx.media_type != MediaTypes.GAME.value:
+        return None
+    stem = "provider_collection" if values.game_group_by == "series" else "provider_franchise"
+    if values.game_group == "__ungrouped__":
+        return Q(**{f"{stem}_id": "", f"{stem}_name": ""})
+    kind, _, value = values.game_group.partition(":")
+    if kind == "id":
+        return Q(**{f"{stem}_id": value})
+    if kind == "name":
+        return Q(**{f"{stem}_id": "", f"{stem}_name__iexact": value})
+    return Q(pk__in=[])
+
+
 FILTERS: tuple[FilterDef, ...] = (
+    FilterDef("game_group", lambda v: v.game_group_by in {"series", "franchise"} and bool(v.game_group), sql=_game_group_sql),
     FilterDef("status", _status_active, row=_status_row, sql=_status_sql),
     FilterDef(
         "season_status",
@@ -556,6 +604,11 @@ FILTERS: tuple[FilterDef, ...] = (
         row=_date_added_row,
     ),
     FilterDef(
+        "updated_since",
+        lambda v: _updated_since(v) is not None,
+        row=_updated_since_row,
+    ),
+    FilterDef(
         "completed_date",
         lambda v: bool(_date(v.completed_date_from) or _date(v.completed_date_to)),
         row=_completed_row,
@@ -564,7 +617,14 @@ FILTERS: tuple[FilterDef, ...] = (
         "search",
         _text("search"),
         sql=lambda v, ctx: Q(title__icontains=v.search.strip())
+        | Q(original_title__icontains=v.search.strip())
+        | Q(localized_title__icontains=v.search.strip())
         | Q(media_id__icontains=v.search.strip()),
+    ),
+    FilterDef(
+        "initial",
+        lambda v: bool(normalize_initial(v.initial)),
+        sql=lambda v, ctx: initial_condition(v.initial, ctx.user),
     ),
     FilterDef("rating", _rating_active, sql=_rating_sql),
     FilterDef(
@@ -613,6 +673,7 @@ FILTERS: tuple[FilterDef, ...] = (
         lambda v: v.progress in ("caught_up", "not_caught_up"),
         predicate=_progress_predicate,
         needs=frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS}),
+        tv_facts=True,
     ),
 )
 

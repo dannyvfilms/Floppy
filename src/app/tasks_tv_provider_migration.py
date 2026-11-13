@@ -1,4 +1,11 @@
-"""Celery task migrating TMDB-tracked TV shows to TVDB when preferred (#387)."""
+"""Explicit TV provider moves.
+
+Changing the default provider never moves existing shows. The user asks for a
+move from Settings, or from one show's Match & Ordering tab. The batch task
+below is kept as a manual maintenance entry point and is deliberately not on
+the Celery beat schedule: an automatic nightly move made a preference change
+silently rewrite the library.
+"""
 
 from __future__ import annotations
 

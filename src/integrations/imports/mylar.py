@@ -16,10 +16,10 @@ from integrations.imports.helpers import (
     decrypt_or_raise,
     find_item_across_buckets,
 )
-from integrations.models import CollectionSourceState, MylarInstance
+from integrations.models import MylarInstance
 from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted
 from integrations.source_sync import (
-    remove_collection_source_state,
+    prune_collection_source_states,
     upsert_collection_source_state,
 )
 
@@ -183,7 +183,7 @@ class MylarImporter:
                     source=self.source,
                     source_instance_id=self.instance.pk,
                 )
-                imported_counts[item.media_type] += 1
+                imported_counts["collection"] += 1
                 imported_counts["updated"] += 1
         except MediaImportError as error:
             connection_health.record_failure(
@@ -194,27 +194,18 @@ class MylarImporter:
             raise
 
         # Only after every series was read: a partial run must not drop copies.
-        self._remove_no_longer_owned(owned_item_ids, imported_counts)
+        removed = prune_collection_source_states(
+            user=self.user,
+            source=self.source,
+            source_instance_id=self.instance.pk,
+            keep_item_ids=owned_item_ids,
+        )
+        if removed:
+            imported_counts["removed"] += removed
         self.instance.last_sync_at = timezone.now()
         connection_health.record_success(self.instance, extra_fields=["last_sync_at"])
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
-
-    def _remove_no_longer_owned(self, owned_item_ids, imported_counts):
-        """Drop this instance's copies the server no longer has on disk."""
-        stale = CollectionSourceState.objects.filter(
-            user=self.user,
-            source=self.source,
-            source_instance_id=self.instance.pk,
-        ).exclude(item_id__in=owned_item_ids)
-        for state in stale.select_related("item"):
-            remove_collection_source_state(
-                user=self.user,
-                item=state.item,
-                source=self.source,
-                source_instance_id=self.instance.pk,
-            )
-            imported_counts["removed"] += 1
 
     def _owned_issues(self):
         """Yield (Comic Vine issue id, title, image) for each issue on disk."""

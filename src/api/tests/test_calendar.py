@@ -146,4 +146,4 @@ class CalendarTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 202)
-        mock_delay.assert_called_once()
+        mock_delay.assert_called_once_with(user_id=self.user1.pk)

@@ -8,12 +8,14 @@ so they agree on that rule and on the History refresh it needs.
 
 import logging
 
+from django.dispatch import Signal
 from django.utils import timezone
 
 from app import history_cache
 from app.models import Episode, Status
 
 logger = logging.getLogger(__name__)
+episode_scores_changed = Signal()
 
 
 def tracked_episode_plays(user, media_id, source, season_number, episode_number):
@@ -35,6 +37,9 @@ def set_episode_score(episodes, score, user_id):
     """
     # Only plays whose score differs, so a retried request is not a new rating.
     episodes = episodes.exclude(score=score)
+    episode_scores_changed.send(
+        Episode, episodes=episodes, score=score, user_id=user_id
+    )
     end_dates = list(episodes.values_list("end_date", flat=True))
     updated = episodes.update(score=score, scored_at=timezone.now())
 
@@ -63,9 +68,19 @@ def rate_episode(season, episode_number, score):
     )
     if rows.exists():
         if score is None:
+            episode_scores_changed.send(
+                Episode,
+                episodes=rows.filter(rating_only=True),
+                score=None,
+                user_id=season.user_id,
+            )
             rows.filter(rating_only=True).delete()
         set_episode_score(rows.filter(rating_only=False), score, season.user_id)
-        rows.filter(rating_only=True).exclude(score=score).update(
+        rating_rows = rows.filter(rating_only=True).exclude(score=score)
+        episode_scores_changed.send(
+            Episode, episodes=rating_rows, score=score, user_id=season.user_id
+        )
+        rating_rows.update(
             score=score,
             scored_at=timezone.now(),
         )

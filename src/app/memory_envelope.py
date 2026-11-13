@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.db import connections
 
-from app import request_timing
+from app import db_diagnostics, request_timing
 
 logger = logging.getLogger(__name__)
 
@@ -471,7 +471,7 @@ def task_timing_started(task_id: str) -> None:
             return execute(sql, params, many, context)
         sample.queries += 1
         with request_timing.boundary("db"):
-            return execute(sql, params, many, context)
+            return db_diagnostics.track_query(execute, sql, params, many, context)
 
     try:
         for connection in connections.all():

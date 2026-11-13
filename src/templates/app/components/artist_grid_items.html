@@ -16,10 +16,9 @@
       <a href="{{ tracker.artist|music_artist_url }}">
         {# Artist photo (from Wikipedia) #}
         {% if tracker.artist.image and tracker.artist.image != IMG_NONE %}
-          <img alt="{{ tracker.artist.name }}"
-               class="media-card-poster lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] object-cover"
-               data-src="{{ tracker.artist.image|image_url }}"
-               src="{{ IMG_NONE }}">
+          <img loading="lazy" decoding="sync" alt="{{ tracker.artist.name }}"
+               class="media-card-poster w-full aspect-[2/3] bg-[var(--color-surface-alt)] object-cover"
+               src="{{ tracker.artist.image|image_url }}">
         {% else %}
           <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
             {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}

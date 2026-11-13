@@ -1,5 +1,6 @@
 
 {% load i18n %}
+{% load ui_tags %}
 {% load app_tags %}
 {% load humanize %}
 {% load user_tags %}
@@ -26,7 +27,7 @@
     <div class="p-4">
       <div class="flex gap-3">
         <div class="w-20 flex-shrink-0">
-          <img src="{{ media.image|image_url }}" alt="{{ media.title }}" class="w-full aspect-[2/3] object-cover rounded-lg bg-[var(--color-surface-alt)]">
+          <img data-media-artwork loading="lazy" decoding="sync" src="{{ media.image|image_url }}" alt="{{ media.title }}" class="w-full aspect-[2/3] object-cover rounded-lg bg-[var(--color-surface-alt)]">
         </div>
 
         <div class="flex-1 min-w-0">
@@ -62,7 +63,7 @@
       {% if media.genres %}
         <div class="flex flex-wrap gap-1 mt-3">
           {% for genre in media.genres %}
-            <span class="px-2 py-0.5 bg-violet-600 text-white rounded-full text-xs">{{ genre }}</span>
+            {% badge genre "sm" "violet" %}
           {% endfor %}
         </div>
       {% endif %}

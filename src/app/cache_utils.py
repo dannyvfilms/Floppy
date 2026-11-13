@@ -1,11 +1,11 @@
 import logging
-from typing import TYPE_CHECKING
+import time
 
+import redis
 from django.conf import settings
 from django.core.cache import cache
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
+from django.db import transaction
+from django_redis import get_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -90,40 +90,105 @@ def build_time_left_cache_key(
     )
 
 
+def _registry_client():
+    """Return a raw Redis client, or None when the cache isn't Redis-backed."""
+    try:
+        return get_redis_connection("default")
+    except Exception as error:  # registries are best-effort
+        logger.debug("No raw Redis connection for cache registry: %s", error)
+        return None
+
+
+def _legacy_registry_add(registry_key: str, cache_key: str) -> None:
+    """Read-modify-write fallback for a cache that is not a raw Redis."""
+    keys = set(cache.get(registry_key) or ())
+    if cache_key not in keys:
+        keys.add(cache_key)
+        cache.set(registry_key, list(keys), getattr(settings, "CACHE_TIMEOUT", None))
+
+
+def _registry_add(registry_key: str, cache_key: str) -> None:
+    """Add ``cache_key`` to the registry with one atomic SADD round trip.
+
+    The registry is a Redis set, so concurrent misses cannot overwrite each
+    other the way ``get`` + ``set`` of a whole list did. A registry written by
+    an older release is a pickled string; it is migrated on first touch.
+    """
+    client = _registry_client()
+    if client is None:
+        _legacy_registry_add(registry_key, cache_key)
+        return
+    raw_key = cache.make_key(registry_key)
+    timeout = getattr(settings, "CACHE_TIMEOUT", None)
+    try:
+        try:
+            pipe = client.pipeline()
+            pipe.sadd(raw_key, cache_key)
+            if timeout:
+                pipe.expire(raw_key, timeout)
+            pipe.execute()
+        except redis.ResponseError:  # WRONGTYPE: a pickled list from an old release
+            legacy = cache.get(registry_key)
+            members = [*legacy, cache_key] if isinstance(legacy, list) else [cache_key]
+            client.delete(raw_key)
+            client.sadd(raw_key, *members)
+    except redis.RedisError as error:
+        logger.debug("Cache registry %s unavailable: %s", registry_key, error)
+
+
+# Atomically read and drop a set registry. A non-set value is an older release's
+# pickled list: leave it untouched (nil) so the caller can read it normally.
+_TAKE_REGISTRY_LUA = """
+if redis.call('TYPE', KEYS[1]).ok == 'set' then
+    local members = redis.call('SMEMBERS', KEYS[1])
+    redis.call('DEL', KEYS[1])
+    return members
+end
+return false
+"""
+
+
+def _registry_take(registry_key: str) -> list[str]:
+    """Return and remove every key in the registry, atomically.
+
+    Read and delete are one script, so a key registered while we are
+    invalidating lands in the next registry instead of being erased unseen.
+    """
+    client = _registry_client()
+    if client is not None:
+        try:
+            members = client.eval(_TAKE_REGISTRY_LUA, 1, cache.make_key(registry_key))
+        except redis.RedisError as error:
+            logger.debug("Cache registry %s unavailable: %s", registry_key, error)
+            return []
+        if members is not False and members is not None:
+            return [m.decode() if isinstance(m, bytes) else m for m in members]
+    keys = list(cache.get(registry_key) or ())
+    cache.delete(registry_key)
+    return keys
+
+
 def _registry_key_for_user(user_id: int) -> str:
     return _REGISTRY_TEMPLATE.format(user_id=user_id)
 
 
 def register_time_left_cache_key(user_id: int, cache_key: str) -> None:
     """Keep track of active cache keys for a user so we can invalidate them later."""
-    registry_key = _registry_key_for_user(user_id)
-    existing_keys = cache.get(registry_key)
-
-    keys = set(existing_keys) if existing_keys else set()
-
-    if cache_key not in keys:
-        keys.add(cache_key)
-        cache.set(registry_key, list(keys), getattr(settings, "CACHE_TIMEOUT", None))
+    _registry_add(_registry_key_for_user(user_id), cache_key)
 
 
 def clear_time_left_cache_for_user(user_id: int) -> None:
     """Invalidate all cached time-left lists for a user."""
-    registry_key = _registry_key_for_user(user_id)
-    keys: Iterable[str] | None = cache.get(registry_key)
+    keys = _registry_take(_registry_key_for_user(user_id))
 
     if not keys:
         return
 
-    deleted = 0
-    for key in keys:
-        if cache.delete(key):
-            deleted += 1
-
-    cache.delete(registry_key)
+    cache.delete_many(keys)
 
     logger.debug(
         "Cleared %s time_left cache entries for user %s",
-        deleted,
+        len(keys),
         user_id,
     )
 
@@ -260,6 +325,14 @@ def build_media_list_filter_cache_key(
 
 HOME_ROW_CACHE_PREFIX = "home_row_v2"
 HOME_ROW_CACHE_TTL = 60  # seconds — matches the media-list cache horizon
+# A Python-ordered shelf's id order is the expensive part. Keep it well past the
+# rendered section so a section expiry (or a warm visit minutes later) reloads
+# one page instead of re-ranking the shelf. Media writes invalidate it through
+# the same registry; only provider/event refreshes can lag.
+HOME_ROW_ORDER_CACHE_TTL = 1800
+# Up Next's membership scan depends on air dates, which move without a user
+# write, so it expires sooner than a shelf's order. Media writes still clear it.
+HOME_ROW_RELEASED_CACHE_TTL = 300
 _HOME_ROW_REGISTRY_TEMPLATE = f"{HOME_ROW_CACHE_PREFIX}_registry_{{user_id}}"
 
 
@@ -273,32 +346,22 @@ def _home_row_registry_key(user_id: int) -> str:
 
 
 def register_home_row_cache_key(user_id: int, cache_key: str) -> None:
-    """Track active home-row cache keys so they can be invalidated on save."""
-    registry_key = _home_row_registry_key(user_id)
-    existing: list | None = cache.get(registry_key)
-    keys = set(existing) if existing else set()
-    if cache_key not in keys:
-        keys.add(cache_key)
-        cache.set(registry_key, list(keys), getattr(settings, "CACHE_TIMEOUT", None))
+    """Track active home_row cache keys so they can be invalidated on save."""
+    _registry_add(_home_row_registry_key(user_id), cache_key)
 
 
 def clear_home_row_cache_for_user(user_id: int) -> None:
-    """Invalidate all cached home rows for a user (called on media change)."""
-    registry_key = _home_row_registry_key(user_id)
-    keys: Iterable[str] | None = cache.get(registry_key)
+    """Invalidate all cached home_row entries for a user."""
+    keys = _registry_take(_home_row_registry_key(user_id))
 
     if not keys:
         return
 
-    deleted = 0
-    for key in keys:
-        if cache.delete(key):
-            deleted += 1
-    cache.delete(registry_key)
+    cache.delete_many(keys)
 
     logger.debug(
         "Cleared %s home_row cache entries for user %s",
-        deleted,
+        len(keys),
         user_id,
     )
 
@@ -308,31 +371,146 @@ def _media_list_registry_key(user_id: int) -> str:
 
 
 def register_media_list_cache_key(user_id: int, cache_key: str) -> None:
-    """Track active media-list cache keys so they can be invalidated on save."""
-    registry_key = _media_list_registry_key(user_id)
-    existing: list | None = cache.get(registry_key)
-    keys = set(existing) if existing else set()
-    if cache_key not in keys:
-        keys.add(cache_key)
-        cache.set(registry_key, list(keys), getattr(settings, "CACHE_TIMEOUT", None))
+    """Track active media_list cache keys so they can be invalidated on save."""
+    _registry_add(_media_list_registry_key(user_id), cache_key)
+
+
+MEDIA_LIST_BUILD_LOCK_TTL = 20  # seconds — a crashed builder frees readers fast
+MEDIA_LIST_BUILD_WAIT = 5.0  # seconds a follower waits before building anyway
+_MEDIA_LIST_BUILD_POLL = 0.05
+
+
+def acquire_media_list_build_lock(cache_key: str) -> bool:
+    """Claim the right to rebuild ``cache_key``; False if a builder is running."""
+    return bool(cache.add(f"{cache_key}_building", 1, MEDIA_LIST_BUILD_LOCK_TTL))
+
+
+def release_media_list_build_lock(cache_key: str) -> None:
+    """Drop the build lock once the result is cached."""
+    cache.delete(f"{cache_key}_building")
+
+
+def wait_for_media_list_build(cache_key: str, is_ready) -> bool:
+    """Poll until ``is_ready()`` or the lock clears; False means build it yourself."""
+    deadline = time.monotonic() + MEDIA_LIST_BUILD_WAIT
+    lock_key = f"{cache_key}_building"
+    while time.monotonic() < deadline:
+        if is_ready():
+            return True
+        if cache.get(lock_key) is None:
+            return is_ready()
+        time.sleep(_MEDIA_LIST_BUILD_POLL)
+    return is_ready()
 
 
 def clear_media_list_cache_for_user(user_id: int) -> None:
-    """Invalidate all cached media lists for a user (called on media save/delete)."""
-    registry_key = _media_list_registry_key(user_id)
-    keys: Iterable[str] | None = cache.get(registry_key)
+    """Invalidate all cached media_list entries for a user."""
+    keys = _registry_take(_media_list_registry_key(user_id))
 
     if not keys:
         return
 
-    deleted = 0
-    for key in keys:
-        if cache.delete(key):
-            deleted += 1
-    cache.delete(registry_key)
+    cache.delete_many(keys)
 
     logger.debug(
         "Cleared %s media_list cache entries for user %s",
-        deleted,
+        len(keys),
         user_id,
     )
+
+
+# What changed, for clear_library_view_caches. Callers name the change; the
+# table below decides which views it can affect. Contract and rationale:
+# docs/architecture/view-caches.md.
+LIBRARY_EDIT = "library_edit"  # tracked rows written; pass media_types
+TAGS = "tags"  # tags applied, removed, created or deleted
+LIST_SETTING = "list_setting"  # a media-list display preference
+HOME_SETTING = "home_setting"  # which media types Home shows
+EPISODE_DETAILS = "episode_details"  # provider runtime / air dates, no user write
+
+_TIME_LEFT = "time_left"
+_MEDIA_LIST = "media_list"
+_HOME = "home"
+_TV_MEDIA_TYPES = frozenset({"tv", "season", "episode"})
+_VIEWS_BY_CHANGE = {
+    # Time-left only holds TV, so it is added for TV media types below.
+    LIBRARY_EDIT: (_MEDIA_LIST, _HOME),
+    # Home is added only for a user with a tag-filtered Home row (below).
+    TAGS: (_MEDIA_LIST,),
+    LIST_SETTING: (_MEDIA_LIST,),
+    HOME_SETTING: (_HOME,),
+    # Home is left out on purpose: provider refreshes touch every tracker of
+    # a show, and Home's order/Up Next caches expire on their own TTLs.
+    EPISODE_DETAILS: (_TIME_LEFT, _MEDIA_LIST),
+}
+
+
+def _home_filters_by_tag(user_id: int) -> bool:
+    from users.models import HomeScreenRow
+
+    return any(
+        (filters or {}).get("tag")
+        for filters in HomeScreenRow.objects.filter(
+            user_id=user_id,
+            enabled=True,
+        ).values_list("filters", flat=True)
+    )
+
+
+def _clear_views(user_id: int, views) -> None:
+    clear_by_view = {
+        _TIME_LEFT: clear_time_left_cache_for_user,
+        _MEDIA_LIST: clear_media_list_cache_for_user,
+        _HOME: clear_home_row_cache_for_user,
+    }
+    for view in views:
+        clear_by_view[view](user_id)
+
+
+def clear_library_view_caches(user_id, change=LIBRARY_EDIT, *, media_types=()) -> None:
+    """Clear the per-user view caches that ``change`` can make stale.
+
+    The one entry point for the media list, Home rows and the TV time-left
+    order. Inside a transaction it clears now and again on commit, because a
+    concurrent reader can re-cache pre-write rows before the write commits.
+    """
+    if not user_id:
+        return
+    views = list(_VIEWS_BY_CHANGE[change])
+    if change == LIBRARY_EDIT and _TV_MEDIA_TYPES.intersection(media_types):
+        views.insert(0, _TIME_LEFT)
+    if change == TAGS and _home_filters_by_tag(user_id):
+        views.append(_HOME)
+
+    _clear_views(user_id, views)
+    if transaction.get_connection().in_atomic_block:
+        transaction.on_commit(lambda: _clear_views(user_id, views))
+
+
+def clear_show_view_caches(
+    media_id,
+    source,
+    change=EPISODE_DETAILS,
+    *,
+    user_ids=None,
+) -> None:
+    """Clear view caches for every user tracking a show or one of its seasons."""
+    if not media_id or not source:
+        return
+    if user_ids is None:
+        from app.models import TV, Season
+
+        user_ids = set(
+            TV.objects.filter(
+                item__media_id=media_id,
+                item__source=source,
+            ).values_list("user_id", flat=True),
+        )
+        user_ids.update(
+            Season.objects.filter(
+                item__media_id=media_id,
+                item__source=source,
+            ).values_list("user_id", flat=True),
+        )
+    for user_id in sorted(set(user_ids)):
+        clear_library_view_caches(user_id, change, media_types=("tv",))

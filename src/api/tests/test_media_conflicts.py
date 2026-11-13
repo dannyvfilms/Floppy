@@ -1,8 +1,9 @@
 import json
+import sqlite3
 from types import SimpleNamespace
 from unittest import TestCase
 
-from django.db import IntegrityError
+from django.db import IntegrityError, OperationalError
 from django.test import override_settings
 
 from api.middleware import ApiJsonErrorMiddleware, is_tracked_media_unique_error
@@ -67,3 +68,45 @@ class ApiTrackedMediaConflictTests(TestCase):
         response = self.middleware.process_exception(request, error)
 
         self.assertEqual(response.status_code, 500)
+
+
+class ApiDatabaseContentionTests(TestCase):
+    """A locked database must be distinguishable from a bad request."""
+
+    def setUp(self):
+        self.middleware = ApiJsonErrorMiddleware(lambda request: None)
+        self.request = SimpleNamespace(path="/api/v1/media/game", method="POST")
+
+    def test_lock_failure_returns_machine_readable_503(self):
+        error = OperationalError("database is locked")
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY
+
+        response = self.middleware.process_exception(self.request, error)
+
+        self.assertEqual(response.status_code, 503)
+        payload = json.loads(response.content)
+        self.assertEqual(payload["code"], "DATABASE_BUSY")
+        # An unsafe POST is never advertised as safe to replay.
+        self.assertFalse(payload["retryable"])
+        self.assertNotIn("retry_after", payload)
+        self.assertNotIn("Retry-After", response)
+        self.assertIn("detail", payload)
+
+    def test_safe_get_advertises_a_retry_delay(self):
+        request = SimpleNamespace(path="/api/v1/media/movie", method="GET")
+        error = OperationalError("database is locked")
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY
+
+        response = self.middleware.process_exception(request, error)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["Retry-After"], "5")
+        payload = json.loads(response.content)
+        self.assertTrue(payload["retryable"])
+        self.assertEqual(payload["retry_after"], 5)
+
+    def test_invalid_input_is_not_a_database_busy_error(self):
+        response = self.middleware.process_exception(self.request, ValueError("bad"))
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(json.loads(response.content), {"detail": "Internal server error."})

@@ -32,6 +32,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services import podcast_plays
 from app.services.completion import normalize_completed_entry
 from app.services.episode_coordinates import (
     InvalidEpisodeCoordinateError,
@@ -143,70 +144,29 @@ def distribute_target_timestamps(
     *,
     fallback_dt=None,
 ):
-    """Bias timestamps toward air dates while fitting them into a chosen range."""
-    total_count = len(target_datetimes)
-    if total_count <= 0:
+    """Return each target's own datetime, clamped to the optional chosen range.
+
+    A target without a date uses ``fallback_dt`` (also clamped). Targets
+    sharing a date are nudged one second apart so each play stays distinct;
+    the target order is otherwise kept.
+    """
+    if not target_datetimes:
         return []
 
     fallback_dt = fallback_dt or end_dt or start_dt or timezone.now()
-    normalized_targets = [
-        coerce_episode_datetime(value) or fallback_dt for value in target_datetimes
-    ]
-    if not start_dt or not end_dt:
-        return ensure_increasing_datetimes(normalized_targets)
-
-    available_span = max((end_dt - start_dt).total_seconds(), 0)
-    if total_count == 1:
-        return [
-            _clamp_datetime(normalized_targets[0], start_dt=start_dt, end_dt=end_dt),
-        ]
-    if available_span < total_count - 1:
-        return distribute_timestamps(
-            start_dt,
-            end_dt,
-            total_count,
-            fallback_dt=fallback_dt,
+    resolved = []
+    for value in target_datetimes:
+        candidate = _clamp_datetime(
+            coerce_episode_datetime(value) or fallback_dt,
+            start_dt=start_dt,
+            end_dt=end_dt,
         )
-
-    ordered_targets = ensure_increasing_datetimes(normalized_targets)
-    target_span = max((ordered_targets[-1] - ordered_targets[0]).total_seconds(), 0)
-    if target_span <= 0:
-        return distribute_timestamps(
-            start_dt,
-            end_dt,
-            total_count,
-            fallback_dt=fallback_dt,
-        )
-
-    mapped = []
-    for target_dt in ordered_targets:
-        progress = (target_dt - ordered_targets[0]).total_seconds() / target_span
-        mapped.append(
-            start_dt + timedelta(seconds=round(available_span * progress)),
-        )
-
-    fitted = [
-        _clamp_datetime(candidate, start_dt=start_dt, end_dt=end_dt)
-        for candidate in mapped
-    ]
-    for index in range(1, total_count):
-        minimum = fitted[index - 1] + timedelta(seconds=1)
-        fitted[index] = max(fitted[index], minimum)
-
-    if fitted[-1] > end_dt:
-        fitted[-1] = end_dt
-        for index in range(total_count - 2, -1, -1):
-            latest_allowed = fitted[index + 1] - timedelta(seconds=1)
-            fitted[index] = min(fitted[index], latest_allowed)
-        if fitted[0] < start_dt:
-            return distribute_timestamps(
-                start_dt,
-                end_dt,
-                total_count,
-                fallback_dt=fallback_dt,
-            )
-
-    return fitted
+        if candidate in resolved:
+            candidate += timedelta(seconds=1)
+            while candidate in resolved:
+                candidate += timedelta(seconds=1)
+        resolved.append(candidate)
+    return resolved
 
 
 def ensure_increasing_datetimes(values):
@@ -378,14 +338,19 @@ def _standard_grouped_domain(
     *,
     metadata_item,
     base_metadata,
+    season_number=None,
 ):
-    """Build a standard TV/grouped-anime episode domain."""
+    """Build a standard TV/grouped-anime episode domain.
+
+    ``season_number`` scopes the domain to that one season.
+    """
     related = base_metadata.get("related") if isinstance(base_metadata, dict) else {}
-    seasons = related.get("seasons") if isinstance(related, dict) else []
+    seasons = (related.get("seasons") or []) if isinstance(related, dict) else []
     season_numbers = [
         season.get("season_number")
         for season in seasons
         if season.get("season_number") is not None
+        and (season_number is None or season.get("season_number") == season_number)
     ]
     if not season_numbers:
         return None
@@ -415,14 +380,18 @@ def _standard_grouped_domain(
         media_id=media_id,
         library_media_type=library_media_type,
     )
-    return _build_domain_payload(
+    domain = _build_domain_payload(
         route_media_type=route_media_type,
         source=source,
         media_id=media_id,
         library_media_type=library_media_type,
         season_payloads=season_payloads,
         play_counts=play_counts,
+        locked_season_number=season_number,
     )
+    if domain and season_number is not None:
+        domain["hide_season_selectors"] = True
+    return domain
 
 
 def _flat_anime_grouped_domain(
@@ -616,13 +585,18 @@ def build_episode_play_domain(
     base_metadata=None,
     metadata_resolution_result=None,
     podcast_show=None,
+    season_number=None,
 ):
-    """Return an episode selection domain for detail track modal tabs."""
+    """Return an episode selection domain for detail track modal tabs.
+
+    ``season_number`` (TV/anime only) limits the domain to one season.
+    """
     if route_media_type == MediaTypes.PODCAST.value:
         if source not in {
             Sources.POCKETCASTS.value,
             Sources.GPODDER.value,
             Sources.AUDIOBOOKSHELF.value,
+            Sources.MANUAL.value,
         }:
             return None
         show = podcast_show or PodcastShow.objects.filter(podcast_uuid=media_id).first()
@@ -658,6 +632,7 @@ def build_episode_play_domain(
         media_id,
         metadata_item=metadata_item,
         base_metadata=base_metadata,
+        season_number=season_number,
     )
 
 
@@ -975,6 +950,7 @@ def _apply_bulk_podcast_plays(
 
         if episodes_to_create:
             created_episodes = bulk_create_with_history(episodes_to_create, Podcast)
+            podcast_plays.create_plays_for_trackers(created_episodes)
             for episode in created_episodes:
                 normalize_completed_entry(episode)
             created_count = len(episodes_to_create)
@@ -989,8 +965,11 @@ def _apply_bulk_podcast_plays(
             statistics_day_values=sorted(affected_day_keys),
         )
 
-    cache_utils.clear_time_left_cache_for_user(user.id)
-    cache_utils.clear_media_list_cache_for_user(user.id)
+    if created_count or replaced_episode_count:
+        cache_utils.clear_library_view_caches(
+            user.id,
+            media_types=(MediaTypes.PODCAST.value,),
+        )
     if created_items:
         events.tasks.reload_calendar.apply_async(
             kwargs={"item_ids": [item.id for item in created_items]},
@@ -1204,8 +1183,11 @@ def apply_bulk_episode_plays(
     if created_count:
         _enqueue_bulk_episode_credits_backfill(grouped_tv, credit_item_ids)
 
-    cache_utils.clear_time_left_cache_for_user(user.id)
-    cache_utils.clear_media_list_cache_for_user(user.id)
+    if created_count or replaced_episode_count:
+        cache_utils.clear_library_view_caches(
+            user.id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
     if created_items:
         events.tasks.reload_calendar.apply_async(
             kwargs={"item_ids": [grouped_tv.item.id]},

@@ -2,6 +2,8 @@
 {% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
+{% load track_tags %}
 
 
 {# Track Song Modal - mirrors fill_track_episode.html #}
@@ -25,7 +27,7 @@
       <div class="bg-[var(--color-surface-muted)] rounded-lg p-4 mb-6">
         <div class="flex items-start gap-4">
           {% if album.image and album.image != IMG_NONE %}
-            <img alt="{{ track.title }}"
+            <img data-media-artwork loading="lazy" decoding="sync" alt="{{ track.title }}"
                  class="w-20 h-20 rounded object-cover shrink-0"
                  src="{{ album.image|image_url }}">
           {% else %}
@@ -133,13 +135,10 @@
                       <div id="history-{{ entry.history_id }}"
                            class="flex items-center justify-between bg-[var(--color-surface-muted)] rounded-md p-3 border border-gray-600">
                         <div class="text-sm text-[var(--color-text)]">{{ entry.end_date|user_datetime_format:user|default_if_none:_("No date provided") }}</div>
-                        <button class="text-red-400 hover:text-red-300 transition-colors text-sm px-2 py-1 hover:bg-red-600/20 rounded-md cursor-pointer"
-                                hx-delete="{% url 'delete_history_record' music.item.media_type|default:'music' entry.history_id %}?podcast_id={{ music.id }}"
-                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                                hx-target="#history-{{ entry.history_id }}"
-                                hx-swap="outerHTML">
-                          {% translate "Delete" %}
-                        </button>
+                        {% url 'delete_history_record' music.item.media_type|default:'music' entry.history_id as delete_url %}
+                        {% with csrf_headers='{"X-CSRFToken": "'|add:csrf_token|stringformat:"s"|add:'"}' %}
+                        {% button _("Delete") "ghost-danger" "sm" submit=True hx_delete=delete_url|add:"?podcast_id="|add:music.id|stringformat:"s" hx_headers=csrf_headers hx_target="#history-"|add:entry.history_id|stringformat:"s" hx_swap="outerHTML" %}
+                        {% endwith %}
                       </div>
                       {% endif %}
                     {% endif %}
@@ -164,13 +163,10 @@
                       <div id="history-{{ entry.history_id }}"
                            class="flex items-center justify-between bg-[var(--color-surface-muted)] rounded-md p-3 border border-gray-600">
                         <div class="text-sm text-[var(--color-text)]">{{ entry.end_date|user_datetime_format:user|default_if_none:_("No date provided") }}</div>
-                        <button class="text-red-400 hover:text-red-300 transition-colors text-sm px-2 py-1 hover:bg-red-600/20 rounded-md cursor-pointer"
-                                hx-delete="{% url 'delete_history_record' music.item.media_type|default:'music' entry.history_id %}?music_id={{ music.id }}"
-                                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                                hx-target="#history-{{ entry.history_id }}"
-                                hx-swap="outerHTML">
-                          {% translate "Delete" %}
-                        </button>
+                        {% url 'delete_history_record' music.item.media_type|default:'music' entry.history_id as delete_url %}
+                        {% with csrf_headers='{"X-CSRFToken": "'|add:csrf_token|stringformat:"s"|add:'"}' %}
+                        {% button _("Delete") "ghost-danger" "sm" submit=True hx_delete=delete_url|add:"?music_id="|add:music.id|stringformat:"s" hx_headers=csrf_headers hx_target="#history-"|add:entry.history_id|stringformat:"s" hx_swap="outerHTML" %}
+                        {% endwith %}
                       </div>
                       {% endif %}
                     {% endif %}
@@ -183,7 +179,17 @@
           {% endif %}
         {% endif %}
 
-        <form method="post"
+        {% song_track_form album track music as song_form %}
+        {% if song_form %}
+          {% with song_form.formId|add:"-props" as song_form_props_id %}
+            {{ song_form|json_script:song_form_props_id }}
+            <div data-track-form-root data-props-id="{{ song_form_props_id }}"></div>
+          {% endwith %}
+        {% endif %}
+
+        <form id="{% if song_form %}{{ song_form.formId }}{% endif %}"
+              data-track-form-legacy
+              method="post"
               action="{% if music and music.item and music.item.media_type == 'podcast' %}{% url 'podcast_save' %}{% else %}{% url 'song_save' %}{% endif %}?next={{ request.path }}"
               @submit="closeTrackModal($el)"
               {% if music and music.item and music.item.media_type == 'podcast' %}

@@ -9,8 +9,10 @@ from unittest.mock import patch
 import requests
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
-from app import live_playback
+from api.fork_views_playback import upsert_playback_progress
+from app import checkin, live_playback
 from app.models import (
     Item,
     MediaTypes,
@@ -19,8 +21,10 @@ from app.models import (
     Podcast,
     PodcastEpisode,
     PodcastShow,
+    ProgressChange,
     Sources,
     Status,
+    WatchStateSequence,
 )
 
 from .base import FloppyApiTestCase
@@ -240,6 +244,20 @@ class PlaybackProgressClearTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
 
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed lookup answers with the fixed detail on write and clear."""
+        body = {"media_type": "movie", "ids": {"tmdb": "701"}}
+        for method, payload in (("put", {**body, "position_seconds": 5}), ("delete", body)):
+            with self.subTest(method=method), patch(
+                "api.fork_views_playback.resolve_video_item",
+                side_effect=RuntimeError("secret /srv/private/path"),
+            ):
+                response = self.call_api(
+                    method, "api_playback_progress", payload=payload, headers=self.auth_headers,
+                )
+                self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+                self.assertEqual(response.json(), {"detail": "Could not resolve media."})
+
     def test_null_position_clears_position(self):
         """PUT with position_seconds null is equivalent to DELETE."""
         response = self.call_api(
@@ -255,6 +273,34 @@ class PlaybackProgressClearTests(FloppyApiTestCase):
 
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
+
+    def test_delete_clears_position_saved_on_another_bucket_item(self):
+        """A position saved against a same-media Item in another bucket is cleared too (#1873)."""
+        movie = self.items_by_type[MediaTypes.MOVIE.value][0]
+        other_bucket = Item.objects.create(
+            media_id=movie.media_id,
+            source=movie.source,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title=movie.title,
+            image=movie.image,
+        )
+        other_progress = PlaybackProgress.objects.create(
+            user=self.user1,
+            item=other_bucket,
+            position_seconds=300,
+        )
+
+        response = self.call_api(
+            "delete",
+            "api_playback_progress",
+            payload={"media_type": "movie", "ids": {"tmdb": "701"}},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
+        self.assertFalse(PlaybackProgress.objects.filter(id=other_progress.id).exists())
 
     def test_delete_does_not_touch_other_users(self):
         """Clearing only affects the requesting user's row."""
@@ -601,6 +647,291 @@ class PlaybackProgressScrobbleTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
 
 
+class PlaybackProgressEventOrderTests(FloppyApiTestCase):
+    """Webhook writes are ordered by receipt time, not by when they ran."""
+
+    def setUp(self):
+        """Use one movie item and a whole-second receipt clock."""
+        super().setUp()
+        self.item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.now_ts = int(timezone.now().timestamp())
+
+    def _write(self, position, *, completed=False, event_at=None):
+        return upsert_playback_progress(
+            self.user1,
+            self.item,
+            position,
+            3000,
+            completed=completed,
+            event_at=event_at,
+        )
+
+    def _stored(self):
+        return PlaybackProgress.objects.get(user=self.user1, item=self.item)
+
+    def test_backlogged_events_apply_in_receipt_order(self):
+        """A queue backlog processes both events after they were received."""
+        self._write(1200, event_at=self.now_ts - 10)
+        self._write(2990, completed=True, event_at=self.now_ts - 5)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_older_event_in_the_same_second_is_dropped(self):
+        """Receipt time keeps its fraction, so one second can hold two events."""
+        self._write(2990, completed=True, event_at=self.now_ts + 0.9)
+        self._write(0, event_at=self.now_ts + 0.1)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_equal_receipt_time_applies_in_processing_order(self):
+        """An identical time is not evidence of disorder, so it applies."""
+        self._write(1200, event_at=self.now_ts + 0.5)
+        self._write(1300, event_at=self.now_ts + 0.5)
+
+        self.assertEqual(self._stored().position_seconds, 1300)
+
+    def test_whole_second_event_times_still_order(self):
+        """Integer epochs from older callers compare against fractional ones."""
+        self._write(1200, event_at=self.now_ts)
+        self._write(0, event_at=self.now_ts - 1)
+        self.assertEqual(self._stored().position_seconds, 1200)
+
+        self._write(1300, event_at=self.now_ts + 0.5)
+        self._write(1250, event_at=self.now_ts)
+        self.assertEqual(self._stored().position_seconds, 1300)
+
+    def test_dropped_event_saves_nothing(self):
+        """A stale write neither touches the row nor publishes a change."""
+        self._write(2990, completed=True, event_at=self.now_ts)
+        before = self._stored()
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        self._write(0, event_at=self.now_ts - 1)
+
+        after = self._stored()
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(after.last_event_at, before.last_event_at)
+        self.assertEqual(changes.count(), change_count)
+
+    def test_repeated_position_publishes_no_change(self):
+        """A newer event with the same values advances the clock only."""
+        self._write(1200, event_at=self.now_ts)
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        self._write(1200, event_at=self.now_ts + 1)
+
+        self.assertEqual(changes.count(), change_count)
+        self.assertEqual(self._stored().last_event_at.timestamp(), self.now_ts + 1)
+
+    def test_clock_only_write_keeps_updated_at(self):
+        """With every field preserved, a newer event moves only the clock."""
+        self._write(1200, event_at=self.now_ts)
+        before = self._stored()
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        upsert_playback_progress(
+            self.user1,
+            self.item,
+            None,
+            None,
+            preserve_position=True,
+            preserve_duration=True,
+            preserve_completed=True,
+            event_at=self.now_ts + 1.25,
+        )
+
+        after = self._stored()
+        self.assertEqual(after.last_event_at.timestamp(), self.now_ts + 1.25)
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(after.position_seconds, 1200)
+        self.assertEqual(changes.count(), change_count)
+
+    def test_row_with_unknown_clock_takes_the_next_event(self):
+        """Rows from before the clock existed are not dated by ``updated_at``.
+
+        ``updated_at`` is processing time, so using it would drop a valid
+        backlogged event; the first event applies and starts the clock.
+        """
+        PlaybackProgress.objects.create(
+            user=self.user1,
+            item=self.item,
+            position_seconds=600,
+            duration_seconds=3000,
+        )
+        self._write(1200, event_at=self.now_ts - 60)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.last_event_at.timestamp(), self.now_ts - 60)
+
+        self._write(0, event_at=self.now_ts - 61)
+        self.assertEqual(self._stored().position_seconds, 1200)
+
+    def test_older_event_processed_later_is_dropped(self):
+        """A late play must not reset a completed scrobble (#1708)."""
+        self._write(2990, completed=True, event_at=self.now_ts)
+        self._write(0, event_at=self.now_ts - 1)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_write_without_event_time_keeps_the_event_clock(self):
+        """An API write applies but does not reorder webhook events."""
+        self._write(1200, event_at=self.now_ts)
+        self._write(1500)
+        self.assertEqual(self._stored().position_seconds, 1500)
+
+        self._write(0, event_at=self.now_ts - 1)
+        self.assertEqual(self._stored().position_seconds, 1500)
+        self._write(1600, event_at=self.now_ts + 1)
+        self.assertEqual(self._stored().position_seconds, 1600)
+
+
+class PlaybackProgressCompletionOrderTests(FloppyApiTestCase):
+    """Marking a title watched closes its resume point in receipt order."""
+
+    def setUp(self):
+        """Use one tracked movie whose progress changes are recorded."""
+        super().setUp()
+        self.movie = self.movie_medias[0]
+        self.item = self.movie.item
+        self.now_ts = int(timezone.now().timestamp())
+        WatchStateSequence.objects.update_or_create(
+            user=self.user1,
+            defaults={"emit_changes": True},
+        )
+
+    def _write(self, position, *, event_at=None):
+        return upsert_playback_progress(
+            self.user1,
+            self.item,
+            position,
+            3000,
+            event_at=event_at,
+        )
+
+    def _stored(self):
+        return PlaybackProgress.objects.get(user=self.user1, item=self.item)
+
+    def _changes(self):
+        return ProgressChange.objects.filter(user=self.user1, item=self.item)
+
+    def _mark_watched(self, event_at=None):
+        self.movie.status = Status.COMPLETED.value
+        if event_at is None:
+            self.movie.save()
+            return
+        with live_playback.webhook_event_time(event_at):
+            self.movie.save()
+
+    def test_stale_webhook_completion_leaves_newer_progress_alone(self):
+        """A completion received before newer progress changes nothing."""
+        self._write(1200, event_at=self.now_ts)
+        before = self._stored()
+        change_count = self._changes().count()
+
+        self._mark_watched(event_at=self.now_ts - 0.5)
+
+        after = self._stored()
+        self.assertFalse(after.completed)
+        self.assertEqual(after.position_seconds, 1200)
+        self.assertEqual(after.duration_seconds, 3000)
+        self.assertEqual(after.last_event_at, before.last_event_at)
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(self._changes().count(), change_count)
+
+    def test_webhook_completion_takes_its_receipt_time(self):
+        """An older pause processed after the completion cannot reopen it."""
+        self._write(1200, event_at=self.now_ts - 10)
+        change_count = self._changes().count()
+
+        self._mark_watched(event_at=self.now_ts + 0.25)
+
+        progress = self._stored()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.duration_seconds, 3000)
+        self.assertEqual(progress.last_event_at.timestamp(), self.now_ts + 0.25)
+        self.assertEqual(self._changes().count(), change_count + 1)
+        self.assertTrue(self._changes().order_by("-sequence").first().completed)
+
+        self._write(0, event_at=self.now_ts)
+
+        progress = self._stored()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1200)
+
+    def test_webhook_completion_of_a_closed_row_moves_only_the_clock(self):
+        """Nothing a client reads changed, so nothing is published."""
+        upsert_playback_progress(
+            self.user1,
+            self.item,
+            2990,
+            3000,
+            completed=True,
+            event_at=self.now_ts - 10,
+        )
+        before = self._stored()
+        change_count = self._changes().count()
+
+        self._mark_watched(event_at=self.now_ts)
+
+        after = self._stored()
+        self.assertEqual(after.last_event_at.timestamp(), self.now_ts)
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(self._changes().count(), change_count)
+
+    def test_timestamp_free_completion_keeps_the_event_clock(self):
+        """A UI or API mark has no receipt time, so it neither sets nor checks one.
+
+        The documented tradeoff: a newer webhook still applies over it.
+        """
+        self._write(1200, event_at=self.now_ts)
+        change_count = self._changes().count()
+
+        self._mark_watched()
+
+        progress = self._stored()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.duration_seconds, 3000)
+        self.assertEqual(progress.last_event_at.timestamp(), self.now_ts)
+        self.assertGreater(self._changes().count(), change_count)
+
+        self._write(0, event_at=self.now_ts - 1)
+        self.assertTrue(self._stored().completed)
+        self._write(600, event_at=self.now_ts + 1)
+        self.assertFalse(self._stored().completed)
+
+    def test_timestamp_free_episode_completion_keeps_an_unknown_clock(self):
+        """An episode closes the same way and a row without a clock keeps none."""
+        episode = self.episode_medias[0]
+        PlaybackProgress.objects.create(
+            user=self.user1,
+            item=episode.item,
+            position_seconds=900,
+            duration_seconds=1300,
+        )
+
+        episode.status = Status.COMPLETED.value
+        episode.end_date = timezone.now()
+        episode.save()
+
+        progress = PlaybackProgress.objects.get(user=self.user1, item=episode.item)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 900)
+        self.assertEqual(progress.duration_seconds, 1300)
+        self.assertIsNone(progress.last_event_at)
+
+
 class PlaybackWebhookTests(FloppyApiTestCase):
     """A state change POSTs the now-playing body to a configured webhook."""
 
@@ -795,6 +1126,13 @@ class NowPlayingTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertEqual(response.json(), {"active": False})
 
+    def test_signed_in_browser_session_can_read(self):
+        """The Expo app authenticates with the browser session, like web Home."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/playback/now-playing/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json(), {"active": False})
+
     def test_active_movie_state_is_projected(self):
         """An active movie state surfaces title/image/progress/url/ids."""
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
@@ -899,3 +1237,165 @@ class NowPlayingTests(FloppyApiTestCase):
             response.status_code,
             (HTTP.UNAUTHORIZED, HTTP.FORBIDDEN),
         )
+
+
+class HomePlaybackCardsTests(FloppyApiTestCase):
+    """The native Home card API is session-only and resolves controls server-side."""
+
+    def test_session_returns_all_cards_without_checkin_tokens(self):
+        self.client.force_login(self.user1)
+        states = [
+            {"source": "plex", "media_type": "movie", "media_id": "701"},
+            {"source": "plex", "media_type": "episode", "media_id": "702"},
+        ]
+        card = {
+            "checkin_control": {"token": "private-checkin-token", "action": "pause"},
+            "title": "The Quiet Orbit",
+            "subtitle": None,
+            "episode_code": None,
+            "episode_title": None,
+            "image": "https://example.test/poster.jpg",
+            "status": "playing",
+            "details_url": "/floppy/details/movie/plex/701/",
+            "progress_percent": 42.0,
+            "offset_seconds": 120,
+            "duration_seconds": 1800,
+            "updated_at_ts": 1_794_050_000,
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one", "two"]),
+            patch.object(live_playback, "get_user_playback_state", side_effect=states),
+            patch.object(live_playback, "build_home_playback_card", side_effect=[card, card]),
+        ):
+            response = self.client.get("/api/v1/playback/home-cards/")
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertEqual(len(body["cards"]), 2)
+        self.assertEqual(body["cards"][1]["media_type"], "episode")
+        self.assertEqual(body["cards"][0]["actions"], ["pause", "finish"])
+        self.assertNotIn("private-checkin-token", response.content.decode())
+        self.assertNotIn("checkin_control", body["cards"][0])
+
+    def test_api_key_cannot_access_native_home_cards(self):
+        response = self.client.get(
+            "/api/v1/playback/home-cards/",
+            HTTP_X_API_KEY=self.user1.token,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+        response = self.client.post(
+            "/api/v1/playback/home-cards/",
+            data=json.dumps({
+                "source": "plex",
+                "media_type": "movie",
+                "media_id": "701",
+                "action": "finish",
+            }),
+            content_type="application/json",
+            HTTP_X_API_KEY=self.user1.token,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_scoped_bearer_token_cannot_access_native_home_cards(self):
+        from integrations.models import IntegrationToken
+
+        _token, raw = IntegrationToken.generate(
+            user=self.user1, name="all", scopes=["*"],
+        )
+        response = self.client.get(
+            "/api/v1/playback/home-cards/",
+            HTTP_AUTHORIZATION=f"Bearer {raw}",
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_action_resolves_identity_and_runs_current_stop(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "movie", "media_id": "701"}
+        payload = {
+            "source": "plex",
+            "media_type": "movie",
+            "media_id": "701",
+            "action": "pause",
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "pause"}),
+            patch.object(checkin, "pause") as pause,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        pause.assert_called_once_with(self.user1, "movie", "701")
+
+    def test_stop_resolves_a_manual_session_control(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "book", "media_id": "701"}
+        payload = {**state, "action": "stop"}
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "stop"}),
+            patch("api.fork_views_playback.checkin_session.stop") as stop,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        stop.assert_called_once_with(self.user1, "plex", "book", "701")
+
+    def test_cancel_resolves_a_manual_session_control(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "book", "media_id": "701"}
+        payload = {**state, "action": "cancel"}
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "stop"}),
+            patch("api.fork_views_playback.checkin_session.cancel") as cancel,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        cancel.assert_called_once_with(self.user1, "plex", "book", "701")
+
+    def test_action_rejects_stale_identity_and_enforces_csrf(self):
+        self.client.force_login(self.user1)
+        payload = {
+            "source": "plex",
+            "media_type": "movie",
+            "media_id": "701",
+            "action": "stop",
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value={
+                "source": "plex", "media_type": "movie", "media_id": "701",
+            }),
+            patch.object(checkin, "card_control", return_value=None),
+        ):
+            stale = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(stale.status_code, HTTP.BAD_REQUEST)
+
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user1)
+        rejected = csrf_client.post(
+            "/api/v1/playback/home-cards/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, HTTP.FORBIDDEN)

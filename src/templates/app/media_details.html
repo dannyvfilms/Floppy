@@ -3,6 +3,7 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 {% load humanize %}
 {% load static %}
 
@@ -24,40 +25,49 @@
       {# Top section #}
       {% if carousel_supported %}
         {# Phones get the compact header, or the backdrop hero once the carousel fragment brings one (reserved up front for movies and TV so the page does not jump); md+ gets the two-row carousel layout. See .detail-carousel-grid in input.css. #}
-        <div class="detail-carousel-grid{% if media_type != MediaTypes.GAME.value %} detail-hero-pending{% endif %}">
+        <div class="detail-carousel-grid{% if not initial_carousel and media_type != MediaTypes.GAME.value %} detail-hero-pending{% endif %}">
           <div class="detail-carousel-grid__poster w-full max-w-[250px] mx-auto md:mx-0">
-            <img alt="{{ media|display_title:user }}"
-                 class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-                 src="{{ media.image|image_url }}">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <img data-media-artwork alt="{{ media|display_title:user }}" class="md:hidden w-full rounded-lg shadow-lg object-cover" src="{{ media.image|image_url }}">
+              <div id="video-channel-avatar" class="video-channel-avatar hidden md:flex" aria-label="{% translate 'Channel artwork' %}">
+                <span aria-hidden="true">{{ current_instance.channel|default:media.title|first|upper }}</span>
+              </div>
+            {% else %}
+              <img data-media-artwork alt="{{ media|display_title:user }}"
+                   class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
+                   src="{{ media.image|image_url }}">
+            {% endif %}
           </div>
 
           <div class="detail-carousel-grid__carousel relative min-w-0">
-            {% comment %}
-              Left empty (not a loading skeleton) so .detail-carousel-grid's
-              :has(#detail-carousel-wrap:not(:empty)) rule in input.css only
-              expands into the carousel layout once real content lands --
-              a skeleton here would count as "not empty" and expand the
-              grid immediately, showing the carousel's layout before we
-              know whether there's anything to put in it.
-            {% endcomment %}
-            <div id="detail-carousel-wrap"
+            {# Warm galleries render immediately; cold lookups stay deferred. Keep the empty wrapper free of whitespace for the CSS :empty layout hook. #}
+            <div id="detail-carousel-wrap"{% if not initial_carousel %}
                  hx-get="{{ detail_carousel_fragment_url }}"
                  hx-trigger="load delay:100ms"
                  hx-swap="innerHTML"
-                 hx-on::after-request="this.closest('.detail-carousel-grid').classList.remove('detail-hero-pending')"></div>
+                 hx-on::after-settle="this.closest('.detail-carousel-grid').classList.remove('detail-hero-pending')"{% endif %}>{% if initial_carousel %}{% include "app/components/detail_carousel_fragment.html" with carousel=initial_carousel inline=True %}{% elif media_type != MediaTypes.GAME.value %}<div class="detail-carousel-content detail-carousel-pending" aria-hidden="true"><div class="detail-carousel-preview detail-carousel-preview--bounded"></div><div class="detail-carousel-strip-wrap"></div></div>{% endif %}</div>
           </div>
 
-          <div class="detail-carousel-grid__header flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div class="detail-carousel-grid__title min-w-0 flex-1"><div id="detail-carousel-logo-slot"></div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
-            <div class="detail-carousel-grid__actions shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
+          <div class="detail-carousel-grid__header flex flex-col md:flex-row md:flex-wrap md:items-center {% if media_type == MediaTypes.VIDEO.value %}md:justify-start{% else %}md:justify-between{% endif %} gap-4">
+            <div class="detail-carousel-grid__title min-w-0{% if media_type != MediaTypes.VIDEO.value %} flex-1 md:basis-64{% endif %}"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview.logo_url %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
+            <div class="detail-carousel-grid__actions max-w-full shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
           </div>
           <div class="detail-carousel-grid__chips">{% include "app/components/detail_score_chips.html" %}</div>
-          <div class="detail-carousel-grid__synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+          <div class="detail-carousel-grid__synopsis">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <h1 class="text-2xl font-bold mb-3">{{ media|display_title:user }}</h1>
+              <div id="video-synopsis-content">{% include "app/components/detail_synopsis.html" %}</div>
+              {% if media.source == 'youtube' %}<div hx-get="{{ request.path }}?fragment=video-metadata" hx-trigger="load" hx-swap="none"></div>{% endif %}
+            {% else %}
+              <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+              {% detail_composition "synopsis" %}
+            {% endif %}
+          </div>
         </div>
       {% else %}
         <div class="detail-flat-top flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
           <div class="detail-flat-top__poster w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
-            <img alt="{{ media|display_title:user }}"
+            <img data-media-artwork alt="{{ media|display_title:user }}"
                  class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
                  src="{{ media.image|image_url }}">
           </div>
@@ -66,7 +76,8 @@
           <div class="detail-flat-top__info md:w-3/4">
             <div class="detail-flat-top__title">{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             {% include "app/components/detail_score_and_actions.html" %}
-            {% include "app/components/detail_synopsis.html" %}
+            <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+            {% detail_composition "synopsis" %}
           </div>
         </div>
       {% endif %}
@@ -76,16 +87,16 @@
              class="detail-secondary-content"
              hx-get="{{ detail_secondary_fragment_url }}"
              hx-trigger="load delay:150ms"
-             hx-swap="outerHTML">
-          <div class="detail-secondary-layout flex flex-col-reverse md:flex-row gap-0 md:gap-10">
-            <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
-              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-              <div class="mt-6 h-56 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            </div>
-            <div class="w-full md:w-3/4 space-y-6">
-              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-              <div class="h-80 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            </div>
+             hx-swap="outerHTML"
+             aria-busy="true">
+          <div class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10">
+            {# Reserve the fragment's measured height so the swap does not move the page. #}
+            <div class="hidden w-full rounded-lg bg-[var(--color-surface)] animate-pulse md:block"
+                 style="height: {% if detail_secondary_skeleton_desktop %}{{ detail_secondary_skeleton_desktop }}{% elif media_type == "book" or media_type == "comic" or media_type == "manga" %}484{% elif media_type == "music" %}224{% elif media_type == "tv" or media_type == "anime" %}1495{% else %}1246{% endif %}px"
+                 aria-hidden="true"></div>
+            <div class="w-full rounded-lg bg-[var(--color-surface)] animate-pulse md:hidden"
+                 style="height: {% if detail_secondary_skeleton_mobile %}{{ detail_secondary_skeleton_mobile }}{% elif media_type == "book" or media_type == "comic" or media_type == "manga" %}460{% elif media_type == "music" %}272{% elif media_type == "tv" or media_type == "anime" %}2288{% else %}2251{% endif %}px"
+                 aria-hidden="true"></div>
           </div>
         </div>
       {% else %}

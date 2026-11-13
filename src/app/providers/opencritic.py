@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 import requests
-from django.conf import settings
 from django.core.cache import cache
 from django.utils.text import slugify
 
@@ -134,7 +133,7 @@ def _get(path, params, quotas):
         url=f"{BASE_URL}{path}",
         params=params,
         headers=headers,
-        timeout=settings.REQUEST_TIMEOUT,
+        timeout=services.request_timeout(),
     )
     _record_response(quotas, response)
     if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:

@@ -12,6 +12,8 @@ manually curated items, and have their own template (smart_list_detail.html).
 import json
 import logging
 
+from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 
@@ -23,9 +25,11 @@ from app.columns import (
     resolve_default_column_config,
 )
 from app.library_query import FilterValues
+from app.library_query.alphabet import normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY
 from app.models import Item, MediaTypes
 from app.release_years import prefill_display_release_years
+from app.table_browser import build_table_browser_props, table_json_url
 from lists import smart_rules
 from lists.forms import CustomListForm
 from lists.views_helpers import (
@@ -210,6 +214,10 @@ def _smart_list_detail_response(
         custom_list=custom_list,
         media_user=media_user,
         candidates=matched_items,
+        initial=request.GET.get("initial"),
+        title_user=request.user,
+        include_alphabet=not helpers.is_htmx_fragment(request),
+        media_types=filtered_media_types,
         filters=FilterValues(status_match=STATUS_MATCH_ANY),
         sort_by=sort_by,
         direction=direction,
@@ -305,6 +313,7 @@ def _smart_list_detail_response(
         "user": request.user,
         "custom_list": custom_list,
         "items": items_page,
+        "alphabet_other_initial": items_page.alphabet_other_initial,
         "has_next": items_page.has_next(),
         "next_page_number": items_page.next_page_number()
         if items_page.has_next()
@@ -339,6 +348,7 @@ def _smart_list_detail_response(
         ),
         "list_ordering_enabled": can_edit and sort_by == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,
+        "list_user_role": custom_list.user_role(request.user),
         "recommendation_count": recommendation_count,
         "base_template": "base_public.html" if public_view else "base.html",
         "is_partial": is_partial,
@@ -354,6 +364,7 @@ def _smart_list_detail_response(
         "has_media_type_filter": bool(active_rules["media_types"]),
         "has_active_filters": has_active_filters,
         "collaborators_count": custom_list.collaborators.count() + 1,
+        "viewers_count": custom_list.viewers.count(),
         "column_config": resolve_column_config(
             current_media_type,
             sort_by,
@@ -398,6 +409,39 @@ def _smart_list_detail_response(
                 "table_include_selector": "#smart-filter-form",
             },
         )
+        next_url = (
+            table_json_url(request, items_page.next_page_number())
+            if items_page.has_next()
+            else ""
+        )
+        context["table_browser_props"] = build_table_browser_props(
+            rows=list(items_page.object_list),
+            resolved_columns=context["resolved_columns"],
+            column_config=context["column_config"],
+            default_column_config=context["default_column_config"],
+            user=request.user,
+            table_type="list",
+            media_type=current_media_type,
+            current_sort=sort_by,
+            current_direction=direction,
+            update_url=context["table_column_update_url"],
+            refresh_url=context["table_refresh_url"],
+            refresh_target="#items-view",
+            refresh_include="#smart-filter-form",
+            csrf_token=get_token(request),
+            public_view=public_view,
+            public_list_reference=context["public_list_reference"],
+            show_public_notes=context["show_public_notes"],
+            next_url=next_url,
+        )
+        if request.GET.get("table_json") == "1":
+            return JsonResponse(
+                {
+                    "rows": context["table_browser_props"]["table"]["rows"],
+                    "nextUrl": next_url,
+                    "resultCount": filtered_items_count,
+                },
+            )
 
     if is_partial:
         if layout == "table":
@@ -408,6 +452,9 @@ def _smart_list_detail_response(
         else:
             template_name = "lists/components/media_grid.html"
 
+        if normalize_initial(request.GET.get("initial")) and not items_page and not is_pagination:
+            template_name = "app/components/alphabet_results_empty.html"
+            context["alphabet_form_id"] = "smart-filter-form"
         response = render(request, template_name, context)
         response["HX-Trigger"] = json.dumps(
             _build_list_count_trigger(total_items_count),

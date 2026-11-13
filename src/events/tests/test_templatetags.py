@@ -142,3 +142,46 @@ class TemplateFiltersTagsTests(TestCase):
         # This should raise a ValueError
         with self.assertRaises(ValueError):
             template.render(Context({"day": "day", "month": "month", "year": "year"}))
+
+
+class CalendarEventUrlTests(TestCase):
+    """Calendar entries open the episode page for TV episodes."""
+
+    def _event(self, media_type, content_number, library_media_type=""):
+        from datetime import UTC, datetime
+
+        from app.models import Item, Sources
+        from events.models import Event
+
+        item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=media_type,
+            title="Friends",
+            image="none",
+            season_number=2 if media_type == "season" else None,
+            library_media_type=library_media_type,
+        )
+        return Event.objects.create(
+            item=item,
+            content_number=content_number,
+            datetime=datetime(2025, 1, 1, tzinfo=UTC),
+        )
+
+    def test_season_event_links_to_episode(self):
+        from events.templatetags.events_tags import calendar_event_url
+
+        url = calendar_event_url(self._event("season", 5))
+        self.assertTrue(url.endswith("/season/2/episode/5"), url)
+
+    def test_season_event_without_episode_number_falls_back(self):
+        from events.templatetags.events_tags import calendar_event_url
+
+        url = calendar_event_url(self._event("season", None))
+        self.assertIn("/season/2", url)
+        self.assertNotIn("/episode/", url)
+
+    def test_movie_event_keeps_item_url(self):
+        from events.templatetags.events_tags import calendar_event_url
+
+        self.assertIn("/movie/", calendar_event_url(self._event("movie", None)))

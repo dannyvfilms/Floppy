@@ -160,7 +160,8 @@ FORMAT_MEDIA_TYPES = {
     MediaTypes.MANGA.value,
     MediaTypes.COMIC.value,
 }
-AUTHOR_MEDIA_TYPES = FORMAT_MEDIA_TYPES
+# A video's channel is stored as its author, so videos filter by it too.
+AUTHOR_MEDIA_TYPES = FORMAT_MEDIA_TYPES | {MediaTypes.VIDEO.value}
 
 
 def _normalize_filter_value(value) -> str:
@@ -974,8 +975,11 @@ def build_filter_data_for_items(
         "format",
         "media_type",
         "authors",
-        "watch_providers",
     )
+    # The column holds every region's availability (~146 KiB a title); read it
+    # only when the menu will show the providers pane.
+    if region and region != "UNSET":
+        only_fields += ("watch_providers",)
     item_batch_size = _id_batch_size(len(item_ids))
     items = [
         item
@@ -1108,6 +1112,8 @@ def build_filter_data_for_items(
         "show_authors": any(
             media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
         ),
+        "author_is_channel": bool(target_media_types)
+        and all(media_type == MediaTypes.VIDEO.value for media_type in target_media_types),
         "providers": [
             {"value": value, "label": value}
             for value in sorted(providers_set, key=lambda value: value.lower())

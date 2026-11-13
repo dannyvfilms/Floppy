@@ -6,18 +6,20 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import zoneinfo
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from urllib.parse import unquote
+from urllib.parse import unquote, urlencode
 
 import croniter
 import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
@@ -40,26 +42,31 @@ from django.views.decorators.http import (
     require_http_methods,
     require_POST,
 )
+from kombu.exceptions import OperationalError as BrokerOperationalError
 
 import users
 from app import helpers as app_helpers
 from app import image_cache
 from app.db_retry import run_retryable_db_operation
 from app.log_safety import exception_summary
-from app.models import TV, Item, MediaTypes, Movie, Sources
+from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 from app.providers import credentials, services
 from app.redis_diagnosis import queue_failure_message
 from app.services import metadata_resolution
+from app.templatetags.app_tags import media_url
 from integrations import (
     arr_library,
     exports,
     gpodder_api,
     koito_api,
     lastfm_api,
+    mal_sync,
+    pending_auth,
     pocketcasts_api,
     psn_api,
     seerr_api,
     stremio_catalog,
+    stremio_events,
     stremio_queue,
     tasks,
     xbox_api,
@@ -164,6 +171,8 @@ from integrations.upload_staging import (
 from integrations.webhooks.plex import extract_plex_webhook_usernames
 
 logger = logging.getLogger(__name__)
+# MyAnimeList search rejects shorter queries with HTTP 400.
+MAL_MAPPING_MIN_QUERY_LENGTH = 3
 ARR_SYNC_INTERVAL_HOURS = 2
 RADARR_RECURRING_TASK_NAME = "Import from Radarr (Recurring)"
 JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -252,6 +261,39 @@ def _queue_task_quietly(task, *args, **kwargs):
     return True
 
 
+def _webhook_request_fields(payload, provider, user_id):
+    """Return correlation fields shared by receipt and worker logs.
+
+    The id ties the HTTP receipt, the queued task and its outcome together;
+    ``received_at`` is the arrival time, so the worker can report queue wait
+    and ignore an older event that overtakes a newer one. See
+    docs/architecture/webhook-delivery.md.
+    """
+    event = metadata = None
+    if isinstance(payload, dict):
+        event = payload.get("event") or payload.get("Event")
+        metadata = payload.get("Metadata") or payload.get("Item") or {}
+    rating_key = None
+    if isinstance(metadata, dict):
+        rating_key = (
+            metadata.get("ratingKey")
+            or metadata.get("ratingkey")
+            or metadata.get("Id")
+            or metadata.get("id")
+        )
+    event_id = secrets.token_hex(8)
+    received_at = timezone.now().isoformat()
+    logger.info(
+        "webhook_received event_id=%s provider=%s event=%s user_id=%s rating_key=%s",
+        event_id,
+        provider,
+        event,
+        user_id,
+        rating_key,
+    )
+    return {"received_at": received_at, "event_id": event_id}
+
+
 def _integration_redirect(request, *, connected_slug=None, next_url=None):
     """Redirect back to `next` (e.g. the onboarding wizard) if present.
 
@@ -265,7 +307,13 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
             user.onboarding_connected_sources = [*user.onboarding_connected_sources, connected_slug]
             user.save(update_fields=["onboarding_connected_sources"])
     destination = next_url or request.POST.get("next") or request.GET.get("next")
-    return redirect(destination or "import_data")
+    if pending_auth.is_native_return(destination):
+        # Back into the native app: only its own scheme, never another URL.
+        # Django's redirect() refuses custom schemes, so answer directly.
+        return HttpResponse(status=HTTPStatus.FOUND, headers={"Location": destination})
+    return redirect(
+        app_helpers.safe_return_url(request, destination, reverse("import_data"))
+    )
 
 
 def _consume_oauth_state(request, provider):
@@ -279,7 +327,7 @@ def _consume_oauth_state(request, provider):
         )
         return None
 
-    state_data = request.session.pop(state_token, None)
+    state_data = pending_auth.pop_state(request, state_token)
     if not isinstance(state_data, dict):
         logger.warning("%s OAuth callback state not found in session", provider)
         messages.error(
@@ -756,7 +804,7 @@ def trakt_oauth(request):
         # An app without a client secret authorizes with PKCE instead.
         state["code_verifier"], code_challenge = trakt.new_pkce_pair()
         query += f"&code_challenge={code_challenge}&code_challenge_method=S256"
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
     return redirect(f"{url}?{query}")
 
 
@@ -801,7 +849,7 @@ def _start_trakt_device_flow(request):
         messages.error(request, str(error))
         return _integration_redirect(request)
 
-    request.session[TRAKT_DEVICE_SESSION_KEY] = {
+    pending_auth.put(TRAKT_DEVICE_SESSION_KEY, request.user.pk, {
         "device_code": device["device_code"],
         "user_code": device["user_code"],
         "verification_url": device["verification_url"],
@@ -813,13 +861,13 @@ def _start_trakt_device_flow(request):
         "frequency": request.POST["frequency"],
         "time": request.POST["time"],
         "return_to": request.POST.get("next"),
-    }
+    })
     return redirect("trakt_device_verify")
 
 
 def _trakt_device_state(request):
     """Return the pending device authorization, or None if gone or expired."""
-    state = request.session.get(TRAKT_DEVICE_SESSION_KEY)
+    state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
     if not isinstance(state, dict):
         return None
     expires_at = parse_datetime(state.get("expires_at") or "")
@@ -833,19 +881,48 @@ def trakt_device_verify(request):
     """Show the Trakt device code the user must enter at trakt.tv/activate."""
     state = _trakt_device_state(request)
     if state is None:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
         messages.error(request, "The Trakt authorization code expired. Start again.")
         return _integration_redirect(request)
 
+    poll_url = reverse("trakt_device_poll")
+    cancel_url = reverse("import_data")
+    verification_url = state["verification_url"]
+    user_code = state["user_code"]
+    props = {
+        "code": user_code,
+        "openUrl": f"{verification_url.rstrip('/')}/{user_code}",
+        "pollUrl": poll_url,
+        "cancelUrl": cancel_url,
+        "interval": state["interval"],
+        "expiresAt": state["expires_at"],
+        "title": gettext("Connect Trakt"),
+        "description": gettext(
+            "This instance is not served over HTTPS, so Trakt will not accept "
+            "a browser redirect. Enter this code on Trakt instead."
+        ),
+        "labels": {
+            "copy": gettext("Copy code"),
+            "copied": gettext("Copied!"),
+            "open": gettext("Open %(url)s") % {"url": verification_url},
+            "waiting": gettext("Waiting for you to authorize Floppy…"),
+            "cancel": gettext("Cancel"),
+            "expired": gettext(
+                "The Trakt authorization code expired. Start again."
+            ),
+            "retry": gettext("Start again"),
+        },
+    }
     return render(
         request,
         "integrations/trakt_device_code.html",
         {
-            "user_code": state["user_code"],
-            "verification_url": state["verification_url"],
+            "user_code": user_code,
+            "verification_url": verification_url,
             "interval": state["interval"],
-            "poll_url": reverse("trakt_device_poll"),
-            "cancel_url": reverse("import_data"),
+            "poll_url": poll_url,
+            "cancel_url": cancel_url,
+            "device_connect_props": props,
         },
     )
 
@@ -855,27 +932,39 @@ def _htmx_redirect(location):
     return HttpResponse(status=HTTPStatus.NO_CONTENT, headers={"HX-Redirect": location})
 
 
-@require_GET
-def trakt_device_poll(request):
-    """Poll Trakt once for the pending device authorization."""
+def poll_trakt_device(request):
+    """Poll Trakt once; return (status, message, state) for web and native callers.
+
+    Status is pending, connected, expired or error. A finished state is cleared.
+    """
     state = _trakt_device_state(request)
     if state is None:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
-        messages.error(request, "The Trakt authorization code expired. Start again.")
-        return _htmx_redirect(reverse("import_data"))
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
+        return "expired", "The Trakt authorization code expired. Start again.", None
 
     try:
         result = trakt.poll_device_token(state["device_code"])
     except helpers.MediaImportError as error:
-        request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
-        messages.error(request, str(error))
-        return _htmx_redirect(reverse("import_data"))
+        pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
+        return "error", error.message, state
 
     if result is None:
-        return HttpResponse(status=HTTPStatus.NO_CONTENT)
+        return "pending", "", state
 
-    request.session.pop(TRAKT_DEVICE_SESSION_KEY, None)
+    pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
     _finish_trakt_connection(request, result, state)
+    return "connected", "", state
+
+
+@require_GET
+def trakt_device_poll(request):
+    """Poll Trakt once for the pending device authorization."""
+    status, message, state = poll_trakt_device(request)
+    if status in ("expired", "error"):
+        messages.error(request, message)
+        return _htmx_redirect(reverse("import_data"))
+    if status == "pending":
+        return HttpResponse(status=HTTPStatus.NO_CONTENT)
     redirect_response = _integration_redirect(
         request,
         connected_slug="trakt",
@@ -1001,11 +1090,11 @@ def plex_connect(request):
         messages.error(request, f"Unexpected Plex error: {exc}")
         return _integration_redirect(request)
 
-    request.session[state_token] = {
+    pending_auth.stash_state(request, state_token, {
         "plex_pin_id": pin["id"],
         "plex_pin_code": pin["code"],
         "return_to": request.POST.get("next"),
-    }
+    })
 
     auth_url = plex_api.build_auth_url(
         pin["code"], f"{redirect_uri}?state={state_token}"
@@ -1017,7 +1106,7 @@ def plex_connect(request):
 def plex_callback(request):
     """Handle Plex auth callback and persist the token."""
     state_token = request.GET.get("state")
-    state_data = request.session.pop(state_token, None)
+    state_data = pending_auth.pop_state(request, state_token)
 
     if not state_data:
         messages.error(request, "Invalid or expired Plex authorization request.")
@@ -1122,7 +1211,13 @@ def plex_disconnect(request):
 
     _run_with_lock_retry("disconnect Plex", _disconnect)
     messages.info(request, "Disconnected Plex.")
-    return redirect("import_data")
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next"),
+            reverse("provider_detail", args=["plex"]) + "?tab=connection",
+        ),
+    )
 
 
 def _save_plex_content_kind(plex_account, library_content_kinds):
@@ -1285,7 +1380,7 @@ def simkl_oauth(request):
             f"&code_challenge={code_challenge}&code_challenge_method=S256"
         )
 
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
     return redirect(url)
 
 
@@ -1298,6 +1393,22 @@ def import_simkl_private(request):
 
     redirect_uri = state_data.get("redirect_uri")
     return_to = state_data.get("return_to")
+
+    if state_data.get("code_verifier") and request.GET.get("iss") != "https://simkl.com":
+        # AUTH V2 callbacks must come from SIMKL itself, not another provider.
+        logger.warning("SIMKL OAuth callback carried an unexpected issuer")
+        messages.error(request, "Invalid or expired SIMKL authorization request.")
+        return _integration_redirect(request, next_url=return_to)
+
+    if request.GET.get("error"):
+        # AUTH V2 reports a declined consent through the callback, unlike V1.
+        messages.error(request, "SIMKL authorization was cancelled or denied.")
+        return _integration_redirect(request, next_url=return_to)
+
+    if not request.GET.get("code"):
+        messages.error(request, "SIMKL authorization did not return a code.")
+        return _integration_redirect(request, next_url=return_to)
+
     try:
         oauth_callback = simkl.get_token(
             request,
@@ -1421,7 +1532,7 @@ def anilist_oauth(request):
     }
 
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
+    pending_auth.stash_state(request, state_token, state)
 
     return redirect(
         f"{url}?client_id={credentials.get("anilist", "client_id")}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
@@ -1473,12 +1584,654 @@ def import_anilist_private(request):
 
 
 @require_POST
+def mal_oauth(request):
+    """Initiate the MyAnimeList OAuth2 flow used for status syncing."""
+    if not mal_sync.is_sync_configured(request.user):
+        messages.error(
+            request,
+            "MyAnimeList sync isn't configured. Add your own MyAnimeList "
+            "Client ID and Client secret under Settings > Metadata first.",
+        )
+        return _integration_redirect(request)
+
+    redirect_uri = app_helpers.build_absolute_app_url(request, reverse("mal_callback"))
+    if not app_helpers.supports_oauth_redirect(redirect_uri):
+        # Unlike Trakt (#681), MyAnimeList has no device-code alternative, so
+        # an HTTP-only instance simply can't complete this flow.
+        messages.error(
+            request,
+            "MyAnimeList sync needs an HTTPS-accessible callback URL. This "
+            "instance is served over plain HTTP, and MyAnimeList doesn't "
+            "offer a device-code alternative the way Trakt does.",
+        )
+        return _integration_redirect(request)
+
+    code_verifier = mal_sync.generate_code_verifier()
+    state = {
+        "code_verifier": code_verifier,
+        "redirect_uri": redirect_uri,
+        "return_to": request.POST.get("next"),
+    }
+    state_token = secrets.token_urlsafe(32)
+    pending_auth.stash_state(request, state_token, state)
+
+    query = urlencode({
+        "response_type": "code",
+        "client_id": mal_sync.client_id(request.user),
+        "redirect_uri": redirect_uri,
+        "state": state_token,
+        "code_challenge": code_verifier,
+        "code_challenge_method": "plain",
+    })
+    return redirect(f"{mal_sync.AUTHORIZE_URL}?{query}")
+
+
+@require_GET
+def mal_callback(request):
+    """Handle the MyAnimeList OAuth2 callback and store the connection."""
+    state_data = _consume_oauth_state(request, "MyAnimeList")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    return_to = state_data.get("return_to")
+    code = request.GET.get("code")
+    if not code:
+        messages.error(request, "MyAnimeList authorization failed.")
+        return _integration_redirect(request, next_url=return_to)
+
+    try:
+        mal_sync.connect_account(
+            user=request.user,
+            code=code,
+            code_verifier=state_data["code_verifier"],
+            redirect_uri=state_data["redirect_uri"],
+        )
+    except mal_sync.MALAuthError as error:
+        messages.error(request, str(error))
+        return _integration_redirect(request, next_url=return_to)
+    except services.ProviderAPIError:
+        messages.error(
+            request,
+            "Couldn't reach MyAnimeList to finish connecting. Please try again.",
+        )
+        return _integration_redirect(request, next_url=return_to)
+
+    messages.success(
+        request,
+        "Connected to MyAnimeList. Status, progress and score changes on "
+        "MAL-tracked anime and manga will now sync automatically.",
+    )
+    return _integration_redirect(request, connected_slug="mal", next_url=return_to)
+
+
+@require_POST
+def mal_disconnect(request):
+    """Disconnect the user's MyAnimeList account."""
+    from django_celery_beat.models import PeriodicTask
+
+    from integrations.models import MALAccount
+
+    MALAccount.objects.filter(user=request.user).delete()
+    # The schedule would otherwise keep firing against a missing account.
+    PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=tasks.MAL_FULL_SYNC_TASK_NAME,
+    ).delete()
+    messages.success(request, "Disconnected from MyAnimeList.")
+    return _integration_redirect(request)
+
+
+@require_POST
+def mal_toggle(request):
+    """Pause or resume pushing status updates to MyAnimeList."""
+    from integrations.models import MALAccount
+
+    updated = MALAccount.objects.filter(user=request.user).update(
+        sync_enabled=request.POST.get("enabled") == "true",
+    )
+    if not updated:
+        messages.error(request, "Connect a MyAnimeList account first.")
+    return _integration_redirect(request)
+
+
+@require_POST
+def mal_per_item_sync_toggle(request):
+    """Pause or resume the automatic push that fires when an entry is edited.
+
+    Independent of `mal_toggle`'s overall sync_enabled: this only affects the
+    per-item push, not "Sync All Now" or the scheduled full sync.
+    """
+    from integrations.models import MALAccount
+
+    updated = MALAccount.objects.filter(user=request.user).update(
+        per_item_sync_enabled=request.POST.get("enabled") == "true",
+    )
+    if not updated:
+        messages.error(request, "Connect a MyAnimeList account first.")
+    return _integration_redirect(request)
+
+
+@require_POST
+def mal_sync_filters_save(request):
+    """Save which statuses (and whether a rating is required) a full sync sends."""
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None:
+        messages.error(request, "Connect a MyAnimeList account first.")
+        return redirect("mal_export")
+
+    mal_account.sync_filter_completed = request.POST.get("completed") == "on"
+    mal_account.sync_filter_in_progress = request.POST.get("in_progress") == "on"
+    mal_account.sync_filter_dropped = request.POST.get("dropped") == "on"
+    mal_account.sync_filter_planning = request.POST.get("planning") == "on"
+    mal_account.sync_filter_paused = request.POST.get("paused") == "on"
+    mal_account.sync_filter_rated_only = request.POST.get("rated_only") == "on"
+    mal_account.sync_ratings_enabled = request.POST.get("sync_ratings") == "on"
+    mal_account.pull_higher_progress_enabled = request.POST.get("pull_higher_progress") == "on"
+    mal_account.pull_ratings_enabled = request.POST.get("pull_ratings") == "on"
+    mal_account.save(
+        update_fields=[
+            "sync_filter_completed",
+            "sync_filter_in_progress",
+            "sync_filter_dropped",
+            "sync_filter_planning",
+            "sync_filter_paused",
+            "sync_filter_rated_only",
+            "sync_ratings_enabled",
+            "pull_higher_progress_enabled",
+            "pull_ratings_enabled",
+            "updated_at",
+        ]
+    )
+    messages.success(request, "MyAnimeList sync filters saved.")
+    return redirect("mal_export")
+
+
+@require_POST
+def mal_mapping_ignore(request):
+    """Ignore or restore a grouped anime's MAL mapping issues."""
+    try:
+        item_id = int(request.POST["item_id"])
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({"error": "Choose a valid anime."}, status=400)
+
+    ignored = request.POST.get("ignored") == "true"
+    found = mal_sync.set_mapping_ignored(request.user, item_id, ignored=ignored)
+    if not found and ignored:
+        return JsonResponse({"error": "Tracked anime not found."}, status=404)
+    return JsonResponse({"ignored": ignored})
+
+
+@require_POST
+def mal_episode_mapping_save(request):
+    """Persist a user-owned grouped episode or whole-season MAL override."""
+    from integrations.models import ExternalReference, ExternalReferenceReviewStatus
+
+    try:
+        item_id = int(request.POST["item_id"])
+        season = int(request.POST["season"])
+        episode = int(request.POST["episode"])
+        mal_id = int(request.POST["mal_id"])
+        mal_episode = int(request.POST["mal_episode"])
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({"error": "Enter valid episode and MAL numbers."}, status=400)
+    if min(item_id, season, episode, mal_id, mal_episode) < 1:
+        return JsonResponse({"error": "Episode and MAL numbers must be positive."}, status=400)
+
+    from app.models import Episode, WatchState
+
+    show = TV.objects.filter(
+        user=request.user,
+        item_id=item_id,
+        item__library_media_type=MediaTypes.ANIME.value,
+    ).select_related("item").first()
+    # The same two sources grouped_sync_entries reads, so every episode it
+    # reports as a mapping issue can be fixed here.
+    tracked_episodes = set()
+    if show is not None:
+        tracked_episodes = set(
+            Episode.objects.filter(
+                related_season__related_tv=show,
+                related_season__order_archived=False,
+                item__season_number=season,
+            ).values_list("item__episode_number", flat=True)
+        ) | set(
+            WatchState.objects.filter(
+                user=request.user,
+                item__media_type=MediaTypes.EPISODE.value,
+                item__library_media_type=MediaTypes.ANIME.value,
+                item__source=show.tracking_source,
+                item__media_id=show.tracking_media_id,
+                item__season_number=season,
+            ).values_list("item__episode_number", flat=True)
+        )
+        tracked_episodes.discard(None)
+    if episode not in tracked_episodes:
+        return JsonResponse({"error": "Tracked anime episode not found."}, status=404)
+
+    scope = request.POST.get("scope", "episode")
+    if scope not in {"episode", "season"}:
+        return JsonResponse({"error": "Unsupported mapping scope."}, status=400)
+    source_episodes = [episode]
+    if scope == "season":
+        # The report behind the wizard can be stale, so only episodes that
+        # still don't resolve get an override; working mappings are kept.
+        issues = []
+        try:
+            mal_sync.grouped_sync_entries(request.user, tv=show, mapping_issues=issues)
+        except services.ProviderAPIError:
+            return JsonResponse(
+                {"error": "Couldn't check the current MAL mappings. Please try again."},
+                status=502,
+            )
+        # Counted from the episode the user aligned in the wizard, so an
+        # earlier one that became unresolved since doesn't shift the rest.
+        source_episodes = sorted({
+            number
+            for issue in issues
+            for issue_season in issue.get("seasons", [])
+            if issue_season["season"] == season
+            for number in issue_season["episodes"]
+            if number >= episode
+        })
+        if episode not in source_episodes:
+            return JsonResponse(
+                {"error": "This season is already mapped. Refresh the page."},
+                status=409,
+            )
+
+    first_episode = episode
+    references = [
+        ExternalReference(
+            user=request.user,
+            integration="mal_sync",
+            source_account="",
+            external_namespace="grouped_anime_episode",
+            external_identity=f"{item_id}:{season}:{source_episode}",
+            media_type=MediaTypes.EPISODE.value,
+            matched_item=show.item,
+            corrected_item=show.item,
+            review_status=ExternalReferenceReviewStatus.CORRECTED.value,
+            episode_mapping={
+                "mal_id": mal_id,
+                # Offset by episode number, not list position, so an
+                # untracked episode keeps its slot for when it's watched.
+                "episode": mal_episode + source_episode - first_episode,
+            },
+            metadata={
+                "series_title": show.item.title,
+                "season_number": season,
+                "episode_number": source_episode,
+            },
+        )
+        for source_episode in source_episodes
+    ]
+    ExternalReference.objects.bulk_create(
+        references,
+        update_conflicts=True,
+        unique_fields=[
+            "user", "integration", "source_account", "external_namespace",
+            "external_identity", "media_type",
+        ],
+        update_fields=[
+            "matched_item", "corrected_item", "review_status", "episode_mapping",
+            "metadata", "updated_at",
+        ],
+    )
+    return JsonResponse({
+        "saved": True,
+        "mapped": len(references),
+        "manual_mappings": mal_sync.manual_episode_mappings(request.user),
+    })
+
+
+@require_POST
+def mal_episode_mapping_revert(request):
+    """Delete user-created grouped episode mappings so automatic mapping resumes."""
+    from integrations.models import ExternalReference, ExternalReferenceReviewStatus
+
+    try:
+        reference_ids = [int(value) for value in request.POST.getlist("reference_id")]
+    except (TypeError, ValueError):
+        reference_ids = []
+    if not reference_ids:
+        return JsonResponse({"error": "Choose a valid mapping."}, status=400)
+
+    deleted, _ = ExternalReference.objects.filter(
+        pk__in=reference_ids,
+        user=request.user,
+        integration="mal_sync",
+        external_namespace="grouped_anime_episode",
+        review_status=ExternalReferenceReviewStatus.CORRECTED.value,
+    ).delete()
+    if not deleted:
+        return JsonResponse({"error": "Manual mapping not found."}, status=404)
+    return JsonResponse({"reverted": True})
+
+
+@require_GET
+def mal_mapping_search(request):
+    """Search MAL anime titles for the manual episode-mapping wizard."""
+    query = request.GET.get("q", "").strip()
+    if len(query) < MAL_MAPPING_MIN_QUERY_LENGTH:
+        return JsonResponse({"error": "Enter at least three characters."}, status=400)
+    try:
+        from app.providers import mal as mal_provider
+
+        with credentials.current_user_scope(request.user), services.interactive_request_scope():
+            response = mal_provider.search(
+                MediaTypes.ANIME.value,
+                query,
+                1,
+                include_nsfw=True,
+            )
+    except services.ProviderAPIError:
+        return JsonResponse({"error": "MyAnimeList search is unavailable. Please try again."}, status=502)
+    return JsonResponse({"results": response.get("results", [])})
+
+
+@require_GET
+def mal_mapping_episodes(request):
+    """Return numbered episode choices for a selected MAL anime title."""
+    try:
+        mal_id = int(request.GET["mal_id"])
+    except (KeyError, TypeError, ValueError):
+        return JsonResponse({"error": "Choose a valid MyAnimeList title."}, status=400)
+    try:
+        with credentials.current_user_scope(request.user), services.interactive_request_scope():
+            metadata = services.get_media_metadata(
+                MediaTypes.ANIME.value,
+                str(mal_id),
+                Sources.MAL.value,
+            )
+    except services.ProviderAPIError:
+        return JsonResponse({"error": "Could not load MyAnimeList episodes."}, status=502)
+    try:
+        episode_count = int(metadata.get("max_progress") or 0)
+    except (TypeError, ValueError):
+        episode_count = 0
+    episode_count = max(0, min(episode_count, 10000))
+    return JsonResponse({
+        "title": metadata["title"],
+        "image": metadata.get("image"),
+        "episodes": list(range(1, episode_count + 1)),
+    })
+
+
+@require_POST
+def mal_full_sync(request):
+    """Trigger a one-off full sync of every MAL-backed anime/manga entry."""
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None:
+        messages.error(request, "Connect a MyAnimeList account first.")
+    elif mal_account.connection_broken:
+        messages.error(request, "Reconnect your MyAnimeList account first.")
+    elif not mal_account.sync_enabled:
+        messages.error(request, "Turn sync back on before running a full sync.")
+    elif mal_sync.reconcile_stale_full_sync(mal_account).full_sync_is_active:
+        messages.info(request, "A full MyAnimeList sync is already in progress.")
+    elif request.POST.get("confirmed") != "true":
+        messages.error(request, "Review the MyAnimeList changes before syncing.")
+    else:
+        from integrations.models import MALFullSyncStatus
+
+        queued = type(mal_account).objects.filter(pk=mal_account.pk).exclude(
+            full_sync_status__in=[MALFullSyncStatus.QUEUED, MALFullSyncStatus.RUNNING],
+        ).update(
+            full_sync_status=MALFullSyncStatus.QUEUED,
+            full_sync_total=0,
+            full_sync_processed=0,
+            full_sync_succeeded=0,
+            full_sync_failed=0,
+            full_sync_results=[],
+            full_sync_started_at=None,
+            full_sync_completed_at=None,
+            updated_at=timezone.now(),
+        )
+        if not queued:
+            messages.info(request, "A full MyAnimeList sync is already in progress.")
+            return _integration_redirect(request)
+        # The review form always posts `selective`; without it (older pages,
+        # scripts) every entry syncs as before.
+        selected = (
+            request.POST.getlist("selected")
+            if request.POST.get("selective") == "true"
+            else None
+        )
+        try:
+            tasks.bulk_sync_mal_status.delay(
+                user_id=request.user.pk,
+                selected=selected,
+                pull=request.POST.getlist("pull"),
+                queued=True,
+            )
+        except BrokerOperationalError:
+            # Release the claim, or every sync is refused as "in progress"
+            # until it goes stale.
+            type(mal_account).objects.filter(
+                pk=mal_account.pk, full_sync_status=MALFullSyncStatus.QUEUED,
+            ).update(
+                full_sync_status=MALFullSyncStatus.FAILED,
+                full_sync_completed_at=timezone.now(),
+                updated_at=timezone.now(),
+            )
+            messages.error(
+                request,
+                "Could not queue the sync. Check the background worker and Redis.",
+            )
+            return _integration_redirect(request)
+        messages.success(
+            request,
+            "Full sync to MyAnimeList started in the background. This can "
+            "take a while for large libraries.",
+        )
+    return _integration_redirect(request)
+
+
+@require_POST
+def mal_full_sync_retry_failed(request):
+    """Retry only the entries marked failed on the last full MyAnimeList sync."""
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None:
+        messages.error(request, "Connect a MyAnimeList account first.")
+    elif mal_account.connection_broken:
+        messages.error(request, "Reconnect your MyAnimeList account first.")
+    elif not mal_account.sync_enabled:
+        messages.error(request, "Turn sync back on before retrying.")
+    elif mal_sync.reconcile_stale_full_sync(mal_account).full_sync_is_active:
+        messages.info(request, "A MyAnimeList sync is already in progress.")
+    elif not mal_sync.retryable_failures(mal_account):
+        messages.error(
+            request,
+            "No failed MyAnimeList entries to retry. If the whole sync failed, "
+            "run a full sync again.",
+        )
+    else:
+        from integrations.models import MALFullSyncStatus
+
+        previous_status = mal_account.full_sync_status
+        queued = type(mal_account).objects.filter(pk=mal_account.pk).exclude(
+            full_sync_status__in=[MALFullSyncStatus.QUEUED, MALFullSyncStatus.RUNNING],
+        ).update(
+            full_sync_status=MALFullSyncStatus.QUEUED,
+            updated_at=timezone.now(),
+        )
+        if not queued:
+            messages.info(request, "A MyAnimeList sync is already in progress.")
+            return _integration_redirect(request)
+        try:
+            tasks.retry_failed_mal_status.delay(user_id=request.user.pk, queued=True)
+        except BrokerOperationalError:
+            type(mal_account).objects.filter(
+                pk=mal_account.pk, full_sync_status=MALFullSyncStatus.QUEUED,
+            ).update(full_sync_status=previous_status, updated_at=timezone.now())
+            messages.error(
+                request,
+                "Could not queue the retry. Check the background worker and Redis.",
+            )
+            return _integration_redirect(request)
+        messages.success(
+            request,
+            "Retrying failed MyAnimeList entries in the background.",
+        )
+    return _integration_redirect(request)
+
+
+@require_GET
+def mal_full_sync_status(request):
+    """Return durable progress and outcomes for the latest manual MAL sync."""
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None:
+        return JsonResponse({"error": "Connect a MyAnimeList account first."}, status=404)
+
+    mal_account = mal_sync.reconcile_stale_full_sync(mal_account)
+    return JsonResponse(mal_sync.full_sync_report(mal_account))
+
+
+@require_http_methods(["GET", "POST"])
+def mal_full_sync_preview(request):
+    """Queue or poll a user-bound, read-only MAL preview."""
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None:
+        return JsonResponse(
+            {"error": "Connect a MyAnimeList account first."}, status=400
+        )
+    if mal_account.connection_broken:
+        return JsonResponse(
+            {"error": "Reconnect your MyAnimeList account first."}, status=400
+        )
+    if not mal_account.sync_enabled:
+        return JsonResponse(
+            {"error": "Turn sync back on before running a full sync."}, status=400
+        )
+
+    salt = "mal-sync-preview"
+    if request.method == "POST":
+        try:
+            job = tasks.preview_mal_sync.delay(request.user.pk)
+        except BrokerOperationalError:
+            return JsonResponse({"error": "Could not queue preview. Check the background worker and Redis."}, status=503)
+        token = signing.dumps(
+            {"user_id": request.user.pk, "task_id": job.id}, salt=salt,
+        )
+        return JsonResponse({"pending": True, "token": token}, status=202)
+
+    try:
+        payload = signing.loads(request.GET.get("token", ""), salt=salt, max_age=3600)
+    except signing.BadSignature:
+        return JsonResponse({"error": "Preview expired. Start a new preview."}, status=400)
+    if payload["user_id"] != request.user.pk:
+        return JsonResponse({"error": "Preview not found."}, status=404)
+    job = tasks.preview_mal_sync.AsyncResult(payload["task_id"])
+    if not job.ready():
+        info = job.info if isinstance(job.info, dict) else {}
+        return JsonResponse({
+            "pending": True,
+            "progress": info.get("percent", 0),
+            "message": info.get(
+                "message",
+                "Waiting for the background worker to finish its current task"
+                if job.state == "PENDING" else "Preparing preview",
+            ),
+        }, status=202)
+    if job.failed():
+        return JsonResponse({"error": "Preview worker failed. Check the worker logs."}, status=502)
+    result = job.result
+    # The worker can't reverse() URLs (its URLconf is empty), so pages are linked here.
+    for entry in result.get("changes", []):
+        entry["url"] = media_url(entry.pop("link"))
+    return JsonResponse(result, status=502 if "error" in result else 200)
+
+
+@require_POST
+def mal_export_schedule_save(request):
+    """Create or update the user's recurring full sync to MyAnimeList."""
+    import datetime as dt
+
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    mal_account = getattr(request.user, "mal_account", None)
+    if mal_account is None or not mal_account.is_connected:
+        messages.error(request, "Connect a MyAnimeList account first.")
+        return redirect("mal_export")
+
+    frequency = request.POST.get("frequency", "daily")
+    export_time = request.POST.get("time", "03:00")
+
+    try:
+        parsed_time = dt.datetime.strptime(export_time, "%H:%M").time()  # noqa: DTZ007  # date-only value; no timezone applies
+    except ValueError:
+        messages.error(request, "Invalid schedule time.")
+        return redirect("mal_export")
+
+    if frequency == "daily":
+        day_of_week = "*"
+    elif frequency == "2days":
+        day_of_week = "*/2"
+    elif frequency == "weekly":
+        day_of_week = "0"  # Sunday
+    else:
+        messages.error(request, "Invalid schedule frequency.")
+        return redirect("mal_export")
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        hour=parsed_time.hour,
+        minute=parsed_time.minute,
+        day_of_week=day_of_week,
+        timezone=timezone.get_default_timezone(),
+    )
+
+    task_name = f"Scheduled export to MyAnimeList for {request.user.username}"
+    existing_task = PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=tasks.MAL_FULL_SYNC_TASK_NAME,
+    ).first()
+
+    if existing_task:
+        existing_task.name = task_name
+        existing_task.crontab = crontab
+        existing_task.kwargs = json.dumps({"user_id": request.user.id})
+        existing_task.enabled = True
+        existing_task.start_time = timezone.now()
+        existing_task.save(
+            update_fields=["name", "crontab", "kwargs", "enabled", "start_time"],
+        )
+    else:
+        PeriodicTask.objects.create(
+            name=task_name,
+            task=tasks.MAL_FULL_SYNC_TASK_NAME,
+            crontab=crontab,
+            kwargs=json.dumps({"user_id": request.user.id}),
+            start_time=timezone.now(),
+            enabled=True,
+        )
+
+    messages.success(request, "MyAnimeList export schedule saved.")
+    return redirect("mal_export")
+
+
+@require_POST
+def mal_export_schedule_delete(request):
+    """Delete the user's recurring full sync to MyAnimeList."""
+    from django_celery_beat.models import PeriodicTask
+
+    deleted, _ = PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=tasks.MAL_FULL_SYNC_TASK_NAME,
+    ).delete()
+    if deleted:
+        messages.success(request, "MyAnimeList export schedule deleted.")
+    else:
+        messages.error(request, "MyAnimeList export schedule not found.")
+    return redirect("mal_export")
+
+
+@require_POST
 def import_anilist_public(request):
     """View for importing anime and manga data from AniList."""
     username = request.POST.get("user")
     if not username:
         messages.error(request, "AniList username is required.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -1491,7 +2244,7 @@ def import_anilist_public(request):
             mode=mode,
             username=username,
         ) is False:
-            return redirect("import_data")
+            return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
         messages.info(request, "AniList import queued.")
     else:
         helpers.create_import_schedule(
@@ -1502,7 +2255,7 @@ def import_anilist_public(request):
             import_time=import_time,
             source="AniList",
         )
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 @require_POST
@@ -1584,6 +2337,12 @@ def import_clz(request):
         messages.error(request, "Unknown media type for the CLZ import.")
         return _integration_redirect(request)
 
+    wishlist_status = (request.POST.get("clz_wishlist_status") or "").strip() or None
+    if wishlist_status and wishlist_status not in Status.values:
+        discard_staged_upload(staged_file)
+        messages.error(request, "Unknown status for the CLZ wishlist items.")
+        return _integration_redirect(request)
+
     if _queue_staged_task_or_message(
         request,
         tasks.import_clz,
@@ -1591,6 +2350,8 @@ def import_clz(request):
         file=staged_file,
         mode=request.POST.get("mode", "new"),
         media_type=media_type,
+        wishlist_status=wishlist_status,
+        wishlist_tag=(request.POST.get("clz_wishlist_tag") or "").strip() or None,
         staged_paths=(staged_file,),
     ) is False:
         return _integration_redirect(request, connected_slug="clz")
@@ -1642,6 +2403,12 @@ def import_trakt_export_file(request):
             "The task to import collection data from the Trakt CSV file has been "
             "queued.",
         )
+        return _integration_redirect(request, connected_slug="trakt")
+
+    if mode not in helpers.TRAKT_EXPORT_MODES:
+        for path in staged_files:
+            discard_staged_upload(path)
+        messages.error(request, helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE)
         return _integration_redirect(request, connected_slug="trakt")
 
     if len(payloads) == 1 and staged_payload_is_zip(payloads[0][1]):
@@ -1765,6 +2532,32 @@ def import_hltb(request):
 
 
 @require_POST
+def import_playnite(request):
+    """View for importing a Playnite library CSV backup."""
+    file = request.FILES.get("playnite_csv")
+
+    if not file:
+        messages.error(request, "A Playnite CSV file is required.")
+        return _integration_redirect(request)
+
+    staged_file = _stage_upload_or_message(request, file, "Playnite CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_playnite,
+        user_id=request.user.id,
+        file=staged_file,
+        mode=request.POST["mode"],
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="playnite")
+    messages.info(request, "The Playnite library import has been queued.")
+    return _integration_redirect(request, connected_slug="playnite")
+
+
+@require_POST
 def import_grouvee(request):
     """View for importing game data from a Grouvee export (JSON or zip)."""
     file = request.FILES.get("grouvee_json")
@@ -1881,18 +2674,17 @@ def radarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=RADARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="radarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="radarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "radarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Radarr", _disconnect)
     messages.info(request, "Disconnected Radarr.")
     return redirect("import_data")
@@ -1972,18 +2764,17 @@ def mylar_disconnect(request):
             task=MYLAR_RECURRING_TASK_NAME,
         ).delete()
         # Through the reconciling helper, so copies only Mylar3 created go too.
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="mylar", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="mylar",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "mylar",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Mylar3", _disconnect)
     messages.info(request, "Disconnected Mylar3.")
     return redirect("import_data")
@@ -2153,18 +2944,17 @@ def sonarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=SONARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="sonarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="sonarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "sonarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Sonarr", _disconnect)
     messages.info(request, "Disconnected Sonarr.")
     return redirect("import_data")
@@ -2189,12 +2979,17 @@ def import_sonarr(request):
 @require_POST
 def jellyfin_connect(request):
     """Connect a Jellyfin server using base URL + API key."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
+    )
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
     username = request.POST.get("username", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Jellyfin base URL and API key are required.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     client = JellyfinClient(base_url, api_key)
     try:
@@ -2204,7 +2999,7 @@ def jellyfin_connect(request):
             current_user = client.find_user_by_name(username)
     except (JellyfinAuthError, JellyfinClientError) as exc:
         messages.error(request, f"Failed to connect to Jellyfin: {exc}")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if not current_user or not current_user.get("Id"):
         messages.error(
@@ -2213,7 +3008,7 @@ def jellyfin_connect(request):
             "Dashboard API keys are not tied to a user, so enter the exact "
             "Jellyfin username in the username field and try again.",
         )
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     existing_account = getattr(request.user, "jellyfin_account", None)
     identity_changed = existing_account is not None and (
@@ -2261,12 +3056,17 @@ def jellyfin_connect(request):
             request,
             "Connected Jellyfin. Importing your watch history now.",
         )
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_disconnect(request):
     """Disconnect the Jellyfin integration."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
+    )
 
     def _disconnect():
         _disable_jellyfin_push_schedule(request.user)
@@ -2275,16 +3075,21 @@ def jellyfin_disconnect(request):
 
     _run_with_lock_retry("disconnect Jellyfin", _disconnect)
     messages.info(request, "Disconnected Jellyfin.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_settings(request):
     """Update Jellyfin push-sync and history-pull toggles."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account:
         messages.error(request, "Connect Jellyfin before changing sync settings.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     account.push_watched_enabled = "push_watched_enabled" in request.POST
     account.push_unwatched_enabled = "push_unwatched_enabled" in request.POST
@@ -2312,57 +3117,72 @@ def jellyfin_settings(request):
         _disable_jellyfin_pull_schedule(request.user)
 
     messages.success(request, "Jellyfin sync settings updated.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_push_now(request):
     """Queue an immediate Jellyfin watched-state push."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account:
         messages.error(request, "Connect Jellyfin before syncing.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_task_or_message(request, tasks.push_jellyfin_watched, user_id=request.user.id) is not False:
         messages.info(request, "Jellyfin sync queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_pull_now(request):
     """Queue an immediate automatic Jellyfin history pull."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     # A broken account is still queued: the pull re-probes the key and clears
     # the flag when it works again.
     if not account or not account.base_url or not account.api_key:
         messages.error(request, "Connect Jellyfin before importing history.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_task_or_message(request, tasks.pull_jellyfin_history, user_id=request.user.id) is not False:
         messages.info(request, "Jellyfin history import queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_playback_reporting_import(request):
     """Queue a manual Playback Reporting TSV import for the connected user."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account or not account.is_connected:
         messages.error(request, "Connect Jellyfin before importing Playback Reporting data.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     uploaded_file = request.FILES.get("playback_reporting_file")
     if not uploaded_file:
         messages.error(request, "Choose a Playback Reporting TSV export first.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if uploaded_file.size > JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES:
         messages.error(request, "The Playback Reporting export is larger than 50 MB.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if uploaded_file.size == 0:
         messages.error(request, "The Playback Reporting export is empty.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     staged_file = _stage_upload_or_message(
         request,
@@ -2370,7 +3190,7 @@ def jellyfin_playback_reporting_import(request):
         "Jellyfin Playback Reporting export",
     )
     if staged_file is None:
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_staged_task_or_message(
         request,
@@ -2380,9 +3200,9 @@ def jellyfin_playback_reporting_import(request):
         "new",
         staged_paths=(staged_file,),
     ) is False:
-        return redirect("integrations")
+        return redirect(redirect_target)
     messages.info(request, "Jellyfin Playback Reporting import queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 def _ensure_recurring_import_schedule(user, label, poll_interval_minutes):
@@ -2494,7 +3314,7 @@ def audiobookshelf_disconnect(request):
 
     _run_with_lock_retry("disconnect Audiobookshelf", _disconnect)
     messages.info(request, "Disconnected Audiobookshelf.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 @require_POST
@@ -2503,7 +3323,7 @@ def import_audiobookshelf(request):
     account = getattr(request.user, "audiobookshelf_account", None)
     if not account:
         messages.error(request, "Connect Audiobookshelf before importing.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     queued = _queue_task_or_message(request,
         tasks.import_audiobookshelf, user_id=request.user.id, mode="new"
@@ -2512,7 +3332,7 @@ def import_audiobookshelf(request):
 
     if queued is not False:
         messages.info(request, "Audiobookshelf import queued.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 def _sync_interval(request, account_model, default=15):
@@ -2641,6 +3461,24 @@ def import_kavita(request):
     return _reading_server_sync_now(
         request, "Kavita", "kavita_account", tasks.import_kavita
     )
+
+
+@require_POST
+def refresh_kavita(request):
+    """Queue a full Kavita rescan with provider re-resolution."""
+    account = getattr(request.user, "kavita_account", None)
+    if not account:
+        messages.error(request, "Connect Kavita before refreshing.")
+        return redirect("import_data")
+    queued = _queue_task_or_message(
+        request,
+        tasks.import_kavita,
+        user_id=request.user.id,
+        mode="overwrite",
+    )
+    if queued is not False:
+        messages.info(request, "Kavita metadata refresh queued.")
+    return redirect("import_data")
 
 
 AUDIOBOOKSHELF_COVER_TIMEOUT = 15
@@ -2994,7 +3832,8 @@ def plex_cover(request, token):
         return fallback()
 
     try:
-        upstream = requests.get(
+        upstream = send_to_self_hosted(
+            requests.get,
             f"{uri}{thumb_path}",
             params={"X-Plex-Token": plex_token},
             timeout=PLEX_COVER_TIMEOUT,
@@ -3109,7 +3948,7 @@ def storyteller_connect(request):
         return _integration_redirect(request)
 
     expires_in = int(data.get("expires_in") or 600)
-    request.session[STORYTELLER_PENDING_SESSION_KEY] = {
+    pending_auth.put(STORYTELLER_PENDING_SESSION_KEY, request.user.pk, {
         "server_url": server_url,
         "device_code": device_code,
         "user_code": data.get("user_code") or "",
@@ -3122,8 +3961,7 @@ def storyteller_connect(request):
         ),
         "interval": int(data.get("interval") or 5),
         "expires_at": (timezone.now() + timedelta(seconds=expires_in)).isoformat(),
-    }
-    request.session.modified = True
+    }, ttl=expires_in)
     messages.info(
         request, "Approve the login on your Storyteller server to finish connecting."
     )
@@ -3133,20 +3971,22 @@ def storyteller_connect(request):
 @require_GET
 def storyteller_poll(request):
     """Poll Storyteller for the access token during device login."""
-    pending = request.session.get(STORYTELLER_PENDING_SESSION_KEY)
+    pending = pending_auth.get(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     if not pending:
         return JsonResponse({"status": "idle"})
 
     expires_at = pending.get("expires_at")
     if expires_at and timezone.now() > datetime.fromisoformat(expires_at):
-        request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+        pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
         return JsonResponse({"status": "expired"})
 
     client = StorytellerClient(pending["server_url"])
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
     except Exception as exc:
-        return JsonResponse({"status": "pending", "detail": str(exc)})
+        # requests errors carry the server URL: log the class, answer plainly.
+        logger.warning("Storyteller device poll failed: %s", exception_summary(exc))
+        return JsonResponse({"status": "pending"})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
     if access_token:
@@ -3164,7 +4004,7 @@ def storyteller_poll(request):
             _ensure_storyteller_schedule(request.user)
 
         _run_with_lock_retry("connect Storyteller", _connect)
-        request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+        pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
         if not _queue_task_quietly(
             tasks.import_storyteller, user_id=request.user.id, mode="new"
         ):
@@ -3178,14 +4018,14 @@ def storyteller_poll(request):
     ):
         return JsonResponse({"status": "pending"})
 
-    request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+    pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     return JsonResponse({"status": "error", "message": error or "Login failed."})
 
 
 @require_POST
 def storyteller_cancel(request):
     """Cancel an in-progress Storyteller device login."""
-    request.session.pop(STORYTELLER_PENDING_SESSION_KEY, None)
+    pending_auth.clear(STORYTELLER_PENDING_SESSION_KEY, request.user.pk)
     messages.info(request, "Storyteller login cancelled.")
     return redirect("import_data")
 
@@ -4813,6 +5653,36 @@ def import_storygraph(request):
 
 
 @require_POST
+def import_youtube_takeout(request):
+    """View for importing YouTube watch history from a Google Takeout file."""
+    file = request.FILES.get("youtube_takeout")
+
+    if not file:
+        messages.error(request, "A YouTube watch history file is required.")
+        return _integration_redirect(request)
+
+    staged_file = _stage_upload_or_message(request, file, "YouTube watch history")
+    if staged_file is None:
+        return _integration_redirect(request)
+
+    mode = request.POST["mode"]
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_youtube_takeout,
+        user_id=request.user.id,
+        file=staged_file,
+        mode=mode,
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request)
+    messages.info(
+        request,
+        "The task to import your YouTube watch history has been queued.",
+    )
+    return _integration_redirect(request)
+
+
+@require_POST
 def import_tvtime(request):
     """View for importing watch history from TV Time's GDPR export CSVs."""
     shows_file = request.FILES.get("tvtime_shows_csv")
@@ -4930,8 +5800,7 @@ def jellyfin_webhook(request, token):
         user = users.models.User.objects.get(token=token, is_active=True)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Jellyfin webhook: Invalid token: %s",
-            token,
+            "Could not process Jellyfin webhook: Invalid token",
         )
         return HttpResponse(status=401)
 
@@ -4946,7 +5815,13 @@ def jellyfin_webhook(request, token):
         return HttpResponse("Invalid JSON", status=400)
     if not isinstance(payload, dict):
         return HttpResponse("Invalid payload", status=400)
-    if not _queue_task_quietly(tasks.process_webhook, "jellyfin", payload, user.id):
+    if not _queue_task_quietly(
+        tasks.process_webhook,
+        "jellyfin",
+        payload,
+        user.id,
+        **_webhook_request_fields(payload, "jellyfin", user.id),
+    ):
         return HttpResponse(status=503)
     return HttpResponse(status=200)
 
@@ -4960,8 +5835,7 @@ def plex_webhook(request, token):
         user = users.models.User.objects.get(token=token, is_active=True)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Plex webhook: Invalid token: %s",
-            token,
+            "Could not process Plex webhook: Invalid token",
         )
         return HttpResponse(status=401)
 
@@ -4983,12 +5857,14 @@ def plex_webhook(request, token):
         user.mark_plex_webhook_error("Invalid JSON payload in Plex webhook request")
         return HttpResponse("Invalid payload", status=400)
 
-    event_type = payload.get("event")
-    logger.info(
-        "Received Plex webhook request - Event: %s, User: %s", event_type, user.username
+    request_fields = _webhook_request_fields(payload, "plex", user.id)
+    queued = _queue_task_quietly(
+        tasks.process_webhook,
+        "plex",
+        payload,
+        user.id,
+        **request_fields,
     )
-
-    queued = _queue_task_quietly(tasks.process_webhook, "plex", payload, user.id)
     payload_usernames = extract_plex_webhook_usernames(payload)
     for share in PlexWebhookShare.objects.filter(
         owner=user,
@@ -5002,6 +5878,7 @@ def plex_webhook(request, token):
                 payload,
                 share.recipient_id,
                 share_id=share.id,
+                **request_fields,
             )
     if not queued:
         return HttpResponse(status=503)
@@ -5017,8 +5894,7 @@ def emby_webhook(request, token):
         user = users.models.User.objects.get(token=token, is_active=True)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Emby webhook: Invalid token: %s",
-            token,
+            "Could not process Emby webhook: Invalid token",
         )
         return HttpResponse(status=401)
 
@@ -5036,7 +5912,13 @@ def emby_webhook(request, token):
         return HttpResponse("Invalid JSON", status=400)
     if not isinstance(payload, dict):
         return HttpResponse("Invalid payload", status=400)
-    if not _queue_task_quietly(tasks.process_webhook, "emby", payload, user.id):
+    if not _queue_task_quietly(
+        tasks.process_webhook,
+        "emby",
+        payload,
+        user.id,
+        **_webhook_request_fields(payload, "emby", user.id),
+    ):
         return HttpResponse(status=503)
     return HttpResponse(status=200)
 
@@ -5051,8 +5933,7 @@ def jellyseerr_webhook(request, token):
         user = users.models.User.objects.get(token=token, is_active=True)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Seerr webhook: Invalid token: %s",
-            token,
+            "Could not process Seerr webhook: Invalid token",
         )
         return HttpResponse(status=401)
 
@@ -5145,8 +6026,7 @@ def kodi_webhook(request, token):
         user = users.models.User.objects.get(token=token, is_active=True)
     except ObjectDoesNotExist:
         logger.warning(
-            "Could not process Kodi webhook: Invalid token: %s",
-            token,
+            "Could not process Kodi webhook: Invalid token",
         )
         return HttpResponse(status=401)
 
@@ -5161,7 +6041,13 @@ def kodi_webhook(request, token):
         logger.warning("Invalid JSON payload in Kodi webhook request")
         return HttpResponse("Invalid JSON", status=400)
 
-    if not _queue_task_quietly(tasks.process_webhook, "kodi", payload, user.id):
+    if not _queue_task_quietly(
+        tasks.process_webhook,
+        "kodi",
+        payload,
+        user.id,
+        **_webhook_request_fields(payload, "kodi", user.id),
+    ):
         return HttpResponse(status=503)
     return HttpResponse(status=200)
 
@@ -5169,21 +6055,42 @@ def kodi_webhook(request, token):
 STREMIO_ADDON_MANIFEST = {
     # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "name": "Floppy",
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["catalog", "meta", "subtitles"],
+    # `player` and `library` are additive: a client that predates them parses
+    # the manifest, never matches the resource, and never calls the route.
+    "resources": ["catalog", "meta", "subtitles", "player", "library"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
     "behaviorHints": {"configurable": True, "configurationRequired": False},
 }
+# The player and library resources sit behind a kill switch so the manifest can
+# withdraw them without a code change. Only an explicit falsy value disables
+# them; declaring them is inert on clients that predate the resources.
+STREMIO_PLAYER_RESOURCES = ("player", "library")
+STREMIO_DISABLED_ENV_VALUES = {"0", "false", "no"}
+
+
+def _stremio_manifest_resources():
+    """Return the manifest resources, honoring the player/library kill switch."""
+    resources = list(STREMIO_ADDON_MANIFEST["resources"])
+    setting = os.environ.get("STREMIO_ENABLE_PLAYER_RESOURCE", "").strip().lower()
+    if setting in STREMIO_DISABLED_ENV_VALUES:
+        return [name for name in resources if name not in STREMIO_PLAYER_RESOURCES]
+    return resources
+
+
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
 STREMIO_MAX_MEDIA_ID_LENGTH = 128
 STREMIO_MEDIA_ID_PATTERN = re.compile(
-    r"^tt[0-9]+(?::[1-9][0-9]*:[1-9][0-9]*)?$",
+    # Season 0 is Stremio's specials bucket; episodes start at 1. Both bounds
+    # mirror MAX_EPISODE_COORDINATE so the route and the tracker agree on what
+    # is malformed.
+    r"^tt[0-9]+(?::[0-9]{1,4}:[1-9][0-9]{0,3})?$",
 )
 
 
@@ -5192,6 +6099,70 @@ def _stremio_addon_response(payload, status=200):
     response = JsonResponse(payload, status=status)
     response["Access-Control-Allow-Origin"] = "*"
     return response
+
+def _stremio_validated_media_id(
+    token,
+    media_type,
+    media_id,
+    *,
+    rejected,
+    forbidden=None,
+    allow_episode_id=False,
+):
+    """Authenticate an addon request and validate the media id it names.
+
+    Returns `(user, grant, media_id)` when the request may proceed, and the
+    response to send in its place otherwise. Every event route gates on this
+    same pair, so it lives here rather than four times over.
+
+    Each resource answers a refusal with its own protocol shape — Stremio
+    renders none of them, so `meta` sends an empty object, `subtitles` an empty
+    list (with a 200, since a subtitles request has no error to report), and
+    the write routes a `success` flag — so the caller passes its own
+    `(payload, status)`: `rejected` for a media id the pattern does not accept,
+    and `forbidden` for a grant minted without playback permission. A `None`
+    `forbidden` means the resource performs no write and needs no such gate.
+
+    The id is client-supplied and is bound into the tracker's queries, so it is
+    validated here rather than handed to a handler. `allow_episode_id` relaxes
+    the movie rule for `meta`, which answers for whatever id it is asked about
+    rather than writing playback for it.
+    """
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
+        logger.warning("Invalid token on Stremio addon request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    if forbidden is not None and grant is not None and not grant.allow_playback_start:
+        # These resources record playback, which is a write. A grant minted
+        # without that permission serves catalogs and nothing else.
+        logger.info(
+            "stremio_addon rejected reason=grant_excludes_playback_start "
+            "user_id=%s media_type=%s",
+            user.id,
+            media_type,
+        )
+        return _stremio_addon_response(*forbidden)
+
+    media_id = unquote(media_id)
+    malformed = (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+        or (not allow_episode_id and media_type == "movie" and ":" in media_id)
+    )
+    if malformed:
+        # The id is logged only up to the bound the pattern itself enforces.
+        logger.info(
+            "stremio_addon rejected reason=invalid_media_id user_id=%s "
+            "media_type=%s media_id=%s",
+            user.id,
+            media_type,
+            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
+        )
+        return _stremio_addon_response(*rejected)
+
+    return user, grant, media_id
 
 
 @login_not_required
@@ -5231,8 +6202,8 @@ def stremio_addon_catalog(
 
     try:
         skip = stremio_catalog.parse_skip(extra)
-    except ValueError as error:
-        return _stremio_addon_response({"error": str(error)}, status=400)
+    except stremio_catalog.CatalogSkipError as error:
+        return _stremio_addon_response({"error": error.message}, status=400)
 
     metas, unresolved_count = stremio_catalog.project_catalog(user, spec, skip)
     logger.info(
@@ -5255,12 +6226,33 @@ def stremio_addon_configure(request, token, config=None):
         logger.warning("Invalid token on Stremio addon configure request")
         return HttpResponse("Invalid token", status=401)
 
+    catalog_options = stremio_catalog.catalog_options(user)
+    selected_ids = list(stremio_catalog.parse_catalog_config(config))
+    props = {
+        "options": catalog_options,
+        "selectedIds": selected_ids,
+        "labels": {
+            "catalogs": gettext("Catalogs"),
+            "hint": gettext(
+                "Use the URL below, not the address of this page. It works "
+                "in Stremio directly, or in an addon manager such as "
+                "AIOStreams or AIOMetadata."
+            ),
+            "copy": gettext("Copy URL"),
+            "copied": gettext("Copied."),
+            "install": gettext("Install in Stremio"),
+            "noneSelected": gettext(
+                "Nothing selected. The default catalogs will be used."
+            ),
+        },
+    }
     return render(
         request,
         "integrations/stremio_configure.html",
         {
-            "catalog_options": stremio_catalog.catalog_options(user),
-            "selected_ids": list(stremio_catalog.parse_catalog_config(config)),
+            "catalog_options": catalog_options,
+            "selected_ids": selected_ids,
+            "stremio_config_props": props,
         },
     )
 
@@ -5283,6 +6275,9 @@ def stremio_addon_manifest(request, token, config=None):
         "logo": request.build_absolute_uri(
             static("favicon/apple-touch-icon.png"),
         ),
+        # The kill switch withdraws the player/library resources from what
+        # clients see; the routes themselves are unconditional.
+        "resources": _stremio_manifest_resources(),
         # Both gates: the install URL picks the catalogs, the grant bounds them.
         "catalogs": stremio_catalog.manifest_catalogs_for_grant(
             user,
@@ -5298,18 +6293,16 @@ def stremio_addon_manifest(request, token, config=None):
 @require_GET
 def stremio_addon_meta(request, token, media_type, media_id):
     """Serve metadata for one item the user tracks."""
-    user, grant = stremio_catalog.resolve_addon_credential(token)
-    if user is None:
-        logger.warning("Invalid token on Stremio addon meta request")
-        return _stremio_addon_response({"error": "Invalid token"}, status=401)
-
-    media_id = unquote(media_id)
-    if (
-        media_type not in {"movie", "series"}
-        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
-        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
-    ):
-        return _stremio_addon_response({"meta": {}}, status=400)
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"meta": {}}, 400),
+        allow_episode_id=True,
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, grant, media_id = validated
 
     if grant is not None:
         stremio_catalog.touch_grant(grant)
@@ -5326,35 +6319,20 @@ def stremio_addon_meta(request, token, media_type, media_id):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
+def stremio_addon_subtitles(request, token, media_type, media_id, extra=None, config=None):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 
-    user, grant = stremio_catalog.resolve_addon_credential(token)
-    if user is None:
-        logger.warning("Invalid token on Stremio addon subtitles request")
-        return _stremio_addon_response({"error": "Invalid token"}, status=401)
-    if grant is not None and not grant.allow_playback_start:
-        # This route records a playback start, which is a write. A grant minted
-        # without that permission serves catalogs and nothing else.
-        logger.info("stremio_subtitles rejected reason=grant_excludes_playback_start")
-        return _stremio_addon_response({"subtitles": []})
-
-    media_id = unquote(media_id)
-    if (
-        media_type not in {"movie", "series"}
-        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
-        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
-        or (media_type == "movie" and ":" in media_id)
-    ):
-        logger.info(
-            "stremio_queue status=limited reason=invalid_media_id user_id=%s "
-            "media_type=%s media_id=%s",
-            user.id,
-            media_type,
-            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
-        )
-        return _stremio_addon_response({"subtitles": []})
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"subtitles": []}, 200),
+        forbidden=({"subtitles": []}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
 
     # Stremio re-requests subtitles on seeks and quality changes; only the
     # first request per item in the window records a scrobble.
@@ -5370,6 +6348,20 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
             user.id,
         )
     elif throttle_added:
+        # Reported, not used: Stremio appends the selected release's
+        # `videoHash`/`videoSize`/`filename` here, and Floppy has always
+        # discarded them. One line per item per throttle window is enough to
+        # decide whether they are worth reading.
+        extras = stremio_events.parse_subtitles_video_extras(extra)
+        logger.info(
+            "stremio_subtitles_extras user_id=%s media_type=%s videoHash=%s "
+            "videoSize=%s filename=%s",
+            user.id,
+            media_type,
+            extras["videoHash"],
+            extras["videoSize"],
+            extras["filename"],
+        )
         queue_member = stremio_queue.member(media_type, media_id)
         queue_status = stremio_queue.reserve_pending(user.id, queue_member)
         if queue_status == "accepted":
@@ -5404,6 +6396,83 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
             )
 
     return _stremio_addon_response({"subtitles": []})
+
+
+def _dispatch_stremio_tracker_event(kind, user, media_type, media_id, extra):
+    """Queue one player or library event so the web worker never does its writes.
+
+    A first-viewed episode can ask the provider for season metadata and a batched
+    library event writes up to a hundred rows, so both run on the Celery worker.
+    Stremio ignores the body and a 500 only makes the client retry, so a dispatch
+    failure is logged and accepted.
+    """
+    try:
+        tasks.process_stremio_tracker_event.delay(
+            kind,
+            user.id,
+            media_type,
+            media_id,
+            extra,
+            timezone.now().isoformat(),
+        )
+    except Exception:
+        logger.exception("stremio_%s status=dispatch_failed user_id=%s", kind, user.id)
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_player(
+    request,
+    token,
+    media_type,
+    media_id,
+    extra=None,
+    config=None,
+):
+    """Record one Stremio player event (start/pause/stop with position)."""
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"success": False}, 400),
+        forbidden=({"success": True}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
+
+    _dispatch_stremio_tracker_event("player", user, media_type, media_id, extra)
+
+    return _stremio_addon_response({"success": True})
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_library(
+    request,
+    token,
+    media_type,
+    media_id,
+    extra=None,
+    config=None,
+):
+    """Record one Stremio library event (watched/unwatched/add/remove)."""
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"success": False}, 400),
+        forbidden=({"success": True}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
+
+    _dispatch_stremio_tracker_event("library", user, media_type, media_id, extra)
+
+    return _stremio_addon_response({"success": True})
 
 
 @require_POST

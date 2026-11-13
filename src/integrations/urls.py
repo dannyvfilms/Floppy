@@ -1,8 +1,27 @@
 from django.urls import path, re_path
 
-from integrations import views
+from integrations import tmdb_views, views, wetrakr_views
 
 urlpatterns = [
+    path("tmdb/connect", tmdb_views.tmdb_connect, name="tmdb_connect"),
+    path("tmdb/callback", tmdb_views.tmdb_callback, name="tmdb_callback"),
+    path("tmdb/settings", tmdb_views.tmdb_settings, name="tmdb_settings"),
+    path("tmdb/disconnect", tmdb_views.tmdb_disconnect, name="tmdb_disconnect"),
+    path(
+        "tmdb/export-ratings",
+        tmdb_views.tmdb_export_ratings,
+        name="tmdb_export_ratings",
+    ),
+    path("wetrakr/connect", wetrakr_views.wetrakr_connect, name="wetrakr_connect"),
+    path("wetrakr/poll", wetrakr_views.wetrakr_poll, name="wetrakr_poll"),
+    path("wetrakr/cancel", wetrakr_views.wetrakr_cancel, name="wetrakr_cancel"),
+    path("wetrakr/settings", wetrakr_views.wetrakr_settings, name="wetrakr_settings"),
+    path(
+        "wetrakr/disconnect",
+        wetrakr_views.wetrakr_disconnect,
+        name="wetrakr_disconnect",
+    ),
+    path("wetrakr/export", wetrakr_views.wetrakr_export, name="wetrakr_export"),
     path(
         "matches/<int:item_id>/",
         views.match_fix,
@@ -79,6 +98,7 @@ urlpatterns = [
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
     path("import/clz", views.import_clz, name="import_clz"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
+    path("import/playnite", views.import_playnite, name="import_playnite"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
     path("import/radarr/connect", views.radarr_connect, name="radarr_connect"),
@@ -122,6 +142,11 @@ urlpatterns = [
     path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
     path("import/storygraph", views.import_storygraph, name="import_storygraph"),
+    path(
+        "import/youtube-takeout",
+        views.import_youtube_takeout,
+        name="import_youtube_takeout",
+    ),
     path("import/tvtime", views.import_tvtime, name="import_tvtime"),
     path("import/wetrakr", views.import_wetrakr, name="import_wetrakr"),
     path(
@@ -158,6 +183,11 @@ urlpatterns = [
         "import/kavita",
         views.import_kavita,
         name="import_kavita",
+    ),
+    path(
+        "import/kavita/refresh",
+        views.refresh_kavita,
+        name="refresh_kavita",
     ),
     path(
         "import/komga/connect",
@@ -245,6 +275,71 @@ urlpatterns = [
         name="import_lastfm_history",
     ),
     path("import/lastfm/poll", views.poll_lastfm_manual, name="poll_lastfm_manual"),
+    path("sync/mal/connect", views.mal_oauth, name="mal_oauth"),
+    path("sync/mal/callback", views.mal_callback, name="mal_callback"),
+    path("sync/mal/disconnect", views.mal_disconnect, name="mal_disconnect"),
+    path("sync/mal/toggle", views.mal_toggle, name="mal_toggle"),
+    path(
+        "sync/mal/toggle-per-item",
+        views.mal_per_item_sync_toggle,
+        name="mal_per_item_sync_toggle",
+    ),
+    path(
+        "sync/mal/filters",
+        views.mal_sync_filters_save,
+        name="mal_sync_filters_save",
+    ),
+    path(
+        "sync/mal/episode-mapping",
+        views.mal_episode_mapping_save,
+        name="mal_episode_mapping_save",
+    ),
+    path(
+        "sync/mal/episode-mapping/revert",
+        views.mal_episode_mapping_revert,
+        name="mal_episode_mapping_revert",
+    ),
+    path(
+        "sync/mal/mapping-ignore",
+        views.mal_mapping_ignore,
+        name="mal_mapping_ignore",
+    ),
+    path(
+        "sync/mal/mapping-search",
+        views.mal_mapping_search,
+        name="mal_mapping_search",
+    ),
+    path(
+        "sync/mal/mapping-episodes",
+        views.mal_mapping_episodes,
+        name="mal_mapping_episodes",
+    ),
+    path(
+        "sync/mal/full/preview",
+        views.mal_full_sync_preview,
+        name="mal_full_sync_preview",
+    ),
+    path(
+        "sync/mal/full/status",
+        views.mal_full_sync_status,
+        name="mal_full_sync_status",
+    ),
+    path("sync/mal/full", views.mal_full_sync, name="mal_full_sync"),
+    path(
+        "sync/mal/full/retry-failed",
+        views.mal_full_sync_retry_failed,
+        name="mal_full_sync_retry_failed",
+    ),
+    path(
+        "sync/mal/export/schedule",
+        views.mal_export_schedule_save,
+        name="mal_export_schedule_save",
+    ),
+    path(
+        "sync/mal/export/schedule/delete",
+        views.mal_export_schedule_delete,
+        name="mal_export_schedule_delete",
+    ),
     path("import/koito/connect", views.koito_connect, name="koito_connect"),
     path("import/koito/disconnect", views.koito_disconnect, name="koito_disconnect"),
     path(
@@ -334,7 +429,8 @@ urlpatterns = [
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)"
+        r"(?:/(?P<extra>[^/]*))?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles_configured",
     ),
@@ -354,8 +450,43 @@ urlpatterns = [
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/.*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)"
+        # The extra carries the release filename, which routinely contains a
+        # slash, so it must span path segments. Upstream matched this tail with
+        # a wildcard; capturing it must not narrow what the route accepts.
+        r"(?:/(?P<extra>.*))?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles",
+    ),
+    # `player` and `library` capture the extra: position and duration travel in
+    # it. So does `subtitles`, whose extra carries the selected release's
+    # `videoHash`/`videoSize`/`filename`; it is reported, not yet used.
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/player/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_player,
+        name="stremio_addon_player_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/player/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_player,
+        name="stremio_addon_player",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/library/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_library,
+        name="stremio_addon_library_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/library/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_library,
+        name="stremio_addon_library",
     ),
 ]

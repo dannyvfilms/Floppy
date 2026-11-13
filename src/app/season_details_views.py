@@ -105,6 +105,17 @@ def season_details(
         season_number=season_number,
     )
     render_secondary_only = request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
+    initial_carousel = (
+        carousel_media.resolve_carousel_media(
+            MediaTypes.SEASON.value,
+            source,
+            media_id,
+            season_number=season_number,
+            cached_only=True,
+        )
+        if carousel_supported and not render_secondary_only
+        else None
+    )
     defer_detail_secondary = not render_secondary_only
     detail_return_url = _detail_request_url(request)
     detail_carousel_fragment_url = (
@@ -425,6 +436,9 @@ def season_details(
         # tracking-user lookup) that are identical for every episode in the
         # same season — an N+1 that only shows up on a season's first view,
         # when every episode is being created for the first time.
+        from events.calendar.helpers import date_parser
+        from events.models import is_released_datetime
+
         parsed_episodes = []
         episode_numbers = []
         for episode in raw_episodes:
@@ -441,16 +455,20 @@ def season_details(
             # even once the provider does have its air date.
             raw_air_date = episode.get("air_date")
             # Episode provider dates are calendar dates, even when a provider
-            # has already wrapped one in a datetime. Persist UTC midnight so a
-            # shared Item does not depend on the timezone of the first viewer.
+            # has already wrapped one in a datetime. Persist the unknown-time
+            # sentinel so a shared Item does not depend on the timezone of the
+            # first viewer, and release state treats it as an all-day date.
             normalized_air_date = (
-                raw_air_date.date().isoformat()
+                raw_air_date.date()
                 if isinstance(raw_air_date, datetime)
                 else raw_air_date
             )
-            air_date_dt = helpers.extract_release_datetime(
-                {"release_date": normalized_air_date},
-            )
+            try:
+                air_date_dt = (
+                    date_parser(normalized_air_date) if normalized_air_date else None
+                )
+            except (ValueError, TypeError):
+                air_date_dt = None
             if air_date_dt and (
                 air_date_dt.year <= MIN_PLAUSIBLE_YEAR
                 or air_date_dt.year == UNKNOWN_RELEASE_YEAR
@@ -524,7 +542,7 @@ def season_details(
                 runtime_minutes = (
                     int(episode["runtime"]) if episode["runtime"] > 0 else None
                 )
-            elif air_date_dt and air_date_dt <= current_datetime:
+            elif air_date_dt and is_released_datetime(air_date_dt, current_datetime):
                 # Episode has aired but no runtime - mark as unknown (use 999998)
                 runtime_minutes = 999998
 
@@ -595,25 +613,10 @@ def season_details(
             )
 
         if episodes_to_update or release_datetime_updates:
-            # Invalidate time_left + media_list cache for all users
-            from app.cache_utils import (
-                clear_media_list_cache_for_user,
-                clear_time_left_cache_for_user,
-            )
+            # Every user tracking this show sees the new runtimes and air dates.
+            from app.cache_utils import EPISODE_DETAILS, clear_show_view_caches
 
-            # Get all users who track this show
-            tracking_users = (
-                BasicMedia.objects.filter(
-                    item__media_id=media_id,
-                    item__source=source,
-                    item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
-                )
-                .values_list("user_id", flat=True)
-                .distinct()
-            )
-            for user_id in tracking_users:
-                clear_time_left_cache_for_user(user_id)
-                clear_media_list_cache_for_user(user_id)
+            clear_show_view_caches(media_id, source, EPISODE_DETAILS)
 
         # bulk_create() above doesn't fire Item's post_save signal, so
         # explicitly (and only once for the whole season, not once per
@@ -813,18 +816,37 @@ def season_details(
             # Check if the show has collection data, and trigger background fetch if not
             # We check the show item (not season) because episode collection data is tied to the show
             try:
-                # Use parent_media_type to pick the correct show Item (anime vs TV)
-                # so we don't hit MultipleObjectsReturned when both exist.
-                show_media_type = (
-                    MediaTypes.ANIME.value
-                    if parent_media_type == MediaTypes.ANIME.value
-                    else MediaTypes.TV.value
-                )
-                show_item = ItemModel.objects.get(
-                    media_id=media_id,
-                    source=source,
-                    media_type=show_media_type,
-                )
+                if current_instance is not None:
+                    # A tracked season owns its parent identity, even when the
+                    # route resolves it from a different library bucket.
+                    show_item = current_instance.related_tv.item
+                else:
+                    show_library_media_type = (
+                        MediaTypes.ANIME.value
+                        if parent_media_type == MediaTypes.ANIME.value
+                        else MediaTypes.TV.value
+                    )
+                    show_items = ItemModel.objects.filter(
+                        media_id=media_id,
+                        source=source,
+                        library_media_type=show_library_media_type,
+                        season_number__isnull=True,
+                        episode_number__isnull=True,
+                    )
+                    # Grouped anime uses TV identities; older anime identities
+                    # can still supply collection data when no TV item exists.
+                    show_item = show_items.filter(
+                        media_type=MediaTypes.TV.value
+                    ).first()
+                    if (
+                        show_item is None
+                        and show_library_media_type == MediaTypes.ANIME.value
+                    ):
+                        show_item = show_items.filter(
+                            media_type=MediaTypes.ANIME.value
+                        ).first()
+                    if show_item is None:
+                        raise ItemModel.DoesNotExist  # noqa: TRY301 - skip auto-fetch when no scoped show exists
                 show_collection_entry = get_item_collection_entries(
                     request.user, show_item
                 ).first()
@@ -1067,6 +1089,7 @@ def season_details(
         "defer_detail_secondary": defer_detail_secondary,
         "render_secondary_only": render_secondary_only,
         "carousel_supported": carousel_supported,
+        "initial_carousel": initial_carousel,
         "detail_carousel_fragment_url": detail_carousel_fragment_url,
         **_build_detail_person_rows(season_metadata),
     }

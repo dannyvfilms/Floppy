@@ -263,7 +263,6 @@ The reviewed domain label is **Metadata & provider tokens**.
 | `mcp_server/README.md` | Currently documents user `manage_settings` and the API token location. Update only if the MCP contract or token location changes. |
 | `src/api/schema.py`, `src/api/serializers.py`, `src/api/views.py`, `src/config/urls.py` | OpenAPI is generated at `/api/schema/`; there is no checked-in generated schema file. Update source annotations only if a credential API is intentionally exposed. |
 | `docs/agents/metadata-backfill.md`, `docs/agents/media_type_integration.md`, `docs/agents/lastfm_integration.md` | Provider/backfill guidance must use the resolver once it exists. |
-| `docs/agents/dev_release_diff_report.md` | Temporary release/wiki staging document contains provider configuration references; reconcile it only if it remains active when the feature lands. |
 | Project wiki | The local `wiki/` checkout is empty here. The README links external configuration and API pages; update the separate wiki repository during release work. |
 
 ## Future resolver contract

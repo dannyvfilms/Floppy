@@ -2,14 +2,18 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {{ custom_list }} - Floppy
 {% endblock title %}
 
 {# djlint:off #}
+{% block alphabet_filter %}{% alphabet_filter "smart-filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
 
@@ -224,6 +228,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if custom_list.can_recommend %}
                 {% if recommendation_count > 0 %}
                   <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -290,6 +297,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -359,6 +369,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if custom_list.can_recommend %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -425,6 +438,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if recommendation_count > 0 %}
               <a href="{% url 'recommend_item' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -495,9 +511,12 @@
     </div>
 
     <div id="items-view"
+         class="{% if current_layout|default:'grid' == 'grid' %}media-grid{% endif %}"
          hx-history="false"
-         :class="renderedLayout === 'grid' ? 'media-grid' : ''">
-      {% if current_layout == 'table' %}
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
+      {% if not items and request.GET.initial|alphabet_initial %}
+        {% alphabet_filter "smart-filter-form" "empty" %}
+      {% elif current_layout == 'table' %}
         {% include "lists/components/list_table.html" %}
       {% else %}
         {% include "lists/components/media_grid.html" %}
@@ -506,12 +525,13 @@
 
     <div id="loading-indicator" class="htmx-indicator text-center pt-8">
       <div class="inline-flex justify-center items-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        {% spinner 32 %}
       </div>
     </div>
     {% if can_edit %}
       </div>
     {% endif %}
+  </div>
   </div>
 {% endblock content %}
 {# djlint:on #}

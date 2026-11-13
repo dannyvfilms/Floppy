@@ -12,6 +12,7 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import Music
 from app.services import music_scrobble
+from app.services.watch_state import is_importing_watch_state
 from integrations import koito_api, koito_sync, tasks
 from integrations.imports import helpers
 from integrations.models import ImportRun, KoitoAccount, LastFMHistoryImportStatus
@@ -178,18 +179,17 @@ class KoitoCredentialTests(TestCase):
             base_url=BASE_URL,
             api_key=helpers.encrypt(API_KEY),
         )
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=import")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertNotIn(API_KEY, body)
         self.assertIn(BASE_URL, body)
 
     def test_connect_form_renders_when_disconnected(self):
-        """The Koito modal offers URL + API key inputs before connecting."""
-        response = self.client.get(reverse("import_data"))
+        """The Connection tab offers URL and API key inputs before connecting."""
+        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=connection")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("activeModal === 'koito'", body)
         self.assertIn(reverse("koito_connect"), body)
         self.assertIn('name="base_url"', body)
         self.assertIn('name="api_key"', body)
@@ -577,6 +577,22 @@ class KoitoExportTests(KoitoTestCase):
         self.assertEqual(details["musicbrainz_artist"], "art-1")
         self.assertEqual(details["duration_ms"], 195000)
 
+    @patch("integrations.koito_api.get_export")
+    def test_history_import_marks_its_listens_as_imported(self, mock_export):
+        """A history backfill is history, not something just listened to."""
+        mock_export.return_value = self.EXPORT
+        seen = []
+        original = KoitoScrobbleProcessor.process_listens
+
+        def spy(processor, listens, user):
+            seen.append(is_importing_watch_state())
+            return original(processor, listens, user)
+
+        with patch.object(KoitoScrobbleProcessor, "process_listens", spy):
+            tasks.import_koito_history(user_id=self.user.id)
+
+        self.assertEqual(seen, [True])
+
     @patch("integrations.koito_api.get_track")
     @patch("integrations.koito_api.get_export")
     def test_history_import_records_listens_without_hydration(
@@ -718,7 +734,7 @@ class KoitoReceiveOnlyTests(KoitoTestCase):
     @patch("integrations.koito_api.get_track", return_value={})
     @patch("integrations.koito_api.get_export")
     @patch("integrations.koito_api.get_listens")
-    @patch("integrations.koito_api.requests.get")
+    @patch("integrations.koito_api.send_to_self_hosted_pinned")
     def test_no_write_verbs_are_available_or_used(
         self,
         mock_get,
@@ -743,8 +759,20 @@ class KoitoReceiveOnlyTests(KoitoTestCase):
         # And a full poll cycle only ever issues GETs.
         mock_listens.return_value = _page([_listen()])
         tasks._run_incremental_koito_sync(self.account)
-        for call in mock_get.call_args_list:
-            self.assertTrue(str(call).startswith("call("))
+        # The API adapter itself must always issue GET through the
+        # pinned boundary, even if the task-level methods are mocked above.
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {}
+        koito_api._make_api_request("http://koito.local", "secret", "listens")
+        mock_get.assert_called_once()
+        self.assertEqual(
+            mock_get.call_args.args,
+            ("GET", "http://koito.local/apis/web/v1/listens"),
+        )
+        self.assertEqual(
+            mock_get.call_args.kwargs["headers"]["Authorization"],
+            "Token secret",
+        )
 
 
 class KoitoFanOutProbeTests(KoitoTestCase):

@@ -160,28 +160,25 @@ def populate_trakt_popularity_backfill_queue(
     force: bool = False,
 ):
     """Drain the Trakt popularity queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
         TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued Trakt popularity items"}
+        drain_task=populate_trakt_popularity_backfill_queue,
+        drain_kwargs={"force": force},
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued Trakt popularity items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_trakt_popularity_backfill_queue,
-            drain_kwargs={"force": force},
+        result = populate_trakt_popularity_data_for_items(
+            batch,
+            delay_seconds=delay_seconds,
+            force=force,
         )
-    else:
-        logger.info("trakt_popularity_backfill_complete: queue fully drained")
 
-    return populate_trakt_popularity_data_for_items(
-        batch,
-        delay_seconds=delay_seconds,
-        force=force,
-    )
+    if not backfill_queue.depth(TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY):
+        logger.info("trakt_popularity_backfill_complete: queue fully drained")
+    return result
 
 
 @shared_task(name="app.tasks.populate_trakt_episode_ratings_for_season")

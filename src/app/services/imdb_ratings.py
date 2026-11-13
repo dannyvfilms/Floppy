@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 _SHOW_MEDIA_TYPES = (MediaTypes.TV.value, MediaTypes.ANIME.value)
 
+# The sync reads and writes only these columns. Loading whole Items also decodes
+# watch_providers (TMDB's availability for every region, ~146 KiB a title), which
+# held the task at a ~529 MiB high-water mark on a 1,400-title library.
+_RATING_FIELDS = ("imdb_rating", "imdb_rating_count")
+
+
+def _chunks(values, size=500):
+    """Yield lists of at most ``size`` values (SQLite bound-variable limit)."""
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start : start + size]
+
 
 def sync_movie_and_show_ratings() -> int:
     """Update imdb_rating/imdb_rating_count for movies and shows with a known imdb id.
@@ -30,7 +42,7 @@ def sync_movie_and_show_ratings() -> int:
         Item.objects.filter(
             media_type__in=(MediaTypes.MOVIE.value, *_SHOW_MEDIA_TYPES),
             provider_external_ids__has_key="imdb_id",
-        ),
+        ).only("provider_external_ids", *_RATING_FIELDS),
     )
     if not items:
         return 0
@@ -118,17 +130,19 @@ def sync_episode_ratings() -> int:
         return 0
 
     updated = []
-    for (media_id, source), parent_tconst in show_tconst_by_key.items():
-        season_episode_map = episode_map.get(parent_tconst)
-        if not season_episode_map:
-            continue
-
+    media_ids = {media_id for media_id, _ in show_tconst_by_key}
+    for media_id_chunk in _chunks(media_ids):
         episode_items = Item.objects.filter(
-            media_id=media_id,
-            source=source,
+            media_id__in=media_id_chunk,
             media_type=MediaTypes.EPISODE.value,
-        )
-        for episode_item in episode_items:
+        ).only("media_id", "source", "season_number", "episode_number", *_RATING_FIELDS)
+        for episode_item in episode_items.iterator(chunk_size=2000):
+            parent_tconst = show_tconst_by_key.get(
+                (episode_item.media_id, episode_item.source),
+            )
+            season_episode_map = episode_map.get(parent_tconst)
+            if not season_episode_map:
+                continue
             if (
                 episode_item.season_number is None
                 or episode_item.episode_number is None
@@ -176,61 +190,53 @@ def sync_season_ratings() -> int:
     # can carry different raw values ("episode" vs "season"). Group by whether
     # the bucket is the anime one instead of by the raw stored value, mirroring
     # api.helpers.resolve_item_queryset's "anime vs everything else" split.
-    show_keys = {
-        (media_id, source, library_media_type == MediaTypes.ANIME.value)
-        for media_id, source, library_media_type in Item.objects.filter(
+    # One pass over the rated episodes, grouped per (show, bucket, season).
+    totals = {}
+    for media_id, source, library_media_type, season_number, rating, count in (
+        Item.objects.filter(
             media_type=MediaTypes.EPISODE.value,
             imdb_rating_count__isnull=False,
-        ).values_list("media_id", "source", "library_media_type")
-    }
-    if not show_keys:
+            imdb_rating__isnull=False,
+            season_number__isnull=False,
+        ).values_list(
+            "media_id",
+            "source",
+            "library_media_type",
+            "season_number",
+            "imdb_rating",
+            "imdb_rating_count",
+        ).iterator(chunk_size=2000)
+    ):
+        key = (
+            media_id,
+            source,
+            library_media_type == MediaTypes.ANIME.value,
+            season_number,
+        )
+        weighted_sum, vote_count = totals.get(key, (0.0, 0))
+        totals[key] = (weighted_sum + rating * count, vote_count + count)
+    if not totals:
         return 0
 
     updated = []
-    for media_id, source, is_anime_bucket in show_keys:
-        episode_qs = Item.objects.filter(
-            media_id=media_id,
-            source=source,
-            media_type=MediaTypes.EPISODE.value,
-            season_number__isnull=False,
-            imdb_rating__isnull=False,
-            imdb_rating_count__isnull=False,
-        )
-        if is_anime_bucket:
-            episode_qs = episode_qs.filter(library_media_type=MediaTypes.ANIME.value)
-        else:
-            episode_qs = episode_qs.exclude(library_media_type=MediaTypes.ANIME.value)
-        episode_ratings = episode_qs.values_list(
-            "season_number", "imdb_rating", "imdb_rating_count",
-        )
-
-        totals_by_season = {}
-        for season_number, rating, rating_count in episode_ratings:
-            weighted_sum, vote_count = totals_by_season.setdefault(
-                season_number, [0.0, 0],
-            )
-            totals_by_season[season_number] = [
-                weighted_sum + rating * rating_count,
-                vote_count + rating_count,
-            ]
-
-        if not totals_by_season:
-            continue
-
-        season_qs = Item.objects.filter(
-            media_id=media_id,
-            source=source,
+    media_ids = {key[0] for key in totals}
+    for media_id_chunk in _chunks(media_ids):
+        season_items = Item.objects.filter(
+            media_id__in=media_id_chunk,
             media_type=MediaTypes.SEASON.value,
-            season_number__in=totals_by_season.keys(),
-        )
-        if is_anime_bucket:
-            season_qs = season_qs.filter(library_media_type=MediaTypes.ANIME.value)
-        else:
-            season_qs = season_qs.exclude(library_media_type=MediaTypes.ANIME.value)
-        season_items = {item.season_number: item for item in season_qs}
-        for season_number, (weighted_sum, vote_count) in totals_by_season.items():
-            season_item = season_items.get(season_number)
-            if season_item is None or vote_count == 0:
+            season_number__isnull=False,
+        ).only("media_id", "source", "library_media_type", "season_number", *_RATING_FIELDS)
+        for season_item in season_items.iterator(chunk_size=2000):
+            weighted_sum, vote_count = totals.get(
+                (
+                    season_item.media_id,
+                    season_item.source,
+                    season_item.library_media_type == MediaTypes.ANIME.value,
+                    season_item.season_number,
+                ),
+                (0.0, 0),
+            )
+            if vote_count == 0:
                 continue
             average_rating = round(weighted_sum / vote_count, 1)
             if (

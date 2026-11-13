@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +16,8 @@ from app.models import (
     Sources,
     Status,
 )
+from events.calendar.helpers import date_parser
+from events.models import Event
 from users.models import QuickWatchDateChoices
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
@@ -191,8 +193,9 @@ class SeasonModel(TestCase):
                     end_date=datetime(2023, 7, ep_num, 0, 0, tzinfo=UTC),
                 )
 
-        # 5 of 6 episodes reached a second watch, a strict majority, so
-        # progress should advance to 6 rather than freeze at 4.
+        season.rewatch_started_at = datetime(2023, 7, 1, tzinfo=UTC)
+        season._invalidate_episode_stats()
+        # The explicit pass reaches episode 6 even with episode 5 skipped.
         self.assertEqual(season.progress, 6)
 
     def _make_skip_ahead_season(self, media_id, runtime_minutes=None):
@@ -526,6 +529,14 @@ class SeasonStatusTests(TestCase):
                 {"episode_number": 1, "image": "img1.jpg"},
             ],
             "image": "season_img.jpg",
+            "related": {
+                "seasons": [
+                    {
+                        "season_number": 2,
+                        "first_air_date": datetime(2020, 1, 1, tzinfo=UTC),
+                    },
+                ],
+            },
         }
 
         self.season.status = Status.COMPLETED.value
@@ -536,6 +547,51 @@ class SeasonStatusTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_completed_status_does_not_start_a_future_season(self, mock_get_metadata):
+        """A planning season with an unaired premiere stays planning."""
+        next_season_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test Show",
+            image="http://example.com/image2.jpg",
+            season_number=2,
+        )
+        next_season = Season.objects.create(
+            item=next_season_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+
+        future_air_date = timezone.now() + timedelta(days=365)
+        mock_get_metadata.return_value = {
+            "episodes": [
+                {"episode_number": 1, "image": "img1.jpg"},
+            ],
+            "image": "season_img.jpg",
+            "details": {"status": "Returning Series"},
+            "related": {
+                "seasons": [
+                    {"season_number": 1, "first_air_date": datetime(2020, 1, 1, tzinfo=UTC)},
+                    {"season_number": 2, "first_air_date": future_air_date},
+                ],
+            },
+        }
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+
+        self.season.status = Status.COMPLETED.value
+        self.season.save()
+
+        next_season.refresh_from_db()
+        self.assertEqual(next_season.status, Status.PLANNING.value)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+        self.assertFalse(
+            Season.objects.filter(related_tv=self.tv, item__season_number=3).exists(),
+        )
 
     @patch("app.models.providers.services.get_media_metadata")
     def test_completed_last_season_completes_tv_show(self, mock_get_metadata):
@@ -1016,16 +1072,14 @@ class SeasonEpisodeItemModelTests(TestCase):
         )
 
     @override_settings(TIME_ZONE="Europe/Berlin")
-    def test_get_episode_item_anchors_date_only_air_date_to_utc(self):
+    def test_get_episode_item_keeps_date_only_air_date_on_its_calendar_day(self):
         """A date-only air_date must not shift with the server's TIME_ZONE.
 
         Regression test: get_episode_item() used to interpret a "YYYY-MM-DD"
-        air_date as midnight in the server's configured TIME_ZONE rather
-        than UTC. Under a positive-offset zone like Europe/Berlin (+2h in
-        summer), that shifted the stored release_datetime into the previous
-        UTC day - e.g. an episode that airs 2026-07-15 got stored as
-        2026-07-14 22:00 UTC, so any page or comparison that reads the date
-        component in UTC showed the wrong calendar day.
+        air_date as midnight in a timezone, which either shifted the stored
+        release_datetime into the previous UTC day or made release state treat
+        the episode as released part-way through its listed date. Date-only
+        values use the unknown-time sentinel so the calendar day is stable.
         """
         item = self.season.get_episode_item(
             5,
@@ -1042,10 +1096,24 @@ class SeasonEpisodeItemModelTests(TestCase):
 
         self.assertEqual(
             item.release_datetime,
-            datetime(2026, 7, 15, 0, 0, tzinfo=UTC),
-            "a date-only air_date must be stored as UTC midnight, "
+            date_parser("2026-07-15"),
+            "a date-only air_date must use the unknown-time sentinel, "
             "regardless of the server's configured TIME_ZONE",
         )
+        self.assertEqual(item.release_datetime.date().isoformat(), "2026-07-15")
+
+    def test_available_episode_numbers_waits_for_a_date_only_release_day_to_end(self):
+        """A date-only episode is not available on its listed day."""
+        today = timezone.localdate()
+        Event.objects.create(
+            item=self.season.item,
+            content_number=1,
+            datetime=date_parser(today),
+        )
+        now = datetime(today.year, today.month, today.day, 14, tzinfo=UTC)
+
+        with patch("django.utils.timezone.now", return_value=now):
+            self.assertEqual(self.season.available_episode_numbers(), [])
 
     def test_get_episode_item_updates_existing_item_with_episode_title(self):
         """Episode items should store the episode title instead of the show title."""

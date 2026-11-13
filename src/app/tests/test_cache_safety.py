@@ -1,5 +1,6 @@
 """Tests for telling a held lock apart from a broken cache (issue #521)."""
 
+import pickle
 from unittest import mock
 
 from django.test import SimpleTestCase
@@ -79,3 +80,35 @@ class AcquireLockTests(SimpleTestCase):
             side_effect=ConnectionError("gone"),
         ):
             cache_safety.release_lock("key")  # must not raise
+
+
+class SizedCompressionTests(SimpleTestCase):
+    """Large cache values are stored compressed; old plain pickles still read."""
+
+    key = "test_sized_compression"
+
+    def tearDown(self):
+        cache_safety.cache.delete(self.key)
+
+    def _stored(self):
+        client = cache_safety.cache.client.get_client()
+        return client.get(cache_safety.cache.make_key(self.key))
+
+    def test_large_value_round_trips_and_is_smaller_than_its_pickle(self):
+        value = {
+            "entries": [{"title": f"Title {i}", "kind": "movie"} for i in range(300)]
+        }
+        cache_safety.cache.set(self.key, value)
+        self.assertEqual(cache_safety.cache.get(self.key), value)
+        self.assertLess(len(self._stored()), len(pickle.dumps(value)))
+
+    def test_small_value_is_stored_as_a_plain_pickle(self):
+        cache_safety.cache.set(self.key, {"a": 1})
+        self.assertEqual(self._stored(), pickle.dumps({"a": 1}))
+        self.assertEqual(cache_safety.cache.get(self.key), {"a": 1})
+
+    def test_uncompressed_payload_from_the_previous_format_reads_back(self):
+        value = {"entries": [{"title": f"Title {i}"} for i in range(300)]}
+        client = cache_safety.cache.client.get_client()
+        client.set(cache_safety.cache.make_key(self.key), pickle.dumps(value))
+        self.assertEqual(cache_safety.cache.get(self.key), value)

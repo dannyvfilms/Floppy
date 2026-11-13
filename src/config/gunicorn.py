@@ -1,4 +1,5 @@
 import gc
+import importlib
 import logging.handlers
 import os
 import time
@@ -26,6 +27,18 @@ worker_class = "gthread"
 # when set - see config/runtime_profile.py.
 workers = web_concurrency()
 threads = gunicorn_threads()
+
+# gthread accepts up to worker_connections sockets whatever the thread count,
+# and hands each to a private queue in front of that worker's pool (gunicorn
+# gthread.accept/enqueue_req). At the default of 1000 a connection accepted by
+# a worker whose threads are all busy waits there, invisible and unreachable,
+# even while the other worker idles -- so a trivial request such as
+# /serviceworker.js stalls behind slow ones until nginx gives up on it. Capping
+# accepted connections at the thread count leaves the surplus in the kernel
+# backlog, where whichever worker frees a thread first takes it. nginx speaks
+# HTTP/1.0 to this upstream, so no keepalive slots are lost; gunicorn's
+# "No keepalived connections can be handled" boot warning is expected.
+worker_connections = threads
 
 # Recycle workers more aggressively on small hosts: RSS only creeps upward
 # within a worker's life, so a lower ceiling caps the steady-state footprint.
@@ -85,8 +98,72 @@ def _record_crash_markers(server):
                 server.log.error_log.addHandler(handler)
         run_state.enable_fault_log()
         run_state.start()
+        _record_stop_signals(server)
     except Exception:  # diagnostics must never stop the server
         server.log.exception("[gunicorn] could not record crash markers")
+
+
+def _load_url_conf(server):
+    """Import the URLconf, and every view module behind it, in the master.
+
+    Django resolves ROOT_URLCONF on the first request, not in django.setup(),
+    so with preload_app every forked worker paid for it: about 1.5 s of CPU on
+    a laptop, and on a loaded NAS 1 to 16 s for the first request after each
+    recycle -- once, at worst, a health check slower than Docker's 15 s
+    timeout. Importing here lets the fork inherit it, and the freeze below
+    keeps those pages shared. Never fatal: a worker would still import it
+    lazily and report the real error.
+    """
+    try:
+        from django.urls import get_resolver
+
+        resolver = get_resolver()
+        resolver.url_patterns  # noqa: B018  # the property imports the URLconf
+        # Building the reverse table and importing what the save views import
+        # inside the function are the rest of a first write's cold cost (the
+        # first save after each recycle took seconds on a slow disk).
+        resolver._populate()
+        for module in (
+            "app.tasks",
+            "lists.tasks",
+            "app.services.metadata_resolution",
+            "app.services.bulk_episode_tracking",
+            "app.statistics_sync",
+        ):
+            importlib.import_module(module)
+    except Exception:
+        server.log.exception("[gunicorn] could not preload the URLconf")
+
+
+def _noting_stop(original, name):
+    """Wrap an arbiter signal handler so the signal is recorded first."""
+
+    def handler():
+        from config import run_state
+
+        try:
+            run_state.note_stop_signal(name)
+        except Exception:  # diagnostics must never stop the server
+            logging.getLogger(__name__).debug("run-state stop note failed")
+        original()
+
+    return handler
+
+
+def _record_stop_signals(server):
+    """Note which signal stops the master, then let gunicorn handle it as usual.
+
+    gunicorn's ``on_exit`` hook is not told why it runs. The arbiter looks its
+    ``handle_<signal>`` method up on the instance when a signal arrives, so
+    wrapping those three is enough.
+    """
+    for signal_name in ("term", "int", "quit"):
+        original = getattr(server, f"handle_{signal_name}")
+        setattr(
+            server,
+            f"handle_{signal_name}",
+            _noting_stop(original, f"SIG{signal_name.upper()}"),
+        )
 
 
 def on_exit(server):
@@ -118,6 +195,7 @@ def when_ready(server):
     this runs once here rather than in each of them.
     """
     _record_crash_markers(server)
+    _load_url_conf(server)
     gc.collect()
     gc.freeze()
     server.log.info(
@@ -150,6 +228,7 @@ def post_request(worker, req, environ, resp):  # gunicorn's hook signature
     resident = _worker_rss_bytes()
     if resident is not None and resident > max_worker_memory_bytes:
         worker.alive = False
+
 
 print(  # noqa: T201  # gunicorn has no logger configured this early
     f"[gunicorn] {PROFILE.describe()} -> workers={workers} threads={threads} "

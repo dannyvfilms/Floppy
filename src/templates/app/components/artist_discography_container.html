@@ -3,7 +3,11 @@
 <div id="discography-container"
      {% if poll_for_covers %}
        hx-get="{% url 'prefetch_artist_covers' artist.id %}?attempt={{ next_attempt|default:1 }}"
-       hx-trigger="load delay:500ms, every 5s"
+       {% if next_attempt %}
+         hx-trigger="every 5s"
+       {% else %}
+         hx-trigger="load delay:500ms, every 5s"
+       {% endif %}
        hx-target="#discography-container"
        hx-swap="outerHTML"
      {% endif %}>

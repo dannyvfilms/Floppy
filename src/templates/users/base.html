@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load static %}
 
 {% block content %}
   <div class="mx-auto max-w-6xl">
+    {% settings_view_react as settings_view %}
+    {% if settings_view.props %}{{ settings_view.props|json_script:settings_view.id }}{% endif %}
+    <div data-settings-view-root data-props-id="{{ settings_view.id }}">
+    <div data-settings-fallback>
     <div class="mb-8">
       <h1 class="text-3xl font-bold">{% translate "Settings" %}</h1>
       <p class="text-[var(--color-text-muted)] mt-2 text-sm">{% translate "Configure your account and preferences" %}</p>
@@ -89,55 +94,30 @@
               <span>{% translate "Home Screen" %}</span>
             </a>
 
-            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Connections" %}</p>
-
-            {% url 'integrations' as integrations_url %}
-            {% url 'oauth_applications' as oauth_applications_url %}
-            <a href="{{ integrations_url }}"
-               {% if request.path == integrations_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == integrations_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Providers & Data" %}</p>
+            <a href="{% url 'providers' %}"
+               {% if request.resolver_match.url_name == 'providers' or request.resolver_match.url_name == 'provider_detail' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'providers' or request.resolver_match.url_name == 'provider_detail' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/database.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Integrations" %}</span>
+              <span>{% translate "Providers" %}</span>
             </a>
-            <a href="{{ oauth_applications_url }}"
-               {% if request.path == oauth_applications_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 pl-10 pr-2 py-1.5 rounded-md transition-colors text-left border-l-2 cursor-pointer text-xs {% if request.path == oauth_applications_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/key.svg" with classes="w-4 h-4" %}
-              <span>{% translate "Connected Applications" %}</span>
+            <a href="{% url 'provider_activity' %}"
+               {% if request.resolver_match.url_name == 'provider_activity' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'provider_activity' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/clock.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Activity" %}</span>
             </a>
-
-            {% url 'metadata_settings' as metadata_url %}
-            <a href="{{ metadata_url }}"
-               {% if request.path == metadata_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == metadata_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/key.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Metadata" %}</span>
+            <a href="{% url 'data_management' %}"
+               {% if request.resolver_match.url_name == 'data_management' or request.resolver_match.url_name == 'rss_settings' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'data_management' or request.resolver_match.url_name == 'rss_settings' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/database.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Data Management" %}</span>
             </a>
-
-            {% url 'rss_settings' as rss_url %}
-            <a href="{{ rss_url }}"
-               {% if request.path == rss_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == rss_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/rss.svg" with classes="w-5 h-5" %}
-              <span>RSS</span>
-            </a>
-
-            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Data" %}</p>
-
-            {% url 'import_data' as import_url %}
-            <a href="{{ import_url }}"
-               {% if request.path == import_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/import.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Import Data" %}</span>
-            </a>
-
-            {% url 'export_data' as export_url %}
-            <a href="{{ export_url }}"
-               {% if request.path == export_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == export_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/export.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Export Data" %}</span>
+            <a href="{% url 'access_tokens' %}"
+               {% if request.resolver_match.url_name == 'access_tokens' or request.resolver_match.url_name == 'oauth_applications' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'access_tokens' or request.resolver_match.url_name == 'oauth_applications' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/padlock.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Access & Tokens" %}</span>
             </a>
 
             <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "System" %}</p>
@@ -149,6 +129,16 @@
               {% include "app/icons/shield-alert.svg" with classes="w-5 h-5" %}
               <span>{% translate "Advanced" %}</span>
             </a>
+
+            {% if request.user.is_superuser %}
+              {% url 'manage_users' as manage_users_url %}
+              <a href="{{ manage_users_url }}"
+                 {% if request.path == manage_users_url %}aria-current="page"{% endif %}
+                 class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == manage_users_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+                {% include "app/icons/persons.svg" with classes="w-5 h-5" %}
+                <span>{% translate "Users" %}</span>
+              </a>
+            {% endif %}
 
             {% url 'about' as about_url %}
             <a href="{{ about_url }}"
@@ -162,10 +152,12 @@
       </div>
 
       <!-- min-w-0 prevents flex item overflow, happens when creating periodic import for Simkl -->
-      <div class="flex-1 min-w-0">
+      <div class="flex-1 min-w-0" data-settings-page-content>
         {% block settings_content %}
         {% endblock settings_content %}
       </div>
+    </div>
+    </div>
     </div>
   </div>
 {% endblock content %}

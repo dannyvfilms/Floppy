@@ -117,9 +117,10 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
         "hero logo centres on the content box, not the full-bleed hero": (
             r"left: calc\(50% \+ \(var\(--hero-gutter-l\) - var\(--hero-gutter-r\)\) / 2\)"
         ),
-        "touch screens share phone card widths in either orientation": (
-            r"\(pointer: coarse\) and \(max-width: 1600px\) and "
-            r"\(max-height: 1100px\)"
+        "phones share card widths in either orientation": (
+            r"\(max-width: 600px\), \(orientation: landscape\) and "
+            r"\(pointer: coarse\) and \(max-width: 1000px\) and "
+            r"\(max-height: 720px\)"
         ),
         "compact cards keep the narrow phone size": r"--card-cap: 6\.75rem",
         "comfortable cards keep a fixed size": r"--card-cap: 10\.5rem",
@@ -134,7 +135,11 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
         ),
         "phone chip cards only reveal on hover where hover exists": (
             r"@media \(hover: hover\) \{\s+:is\(\.detail-carousel-grid, \.detail-flat-top\) "
-            r"\.detail-provider-score-card\.group:hover"
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):hover"
+        ),
+        "phone chip cards only open a third line when they have a graph prompt": (
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):"
+            r"focus-within \.detail-provider-score-card__graph"
         ),
         "unfolded portrait keeps the poster beside the info": (
             r"@media \(min-width: 600px\) and \(max-width: 767\.98px\)"
@@ -151,3 +156,14 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
             css = (css_dir / name).read_text(encoding="utf-8")
             for rule, pattern in self.RULES.items():
                 self.assertRegex(css, pattern, f"{name}: {rule}")
+
+    def test_hover_reveal_is_never_unconditional(self):
+        """Chips with no series graph (IGDB, MAL, OpenCritic) must not move on hover."""
+        css_dir = Path(settings.BASE_DIR) / "static" / "css"
+        for name in ("input.css", "main.css"):
+            css = (css_dir / name).read_text(encoding="utf-8")
+            self.assertNotRegex(
+                css,
+                r"\.detail-provider-score-card\.group:(hover|focus-within)",
+                f"{name}: a hover rule on the chip is missing the graph-prompt guard",
+            )

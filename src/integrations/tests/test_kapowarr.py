@@ -13,6 +13,7 @@ from app.models import CollectionEntry, Item, MediaTypes, Sources
 from integrations import tasks
 from integrations.imports import helpers, kapowarr
 from integrations.models import CollectionSourceState, KapowarrInstance
+from integrations.tasks._import_helpers import format_import_message
 
 # Shapes copied from Kapowarr's frontend/api.py (every answer is
 # {"error", "result"}), Library.get_public_volumes (volume rows with
@@ -67,7 +68,7 @@ def _response(payload, status_code=200):
     return response
 
 
-def _fake_kapowarr(url, params=None, timeout=None):
+def _fake_kapowarr(url, params=None, timeout=None, allow_redirects=False):
     """Answer like a Kapowarr server holding one series, Saga."""
     if url.endswith("/api/volumes"):
         return _response(VOLUMES)
@@ -101,6 +102,12 @@ class KapowarrImporterTests(TestCase):
 
         self.assertEqual(self._owned_issue_ids(), {"301", "302"})
         self.assertEqual(counts["updated"], 2)
+        # Owned issues land in Collection, not the Comics library, and the
+        # result message says so.
+        self.assertEqual(counts["collection"], 2)
+        self.assertNotIn(MediaTypes.COMIC_ISSUE.value, counts)
+        self.assertIn("2 collection entries", format_import_message(counts, warnings))
+        self.assertNotIn("Comic Issues", format_import_message(counts, warnings))
         self.assertEqual(warnings, "")
         self.assertEqual(CollectionEntry.objects.filter(user=self.user).count(), 2)
         issue = Item.objects.get(media_id="301")
@@ -134,7 +141,7 @@ class KapowarrImporterTests(TestCase):
         ):
             kapowarr.importer(None, self.user, "new")
 
-        def _issue_301_deleted(url, params=None, timeout=None):
+        def _issue_301_deleted(url, params=None, timeout=None, allow_redirects=False):
             response = _fake_kapowarr(url, params=params, timeout=timeout)
             if url.endswith("/api/volumes/1"):
                 data = copy.deepcopy(SAGA)
@@ -157,7 +164,7 @@ class KapowarrImporterTests(TestCase):
         ):
             kapowarr.importer(None, self.user, "new")
 
-        def _volume_fails(url, params=None, timeout=None):
+        def _volume_fails(url, params=None, timeout=None, allow_redirects=False):
             if url.endswith("/api/volumes/1"):
                 raise requests.exceptions.ReadTimeout("read timed out")
             return _fake_kapowarr(url, params=params, timeout=timeout)
@@ -325,7 +332,9 @@ class KapowarrViewTests(TestCase):
         self.assertTrue(KapowarrInstance.objects.filter(pk=other_instance.id).exists())
 
     def test_import_page_shows_kapowarr(self):
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["kapowarr"]) + "?tab=import")
 
         self.assertContains(response, "Import owned comics from Kapowarr.")
-        self.assertContains(response, reverse("kapowarr_connect"))
+        connection_url = reverse("provider_detail", args=["kapowarr"]) + "?tab=connection"
+        self.assertContains(response, connection_url)
+        self.assertContains(self.client.get(connection_url), reverse("kapowarr_connect"))

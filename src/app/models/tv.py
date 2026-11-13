@@ -1,5 +1,6 @@
+import contextlib
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
 
 from django.conf import settings
 from django.core.validators import (
@@ -22,6 +23,8 @@ from app.models.choices import USER_HELD_STATUSES, MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import Media, ScoreMonitorField
+from app.public_errors import PublicMessageError
+from app.services.sync_lock import serialized_state_write
 from integrations.import_scope import ImportScopedManager
 
 logger = logging.getLogger(__name__)
@@ -114,7 +117,7 @@ def classify_production_status(raw_status):
     return PRODUCTION_STATUS_UNKNOWN
 
 
-class RewatchAlreadyCompleteError(Exception):
+class RewatchAlreadyCompleteError(PublicMessageError):
     """Raised when a rewatch's start date leaves nothing left to rewatch."""
 
 
@@ -129,6 +132,17 @@ def _runtime_minutes(value):
     except (TypeError, ValueError):
         return None
     return minutes if minutes > 0 else None
+
+
+def _percent_of_max(count, max_progress):
+    """Return count as a 0-100 percent of max_progress, or None when it is unknown."""
+    try:
+        max_progress = int(max_progress)
+    except (TypeError, ValueError):
+        return None
+    if max_progress <= 0:
+        return None
+    return max(0, min(round(count / max_progress * 100), 100))
 
 
 class TV(Media):
@@ -163,9 +177,11 @@ class TV(Media):
         ]
 
     @tracker  # postpone field reset until after the save
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the media instance."""
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A show created directly as COMPLETED (rather than transitioned into it)
@@ -209,8 +225,10 @@ class TV(Media):
             # Keep TV+Season state aligned even when status was already IN_PROGRESS.
             self._start_next_available_season()
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.TV.value,),
+        )
 
     @cached_property
     def progress(self):
@@ -220,6 +238,39 @@ class TV(Media):
             for season in self.seasons.all()
             if season.item.season_number != 0 and season.status != Status.DROPPED.value
         )
+
+    @cached_property
+    def watched_once_count(self):
+        """Return the episodes finished at least once, excluding specials and dropped seasons."""
+        return sum(
+            len(season.watched_once_numbers)
+            for season in self.seasons.all()
+            if season.item.season_number != 0 and season.status != Status.DROPPED.value
+        )
+
+    @property
+    def watched_once_percentage(self):
+        """Return percent of the show watched at least once (0-100), or None."""
+        return _percent_of_max(
+            self.watched_once_count,
+            getattr(self, "max_progress", None),
+        )
+
+    @property
+    def rewatch_percentage(self):
+        """Return percent of the open rewatch pass completed, or None outside one."""
+        if not self.is_rewatching:
+            return None
+        # Only seasons with an open pass count, so rewatching one season of a
+        # show reads as that season's share of the whole show.
+        done = sum(
+            len(season.completed_episode_numbers)
+            for season in self.seasons.all()
+            if season.item.season_number != 0
+            and season.status != Status.DROPPED.value
+            and season.is_rewatching
+        )
+        return _percent_of_max(done, getattr(self, "max_progress", None))
 
     @cached_property
     def completed_episode_count(self):
@@ -458,7 +509,7 @@ class TV(Media):
 
         return None
 
-    def next_episode_target(self):
+    def next_episode_target(self, *, episode_numbers_by_season=None):
         """Return the first tracked season and episode that can be watched next."""
         seasons = sorted(
             (season for season in self.seasons.all() if season.item.season_number != 0),
@@ -472,7 +523,12 @@ class TV(Media):
             if season.status == Status.DROPPED.value:
                 continue
 
-            next_episode_number = season.next_episode_number()
+            next_episode_number = season.next_episode_number(
+                episode_numbers=(
+                    episode_numbers_by_season.get(season.item.season_number, [])
+                    if episode_numbers_by_season is not None else None
+                ),
+            )
             if next_episode_number is None:
                 has_caught_up_season = (
                     season.status == Status.COMPLETED.value or season.progress > 0
@@ -757,30 +813,127 @@ class TV(Media):
         )
         return str(raw_status).strip()
 
+    @staticmethod
+    def _first_air_date_has_passed(value):
+        """Return whether a provider season's first air date is in the past."""
+        if not value:
+            return False
+        if isinstance(value, str):
+            try:
+                value = datetime.strptime(value[:10], "%Y-%m-%d")  # noqa: DTZ007
+            except ValueError:
+                return False
+        try:
+            if timezone.is_naive(value):
+                value = timezone.make_aware(value, timezone.get_current_timezone())
+            return timezone.localtime(value).date() <= timezone.localdate()
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _first_air_date_is_future(value):
+        """Return whether a provider season's first air date is known and ahead."""
+        if not value:
+            return False
+        if isinstance(value, str):
+            try:
+                value = datetime.strptime(value[:10], "%Y-%m-%d")  # noqa: DTZ007
+            except ValueError:
+                return False
+        try:
+            if timezone.is_naive(value):
+                value = timezone.make_aware(value, timezone.get_current_timezone())
+            return timezone.localtime(value).date() > timezone.localdate()
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    def has_unfinished_aired_seasons(self):
+        """Return whether any season still has aired episodes left to finish.
+
+        A Planning season the provider dates in the future, with no history
+        and no released episode, is announced rather than unfinished, so it
+        never blocks the show from completing (rule R3 in
+        docs/architecture/status-rules.md). A season with no provider date
+        still counts: undated is not the same as unaired.
+        """
+        unfinished = list(
+            self.seasons.filter(item__season_number__gt=0).exclude(
+                status=Status.COMPLETED.value,
+            ),
+        )
+        announced = [
+            season
+            for season in unfinished
+            if season.status == Status.PLANNING.value
+            and not self._season_has_local_episode_evidence(season)
+        ]
+        if len(announced) < len(unfinished):
+            return True
+        if not announced:
+            return False
+
+        metadata = self._fetch_tv_metadata()
+        related = metadata.get("related") if isinstance(metadata, dict) else None
+        seasons_data = related.get("seasons") if isinstance(related, dict) else None
+        air_dates = {}
+        for season_data in seasons_data if isinstance(seasons_data, list) else []:
+            if isinstance(season_data, dict):
+                air_dates.setdefault(
+                    season_data.get("season_number"),
+                    season_data.get("first_air_date"),
+                )
+        return any(
+            not self._first_air_date_is_future(
+                air_dates.get(season.item.season_number),
+            )
+            for season in announced
+        )
+
+    def _season_has_local_episode_evidence(self, season):
+        """Return whether local history proves a season has episodes to watch."""
+        return (
+            season.status == Status.IN_PROGRESS.value
+            or season.progress > 0
+            or bool(season.available_episode_numbers())
+        )
+
     def _start_next_available_season(
         self,
         min_season_number=0,
     ):
-        """Find the next available season to watch and set it to in-progress."""
+        """Find the next season that has aired and set it to in-progress."""
         min_season_number = int(min_season_number or 0)
 
-        all_seasons = self.seasons.filter(
-            item__season_number__gt=min_season_number,
-        ).order_by("item__season_number")
+        all_seasons = list(
+            self.seasons.filter(
+                item__season_number__gt=min_season_number,
+            ).order_by("item__season_number"),
+        )
+        candidates = [
+            season
+            for season in all_seasons
+            if season.status != Status.COMPLETED.value
+            and season.status not in USER_HELD_STATUSES
+        ]
 
-        next_unwatched_season = all_seasons.exclude(
-            status__in=[Status.COMPLETED.value],
-        ).first()
+        next_unwatched_season = None
+        unaired_candidates = []
+        for season in candidates:
+            if self._season_has_local_episode_evidence(season):
+                next_unwatched_season = season
+                break
+            unaired_candidates.append(season)
 
-        season_started = False
+        tv_metadata = None
+        related_seasons = []
+        related_by_number = {}
 
-        if not next_unwatched_season:
-            # If all existing seasons are watched, get the next available season
-            tv_metadata = self._fetch_tv_metadata()
-
-            if not isinstance(tv_metadata, dict):
-                tv_metadata = {}
-
+        def load_tv_related_seasons():
+            nonlocal tv_metadata, related_seasons
+            if tv_metadata is not None:
+                return
+            metadata = self._fetch_tv_metadata()
+            tv_metadata = metadata if isinstance(metadata, dict) else {}
             related = (
                 tv_metadata.get("related")
                 if isinstance(tv_metadata.get("related"), dict)
@@ -791,10 +944,51 @@ class TV(Media):
                 if isinstance(related.get("seasons"), list)
                 else []
             )
+            for season_data in related_seasons:
+                if not isinstance(season_data, dict):
+                    continue
+                season_number = season_data.get("season_number")
+                if season_number is None:
+                    continue
+                try:
+                    season_number = int(season_number)
+                except (TypeError, ValueError):
+                    continue
+                related_by_number.setdefault(season_number, season_data)
 
-            existing_season_numbers = set(
-                all_seasons.values_list("item__season_number", flat=True),
-            )
+        if next_unwatched_season is None and unaired_candidates:
+            # A planning season with no local history is only promoted when
+            # the provider says its first episode has already aired.
+            load_tv_related_seasons()
+            for season in unaired_candidates:
+                related_data = related_by_number.get(season.item.season_number, {})
+                if self._first_air_date_has_passed(
+                    related_data.get("first_air_date"),
+                ):
+                    next_unwatched_season = season
+                    break
+
+        season_started = False
+
+        if next_unwatched_season is not None:
+            if next_unwatched_season.status != Status.IN_PROGRESS.value:
+                next_unwatched_season.status = Status.IN_PROGRESS.value
+                bulk_update_with_history(
+                    [next_unwatched_season],
+                    Season,
+                    fields=["status"],
+                    default_change_reason=NEXT_SEASON_REASON,
+                )
+            season_started = True
+        else:
+            # If all existing seasons are watched, start the next one the
+            # provider confirms has aired. Future/undated seasons stay
+            # planning: completing season N must not create a phantom
+            # in-progress season N+1.
+            load_tv_related_seasons()
+            existing_season_numbers = {
+                season.item.season_number for season in all_seasons
+            }
 
             for season_data in related_seasons:
                 if not isinstance(season_data, dict):
@@ -802,58 +996,55 @@ class TV(Media):
                 season_number = season_data.get("season_number")
                 if season_number is None:
                     continue
+                try:
+                    season_number = int(season_number)
+                except (TypeError, ValueError):
+                    continue
                 if (
-                    season_number > min_season_number
-                    and season_number not in existing_season_numbers
+                    season_number <= min_season_number
+                    or season_number in existing_season_numbers
+                    or not self._first_air_date_has_passed(
+                        season_data.get("first_air_date"),
+                    )
                 ):
-                    # Use season poster if available, otherwise fallback to TV show poster
-                    season_image = season_data.get("image") or self.item.image
+                    continue
 
-                    item, _ = Item.objects.get_or_create(
-                        media_id=self.tracking_media_id,
-                        source=self.tracking_source,
-                        media_type=MediaTypes.SEASON.value,
-                        episode_order=self.active_episode_order,
-                        library_media_type=(
-                            MediaTypes.ANIME.value
-                            if self.item.library_media_type == MediaTypes.ANIME.value
-                            else MediaTypes.SEASON.value
+                # Use season poster if available, otherwise fallback to TV show poster
+                season_image = season_data.get("image") or self.item.image
+
+                item, _ = Item.objects.get_or_create(
+                    media_id=self.tracking_media_id,
+                    source=self.tracking_source,
+                    media_type=MediaTypes.SEASON.value,
+                    episode_order=self.active_episode_order,
+                    library_media_type=(
+                        MediaTypes.ANIME.value
+                        if self.item.library_media_type == MediaTypes.ANIME.value
+                        else MediaTypes.SEASON.value
+                    ),
+                    season_number=season_number,
+                    defaults={
+                        **Item.title_fields_from_metadata(
+                            season_data,
+                            fallback_title=self.item.title,
                         ),
-                        season_number=season_data["season_number"],
-                        defaults={
-                            **Item.title_fields_from_metadata(
-                                season_data,
-                                fallback_title=self.item.title,
-                            ),
-                            "image": season_image,
-                        },
-                    )
+                        "image": season_image,
+                    },
+                )
 
-                    next_unwatched_season = Season(
-                        item=item,
-                        user=self.user,
-                        related_tv=self,
-                        status=Status.IN_PROGRESS.value,
-                    )
-                    bulk_create_with_history(
-                        [next_unwatched_season],
-                        Season,
-                        default_change_reason=NEXT_SEASON_REASON,
-                    )
-                    season_started = True
-                    break
-
-        elif next_unwatched_season.status != Status.IN_PROGRESS.value:
-            next_unwatched_season.status = Status.IN_PROGRESS.value
-            bulk_update_with_history(
-                [next_unwatched_season],
-                Season,
-                fields=["status"],
-                default_change_reason=NEXT_SEASON_REASON,
-            )
-            season_started = True
-        else:
-            season_started = True
+                next_unwatched_season = Season(
+                    item=item,
+                    user=self.user,
+                    related_tv=self,
+                    status=Status.IN_PROGRESS.value,
+                )
+                bulk_create_with_history(
+                    [next_unwatched_season],
+                    Season,
+                    default_change_reason=NEXT_SEASON_REASON,
+                )
+                season_started = True
+                break
 
         if season_started and self.status != Status.IN_PROGRESS.value:
             self.status = Status.IN_PROGRESS.value
@@ -898,17 +1089,7 @@ class TV(Media):
         ):
             return
 
-        incomplete_seasons_exist = (
-            self.seasons.filter(
-                item__season_number__gt=0,
-            )
-            .exclude(
-                status=Status.COMPLETED.value,
-            )
-            .exists()
-        )
-
-        if not incomplete_seasons_exist:
+        if not self.has_unfinished_aired_seasons():
             production_status = self.resolve_production_status()
 
             if production_status is None:
@@ -1019,6 +1200,8 @@ class Season(Media):
         else:
             event_rows = prefetched_events
 
+        from events.models import is_released_datetime
+
         now = timezone.now()
         episode_numbers = set()
         for event in event_rows:
@@ -1026,7 +1209,10 @@ class Season(Media):
             event_datetime = getattr(event, "datetime", None)
             if episode_number is None or event_datetime is None:
                 continue
-            if event_datetime.year < MIN_VALID_RELEASE_YEAR or event_datetime > now:
+            if (
+                event_datetime.year < MIN_VALID_RELEASE_YEAR
+                or not is_released_datetime(event_datetime, now)
+            ):
                 continue
             try:
                 episode_numbers.add(int(episode_number))
@@ -1055,6 +1241,7 @@ class Season(Media):
         )
 
     @tracker  # postpone field reset until after the save
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the media instance."""
         # if related_tv is not set
@@ -1062,6 +1249,7 @@ class Season(Media):
             self.related_tv = self.get_tv()
 
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A season created directly as COMPLETED (rather than transitioned into
@@ -1105,7 +1293,19 @@ class Season(Media):
                             fields=["rewatch_started_at"],
                         )
 
-                    self.related_tv._handle_completed_season(
+                    related_tv = self.related_tv
+                    if related_tv.status == Status.PLANNING.value:
+                        # Marking a season complete starts the show even when
+                        # the next season has not aired yet. That next season
+                        # stays planning, so this is the only status change.
+                        related_tv.status = Status.IN_PROGRESS.value
+                        bulk_update_with_history(
+                            [related_tv],
+                            TV,
+                            fields=["status"],
+                            default_change_reason="Season completed",
+                        )
+                    related_tv._handle_completed_season(
                         self.item.season_number,
                     )
                 except (
@@ -1149,48 +1349,48 @@ class Season(Media):
 
             self.item.fetch_releases(delay=True)
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.SEASON.value,),
+        )
 
     @property
     def progress(self):
-        """Return the current episode number of the season.
-
-        For rewatching: only considers it a rewatch if a strict majority of watched
-        episodes have reached the same repeat count. This tolerates a minority of
-        skipped/out-of-order episodes during a genuine rewatch pass (issue #327),
-        while still ignoring a single errant repeat during normal watching.
-        """
+        """Return the furthest episode reached in the current explicit watch pass."""
         stats = self._get_episode_stats()
-        episode_counts = stats["episode_counts"]
-        if not episode_counts:
+        if not stats["completed_episode_numbers"]:
             return 0
-
-        if self.status == Status.IN_PROGRESS.value:
-            total_episodes = len(episode_counts)
-
-            # Find the highest repeat level reached by a strict majority of
-            # episodes. Vote counts are monotonically non-increasing as the
-            # level rises, so the last level clearing the bar is the deepest
-            # confirmed rewatch pass.
-            # The middle descending count is the deepest level held by a
-            # strict majority. Avoid visiting every repeat level of a heavily
-            # rewatched episode (counts can exceed the distinct episode count).
-            best_level = sorted(episode_counts.values(), reverse=True)[total_episodes // 2]
-
-            if best_level > 1:
-                # Report the highest episode number that reached this level,
-                # tolerating any episodes that didn't (the minority gaps).
-                qualifying = [
-                    ep_num
-                    for ep_num, count in episode_counts.items()
-                    if count >= best_level
-                ]
-                return max(qualifying)
-
-        # Otherwise, use the maximum episode number watched (at least once)
-        # This handles normal watching and errant repeats
+        # _get_episode_stats already limits explicit rewatches by their start
+        # date. Uneven lifetime repeat counts do not define another pass (#1584).
         return stats["max_episode_number"]
+
+    @property
+    def completed_episode_numbers(self):
+        """Return the episode numbers with a completed play in the current pass."""
+        return set(self._get_episode_stats()["completed_episode_numbers"])
+
+    @property
+    def watched_once_numbers(self):
+        """Return the episode numbers completed in any pass, rewatches or not."""
+        return set(self._get_episode_stats()["watched_once_numbers"])
+
+    @property
+    def watched_once_percentage(self):
+        """Return percent of the season watched at least once (0-100), or None."""
+        return _percent_of_max(
+            len(self._get_episode_stats()["watched_once_numbers"]),
+            getattr(self, "max_progress", None),
+        )
+
+    @property
+    def rewatch_percentage(self):
+        """Return percent of the open rewatch pass completed, or None outside one."""
+        if not self.is_rewatching:
+            return None
+        return _percent_of_max(
+            self.completed_episode_count,
+            getattr(self, "max_progress", None),
+        )
 
     @property
     def completed_episode_count(self):
@@ -1466,10 +1666,21 @@ class Season(Media):
         # Filter in Python: season querysets prefetch `episodes`, and a
         # queryset filter here would bypass that cache and turn every list
         # page into an N+1.
-        episodes = [ep for ep in self.episodes.all() if self.play_counts_for_pass(ep)]
-        episode_counts = {}
+        all_episodes = list(self.episodes.all())
+        episodes = [ep for ep in all_episodes if self.play_counts_for_pass(ep)]
         completed_episode_numbers = set()
         max_episode_number = 0
+
+        # Every episode ever finished, in any pass: "have I watched it all once".
+        watched_once_numbers = {
+            ep.item.episode_number
+            for ep in all_episodes
+            if (
+                ep._card_completed_count
+                if getattr(ep, "_card_is_summary", False)
+                else ep.status == Status.COMPLETED.value
+            )
+        }
 
         for ep in episodes:
             ep_num = ep.item.episode_number
@@ -1479,7 +1690,6 @@ class Season(Media):
                 else int(ep.status == Status.COMPLETED.value)
             )
             if count:
-                episode_counts[ep_num] = episode_counts.get(ep_num, 0) + count
                 completed_episode_numbers.add(ep_num)
             if (
                 (
@@ -1493,8 +1703,8 @@ class Season(Media):
                 max_episode_number = ep_num
 
         cached = {
-            "episode_counts": episode_counts,
             "completed_episode_numbers": completed_episode_numbers,
+            "watched_once_numbers": watched_once_numbers,
             "max_episode_number": max_episode_number,
         }
         self._episode_stats_cache = cached
@@ -1593,8 +1803,10 @@ class Season(Media):
         )
         if result.created:
             logger.info("%s created successfully.", result.episode)
-            cache_utils.clear_time_left_cache_for_user(self.user_id)
-            cache_utils.clear_media_list_cache_for_user(self.user_id)
+            cache_utils.clear_library_view_caches(
+                self.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
 
             entry_source = episode_fields.get("entry_source")
             if entry_source and self.entry_source != entry_source:
@@ -1649,8 +1861,10 @@ class Season(Media):
         if hasattr(self, "_episode_stats_cache"):
             delattr(self, "_episode_stats_cache")
         self._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     def _sync_status_after_episode_change(self, *, max_progress=None, plays_added=False):
         """Recalculate season (and TV) status from local episode history.
@@ -1679,12 +1893,15 @@ class Season(Media):
         episode_numbers.discard(None)
 
         # Best local hint for total episodes: release events in the DB
+        from events.models import released_q
+
         total_eps = (
             events.models.Event.objects.filter(
                 item=self.item,
                 content_number__isnull=False,
-                datetime__lte=timezone.now(),
-            ).aggregate(max_ep=Max("content_number"))["max_ep"]
+            )
+            .filter(released_q("datetime", timezone.now()))
+            .aggregate(max_ep=Max("content_number"))["max_ep"]
             or 0
         )
         local_total = self.item.local_season_episode_count or 0
@@ -1728,9 +1945,7 @@ class Season(Media):
         if desired_status == Status.COMPLETED.value and (
             became_completed
             or plays_added
-            or not tv.seasons.filter(item__season_number__gt=0)
-            .exclude(status=Status.COMPLETED.value)
-            .exists()
+            or not tv.has_unfinished_aired_seasons()
         ):
             if tv.status == Status.PLANNING.value:
                 # Logged plays mean the show has started, whether or not
@@ -2060,34 +2275,20 @@ class Season(Media):
             # Extract release_datetime from episode air_date
             air_date = matched_episode.get("air_date")
             if air_date:
-                from datetime import UTC, datetime
+                from events.calendar.helpers import date_parser
 
-                from django.utils import timezone
-
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     # Providers return a date-only value (TMDB as a
                     # "YYYY-MM-DD" string, TVDB sometimes as a naive
                     # datetime) with no real-world timezone attached - it's
-                    # a calendar date, not a local wall-clock moment. Anchor
-                    # it to UTC rather than the server's configured
-                    # TIME_ZONE: using the server's local zone here shifted
-                    # dates by that zone's UTC offset (e.g. Europe/Berlin's
-                    # +2h in summer pushed a July 15 air date to July 14
-                    # 22:00 UTC), which can flip the calendar date shown to
-                    # users depending on deployment timezone.
-                    if isinstance(air_date, str):
-                        date_obj = datetime.strptime(air_date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
-                        release_datetime = date_obj.replace(tzinfo=UTC)
-                    elif hasattr(air_date, "year"):
-                        # Already a datetime object
-                        release_datetime = (
-                            air_date
-                            if timezone.is_aware(air_date)
-                            else air_date.replace(tzinfo=UTC)
-                        )
-                except (ValueError, TypeError):
-                    # If parsing fails, keep release_datetime as None
-                    pass
+                    # a calendar date, not a local wall-clock moment. Store
+                    # the unknown-time sentinel so release state treats it as
+                    # an all-day date instead of counting it from midday UTC.
+                    release_datetime = (
+                        air_date
+                        if hasattr(air_date, "year") and timezone.is_aware(air_date)
+                        else date_parser(air_date)
+                    )
 
         # An episode's library bucket should mirror the show's grouping bucket
         # (e.g. 'tv'/'anime' for grouped anime), never the season's own 'season'
@@ -2267,6 +2468,18 @@ class Episode(models.Model):
         # range; without this they walked every episode the user watched.
         indexes = [
             models.Index(fields=["end_date"], name="app_episode_end_date_idx"),
+            # The user predicate reaches episodes through their seasons; these
+            # let each season be probed by date. The partial index serves the
+            # open-play branch (`end_date IS NULL AND start_date ...`).
+            models.Index(
+                fields=["related_season", "end_date"],
+                name="app_episode_season_end_idx",
+            ),
+            models.Index(
+                fields=["related_season", "start_date"],
+                name="app_episode_season_open_idx",
+                condition=models.Q(end_date__isnull=True),
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -2282,6 +2495,7 @@ class Episode(models.Model):
         """Return the season and episode number."""
         return self.item.__str__()
 
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the episode instance."""
         from app.services.completion import (
@@ -2338,47 +2552,20 @@ class Episode(models.Model):
         season_number = self.item.season_number
         if season_number is None:
             return
-        try:
-            tv_with_seasons_metadata = providers.services.get_media_metadata(
-                "tv_with_seasons",
-                self.item.media_id,
-                self.item.source,
-                [season_number],
-            )
-            season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
-            max_progress = len(season_metadata["episodes"])
-            self.related_season.max_progress = max_progress
-        except (
-            providers.services.ProviderAPIError,
-            RequestException,
-            KeyError,
-            TypeError,
-            ValueError,
-        ) as error:
-            max_progress = self._local_season_max_progress()
-            if not max_progress:
-                logger.warning(
-                    "Skipping Episode status sync due to missing metadata for "
-                    "%s S%sE%s: %s",
-                    self.item.media_id,
-                    season_number,
-                    self.item.episode_number,
-                    error,
-                )
-                return
-            logger.info(
-                "Using locally recorded episode count %s for %s S%s "
-                "(provider metadata missing)",
-                max_progress,
-                self.item.media_id,
-                season_number,
-            )
-            self.related_season.max_progress = max_progress
+        stored_count = self._stored_season_episode_count()
 
         # clear prefetch cache to get the updated episodes
         if hasattr(self.related_season, "_episode_stats_cache"):
             delattr(self.related_season, "_episode_stats_cache")
         self.related_season.refresh_from_db()
+
+        max_progress = self._max_progress_for_status_sync(
+            season_number,
+            stored_count,
+        )
+        if max_progress is None:
+            return
+        self.related_season.max_progress = max_progress
 
         desired_status = self.related_season.derived_status_from_episode_progress(
             max_progress=max_progress,
@@ -2399,7 +2586,20 @@ class Episode(models.Model):
         self.related_season.finish_rewatch_if_complete(max_progress=max_progress)
 
         if desired_status == Status.COMPLETED.value:
-            self.related_season.related_tv._handle_completed_season(season_number)
+            related_tv = self.related_season.related_tv
+            if related_tv.status == Status.PLANNING.value:
+                # Logging a play starts the show even when that play also
+                # completes its only aired season and a later season is only
+                # planned. Future planning seasons no longer auto-start, so
+                # this is the remaining place that marks the show as watched.
+                related_tv.status = Status.IN_PROGRESS.value
+                bulk_update_with_history(
+                    [related_tv],
+                    TV,
+                    fields=["status"],
+                    default_change_reason=EPISODE_PLAYED_REASON,
+                )
+            related_tv._handle_completed_season(season_number)
         elif self.related_season.related_tv.status != Status.IN_PROGRESS.value:
             self.related_season.related_tv.status = Status.IN_PROGRESS.value
             bulk_update_with_history(
@@ -2441,6 +2641,88 @@ class Episode(models.Model):
     def progressed_at(self):
         """Return the progressed at."""
         return None
+
+    def _stored_season_episode_count(self):
+        """Return the season item's stored provider episode count, if usable.
+
+        None for a custom episode order: its seasons are the order's, not the
+        provider's, and `get_media_metadata` resolves them from the order.
+        Reads the loaded season item when there is one, else one column.
+        """
+        if str(self.item.media_id).startswith("order_"):
+            return None
+        season = self.related_season
+        if Season._meta.get_field("item").is_cached(season):
+            count = season.item.provider_episode_count
+        else:
+            count = (
+                Item.objects.filter(pk=season.item_id)
+                .values_list("provider_episode_count", flat=True)
+                .first()
+            )
+        return count if count and count > 0 else None
+
+    def _max_progress_for_status_sync(self, season_number, stored_count):
+        """Return the season's episode count for the status sync, or None to skip.
+
+        The stored count may only answer "not finished yet". It is refreshed
+        when a payload is fetched, which can be long ago: a season that was
+        still airing then has a stored count that is too low, and trusting it
+        would complete the season early. So it is used only while the plays
+        of this pass are below it; a play that reaches it asks the provider
+        payload, exactly as before. The remaining difference is a count that
+        is too high (the provider removed episodes), which leaves the season
+        open until the next payload fetch lowers it.
+        """
+        season = self.related_season
+        if stored_count and season.completed_episode_count < stored_count:
+            return stored_count
+
+        try:
+            tv_with_seasons_metadata = providers.services.get_media_metadata(
+                "tv_with_seasons",
+                self.item.media_id,
+                self.item.source,
+                [season_number],
+            )
+            season_metadata = tv_with_seasons_metadata[f"season/{season_number}"]
+            max_progress = len(season_metadata["episodes"])
+        except (
+            providers.services.ProviderAPIError,
+            RequestException,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            max_progress = self._local_season_max_progress()
+            if not max_progress:
+                logger.warning(
+                    "Skipping Episode status sync due to missing metadata for "
+                    "%s S%sE%s: %s",
+                    self.item.media_id,
+                    season_number,
+                    self.item.episode_number,
+                    error,
+                )
+                return None
+            logger.info(
+                "Using locally recorded episode count %s for %s S%s "
+                "(provider metadata missing)",
+                max_progress,
+                self.item.media_id,
+                season_number,
+            )
+            return max_progress
+
+        if max_progress != stored_count and not str(self.item.media_id).startswith(
+            "order_",
+        ):
+            # The payload is in hand, so later plays of this season need not
+            # ask for it. A queryset update sends no post_save.
+            Item.objects.filter(pk=season.item_id).exclude(
+                provider_episode_count=max_progress,
+            ).update(provider_episode_count=max_progress)
+        return max_progress
 
     def _local_season_max_progress(self):
         """Return the media-server-sourced episode count for this season, if any.

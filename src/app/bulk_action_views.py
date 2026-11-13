@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import uuid
+
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db import transaction
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from app import bulk_actions
 from app.collection_views import (
@@ -13,6 +16,7 @@ from app.collection_views import (
     _expand_collection_entry_to_episodes,
 )
 from app.models import CollectionEntry, Item, Status
+from app.services import bulk_show_plays
 
 
 def _missing_item_ids_response():
@@ -32,13 +36,18 @@ def bulk_status_update(request):
 
     status = request.POST.get("status", "")
     valid_statuses = {value for value, _label in Status.choices}
-    if status not in valid_statuses:
+    clearing_status = status == bulk_actions.NO_STATUS_VALUE
+    if status not in valid_statuses and not clearing_status:
         return JsonResponse(
             {"success": False, "error": "Invalid status."},
             status=400,
         )
 
-    result = bulk_actions.apply_bulk_status(request.user, item_ids, status)
+    result = bulk_actions.apply_bulk_status(
+        request.user,
+        item_ids,
+        None if clearing_status else status,
+    )
     result["success"] = True
     result["message"] = (
         f"Updated {result['updated'] + result['created']} item(s)."
@@ -105,3 +114,68 @@ def bulk_collection_quick_add(request):
         + (f" {result['skipped']} skipped." if result["skipped"] else "")
     )
     return JsonResponse(result)
+
+
+@login_required
+@require_POST
+def bulk_show_plays_start(request):
+    """Start a preview (``dry_run``) or a real run of Add Plays to History."""
+    item_ids = bulk_actions.posted_item_ids(request.POST)
+    if not item_ids:
+        return _missing_item_ids_response()
+    if len(item_ids) > bulk_show_plays.MAX_SHOWS:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": f"Select up to {bulk_show_plays.MAX_SHOWS:,} shows at a time.",
+            },
+            status=400,
+        )
+    options, error = bulk_show_plays.parse_options(request.POST)
+    if options is None:
+        return JsonResponse({"success": False, "error": error}, status=400)
+
+    dry_run = request.POST.get("dry_run") == "1"
+    operation_id = uuid.uuid4().hex
+    if not dry_run and not cache.add(
+        bulk_show_plays.lock_key(request.user.id),
+        operation_id,
+        bulk_show_plays.LOCK_TTL,
+    ):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": "Another history job is still running. Try again soon.",
+            },
+            status=409,
+        )
+
+    from app.tasks import bulk_show_plays_task
+
+    cache.set(
+        bulk_show_plays.status_key(request.user.id, operation_id),
+        {"state": "running", "dry_run": dry_run, "total": len(item_ids), "done": 0},
+        bulk_show_plays.STATUS_TTL,
+    )
+    # Default queue on purpose: the page does not wait on this work.
+    bulk_show_plays_task.delay(
+        request.user.id,
+        item_ids,
+        options.as_task_kwargs(),
+        operation_id,
+        dry_run,
+    )
+    return JsonResponse({"success": True, "operation_id": operation_id})
+
+
+@login_required
+@require_GET
+def bulk_show_plays_status(request, operation_id):
+    """Return progress and results for a preview or run the user started."""
+    state = cache.get(bulk_show_plays.status_key(request.user.id, operation_id))
+    if state is None:
+        return JsonResponse(
+            {"success": False, "error": "This job has expired."},
+            status=404,
+        )
+    return JsonResponse({"success": True, **state})

@@ -35,6 +35,7 @@ from lists.views_helpers import (
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
     list_has_item_identity,
+    list_metadata_language,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,8 @@ def add_list_item_page(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         msg = "You do not have permission to add items to this list"
         raise Http404(msg)
 
@@ -100,6 +103,8 @@ def add_list_item_search(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         msg = "You do not have permission to add items to this list"
         raise Http404(msg)
 
@@ -124,7 +129,12 @@ def add_list_item_search(request, list_id):
         episode_number = request.GET.get("episode_number")
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=list_metadata_language(request.user),
+            )
         except Exception as exc:
             logger.exception(
                 "Quick add preview failed: list_id=%s media_type=%s media_id=%s",
@@ -199,7 +209,14 @@ def add_list_item_search(request, list_id):
     source = config.get_default_source_name(media_type).value
 
     try:
-        data = services.search(media_type, query, page, source)
+        data = services.search(
+            media_type,
+            query,
+            page,
+            source,
+            user=request.user,
+            language=list_metadata_language(request.user),
+        )
     except Exception as exc:
         logger.exception(
             "Quick add search failed: list_id=%s media_type=%s query=%s",
@@ -256,6 +273,8 @@ def add_list_item_submit(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         messages.error(
             request, gettext("You do not have permission to edit this list.")
         )
@@ -286,6 +305,15 @@ def add_list_item_submit(request, list_id):
     season_number = int(season_number) if season_number else None
     episode_number = int(episode_number) if episode_number else None
 
+    if media_type == MediaTypes.PODCAST.value and episode_number is None:
+        # Search results carry the provider id (iTunes id / feed URL); tracked
+        # shows are stored under their podcast_uuid, as lists_modal resolves.
+        from app.services.podcast_import import resolve_show_for_media_id
+
+        show = resolve_show_for_media_id(media_id, source=source)
+        if show is not None:
+            media_id = show.podcast_uuid
+
     item = find_item_across_buckets(
         user=request.user,
         media_id=media_id,
@@ -295,7 +323,11 @@ def add_list_item_submit(request, list_id):
         episode_number=episode_number,
     )
     if item is not None:
-        _maybe_backfill_episode_title(item, force=True)
+        _maybe_backfill_episode_title(
+            item,
+            force=True,
+            language=list_metadata_language(request.user),
+        )
     else:
         metadata = services.get_media_metadata(
             media_type,
@@ -303,6 +335,7 @@ def add_list_item_submit(request, list_id):
             source,
             [season_number] if season_number else None,
             episode_number,
+            language=list_metadata_language(request.user),
         )
         release_datetime = helpers.extract_release_datetime(metadata)
         item = Item.objects.create(
@@ -398,7 +431,14 @@ def apply_reorder_action(custom_list, item_id, action):
 
 
 def apply_full_order(custom_list, item_ids):
-    """Reorder items by an ordered ID list; returns an HTTP status code."""
+    """Reorder items by an ordered ID list; returns an HTTP status code.
+
+    ``item_ids`` are ``Item`` ids and may name every item in the list or only
+    a subset: the submitted items take the slots they already occupy, in the
+    submitted order, and the others stay where they are. A duplicate, or an id
+    that is not in this list, rejects the whole request with 400 and changes
+    nothing.
+    """
     if not item_ids:
         return 400
 
@@ -407,20 +447,20 @@ def apply_full_order(custom_list, item_ids):
             "date_added", "id"
         ),
     )
-    submitted_set = {str(i) for i in item_ids}
+    submitted = [str(i) for i in item_ids]
     item_map = {str(li.item_id): li for li in all_items}
+    submitted_set = set(submitted)
+    if len(submitted_set) != len(submitted) or not submitted_set <= set(item_map):
+        return 400
 
     # Positions in the full list currently occupied by the submitted subset
     original_positions = sorted(
         i for i, li in enumerate(all_items) if str(li.item_id) in submitted_set
     )
-    if not original_positions:
-        return 400
 
     # Place submitted items in their new DnD order at those same positions
-    for pos, item_id in zip(original_positions, item_ids, strict=False):
-        if str(item_id) in item_map:
-            all_items[pos] = item_map[str(item_id)]
+    for pos, item_id in zip(original_positions, submitted, strict=True):
+        all_items[pos] = item_map[item_id]
 
     base_time = timezone.now().replace(microsecond=0)
     for index, li in enumerate(all_items):

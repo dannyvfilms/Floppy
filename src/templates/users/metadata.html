@@ -10,74 +10,30 @@
   {# Modal state shared by every provider row, same shape as the Import Data page. #}
   <div class="space-y-6"
        x-data="{
+         activeMediaTag: 'all',
+         matchesTag(tags) {
+           return this.activeMediaTag === 'all' || tags.includes(this.activeMediaTag);
+         },
          activeModal: null,
          openModal(slug) { this.activeModal = slug },
          closeModal() { this.activeModal = null }
-       }">
-    {% if not can_edit_instance %}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-3">
-        <div class="flex items-center">
-          {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h2 class="text-xl font-semibold">{% translate "You are not a superuser" %}</h2>
-        </div>
-        <p class="text-sm text-[var(--color-text-muted)]">
-          {% translate "Instance-wide keys can only be changed by a superuser, so those fields are read-only for you. Every provider still accepts a personal key of your own, which is used for your requests instead of the instance key." %}
-        </p>
-        <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-          <p class="text-indigo-200 font-medium">
-            {% if instance_has_superuser %}
-              {% translate "Ask an administrator, or promote your own account" %}
-            {% else %}
-              {% translate "This instance has no superuser yet" %}
-            {% endif %}
-          </p>
-          <p>
-            {% translate "Floppy does not make anyone a superuser during setup, so a fresh install has none. Run this" %}
-            {% if in_container %}{% translate "on the host running the container" %}{% else %}{% translate "where Floppy is installed" %}{% endif %}:
-          </p>
-          <pre class="overflow-x-auto rounded bg-[var(--color-surface)] p-2 text-indigo-200"><code>{{ promote_command }}</code></pre>
-          <p>
-            {% translate "Then sign out and back in. Shell access already lets you do anything to this instance, so this grants nothing you could not do there already. Add" %}
-            <code class="text-indigo-200">--list</code> {% translate "to see every account first." %}
-          </p>
-        </div>
-      </div>
+       }"
+       x-init="const deepLinkSlug = new URLSearchParams(window.location.search).get('open'); if (deepLinkSlug) { openModal(deepLinkSlug); }">
+    {% include "users/components/metadata_admin_notice.html" %}
+
+    {% media_tag_choices media_tag_keys as media_tags %}
+    {% if media_tags|length > 1 %}
+      {% translate "All" as all_label %}
+      {% include "users/components/media_tag_filter.html" with tags=media_tags all_label=all_label %}
     {% endif %}
 
-    {% if provider_summary %}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
-        <h2 class="text-xl font-semibold mb-1">{% translate "Metadata Providers" %}</h2>
-        <p class="text-[var(--color-text-muted)] text-sm mb-4">
-          {% translate "Which provider supplies metadata for each library." %}
-        </p>
-        <div class="space-y-3">
-          {% for entry in provider_summary %}
-            {# Same row shape as provider_credential_row.html below, so both lists read as one system. #}
-            <div class="bg-[var(--color-surface-strong)] rounded-lg">
-              <div class="flex flex-wrap items-center gap-y-2 gap-x-3 p-3">
-                <div class="flex items-center gap-4 min-w-0 w-full sm:w-auto sm:flex-1">
-                  <div class="flex items-center">
-                    {% icon entry.media_type is_active=False extra_classes="w-6 h-6 mr-2 text-[var(--color-text-muted)]" %}
-                    <h4 class="font-medium">{{ entry.media_type|media_type_readable_plural }}</h4>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0 ml-auto">
-                  <span class="px-2 py-1 text-xs rounded bg-amber-500/10 text-[var(--color-warning-text)] border border-amber-500/30">{{ entry.current_label }}</span>
-                  <button type="button"
-                          @click="openModal('media-type-{{ entry.media_type }}')"
-                          class="px-3 py-1.5 text-sm rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-                    {% translate "Configure" %}
-                  </button>
-                </div>
-              </div>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
+    {% include "users/components/metadata_source_card.html" %}
+
+    {% include "users/components/metadata_library_repair.html" %}
 
     {% for group in credential_groups %}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="bg-[var(--color-surface)] rounded-lg p-6"
+           x-show="matchesTag({{ group.media_tags|media_tag_list }})">
         <div class="flex items-center mb-1">
           {% include "app/icons/key.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h2 class="text-xl font-semibold">{{ group.label }}</h2>
@@ -85,7 +41,9 @@
         <p class="text-[var(--color-text-muted)] text-sm mb-4">{{ group.description }}</p>
         <div class="space-y-3">
           {% for provider in group.providers %}
-            {% include "users/components/provider_credential_row.html" %}
+            <div x-show="matchesTag({{ provider.media_tags|media_tag_list }})">
+              {% include "users/components/provider_credential_row.html" %}
+            </div>
           {% endfor %}
         </div>
       </div>
@@ -105,92 +63,4 @@
     {% endfor %}
   </div>
 
-  {% if tv_provider_prompt %}
-    {% comment %}
-      Switching the TV provider only decides where new shows come from. Ask
-      before moving a library the user already has.
-    {% endcomment %}
-    <div x-data="{ open: true }"
-         x-cloak
-         x-show="open"
-         @keydown.escape.window="open = false"
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="tv-provider-title">
-      <div @click.outside="open = false"
-           class="w-full max-w-lg rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-6 shadow-2xl">
-        <h2 id="tv-provider-title"
-            class="text-lg font-semibold text-[var(--color-text)]">
-          {% blocktranslate with label=tv_provider_prompt.label %}Move your tracked shows to {{ label }}?{% endblocktranslate %}
-        </h2>
-        <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-          {% blocktranslate count count=tv_provider_prompt.count with label=tv_provider_prompt.label %}New shows will use {{ label }} straight away. You have {{ count }} show already tracked on the other provider.{% plural %}New shows will use {{ label }} straight away. You have {{ count }} shows already tracked on the other provider.{% endblocktranslate %}
-        </p>
-        <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-          {% translate "Moving keeps your status, ratings, notes and watched episodes. Shows that cannot be moved safely are left exactly as they are, and you can still move any show from its Match & Ordering tab." %}
-        </p>
-
-        <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button type="button"
-                  @click="open = false"
-                  class="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-            {% translate "Leave my library as it is" %}
-          </button>
-          <form method="post" action="{% url 'convert_tv_library' %}">
-            {% csrf_token %}
-            <button type="submit"
-                    class="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:w-auto">
-              {% translate "Move my tracked shows" %}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if anime_shape_prompt_count %}
-    {% comment %}
-      Switching the Anime Provider only decides the shape of newly added
-      shows. Ask before touching a library the user already has, rather than
-      starting a bulk conversion they did not expect.
-    {% endcomment %}
-    <div x-data="{ open: true }"
-         x-cloak
-         x-show="open"
-         @keydown.escape.window="open = false"
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="anime-shape-title">
-      <div @click.outside="open = false"
-           class="w-full max-w-lg rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-6 shadow-2xl">
-        <h2 id="anime-shape-title"
-            class="text-lg font-semibold text-[var(--color-text)]">
-          {% translate "Convert your existing anime?" %}
-        </h2>
-        <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-          {% blocktranslate count count=anime_shape_prompt_count %}New shows will use your new Anime Provider straight away. You have {{ count }} show already tracked in the other format.{% plural %}New shows will use your new Anime Provider straight away. You have {{ count }} shows already tracked in the other format.{% endblocktranslate %}
-        </p>
-        <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-          {% translate "Converting rebuilds them in the new format. Moving to MyAnimeList drops per-episode history, and titles that cannot be converted safely are left exactly as they are." %}
-        </p>
-
-        <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button type="button"
-                  @click="open = false"
-                  class="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
-            {% translate "Keep my library as it is" %}
-          </button>
-          <form method="post" action="{% url 'convert_anime_library' %}">
-            {% csrf_token %}
-            <button type="submit"
-                    class="inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 sm:w-auto">
-              {% translate "Convert my existing anime" %}
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-  {% endif %}
 {% endblock settings_content %}

@@ -1,0 +1,13 @@
+{% load i18n static app_tags user_tags %}
+<div x-data="{ activeIntegration: 'all' }">
+{% if provider_tab == 'sync' %}{% include "users/components/sync_state_section.html" %}{% endif %}
+{% if provider_slug == 'jellyfin' %}{% include "users/providers/setup_guide.html" %}{% include "users/providers/integrations/jellyfin.html" %}{% endif %}
+{% if provider_slug == 'plex' %}{% include "users/providers/integrations/plex.html" %}{% endif %}
+
+
+{% if provider_slug == 'stremio' %}{% include "users/providers/integrations/stremio.html" %}{% endif %}
+{% if provider_slug == 'seerr' %}{% include "users/providers/integrations/seerr.html" %}{% endif %}
+
+
+{% if provider_slug != 'stremio' and provider_slug != 'jellyfin' %}{% include "users/providers/setup_guide.html" %}{% endif %}
+</div>

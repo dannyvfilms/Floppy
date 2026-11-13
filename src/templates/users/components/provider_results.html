@@ -1,0 +1,8 @@
+{% load i18n %}
+<div id="provider-results" class="ui-catalog-grid" hx-history="false">
+  {% for provider in providers %}
+    {% include "users/components/provider_card.html" with selected_capability=capability %}
+  {% empty %}
+    <p class="col-span-full py-8 text-sm text-center text-[var(--color-text-muted)]">{% translate "No providers match these filters." %}</p>
+  {% endfor %}
+</div>

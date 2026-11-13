@@ -319,6 +319,123 @@ class CreditSyncQueryBudgetTests(TestCase):
         credits.sync_item_credits_from_metadata(self.item, self.metadata)
         mock_invalidate.reset_mock()
 
+        # Unchanged credits are left alone, so nothing is invalidated.
         credits.sync_item_credits_from_metadata(self.item, self.metadata)
+        mock_invalidate.assert_not_called()
+
+        changed = {**self.metadata, "cast": self.metadata["cast"][:1]}
+        credits.sync_item_credits_from_metadata(self.item, changed)
 
         mock_invalidate.assert_called_once_with(user.id, MediaTypes.MOVIE.value)
+
+
+class MissingCreditsBackfillQueryTests(TestCase):
+    """The backfill reads only item ids, so it must not sort or join people (#1791).
+
+    ``ItemPersonCredit`` orders by ``sort_order, person__name`` by default; on a
+    library with hundreds of thousands of credits that made person pages time out.
+    """
+
+    def test_id_reads_are_unordered_and_skip_the_person_join(self):
+        item = Item.objects.create(
+            media_id="movie-1791",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Backfill",
+            image="http://example.com/b.jpg",
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value, source_person_id="1", name="Actor"
+        )
+        ItemPersonCredit.objects.create(
+            item=item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            sort_order=0,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            credits.missing_credits_backfill_item_ids([item.id])
+
+        credit_sql = [
+            q["sql"].upper()
+            for q in queries
+            if "APP_ITEMPERSONCREDIT" in q["sql"].upper()
+            or "APP_ITEMSTUDIOCREDIT" in q["sql"].upper()
+        ]
+        self.assertTrue(credit_sql)
+        for sql in credit_sql:
+            self.assertNotIn("ORDER BY", sql)
+            self.assertNotIn("APP_PERSON", sql)
+
+
+class CreditSyncUnchangedTests(TestCase):
+    """Saving a play re-syncs credits; unchanged credits must not be rewritten."""
+
+    METADATA = {
+        "cast": [
+            {"person_id": "1", "name": "Lead", "role": "Aladar", "order": 0},
+            {"person_id": "2", "name": "Second", "role": "Neera", "order": 1},
+        ],
+        "crew": [
+            {"person_id": "3", "name": "Director", "department": "Directing"},
+        ],
+        "studios_full": [{"studio_id": "9", "name": "Studio"}],
+    }
+
+    def setUp(self):
+        self.item = Item.objects.create(
+            media_id="10567",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Dinosaur",
+            image="http://example.com/dinosaur.jpg",
+        )
+        credits.sync_item_credits_from_metadata(self.item, self.METADATA)
+
+    def _row_ids(self):
+        return (
+            set(ItemPersonCredit.objects.values_list("id", flat=True)),
+            set(ItemStudioCredit.objects.values_list("id", flat=True)),
+        )
+
+    def test_same_metadata_writes_nothing(self):
+        before = self._row_ids()
+        self.assertEqual(len(before[0]), 3)
+        with CaptureQueriesContext(connection) as queries:
+            credits.sync_item_credits_from_metadata(self.item, self.METADATA)
+        writes = [
+            query["sql"]
+            for query in queries
+            if query["sql"].lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE"))
+        ]
+        self.assertEqual(writes, [])
+        self.assertEqual(self._row_ids(), before)
+
+    def test_changed_role_replaces_the_credits(self):
+        changed = {
+            **self.METADATA,
+            "cast": [
+                {"person_id": "1", "name": "Lead", "role": "Kron", "order": 0},
+            ],
+        }
+        credits.sync_item_credits_from_metadata(self.item, changed)
+        cast = ItemPersonCredit.objects.filter(
+            item=self.item,
+            role_type=CreditRoleType.CAST.value,
+        )
+        self.assertEqual([credit.role for credit in cast], ["Kron"])
+        self.assertEqual(
+            ItemPersonCredit.objects.filter(
+                item=self.item,
+                role_type=CreditRoleType.CREW.value,
+            ).count(),
+            1,
+        )
+
+    def test_removed_studio_is_dropped(self):
+        credits.sync_item_credits_from_metadata(
+            self.item,
+            {**self.METADATA, "studios_full": []},
+        )
+        self.assertFalse(ItemStudioCredit.objects.filter(item=self.item).exists())

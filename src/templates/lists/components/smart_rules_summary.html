@@ -83,6 +83,18 @@
         <span x-text="origin.length <= 3 ? origin.toUpperCase() : origin"></span>
       </span>
 
+      <span x-show="format"
+            class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
+        <span class="text-[var(--color-text-muted)]">{% translate "Format:" %}</span>
+        <span x-text="format"></span>
+      </span>
+
+      <span x-show="author"
+            class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
+        <span class="text-[var(--color-text-muted)]">{% if filter_data.author_is_channel %}{% translate "Channel:" %}{% else %}{% translate "Author:" %}{% endif %}</span>
+        <span x-text="author"></span>
+      </span>
+
       <span x-show="search && search.trim().length"
             class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">
         <span class="text-[var(--color-text-muted)]">{% translate "Search:" %}</span>
@@ -153,6 +165,14 @@
 
       {% if saved_smart_rules.origin %}
         <span class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]"><span class="text-[var(--color-text-muted)]">{% translate "Origin:" %}</span> {{ saved_smart_rules.origin|upper }}</span>
+      {% endif %}
+
+      {% if saved_smart_rules.format %}
+        <span class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]"><span class="text-[var(--color-text-muted)]">{% translate "Format:" %}</span> {{ saved_smart_rules.format }}</span>
+      {% endif %}
+
+      {% if saved_smart_rules.author %}
+        <span class="px-2 py-1 rounded-md bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]"><span class="text-[var(--color-text-muted)]">{% if saved_smart_rules.media_types|length == 1 and saved_smart_rules.media_types.0 == "video" %}{% translate "Channel:" %}{% else %}{% translate "Author:" %}{% endif %}</span> {{ saved_smart_rules.author }}</span>
       {% endif %}
 
       {% if saved_smart_rules.search %}

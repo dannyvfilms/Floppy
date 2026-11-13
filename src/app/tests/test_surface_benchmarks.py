@@ -49,6 +49,7 @@ from app.tests.test_query_counts import (
 )
 from lists.models import CustomList, CustomListItem
 from users.home_screen import ensure_home_screen_rows
+from users.models import HomeScreenRow
 
 WARM_RUNS = 3
 
@@ -193,6 +194,11 @@ class SurfaceBenchmarkTests(TestCase):
             ],
         )
         ensure_home_screen_rows(cls.user)
+        cls.home_row = (
+            HomeScreenRow.objects.filter(user=cls.user, enabled=True)
+            .order_by("media_type", "position", "id")
+            .first()
+        )
 
         cls.movie_item = Item.objects.filter(media_type=MediaTypes.MOVIE.value).first()
         cls.tv_item = Item.objects.filter(media_type=MediaTypes.TV.value).first()
@@ -203,7 +209,11 @@ class SurfaceBenchmarkTests(TestCase):
         htmx = {"HTTP_HX_REQUEST": "true"}
         return [
             ("home", "/", {}),
-            ("home_rest", reverse("home_rest_fragment"), htmx),
+            (
+                "home_row",
+                reverse("home_row_fragment", args=[self.home_row.id]),
+                htmx,
+            ),
             ("medialist_movie", reverse("medialist", args=["movie"]), {}),
             ("medialist_tv", reverse("medialist", args=["tv"]), {}),
             ("medialist_anime", reverse("medialist", args=["anime"]), {}),
@@ -264,7 +274,7 @@ class SurfaceBenchmarkTests(TestCase):
             ),
             ("collection", reverse("collection_list"), {}),
             ("tags", reverse("tag_index"), {}),
-            ("integrations", reverse("integrations"), {}),
+            ("providers", reverse("providers"), {}),
             ("jsi18n", reverse("javascript-catalog"), {}),
             ("serviceworker", reverse("service_worker"), {}),
         ]

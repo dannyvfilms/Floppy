@@ -156,6 +156,7 @@ def _watch(
     heartbeat_seconds: float,
 ) -> int:
     started = last_change = last_heartbeat = time.monotonic()
+    migrating = "migrate" in child.args
     last_seen = None
     read_bytes = None
     while True:
@@ -203,7 +204,15 @@ def _watch(
                     f"process_read={activity[0] / 1_048_576:.0f}MB "
                     f"cpu_ticks={activity[1]} {extra}"
                 )
-            _bounded(print_startup_heartbeat, db_path, extra=extra)
+            if migrating:
+                # The scan sidecar still says "admission" here; describe the
+                # work that is actually running instead.
+                _log(
+                    "[entrypoint] Database migration heartbeat: "
+                    f"elapsed={now - started:.0f}s {extra}"
+                )
+            else:
+                _bounded(print_startup_heartbeat, db_path, extra=extra)
             last_heartbeat = now
 
 

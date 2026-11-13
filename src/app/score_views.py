@@ -3,17 +3,28 @@ from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.db.models.functions import TruncDate
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from app import history_cache
-from app.models import Album, BasicMedia, Episode, Season
+from app.card_events import add_card_update
+from app.models import (
+    Album,
+    BasicMedia,
+    Episode,
+    Item,
+    MediaTypes,
+    PodcastShowTracker,
+    Season,
+)
 from app.services.episode_scores import rate_episode
+from integrations.state.ratings import rating_edit
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +64,13 @@ def _collect_music_history_day_keys_for_artist(user, artist):
 
 
 @require_POST
+@rating_edit(implicit_clear=True)
 def update_media_score(request, media_type, instance_id):
     """Update the user's score for a media item."""
-    media = BasicMedia.objects.get_media(
-        request.user,
-        media_type,
-        instance_id,
-    )
+    try:
+        media = BasicMedia.objects.get_media(request.user, media_type, instance_id)
+    except ObjectDoesNotExist as error:
+        raise Http404 from error
 
     score_raw = request.POST.get("score")
     toggle = request.POST.get("toggle")
@@ -103,7 +114,7 @@ def update_media_score(request, media_type, instance_id):
     card_rating_html = render_to_string(
         "app/components/media_card_rating_oob.html",
         {
-            "media_instance_id": media.id,
+            "item": media.item,
             "rating_media_type": media.item.media_type,
             "rating_value": media.formatted_score,
             "rate_url": reverse(
@@ -114,11 +125,83 @@ def update_media_score(request, media_type, instance_id):
         },
         request=request,
     )
-    return HttpResponse(chip_html + card_rating_html)
+    return add_card_update(
+        HttpResponse(chip_html + card_rating_html),
+        media.item,
+        media,
+        request.user,
+    )
+
+
+@require_POST
+def update_podcast_show_score(request, tracker_id):
+    """Update the user's score for a podcast show tracker.
+
+    Podcasts are rated per show, so this cannot go through update_media_score,
+    which would look the id up among episode plays.
+    """
+    tracker = get_object_or_404(
+        PodcastShowTracker.objects.select_related("show"),
+        id=tracker_id,
+        user=request.user,
+    )
+
+    score_raw = (request.POST.get("score") or "").strip()
+    score = None
+    if score_raw and score_raw.lower() != "null":
+        try:
+            score = Decimal(score_raw)
+        except (InvalidOperation, TypeError):
+            return HttpResponseBadRequest("Invalid score.")
+        score = request.user.scale_score_for_storage(score)
+        if score is None:
+            return HttpResponseBadRequest("Invalid score.")
+    if request.POST.get("toggle") and score is not None and tracker.score == score:
+        score = None
+
+    tracker.score = score
+    tracker.save(update_fields=["score", "updated_at"])
+    logger.info("%s score updated to %s", tracker.show, score)
+
+    item = Item.objects.filter(
+        media_id=tracker.show.podcast_uuid,
+        source=tracker.show.source,
+        media_type=MediaTypes.PODCAST.value,
+    ).first()
+    chip_html = render_to_string(
+        "app/components/detail_score_chip_slot.html",
+        {
+            "media": item,
+            "current_instance": tracker,
+            "media_type": MediaTypes.PODCAST.value,
+            "user": request.user,
+            "user_medias": [tracker],
+            "public_view": False,
+            "csrf_token": request.META.get("CSRF_COOKIE", ""),
+            "score_chip_slot_oob": True,
+        },
+        request=request,
+    )
+    card_rating_html = ""
+    if item:
+        card_rating_html = render_to_string(
+            "app/components/media_card_rating_oob.html",
+            {
+                "item": item,
+                "rating_media_type": MediaTypes.PODCAST.value,
+                "rating_value": tracker.score,
+                "rate_url": reverse("update_podcast_show_score", args=[tracker.id]),
+                "user": request.user,
+            },
+            request=request,
+        )
+    response = HttpResponse(chip_html + card_rating_html)
+    return add_card_update(response, item, tracker, request.user) if item else response
 
 
 @login_required
 @require_POST
+@rating_edit(implicit_clear=True)
 def update_episode_score(request, season_id, episode_number):
     """Update the user's score for a specific episode."""
     season = get_object_or_404(Season, id=season_id, user=request.user)

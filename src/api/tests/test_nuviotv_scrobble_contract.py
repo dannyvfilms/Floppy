@@ -14,7 +14,8 @@ from unittest.mock import patch
 
 from django.utils import timezone
 
-from app.models import Movie, Status
+from app import live_playback
+from app.models import Item, MediaTypes, Movie, PlaybackProgress, Sources, Status
 from integrations.models import IntegrationToken
 
 from .base import FloppyApiTestCase
@@ -178,3 +179,169 @@ class NuvioTvScrobbleContractTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+
+class NuvioTvProgressPercentTests(FloppyApiTestCase):
+    """NuvioTV sends how far through it is; Floppy turns that into a position."""
+
+    RUNTIME_MINUTES = 120
+
+    def setUp(self):
+        """Mint a token and track a two-hour film Floppy already knows the length of."""
+        super().setUp()
+        _token, secret = IntegrationToken.generate(user=self.user1, name="NuvioTV")
+        self.headers = {"HTTP_AUTHORIZATION": f"Bearer {secret}"}
+        self.item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+            image="https://example.com/matrix.jpg",
+            runtime_minutes=self.RUNTIME_MINUTES,
+        )
+        for target in ("app.live_playback._attach_resolved_image",):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        tmdb_movie = patch("app.providers.tmdb.movie", return_value=MATRIX)
+        tmdb_movie.start()
+        self.addCleanup(tmdb_movie.stop)
+
+    def _send(self, action, percent, **extra):
+        payload = {**MOVIE_START, "action": action, **extra}
+        if percent is not None:
+            payload["progress_percent"] = percent
+        return self.client.post(SCROBBLE, payload, format="json", **self.headers)
+
+    def _card(self):
+        return live_playback.build_home_playback_card(self.user1)
+
+    def test_a_seek_to_half_shows_half_way_not_the_time_played(self):
+        """The reported bug: seeking to 50% left the card near the first 10 minutes."""
+        self._send("start", 8)
+        self.assertEqual(self._card()["offset_seconds"], round(7200 * 0.08))
+
+        self._send("pause", 50)
+
+        card = self._card()
+        self.assertEqual(card["offset_seconds"], 3600)
+        self.assertEqual(card["progress_percent"], 50)
+
+    def test_seeking_backwards_moves_the_card_back(self):
+        """A position reported lower than the last one replaces it."""
+        self._send("pause", 70)
+        self._send("pause", 20)
+
+        self.assertEqual(self._card()["offset_seconds"], 1440)
+
+    def test_resuming_after_a_pause_continues_from_the_reported_percent(self):
+        """Pause then start again: the new percent is the position."""
+        self._send("pause", 30)
+        self._send("start", 31)
+
+        self.assertEqual(self._card()["offset_seconds"], round(7200 * 0.31))
+
+    def test_an_explicit_position_wins_over_the_percent(self):
+        """A client that does send seconds is never second-guessed."""
+        self._send("pause", 50, position_seconds=600, duration_seconds=7200)
+
+        self.assertEqual(self._card()["offset_seconds"], 600)
+
+    def test_an_event_duration_wins_over_the_stored_runtime(self):
+        """The player's own length is more exact than a provider's runtime."""
+        self._send("pause", 50, duration_seconds=4000)
+
+        self.assertEqual(self._card()["offset_seconds"], 2000)
+
+    def test_a_film_of_unknown_length_shows_the_reported_percent(self):
+        """With no length to multiply by, the card says what the client said."""
+        self.item.delete()
+
+        self._send("pause", 50)
+
+        card = self._card()
+        self.assertEqual(card["progress_percent"], 50)
+        self.assertEqual(card["progress_display"], "50%")
+
+    def test_stopping_stores_the_resume_position_and_keeps_it_in_progress(self):
+        """A stop at 50% leaves a resume point at half, and no completed watch."""
+        self._send("start", 5)
+
+        response = self._send("stop", 50, completed=False)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        progress = PlaybackProgress.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(progress.position_seconds, 3600)
+        self.assertEqual(progress.duration_seconds, 7200)
+        self.assertFalse(progress.completed)
+        movie = Movie.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(movie.status, Status.IN_PROGRESS.value)
+        self.assertEqual(movie.history.count(), 1)
+
+    def test_finishing_at_the_cutoff_completes_once_and_stores_the_end(self):
+        """The 80% rule is still NuvioTV's `completed` flag, not Floppy's guess."""
+        response = self._send("stop", 85, completed=True)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        movie = Movie.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        progress = PlaybackProgress.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(progress.position_seconds, round(7200 * 0.85))
+        self.assertTrue(progress.completed)
+
+    def test_a_percent_never_adds_a_history_entry_by_itself(self):
+        """Start and pause with a percent are a live card, not a watch."""
+        self._send("start", 90)
+        self._send("pause", 95)
+
+        self.assertFalse(Movie.objects.filter(user=self.user1, item=self.item).exists())
+        self.assertFalse(PlaybackProgress.objects.filter(user=self.user1, item=self.item).exists())
+
+    def test_a_stop_without_a_percent_still_works_as_before(self):
+        """Older NuvioTV builds send no percent; nothing about them changes."""
+        response = self._send("stop", None, completed=True)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        movie = Movie.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertFalse(PlaybackProgress.objects.filter(user=self.user1, item=self.item).exists())
+
+    def test_a_percent_outside_zero_to_one_hundred_is_refused(self):
+        """A malformed percent is a 400, never silently clamped into a position."""
+        for bad in (-1, 100.5, "50", True):
+            with self.subTest(percent=bad):
+                response = self._send("pause", bad)
+
+                self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_a_first_scrobble_of_an_untracked_film_still_stores_the_position(self):
+        """No stored runtime yet: it is read from the provider, not lost."""
+        self.item.delete()
+        details = {**MATRIX, "max_progress": 1, "details": {"runtime": "2h 16min"}}
+
+        with patch("api.fork_views_scrobble.services.get_media_metadata", return_value=details):
+            response = self._send("stop", 50, completed=False)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        progress = PlaybackProgress.objects.get(user=self.user1, item__media_id="603")
+        self.assertEqual(progress.position_seconds, 4080)
+        self.assertEqual(progress.duration_seconds, 8160)
+
+    def test_a_stop_with_a_percent_but_no_completed_flag_judges_completion(self):
+        """Other clients may omit `completed`; 90% and up is a finished film."""
+        response = self._send("stop", 100)
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        movie = Movie.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        progress = PlaybackProgress.objects.get(user=self.user1, item=self.item)
+        self.assertTrue(progress.completed)
+
+    def test_a_stop_at_half_with_no_completed_flag_stays_in_progress(self):
+        """Below 90% is not a finished film."""
+        self._send("stop", 50)
+
+        movie = Movie.objects.get(user=self.user1, item=self.item)
+        self.assertEqual(movie.status, Status.IN_PROGRESS.value)
+        progress = PlaybackProgress.objects.get(user=self.user1, item=self.item)
+        self.assertFalse(progress.completed)

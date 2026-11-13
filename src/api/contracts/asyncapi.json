@@ -98,6 +98,30 @@
       "x-floppy-provider": "stremio",
       "x-floppy-dispatches-to-queue": "celery"
     },
+    "stremioAddonPlayer": {
+      "address": "/stremio-addon/{token}/player/{media_type}/{media_id}/position=0&duration=0.json",
+      "title": "stremioAddonPlayer",
+      "summary": "Stremio player event carrying a playback position and duration in the extra. Sent on play, pause, and stop, and the one source of a resume position for a client that cannot emit a stop.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/stremioAddonPlayerRequest"
+        }
+      },
+      "x-floppy-provider": "stremio",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
+    "stremioAddonLibrary": {
+      "address": "/stremio-addon/{token}/library/{media_type}/{media_id}/action=watched.json",
+      "title": "stremioAddonLibrary",
+      "summary": "Stremio library change (add, remove, watched, unwatched) for one item, carrying the affected episode ids in `videoId` so a batch arrives as one request.",
+      "messages": {
+        "request": {
+          "$ref": "#/components/messages/stremioAddonLibraryRequest"
+        }
+      },
+      "x-floppy-provider": "stremio",
+      "x-floppy-dispatches-to-queue": "celery"
+    },
     "listenBrainzSubmitListens": {
       "address": "/apis/listenbrainz/1/submit-listens",
       "title": "listenBrainzSubmitListens",
@@ -159,6 +183,20 @@
         "$ref": "#/channels/stremioAddonSubtitles"
       },
       "summary": "Stremio subtitles request used as a playback-start signal. Stremio re-requests on seek and quality change, so Floppy throttles to one scrobble per item per window."
+    },
+    "receiveStremioAddonPlayer": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/stremioAddonPlayer"
+      },
+      "summary": "Stremio player event carrying a playback position and duration in the extra. Sent on play, pause, and stop, and the one source of a resume position for a client that cannot emit a stop."
+    },
+    "receiveStremioAddonLibrary": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/stremioAddonLibrary"
+      },
+      "summary": "Stremio library change (add, remove, watched, unwatched) for one item, carrying the affected episode ids in `videoId` so a batch arrives as one request."
     },
     "receiveListenBrainzSubmitListens": {
       "action": "receive",
@@ -227,6 +265,24 @@
       "stremioAddonSubtitlesRequest": {
         "name": "stremioAddonSubtitlesRequest",
         "title": "Stremio subtitles request used as a playback-start signal. Stremio re-requests on seek and quality change, so Floppy throttles to one scrobble per item per window.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "stremioAddonPlayerRequest": {
+        "name": "stremioAddonPlayerRequest",
+        "title": "Stremio player event carrying a playback position and duration in the extra. Sent on play, pause, and stop, and the one source of a resume position for a client that cannot emit a stop.",
+        "contentType": "application/json",
+        "payload": {
+          "type": "object"
+        },
+        "x-floppy-payload-owner": "third-party"
+      },
+      "stremioAddonLibraryRequest": {
+        "name": "stremioAddonLibraryRequest",
+        "title": "Stremio library change (add, remove, watched, unwatched) for one item, carrying the affected episode ids in `videoId` so a batch arrives as one request.",
         "contentType": "application/json",
         "payload": {
           "type": "object"

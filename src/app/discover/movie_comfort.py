@@ -816,12 +816,21 @@ def _movie_comfort_cooldown_context(
     if _model_has_field(model, "end_date"):
         entry_only_fields.append("end_date")
 
-    entries = list(
+    entry_queryset = (
         model.objects.filter(user=user, status=Status.COMPLETED.value)
         .select_related("item")
         .only(*entry_only_fields)
         .order_by(*_activity_ordering(model))
     )
+    if media_type == MediaTypes.TV.value:
+        # A show's end_date is derived from its seasons and episodes; load
+        # them once instead of per show.
+        from app.models import BasicMedia
+
+        entry_queryset = BasicMedia.objects._apply_prefetch_related(
+            entry_queryset, media_type, list_mode=True
+        )
+    entries = list(entry_queryset)
     if not entries:
         return {"title": {}, "family": {}, "history_items_by_family_label": {}}
 

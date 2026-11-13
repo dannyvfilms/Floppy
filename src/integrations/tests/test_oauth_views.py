@@ -14,6 +14,8 @@ from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from requests import Response
 
+from app.providers import credentials
+from integrations import pending_auth
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
@@ -29,6 +31,14 @@ class OAuthStateViewTests(TestCase):
             username="oauth-user",
             password="oauth-password",
         )
+
+        # Django TestCase rolls back database writes, but credential
+        # caches can outlive a test and retain values for reused user IDs.
+        credentials.invalidate_cache()
+        credentials.invalidate_user_cache(self.user)
+        self.addCleanup(credentials.invalidate_cache)
+        self.addCleanup(credentials.invalidate_user_cache, self.user)
+
         self.client.force_login(self.user)
 
     def _start_oauth(self, view_name):
@@ -54,13 +64,18 @@ class OAuthStateViewTests(TestCase):
         return state_token
 
     def _callback_url(self, view_name, state_token):
-        return f"{reverse(view_name)}?{urlencode({'state': state_token, 'code': 'oauth-code'})}"
+        return f"{reverse(view_name)}?{urlencode({'state': state_token, 'code': 'oauth-code', 'iss': 'https://simkl.com'})}"
 
     def _assert_invalid_state(self, view_name, message, callback_path):
         response = self.client.get(reverse(view_name), follow=True)
 
         self.assertContains(response, message)
-        self.assertEqual(response.redirect_chain[-1][0], callback_path)
+        expected = (
+            reverse("providers") + "?capability=import"
+            if callback_path == reverse("import_data")
+            else callback_path
+        )
+        self.assertEqual(response.redirect_chain[-1][0], expected)
         self.assertEqual(
             self.client.session.get("_auth_user_id"),
             str(self.user.pk),
@@ -98,12 +113,22 @@ class OAuthStateViewTests(TestCase):
         # approved on SIMKL and only then hit a 403 at token exchange (#1318).
         response = self.client.post(
             reverse("simkl_oauth"),
-            data={"mode": "new", "frequency": "once", "time": "00:00"},
+            data={
+                "mode": "new",
+                "frequency": "once",
+                "time": "00:00",
+                "next": reverse("provider_detail", args=["simkl"]) + "?tab=import",
+            },
             follow=True,
         )
 
-        self.assertEqual(response.redirect_chain, [(reverse("import_data"), 302)])
-        self.assertContains(response, "SIMKL needs your own Client ID and Client secret.")
+        self.assertEqual(
+            response.redirect_chain,
+            [(reverse("provider_detail", args=["simkl"]) + "?tab=import", 302)],
+        )
+        self.assertContains(
+            response, "SIMKL needs your own Client ID and Client secret."
+        )
         self.assertContains(response, "SIMKL needs your own API app")
 
     def test_simkl_rejected_token_exchange_shows_message_not_500(self):
@@ -128,6 +153,27 @@ class OAuthStateViewTests(TestCase):
         self.assertTrue(request_kwargs["headers"]["User-Agent"].startswith("Floppy/"))
         self.assertEqual(request_kwargs["data"]["client_secret"], "test-simkl-secret")
         self.assertEqual(request_kwargs["data"]["code_verifier"], code_verifier)
+
+    def test_simkl_declined_consent_shows_message_not_500(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = f"{reverse('import_simkl_private')}?{urlencode({'error': 'access_denied', 'state': state_token, 'iss': 'https://simkl.com'})}"
+
+        with patch("integrations.views.simkl.get_token") as get_token:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SIMKL authorization was cancelled or denied.")
+        get_token.assert_not_called()
+
+    def test_simkl_rejects_callback_from_another_issuer(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = f"{reverse('import_simkl_private')}?{urlencode({'code': 'oauth-code', 'state': state_token, 'iss': 'https://not-simkl.example.com'})}"
+
+        with patch("integrations.views.simkl.get_token") as get_token:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertContains(response, "Invalid or expired SIMKL authorization request.")
+        get_token.assert_not_called()
 
     def test_simkl_authorize_uses_auth_v2_with_pkce(self):
         response = self.client.post(
@@ -330,7 +376,10 @@ class OAuthStateViewTests(TestCase):
                         "username": "trakt-user",
                     },
                 ),
-                patch("integrations.views.helpers.encrypt", side_effect=lambda t: f"enc-{t}"),
+                patch(
+                    "integrations.views.helpers.encrypt",
+                    side_effect=lambda t: f"enc-{t}",
+                ),
             ):
                 self.client.get(self._callback_url("import_trakt_private", state_token))
 
@@ -346,7 +395,10 @@ class OAuthStateViewTests(TestCase):
         with (
             patch(
                 "integrations.views.anilist.get_token",
-                return_value={"access_token": "anilist-access", "username": "anilist-user"},
+                return_value={
+                    "access_token": "anilist-access",
+                    "username": "anilist-user",
+                },
             ) as get_token,
             patch("integrations.views.helpers.encrypt", return_value="encrypted-token"),
             patch("integrations.views.tasks.import_anilist.delay") as import_task,
@@ -497,7 +549,7 @@ class TraktDeviceFlowViewTests(TestCase):
             reverse("trakt_device_verify"),
             fetch_redirect_response=False,
         )
-        state = self.client.session[TRAKT_DEVICE_SESSION_KEY]
+        state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk)
         self.assertEqual(state["device_code"], "device-code")
         self.assertEqual(state["mode"], "new")
         self.assertEqual(state["frequency"], "once")
@@ -522,7 +574,7 @@ class TraktDeviceFlowViewTests(TestCase):
         poll.assert_called_once_with("device-code")
         self.assertEqual(response.status_code, 204)
         self.assertNotIn("HX-Redirect", response)
-        self.assertIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNotNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
 
     def test_poll_success_queues_the_import(self):
         self._start()
@@ -548,7 +600,7 @@ class TraktDeviceFlowViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
 
     def test_poll_surfaces_a_denied_authorization(self):
         self._start()
@@ -560,17 +612,15 @@ class TraktDeviceFlowViewTests(TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
         messages = [str(m) for m in get_messages(response.wsgi_request)]
         self.assertIn("Trakt authorization was denied.", messages)
 
     def test_expired_state_never_calls_trakt(self):
         self._start()
-        session = self.client.session
-        state = session[TRAKT_DEVICE_SESSION_KEY]
+        state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk)
         state["expires_at"] = (timezone.now() - timedelta(seconds=1)).isoformat()
-        session[TRAKT_DEVICE_SESSION_KEY] = state
-        session.save()
+        pending_auth.put(TRAKT_DEVICE_SESSION_KEY, self.user.pk, state)
 
         with patch("integrations.views.trakt.poll_device_token") as poll:
             response = self.client.get(reverse("trakt_device_poll"))
@@ -578,6 +628,6 @@ class TraktDeviceFlowViewTests(TestCase):
         poll.assert_not_called()
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
         messages = [str(m) for m in get_messages(response.wsgi_request)]
         self.assertIn("The Trakt authorization code expired. Start again.", messages)

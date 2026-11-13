@@ -24,6 +24,37 @@ class _UnrenderableLogValue:
 
 
 class LogSafetyTests(SimpleTestCase):
+    def test_bearer_tokens_in_request_paths_are_redacted(self):
+        paths = (
+            "/webhook/jellyfin/secret-value",
+            "/webhook/plex/secret-value",
+            "/webhook/emby/secret-value",
+            "/webhook/jellyseerr/secret-value",
+            "/webhook/kodi/secret-value",
+            "/stremio-addon/secret-value/manifest.json",
+            "/import/plex/cover/secret-value",
+            "/import/audiobookshelf/cover/secret-value",
+            "/calendar/download/secret-value",
+            "/rss/secret-value/movie/recent.xml",
+            "/image-cache/secret-value",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                line = f'"GET /floppy{path} HTTP/1.1" 200'
+                self.assertEqual(
+                    redact_secrets(line),
+                    line.replace("secret-value", "[REDACTED]"),
+                )
+
+    def test_oauth_credentials_in_callback_queries_are_redacted(self):
+        line = (
+            '"GET /import/trakt/private?code=oauth-code&state=oauth-state HTTP/1.1" 302'
+        )
+        self.assertEqual(
+            redact_secrets(line),
+            '"GET /import/trakt/private?code=[REDACTED]&state=[REDACTED] HTTP/1.1" 302',
+        )
+
     def test_exception_summary_includes_status_without_message(self):
         response = type("Response", (), {"status_code": 404})()
         exc = Exception("contains secrets")
@@ -381,3 +412,39 @@ class LogSafetyTests(SimpleTestCase):
         )
 
         self.assertEqual(record.getMessage(), "Media item 123 updated")
+
+
+class ConsoleNoiseFilterTests(SimpleTestCase):
+    def _record(self, name, level, message):
+        return logging.LogRecord(name, level, __file__, 1, message, None, None)
+
+    def test_routine_celery_and_health_lines_are_hidden_from_console(self):
+        from app.log_safety import ConsoleNoiseFilter
+
+        noise = ConsoleNoiseFilter()
+        for name, message in (
+            ("celery.app.trace", "Task app.tasks.x succeeded in 0.1s"),
+            ("celery.worker.strategy", "Task app.tasks.x received"),
+            ("django.server", '"GET /health/ HTTP/1.1" 200'),
+            ("django.server", '"GET /ping/ HTTP/1.1" 200'),
+        ):
+            self.assertFalse(noise.filter(self._record(name, logging.INFO, message)))
+
+    def test_warnings_and_ordinary_lines_still_reach_console(self):
+        from app.log_safety import ConsoleNoiseFilter
+
+        noise = ConsoleNoiseFilter()
+        self.assertTrue(
+            noise.filter(self._record("celery.app.trace", logging.ERROR, "failed")),
+        )
+        self.assertTrue(
+            noise.filter(self._record("app.views", logging.INFO, "Imported 3 items")),
+        )
+        self.assertTrue(
+            noise.filter(self._record("app.views", logging.INFO, "GET /pingback/x")),
+        )
+
+    def test_file_handler_never_carries_the_noise_filter(self):
+        from django.conf import settings
+
+        self.assertNotIn("filters", settings.LOGGING["handlers"]["file"])

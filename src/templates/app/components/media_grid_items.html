@@ -11,10 +11,12 @@
         <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ media.item.provider_rating|floatformat:1 }}/10</p>
       {% endif %}
     {% elif current_sort == 'end_date' %}
-      {% with end_date=media|safe_attr:"aggregated_end_date"|default_if_none:media.end_date %}
+      {% with progressed_at=media|safe_attr:"progressed_at" %}
+      {% with end_date=media|safe_attr:"aggregated_last_watched"|default_if_none:media.end_date|default_if_none:progressed_at %}
         {% if end_date %}
           <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ end_date|user_date_format:user }}</p>
         {% endif %}
+      {% endwith %}
       {% endwith %}
     {% elif current_sort == 'start_date' %}
       {% with start_date=media|safe_attr:"aggregated_start_date"|default_if_none:media.start_date %}

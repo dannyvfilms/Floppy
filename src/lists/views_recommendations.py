@@ -36,6 +36,7 @@ from lists.views_helpers import (
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
     list_has_item_identity,
+    list_metadata_language,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,12 @@ def recommend_search(request, list_id):
         episode_number = request.GET.get("episode_number")
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=list_metadata_language(request.user, custom_list.owner),
+            )
         except Exception as exc:
             logger.exception(
                 "Recommendation preview failed: list_id=%s media_type=%s media_id=%s",
@@ -193,7 +199,14 @@ def recommend_search(request, list_id):
     source = config.get_default_source_name(media_type).value
 
     try:
-        data = services.search(media_type, query, page, source)
+        data = services.search(
+            media_type,
+            query,
+            page,
+            source,
+            user=request.user if request.user.is_authenticated else None,
+            language=list_metadata_language(request.user, custom_list.owner),
+        )
     except Exception as exc:
         logger.exception(
             "Recommendation search failed: list_id=%s media_type=%s query=%s",
@@ -259,6 +272,7 @@ def get_or_create_recommendation_item(
     season_number=None,
     episode_number=None,
     user=None,
+    language=None,
 ):
     """Return the Item for a recommendation, creating it from metadata if new."""
     item = find_item_across_buckets(
@@ -270,7 +284,7 @@ def get_or_create_recommendation_item(
         episode_number=episode_number,
     )
     if item is not None:
-        _maybe_backfill_episode_title(item, force=True)
+        _maybe_backfill_episode_title(item, force=True, language=language)
     else:
         metadata = services.get_media_metadata(
             media_type,
@@ -278,6 +292,7 @@ def get_or_create_recommendation_item(
             source,
             [season_number] if season_number else None,
             episode_number,
+            language=language,
         )
         release_datetime = helpers.extract_release_datetime(metadata)
         item = Item.objects.create(
@@ -331,6 +346,7 @@ def submit_recommendation(request, list_id):
         season_number,
         episode_number,
         user=request.user if request.user.is_authenticated else None,
+        language=list_metadata_language(request.user, custom_list.owner),
     )
 
     discover_tab_cache.mark_active_from_request(

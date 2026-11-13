@@ -104,7 +104,7 @@
                   <a href="{{ item.media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
                     <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if item.media.item.image and item.media.item.image != IMG_NONE %}
-                    <img src="{{ IMG_NONE }}" data-src="{{ item.media.item.image }}" alt="{{ item.media.item.title }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
+                    <img src="{{ item.media.item.image }}" alt="{{ item.media.item.title }}" class="w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">

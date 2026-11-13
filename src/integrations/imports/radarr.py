@@ -20,7 +20,10 @@ from integrations.imports.helpers import (
 )
 from integrations.models import RadarrInstance
 from integrations.safe_fetch import send_to_self_hosted
-from integrations.source_sync import upsert_collection_source_state
+from integrations.source_sync import (
+    prune_collection_source_states,
+    upsert_collection_source_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +131,7 @@ class RadarrImporter:
     def import_data(self):
         """Return the import data."""
         imported_counts = defaultdict(int)
+        owned_item_ids = set()
 
         try:
             movies = self.client.movies()
@@ -150,6 +154,7 @@ class RadarrImporter:
                 imported_counts["skipped_missing_ids"] += 1
                 continue
 
+            owned_item_ids.add(item.id)
             quality_label = (row.get("movieFile") or {}).get("quality", {}).get(
                 "quality", {}
             ).get("name") or ""
@@ -162,9 +167,18 @@ class RadarrImporter:
                 quality_label=quality_label,
                 source_updated_at=updated_at,
             )
-            imported_counts[item.media_type] += 1
+            imported_counts["collection"] += 1
             imported_counts["updated"] += 1
 
+        # The full movie list was read, so anything missing is no longer owned.
+        removed = prune_collection_source_states(
+            user=self.user,
+            source="radarr",
+            source_instance_id=self.instance.pk,
+            keep_item_ids=owned_item_ids,
+        )
+        if removed:
+            imported_counts["removed"] += removed
         self.instance.last_sync_at = timezone.now()
         connection_health.record_success(self.instance, extra_fields=["last_sync_at"])
 

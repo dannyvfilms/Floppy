@@ -104,6 +104,25 @@ class CollectionHelpersTest(TestCase):
         self.assertEqual(stats["by_format"]["bluray"], 1)
         self.assertEqual(stats["by_format"]["dvd"], 1)
 
+    def test_show_collection_total_includes_known_episodes_when_provider_lags(self):
+        """Summary and season audit must use all known non-special episodes."""
+        Item.objects.create(
+            media_id=self.tv_item.media_id, source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value, season_number=1, title="Season 1",
+        )
+        for number in range(1, 4):
+            episode = Item.objects.create(
+                media_id=self.tv_item.media_id, source=self.tv_item.source,
+                media_type=MediaTypes.EPISODE.value, season_number=1,
+                episode_number=number, title=f"Episode {number}",
+            )
+            if number < 3:
+                CollectionEntry.objects.create(user=self.user, item=episode)
+        lagging = get_tv_show_collection_stats(self.user, self.tv_item, metadata_episode_count=2)
+        self.assertEqual((lagging["collected_episodes"], lagging["total_episodes"]), (2, 3))
+        ahead = get_tv_show_collection_stats(self.user, self.tv_item, metadata_episode_count=4)
+        self.assertEqual((ahead["collected_episodes"], ahead["total_episodes"]), (2, 4))
+
     def test_get_tv_show_collection_stats_uses_show_level_entry_as_fallback(self):
         """Show-level collection entries should fill show totals when no granular rows exist."""
         Item.objects.create(
@@ -449,6 +468,51 @@ class CollectionHelpersTest(TestCase):
             stats,
             {
                 "collected_episodes": 2,
+                "total_episodes": 2,
+            },
+        )
+
+    def test_get_season_collection_stats_counts_an_episode_once(self):
+        """Two copies of one episode count as one collected episode."""
+        season_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Test TV Season 1",
+            image="http://example.com/season1.jpg",
+        )
+        episode_one = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Test TV Episode 2",
+            image="http://example.com/episode2.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=episode_one, media_type="Blu-ray"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=episode_one, media_type="digital"
+        )
+
+        stats = get_season_collection_stats(self.user, season_item)
+
+        self.assertEqual(
+            stats,
+            {
+                "collected_episodes": 1,
                 "total_episodes": 2,
             },
         )

@@ -303,32 +303,39 @@ class EpisodeWatchIdentityConcurrencyTests(TransactionTestCase):
         token = uuid4()
         barrier = Barrier(2)
 
-        def watch():
-            close_old_connections()
-            try:
-                season = Season.objects.select_related("user", "item").get(
-                    pk=self.season.pk,
-                )
-                barrier.wait()
-                with suppress_media_change_side_effects():
-                    return season.watch(
-                        1,
-                        datetime.datetime.now(datetime.UTC),
-                        watch_operation_id=token,
-                    )
-            finally:
-                close_old_connections()
-
         # The two threads share one in-memory SQLite database, which answers
-        # "table is locked" at once instead of waiting. On a loaded CI runner
-        # the default 3 seconds of retries sometimes ran out, so give the
-        # retry loop more room; the outcome being tested is unchanged.
+        # "table is locked" at once instead of waiting. That applies to reads
+        # as well as writes, so any query in the thread, not just the watch
+        # insert, can hit it while the other thread writes. Production uses a
+        # file database that waits instead. Give every query room to retry; the
+        # outcome being tested is unchanged.
         patient_retry = partial(
             run_retryable_db_operation,
             max_retries=10,
             base_delay=0.1,
             backoff=1.5,
         )
+
+        def watch():
+            close_old_connections()
+            try:
+                season = patient_retry(
+                    lambda: Season.objects.select_related("user", "item").get(
+                        pk=self.season.pk,
+                    ),
+                ).value
+                barrier.wait()
+                with suppress_media_change_side_effects():
+                    return patient_retry(
+                        lambda: season.watch(
+                            1,
+                            datetime.datetime.now(datetime.UTC),
+                            watch_operation_id=token,
+                        ),
+                    ).value
+            finally:
+                close_old_connections()
+
         with (
             patch(
                 "app.models.providers.services.get_media_metadata",

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title>Playnite</title>
+  <defs>
+    <linearGradient id="playnite-gradient" x1="20" y1="44" x2="236" y2="212" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ff0068"/>
+      <stop offset="1" stop-color="#ffb000"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#playnite-gradient)" d="M13 179c3-48 12-91 32-118C60 38 77 44 99 49c20 5 38 7 59 2 23-5 40-13 57 12 19 28 28 71 29 116 1 27-9 39-23 35-13-4-25-22-37-34-8-8-17-10-29-10h-54c-13 0-22 3-31 12-12 12-23 29-35 32-15 4-24-11-22-35Z"/>
+  <circle cx="78" cy="113" r="20"/>
+  <circle cx="178" cy="88" r="10"/>
+  <circle cx="156" cy="111" r="10"/>
+  <circle cx="200" cy="111" r="10"/>
+  <circle cx="178" cy="134" r="10"/>
+</svg>

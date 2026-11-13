@@ -15,6 +15,20 @@ from django.core.servers.basehttp import WSGIServer
 from django.test.testcases import LiveServerThread, QuietWSGIRequestHandler
 
 
+class SerialRequestHandler(QuietWSGIRequestHandler):
+    """Request handler that drops a connection left idle."""
+
+    # Chromium opens spare connections it may never send a request on; a server
+    # that handles one connection at a time would wait on such a socket forever.
+    timeout = 0.5
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except TimeoutError:
+            self.close_connection = True
+
+
 class SerialLiveServerThread(LiveServerThread):
     """Live server thread whose server is not threaded."""
 
@@ -23,7 +37,7 @@ class SerialLiveServerThread(LiveServerThread):
         # every request is handled on this thread.
         return WSGIServer(
             (self.host, self.port),
-            QuietWSGIRequestHandler,
+            SerialRequestHandler,
             allow_reuse_address=False,
         )
 

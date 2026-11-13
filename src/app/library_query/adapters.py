@@ -34,6 +34,17 @@ SMART_RULES_SEMANTICS_KEY = "semantics_version"
 SMART_RULES_LEGACY_SEMANTICS = 1
 SMART_RULES_CURRENT_SEMANTICS = 2
 
+# The media list and Home label end_date "Last Watched" (or Last Played, Read,
+# Listened). Those surfaces mean the item's most recent activity, which for an
+# in-progress row is progressed_at rather than a completion date. Custom list
+# detail keeps end_date's literal meaning: that sort is labelled "End Date".
+LAST_WATCHED_SORT_KEYS = frozenset({"end_date", "ended"})
+
+
+def last_watched_sort_key(sort_key: str) -> str:
+    """Translate a surface's "Last Watched" choice to the engine's key."""
+    return "last_watched" if sort_key in LAST_WATCHED_SORT_KEYS else sort_key
+
 
 def smart_rules_use_legacy_semantics(rules: dict) -> bool:
     """Return whether saved rules predate the shared engine's semantics."""
@@ -65,6 +76,9 @@ def filter_values_from_media_list_filters(filters: MediaListFilters) -> FilterVa
         include_no_status=filters.include_no_status,
         status_match=STATUS_MATCH_LATEST,
         search=filters.search,
+        initial=filters.initial,
+        game_group_by=filters.group_by,
+        game_group=filters.group,
         rating=filters.rating,
         rating_min=filters.rating_min,
         rating_max=filters.rating_max,
@@ -77,6 +91,7 @@ def filter_values_from_media_list_filters(filters: MediaListFilters) -> FilterVa
         completed_date_to=filters.completed_date_to,
         date_added_from=filters.date_added_from,
         date_added_to=filters.date_added_to,
+        updated_since=filters.updated_since,
         release=filters.release,
         release_date_from=filters.release_date_from,
         release_date_to=filters.release_date_to,
@@ -230,7 +245,7 @@ def from_home_row_filters(
             progress_needs_released=mixed,
         ),
         sort=SortSpec(
-            key=sort_key or "title",
+            key=last_watched_sort_key(sort_key) or "title",
             direction=home_engine_direction(sort_key, direction),
             seed=seed,
         ),

@@ -135,3 +135,39 @@ so tests that patch it keep working.
 International domain names are normalized through Requests before resolution, so
 DNS validation, the Host header and TLS verification use the same ASCII name.
 Explicit allowed ports are retained in the Host header as well as the dial URL.
+
+### Pinned self-hosted transport (opt-in foundation)
+
+`send_to_self_hosted_pinned(method, url, **kwargs)` is the opt-in pinned
+transport for future client migrations. It retains the validated IP for the
+whole same-host redirect chain, verifies HTTPS against the original hostname
+and preserves the original Host header. Proxy routing is disabled. Redirects
+cannot change host or port or downgrade HTTPS; the conventional upgrade from
+HTTP port 80 to HTTPS port 443 is permitted.
+
+An elapsed-time deadline (60 seconds by default, configurable with
+`total_timeout`) applies across redirects and connected-socket reads. A
+separate decoded-body limit (32 MiB by default, configurable with `max_bytes`)
+also applies to streamed Responses consumed through Requests'
+`.iter_content()` and `.content`. Direct `.raw.read()` is capped by
+bytes returned, which may be compressed; direct raw reader methods are not
+part of the decoded-body-limit guarantee. Callers handling larger legitimate
+payloads must explicitly set a suitable cap, consume untrusted bodies
+through the bounded Requests interfaces, and close streaming responses
+when finished. OS DNS resolver timeouts remain outside the application's
+connected-socket deadline.
+
+```python
+from integrations.safe_fetch import send_to_self_hosted_pinned
+
+response = send_to_self_hosted_pinned(
+    "GET", url, headers=..., timeout=20,
+)
+data = response.json()
+```
+
+The existing `send_to_self_hosted(send, url, **kwargs)` API has deliberately
+**not** been replaced: upstream integrations still call it and retain its
+pre-existing DNS validation-to-connect race. Introducing the new transport
+does not secure these callers until a separate integration migration changes
+their call sites.

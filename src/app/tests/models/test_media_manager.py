@@ -22,6 +22,7 @@ from app.models import (
     Sources,
     Status,
 )
+from events.calendar.helpers import date_parser
 from events.models import Event
 from users.models import HomeSortChoices, MediaStatusChoices
 
@@ -666,6 +667,142 @@ class MediaManagerTests(TestCase):
 
         self.assertIsNone(anime_list[0].next_event)
 
+    def test_annotate_next_event_keeps_date_only_release_until_day_ends(self):
+        """Today's date-only episode is still the next event, not a past one."""
+        manager = MediaManager()
+        item = Item.objects.create(
+            media_id="date-only-next-event",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Date Only Next Event",
+            image="http://example.com/date-only.jpg",
+        )
+        anime = Anime.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        today = timezone.localdate()
+        event = Event.objects.create(
+            item=item,
+            content_number=1,
+            datetime=date_parser(today),
+        )
+        item.prefetched_events = [event]
+        now = datetime(today.year, today.month, today.day, 14, tzinfo=UTC)
+
+        with patch("django.utils.timezone.now", return_value=now):
+            manager._annotate_next_event([anime])
+
+        self.assertEqual(anime.next_event, event)
+
+    def test_released_episode_count_prefers_a_precise_event_over_item_date(self):
+        """A date-only item must not release an episode before its precise event."""
+        manager = MediaManager()
+        tv_item = Item.objects.create(
+            media_id="greys-1588",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Grey's Anatomy",
+            image="http://example.com/greys.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="greys-1588",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Grey's Anatomy Season 23",
+            image="http://example.com/greys-season.jpg",
+            season_number=23,
+        )
+        Season.objects.create(
+            item=season_item,
+            related_tv=tv,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        Item.objects.create(
+            media_id="greys-1588",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Collide",
+            image="http://example.com/greys-episode.jpg",
+            season_number=23,
+            episode_number=1,
+            release_datetime=date_parser("2026-10-15"),
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=datetime(2026, 10, 16, 2, 0, tzinfo=UTC),
+        )
+
+        with timezone.override("Europe/Lisbon"):
+            manager._annotate_tv_released_episodes(
+                [tv],
+                datetime(2026, 10, 16, 1, 0, tzinfo=UTC),
+            )
+            self.assertIsNone(tv.max_progress)
+
+            manager._annotate_tv_released_episodes(
+                [tv],
+                datetime(2026, 10, 16, 2, 0, tzinfo=UTC),
+            )
+            self.assertEqual(tv.max_progress, 1)
+
+    def test_released_episode_count_ignores_year_one_unknown_dates(self):
+        """Undated episodes must not crash the count west of UTC (#1717)."""
+        manager = MediaManager()
+        tv_item = Item.objects.create(
+            media_id="262819",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="LOL: Last One Laughing UK",
+            image="http://example.com/lol.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="262819",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="LOL: Last One Laughing UK Season 3",
+            image="http://example.com/lol-season.jpg",
+            season_number=3,
+        )
+        Season.objects.create(
+            item=season_item,
+            related_tv=tv,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        Event.objects.create(
+            item=season_item,
+            content_number=9,
+            datetime=datetime(1, 1, 1, tzinfo=UTC),
+        )
+        for number in (1, 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=number,
+                datetime=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+
+        with timezone.override("America/Toronto"):
+            manager._annotate_tv_released_episodes(
+                [tv],
+                datetime(2026, 10, 16, 2, 0, tzinfo=UTC),
+            )
+
+        self.assertEqual(tv.max_progress, 2)
+
     def test_sort_in_progress_media(self):
         """Test the _sort_in_progress_media method."""
         manager = MediaManager()
@@ -915,6 +1052,55 @@ class MediaManagerTests(TestCase):
 
         self.assertEqual(anime.max_progress, 10)
 
+    def test_released_counts_use_episode_count_for_continued_numbering(self):
+        """A season numbered 51-100 has 50 episodes, not 100 (#1754)."""
+        past = timezone.now() - timedelta(days=30)
+        show_id = "anime-continued"
+        tv_item = Item.objects.create(
+            media_id=show_id,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.TV.value,
+            title="Continued Numbering",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        seasons = []
+        for season_number, first in ((1, 1), (2, 51)):
+            season_item = Item.objects.create(
+                media_id=show_id,
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Continued Numbering",
+                image="http://example.com/tv.jpg",
+                season_number=season_number,
+            )
+            seasons.append(
+                Season.objects.create(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv,
+                    status=Status.IN_PROGRESS.value,
+                ),
+            )
+            for number in range(first, first + 50):
+                Item.objects.create(
+                    media_id=show_id,
+                    source=Sources.MANUAL.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    title="Continued Numbering",
+                    image="http://example.com/tv.jpg",
+                    season_number=season_number,
+                    episode_number=number,
+                    release_datetime=past,
+                )
+
+        manager = MediaManager()
+        manager._annotate_season_released_episodes(seasons, timezone.now())
+        manager._annotate_tv_released_episodes([tv], timezone.now())
+
+        self.assertEqual([season.max_progress for season in seasons], [50, 50])
+        self.assertEqual(tv.max_progress, 100)
+
     def test_annotate_max_progress(self):
         """Test the annotate_max_progress method."""
         manager = MediaManager()
@@ -943,11 +1129,12 @@ class MediaManagerTests(TestCase):
 
         tv_list = TV.objects.filter(user=self.user.id)
 
-        Event.objects.create(
-            item=self.season1_item,
-            content_number=10,
-            datetime=timezone.now() - timedelta(days=10),
-        )
+        for number in range(1, 11):
+            Event.objects.create(
+                item=self.season1_item,
+                content_number=number,
+                datetime=timezone.now() - timedelta(days=10),
+            )
 
         # Prefetch events
         tv_list = tv_list.prefetch_related(

@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load ui_tags %}
 {% url 'list_detail' custom_list.public_reference as list_filter_endpoint %}
 {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_form_id="smart-filter-form" filter_search_name="q" filter_show_ranges=True filter_platform_multi=False filter_show_media_types=True filter_data=smart_filter_data filter_edit_smart_rules=can_edit %}
 
@@ -20,7 +21,7 @@
     {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
     <div id="search-indicator-mobile"
          class="htmx-indicator absolute right-3 top-1/2 transform -translate-y-1/2">
-      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+      {% spinner 16 %}
     </div>
   </div>
 
@@ -55,7 +56,7 @@
         {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
         <div id="search-indicator-desktop"
              class="htmx-indicator absolute right-3 top-1/2 transform -translate-y-1/2">
-          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+          {% spinner 16 %}
         </div>
       </div>
     </div>
@@ -114,11 +115,11 @@
       </div>
     </div>
 
-    <div class="relative filter-control" x-data="{ sortOpen: false, orderOpen: false }" @click.outside="sortOpen = false; orderOpen = false">
+    <div class="relative filter-control" x-data="{ sortOpen: false }" @click.outside="sortOpen = false">
       <button class="h-10 flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer"
               x-cloak
               x-show="sort === 'custom' && canEdit && isOrderEditing"
-              @click="isOrderEditing = false; sortOpen = false; orderOpen = false"
+              @click="isOrderEditing = false; sortOpen = false"
               type="button">
         {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
         <span class="text-sm">{% translate "Done Editing Order" %}</span>
@@ -127,11 +128,18 @@
       <div class="inline-flex"
            x-cloak
            x-show="!(sort === 'custom' && canEdit && isOrderEditing)">
-        <button class="flex items-center gap-2 px-2 py-2 transition-colors cursor-pointer"
-                :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'"
-                @click="sortOpen = !sortOpen; orderOpen = false"
+        <button class="flex items-center gap-2 px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                @click="sortOpen = !sortOpen"
                 type="button">
           <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
+          <svg xmlns="http://www.w3.org/2000/svg"
+               viewBox="0 0 20 20"
+               class="w-4 h-4"
+               x-cloak
+               x-show="sort === 'custom' && canEdit"
+               aria-hidden="true">
+            <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+          </svg>
           <span class="inline-flex items-center" x-cloak x-show="sort !== 'custom' || !canEdit">
             <svg xmlns="http://www.w3.org/2000/svg"
                  viewBox="0 0 20 20"
@@ -148,14 +156,6 @@
               <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
             </svg>
           </span>
-        </button>
-        <button class="flex items-center px-2 py-2 rounded-r-md border-l border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                x-cloak
-                x-show="sort === 'custom' && canEdit"
-                @click="orderOpen = !orderOpen; sortOpen = false"
-                aria-label="{% translate "Custom sort options" %}"
-                type="button">
-          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
         </button>
       </div>
 
@@ -175,31 +175,23 @@
                   hx-indicator="#loading-indicator"
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                   :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
-                  @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
+                  @click="setSort('{{ value }}'); sortOpen = false"
                   type="button">{% translate label %}</button>
         {% endfor %}
-      </div>
-
-      <div class="absolute right-0 z-50 mt-2 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
-           x-cloak
-           x-show="orderOpen && sort === 'custom' && canEdit && !isOrderEditing"
-           x-transition:enter="transition ease-out duration-100"
-           x-transition:enter-start="transform opacity-0 scale-95"
-           x-transition:enter-end="transform opacity-100 scale-100"
-           x-transition:leave="transition ease-in duration-75"
-           x-transition:leave-start="transform opacity-100 scale-100"
-           x-transition:leave-end="transform opacity-0 scale-95">
-        <button class="w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                @click="isOrderEditing = true; orderOpen = false; sortOpen = false"
-                type="button">
-          {% translate "Edit Item Order" %}
-        </button>
+        <button class="block w-full px-4 py-2 text-left text-sm border-t border-gray-700 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                x-cloak
+                x-show="sort === 'custom' && canEdit"
+                @click="isOrderEditing = true; sortOpen = false"
+                type="button">{% translate "Edit Item Order" %}</button>
       </div>
     </div>
 
     <div class="ml-auto flex items-center gap-2">
       {% if column_config %}
-        {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+        {% if table_browser_props %}{{ table_browser_props|json_script:"table-column-menu-props" }}{% endif %}
+        <div data-media-column-menu-root data-props-id="table-column-menu-props">
+          {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+        </div>
       {% endif %}
       <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
         <button hx-get="{% url 'list_detail' custom_list.public_reference %}"

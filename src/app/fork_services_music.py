@@ -38,6 +38,7 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
 
     if existing_music:
         existing_music.end_date = completed_at
+        existing_music.status = Status.COMPLETED.value
         existing_music.save()
 
         if (
@@ -76,6 +77,59 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
         status=Status.COMPLETED.value,
         end_date=completed_at,
     )
+
+
+def music_entry_for_track(user, track):
+    """Return this user's Music row for a catalog track, or None."""
+    by_track_id = {}
+    entries = Music.objects.filter(
+        user=user,
+        album=track.album,
+    ).select_related("item", "track")
+    for music in entries:
+        if music.track_id:
+            by_track_id[music.track_id] = music
+        if music.item and music.item.media_id:
+            by_track_id[f"recording_{music.item.media_id}"] = music
+
+    music = by_track_id.get(track.id)
+    if not music and track.musicbrainz_recording_id:
+        music = by_track_id.get(f"recording_{track.musicbrainz_recording_id}")
+    return music
+
+
+def set_track_notes(user, track, notes):
+    """Save private track notes without recording a listen.
+
+    Mirrors music_views.music_track_notes: a note edit never creates a
+    history record, and a blank note leaves an untracked track untouched.
+    """
+    notes = notes or ""
+    music = music_entry_for_track(user, track)
+    if music is None and not notes:
+        return None
+    if music is None:
+        music = Music(
+            user=user,
+            album=track.album,
+            artist=track.album.artist,
+            track=track,
+            status=Status.PLANNING.value,
+        )
+        music.item, _ = Item.objects.get_or_create(
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            media_id=track.musicbrainz_recording_id or f"track_{track.id}",
+            defaults={
+                "title": track.title,
+                "image": track.album.image or settings.IMG_NONE,
+            },
+        )
+    music.notes = notes
+    music.save_without_historical_record(
+        update_fields=["notes"] if music.pk else None,
+    )
+    return music
 
 
 def get_or_create_artist_from_musicbrainz(musicbrainz_artist_id):

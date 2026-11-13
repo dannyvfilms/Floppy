@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -13,6 +14,21 @@ from .helpers import check_complete_lists_structure, check_pagination_structure
 class ListsTests(FloppyApiTestCase):
     """Validate list endpoints and basic side effects."""
 
+    def test_list_detail_returns_membership_timestamps_at_full_precision(self):
+        custom_list = self.lists_by_name["favorites"]
+        memberships = list(CustomListItem.objects.filter(custom_list=custom_list).order_by("pk"))
+        base = timezone.now().replace(microsecond=123456)
+        for index, membership in enumerate(memberships):
+            CustomListItem.objects.filter(pk=membership.pk).update(date_added=base + timedelta(minutes=index))
+        response = self.call_api("get", "api_list_detail", args=(custom_list.id,), headers=self.auth_headers)
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["items"]["results"]
+        self.assertEqual([row["id"] for row in rows], [membership.item_id for membership in memberships])
+        self.assertEqual(
+            [timezone.datetime.fromisoformat(row["list_date_added"]) for row in rows],
+            [base + timedelta(minutes=index) for index in range(len(memberships))],
+        )
+
     def test_lists_get_returns_paginated_payload(self):
         """Lists endpoint should return the standard pagination envelope."""
         response = self.call_api("get", "api_lists", headers=self.auth_headers)
@@ -24,6 +40,47 @@ class ListsTests(FloppyApiTestCase):
         check_pagination_structure(self, payload["pagination"])
         for lst in payload["results"]:
             check_complete_lists_structure(self, lst)
+
+    def test_lists_get_reports_completion_percent(self):
+        """Each list carries the completed share the web lists page prints."""
+        for payload in self.call_api(
+            "get", "api_lists", headers=self.auth_headers,
+        ).json()["results"]:
+            self.assertIn("completed_count", payload)
+            if payload["items_count"]:
+                self.assertEqual(
+                    payload["completion_percent"],
+                    round(payload["completed_count"] / payload["items_count"] * 100),
+                )
+            else:
+                self.assertIsNone(payload["completion_percent"])
+
+    def test_lists_get_media_type_filter(self):
+        """Only lists holding an item of the requested media type come back."""
+        everything = self.call_api(
+            "get", "api_lists", headers=self.auth_headers,
+        ).json()["results"]
+        with_movie = self.call_api(
+            "get",
+            "api_lists",
+            params={"media_type": MediaTypes.MOVIE.value},
+            headers=self.auth_headers,
+        ).json()["results"]
+        self.assertLessEqual(len(with_movie), len(everything))
+        for payload in with_movie:
+            self.assertTrue(
+                CustomListItem.objects.filter(
+                    custom_list_id=payload["id"],
+                    item__media_type=MediaTypes.MOVIE.value,
+                ).exists(),
+            )
+        bad = self.call_api(
+            "get",
+            "api_lists",
+            params={"media_type": "nonsense"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(bad.status_code, 400)
 
     def test_lists_get_search_filter_returns_filtered_results(self):
         """Lists endpoint should filter by search query."""
@@ -52,6 +109,27 @@ class ListsTests(FloppyApiTestCase):
         payload = response.json()
         names = [item["name"] for item in payload["results"]]
         self.assertEqual(names, sorted(names, reverse=True))
+
+    def test_lists_get_last_watched_sort_orders_by_watch_date(self):
+        """The web's Last Watched sort: newest watch first, never watched last."""
+        now = timezone.now()
+        favorites = CustomList.objects.get(name="Favorites")
+        watching = CustomList.objects.get(name="Watching Now")
+        dates = {watching.id: now, favorites.id: now - timedelta(days=3)}
+        for sort_value, expected in (
+            ("watched_desc", ["Watching Now", "Favorites", "Shared Picks"]),
+            ("watched_asc", ["Favorites", "Watching Now", "Shared Picks"]),
+        ):
+            with patch("api.views._get_list_last_watched_dates", return_value=dates):
+                response = self.call_api(
+                    "get",
+                    "api_lists",
+                    params={"sort": sort_value},
+                    headers=self.auth_headers,
+                )
+            self.assertEqual(response.status_code, 200)
+            names = [item["name"] for item in response.json()["results"]]
+            self.assertEqual(names, expected)
 
     def test_lists_get_items_sort_uses_item_count(self):
         """Lists endpoint should sort by number of items, not by join order."""
@@ -278,6 +356,18 @@ class ListsTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("is_public", response.json().get("detail", "").lower())
 
+    def test_list_detail_reports_completion_percent(self):
+        """The detail payload carries the same completion figure as the hub."""
+        custom_list = self.lists_by_name["favorites"]
+        payload = self.call_api(
+            "get",
+            "api_list_detail",
+            args=(custom_list.id,),
+            headers=self.auth_headers,
+        ).json()
+        self.assertIn("completed_count", payload)
+        self.assertIn("completion_percent", payload)
+
     def test_list_detail_delete_removes_list(self):
         """List delete should remove the owned list and return 204."""
         custom_list = self.lists_by_name["favorites"]
@@ -332,6 +422,25 @@ class ListsTests(FloppyApiTestCase):
         self.assertIsInstance(payload["items"], dict)
         self.assertIn("pagination", payload["items"])
         self.assertIn("results", payload["items"])
+
+    def test_list_detail_get_returns_media_type_breakdown(self):
+        """List detail carries the web's media-type breakdown (pie chart popover)."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "get",
+            "api_list_detail",
+            args=(custom_list.id,),
+            headers=self.auth_headers,
+        )
+
+        breakdown = response.json()["media_type_breakdown"]
+        self.assertEqual(sum(row["count"] for row in breakdown), custom_list.items.count())
+        for row in breakdown:
+            self.assertEqual(
+                set(row),
+                {"value", "label", "count", "percent", "color"},
+            )
+            self.assertIsInstance(row["label"], str)
 
     def test_list_detail_get_search_filter_returns_filtered_results(self):
         """List detail GET should filter items by search query."""
@@ -785,3 +894,46 @@ class ListsTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_lists_post_unlisted_with_viewers(self):
+        """Unlisted lists can be shared read-only with installed users."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={
+                "name": "Unlisted Share",
+                "visibility": "unlisted",
+                "viewers": [self.user2.id],
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["visibility"], "unlisted")
+        self.assertTrue(payload["is_unlisted"])
+        self.assertFalse(payload["is_public"])
+        self.assertEqual(
+            [viewer["username"] for viewer in payload["viewers"]],
+            [self.user2.username],
+        )
+        custom_list = CustomList.objects.get(name="Unlisted Share")
+        self.assertTrue(custom_list.user_can_view(self.user2))
+        self.assertFalse(custom_list.user_can_edit(self.user2))
+
+    def test_lists_patch_viewers_and_visibility(self):
+        """Patching viewers keeps the list read-only for them."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"visibility": "unlisted", "viewers": [self.user2.id]},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        custom_list.refresh_from_db()
+        self.assertEqual(custom_list.visibility, "unlisted")
+        self.assertTrue(custom_list.viewers.filter(id=self.user2.id).exists())
+        self.assertFalse(custom_list.user_can_edit(self.user2))

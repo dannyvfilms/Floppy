@@ -6,6 +6,7 @@ pure helpers called by views in views.py (and its submodules).
 """
 
 import logging
+from dataclasses import replace
 
 from django.apps import apps
 from django.conf import settings
@@ -25,6 +26,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services import metadata_resolution
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
 from lists.models import CustomList, CustomListItem
@@ -406,8 +408,19 @@ def _episode_title_fields_from_season_metadata(item, season_metadata):
     return None
 
 
+def list_metadata_language(user, fallback_user=None):
+    """Return the metadata language list search and add flows should request.
+
+    Anonymous visitors (public recommendations) fall back to the list owner's
+    language so titles match what the list owner sees.
+    """
+    if user is not None and getattr(user, "is_authenticated", False):
+        return metadata_resolution.metadata_language_default(user)
+    return metadata_resolution.metadata_language_default(fallback_user)
+
+
 def _maybe_backfill_episode_title(
-    item, *, season_item=None, season_metadata=None, force=False
+    item, *, season_item=None, season_metadata=None, force=False, language=None
 ):
     """Resolve malformed episode item titles that still store the show title."""
     if not force and not _episode_title_needs_backfill(item, season_item=season_item):
@@ -422,6 +435,7 @@ def _maybe_backfill_episode_title(
                 item.media_id,
                 item.source,
                 [item.season_number],
+                language=language,
             )
         except Exception as exc:
             logger.debug(
@@ -442,6 +456,7 @@ def _maybe_backfill_episode_title(
                 item.source,
                 [item.season_number],
                 item.episode_number,
+                language=language,
             )
         except Exception as exc:
             logger.debug(
@@ -667,23 +682,33 @@ def paginate_list_items(
     direction,
     page,
     page_size=16,
+    media_types=None,
+    initial="",
+    title_user=None,
+    include_alphabet=False,
 ):
     """Order and paginate a list's items with the library-query engine.
 
     ``candidates`` are the items the list shows (its members, or a smart
     list's live matches) as an ``Item`` id queryset or ids. Tracking values -
     status, rating, progress - are read for ``media_user``. Only the requested
-    page is loaded and decorated. Returns ``(items_page, filtered_count)``.
+    page is loaded and decorated. ``media_types`` is the candidates' distinct
+    media types when the caller already read them, which saves re-evaluating
+    ``candidates``. Returns ``(items_page, filtered_count)``.
     """
     from app.library_query import LibraryQuery, LibraryQueryExecutor, SortSpec
+    from app.library_query.alphabet import (
+        initial_condition,
+        normalize_initial,
+        query_other_initial,
+    )
     from app.library_query.spec import ROUTING_MODEL
 
-    media_types = tuple(
-        Item.objects.filter(pk__in=candidates)
-        .order_by()
-        .values_list("media_type", flat=True)
-        .distinct(),
-    )
+    if media_types is None:
+        media_types = Item.objects.filter(pk__in=candidates).order_by().values_list(
+            "media_type", flat=True
+        ).distinct()
+    media_types = tuple(media_types)
     if sort_by == ListDetailSortChoices.CUSTOM:
         direction = "asc"  # The list's own order has no direction.
     query = LibraryQuery(
@@ -697,20 +722,27 @@ def paginate_list_items(
         provider_region=str(getattr(media_user, "watch_provider_region", "") or ""),
         pinned_providers=tuple(getattr(media_user, "pinned_watch_providers", None) or ()),
     )
+    other_initial = query_other_initial(media_user, query, display_user=title_user) if include_alphabet else None
+    if normalize_initial(initial):
+        query = replace(query, within=Item.objects.filter(pk__in=candidates).filter(
+            initial_condition(initial, title_user or media_user)
+        ).values("pk"))
     executor = LibraryQueryExecutor(media_user, query)
     total = executor.count()
     items_page = Paginator(range(total), page_size).get_page(page)
     offset = (items_page.number - 1) * page_size
     items = executor.page(offset, page_size, total=total).items
-    added = dict(
-        CustomListItem.objects.filter(
+    added = {
+        item_id: (date_added, rank)
+        for item_id, date_added, rank in CustomListItem.objects.filter(
             custom_list=custom_list,
             item_id__in=[item.pk for item in items],
-        ).values_list("item_id", "date_added"),
-    )
+        ).values_list("item_id", "date_added", "rank")
+    }
     for item in items:
-        item.list_date_added = added.get(item.pk)
+        item.list_date_added, item.list_rank = added.get(item.pk, (None, None))
     items_page.object_list = items
+    items_page.alphabet_other_initial = other_initial
     _attach_media_with_aggregation(items_page, media_user)
     return items_page, total
 
@@ -811,6 +843,9 @@ def _attach_media_with_aggregation(item_list, media_user):
 
     for item in item_list:
         item.media = media_by_item_id.get(item.id)
+    from app.media_list_filters import attach_card_collection_platforms
+
+    attach_card_collection_platforms(media_user, item_list)
     _attach_list_card_overrides(item_list)
 
 

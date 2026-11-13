@@ -17,6 +17,7 @@ from django.utils import timezone
 from app.models import Book, Item, MediaTypes, Sources, Status
 from app.services.synced_status import keep_held_status
 from integrations import plex_cover
+from integrations.imports.helpers import stamp_entry_source
 
 logger = logging.getLogger(__name__)
 
@@ -208,4 +209,4 @@ def upsert_plex_audiobook(
             listened_at,
         ),
     )
-    return book
+    return stamp_entry_source(book, "plex")

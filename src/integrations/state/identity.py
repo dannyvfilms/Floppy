@@ -12,7 +12,7 @@ import secrets
 from django.db import transaction
 from django.utils import timezone
 
-from app.models import WatchStateSequence
+from app.services.sync_lock import lock_sequence
 from integrations.models import (
     SyncBinding,
     SyncBindingStatus,
@@ -122,6 +122,7 @@ def activate_binding(binding, *, capabilities, directions):
     and a baseline that wrote would mean connecting a provider could rewrite a
     library before anyone saw a diff.
     """
+    lock_sequence(binding.user_id)
     binding.approved_capabilities = sorted(set(capabilities))
     binding.approved_directions = sorted(set(directions))
     binding.status = SyncBindingStatus.ACTIVE.value
@@ -142,6 +143,7 @@ def activate_binding(binding, *, capabilities, directions):
 @transaction.atomic
 def deactivate_binding(binding):
     """Disable a binding without discarding what the user approved."""
+    lock_sequence(binding.user_id)
     binding.status = SyncBindingStatus.DISABLED.value
     binding.disabled_at = timezone.now()
     binding.save(update_fields=["status", "disabled_at", "updated_at"])
@@ -152,15 +154,22 @@ def deactivate_binding(binding):
 def _sync_emit_changes_flag(user):
     """Turn the user's local change log on while any binding is operational.
 
+    A binding needs it when it sends watched flags or plays; ratings and
+    statuses are queued from their own save signals.
+
     The log exists to be delivered somewhere. A user with nothing connected
     should not accumulate one, and turning it off again when the last binding
     goes means an abandoned connection stops costing a write per save.
     """
     should_emit = any(
         binding.is_operational()
+        and any(
+            capability.startswith(("watched.", "play."))
+            for capability in binding.approved_capabilities
+        )
         for binding in SyncBinding.objects.filter(user=user)
     )
-    sequence, _created = WatchStateSequence.objects.get_or_create(user=user)
+    sequence = lock_sequence(user.pk)
     if sequence.emit_changes != should_emit:
         sequence.emit_changes = should_emit
         sequence.save(update_fields=["emit_changes"])
@@ -175,8 +184,4 @@ def operational_bindings(user, *, direction=None, capability=None):
     ]
     if direction is None and capability is None:
         return bindings
-    return [
-        binding
-        for binding in bindings
-        if binding.allows(direction, capability)
-    ]
+    return [binding for binding in bindings if binding.allows(direction, capability)]

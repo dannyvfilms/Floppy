@@ -402,3 +402,95 @@ class SeasonCompletionEvidenceTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+
+class AnnouncedSeasonCompletionTests(TestCase):
+    """An announced, unaired season never blocks or reopens earlier seasons (#1618)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="announced-user",
+            password="x",
+        )
+        tv_item = Item.objects.create(
+            media_id="announced-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Announced Show",
+        )
+        self.tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.seasons = {}
+        for number, status in ((1, Status.COMPLETED.value), (2, Status.PLANNING.value)):
+            item = Item.objects.create(
+                media_id="announced-show",
+                source=Sources.TVDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=number,
+                title=f"Announced Show Season {number}",
+            )
+            self.seasons[number] = Season.objects.create(
+                item=item,
+                user=self.user,
+                related_tv=self.tv,
+                status=status,
+            )
+
+    def _metadata(self, production_status, season_two_air_date):
+        return {
+            "details": {"status": production_status},
+            "related": {
+                "seasons": [
+                    {"season_number": 1, "first_air_date": "2020-01-01"},
+                    {"season_number": 2, "first_air_date": season_two_air_date},
+                ],
+            },
+        }
+
+    def test_ended_show_ignores_a_season_dated_in_the_future(self):
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", "2099-01-01")):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    def test_ended_show_waits_for_an_undated_planning_season(self):
+        """Undated is not unaired: the season may be one the user skipped."""
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", None)):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_ended_show_waits_for_a_planning_season_that_already_aired(self):
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", "2020-06-01")):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_returning_show_stays_in_progress_with_a_future_season(self):
+        """The stored status stays In progress; the card says Caught Up (R5)."""
+        with patch(
+            METADATA_PATH,
+            return_value=self._metadata("Returning Series", "2099-01-01"),
+        ):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_future_season_leaves_the_completed_season_alone(self):
+        with patch(
+            METADATA_PATH,
+            return_value=self._metadata("Returning Series", "2099-01-01"),
+        ):
+            self.tv._handle_completed_season(1)
+
+        self.seasons[1].refresh_from_db()
+        self.seasons[2].refresh_from_db()
+        self.assertEqual(self.seasons[1].status, Status.COMPLETED.value)
+        self.assertEqual(self.seasons[2].status, Status.PLANNING.value)

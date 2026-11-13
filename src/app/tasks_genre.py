@@ -423,21 +423,16 @@ def populate_genre_data_for_items(item_ids: list[int], delay_seconds: float = 0.
 @shared_task(name="app.tasks.populate_genre_backfill_queue")
 def populate_genre_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the genre backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         GENRE_BACKFILL_ITEMS_QUEUE_KEY,
         GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued genre items"}
+        drain_task=populate_genre_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued genre items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_genre_backfill_queue,
-        )
-
-    return populate_genre_data_for_items(batch, delay_seconds=delay_seconds)
+        return populate_genre_data_for_items(batch, delay_seconds=delay_seconds)
 
 
 @shared_task(name="app.tasks.reconcile_genre_backfill")

@@ -1,6 +1,7 @@
 
 {% load i18n %}
 {% load app_tags user_tags widget_tweaks %}
+{% load ui_tags %}
 
 <div class="space-y-6">
   {% if match_item and media_type == MediaTypes.MOVIE.value or match_item and media_type == MediaTypes.TV.value or media_type == MediaTypes.TV.value and current_instance or tv_provider_switch_target %}
@@ -58,9 +59,9 @@
           </p>
         </div>
         {% if metadata_provider_mapping_status == "missing" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">{% translate "Mapping needed" %}</span>
+          {% badge _("Mapping needed") "xs" "amber-soft" %}
         {% elif metadata_provider_mapping_status == "mapped" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{% translate "Mapped" %}</span>
+          {% badge _("Mapped") "xs" "emerald-soft" %}
         {% endif %}
       </div>
 
@@ -225,7 +226,7 @@
       <div id="library-move-search-indicator"
            class="htmx-indicator flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
            aria-live="polite">
-        <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></span>
+        {% spinner 16 %}
         {% blocktranslate trimmed with value_1=library_move_context.target_source_label %}Searching {{ value_1 }}...{% endblocktranslate %}
       </div>
       <div id="library-move-results"></div>
@@ -233,114 +234,17 @@
   {% endif %}
 
   {% if can_manage_hardcover_edition %}
-    <section class="space-y-3"
-             x-data="{ editionOpen: false }"
-             @click.outside="editionOpen = false">
-      <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Edition" %}</h3>
-        <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          {% translate "Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition." %}
-        </p>
-      </div>
-      {% if hardcover_selected_edition %}
-        <div>
-          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected edition" %}</p>
-          <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
-            {% if hardcover_selected_edition.image %}
-              <img src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
-            {% else %}
-              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
-                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
-              </span>
-            {% endif %}
-            <span class="flex-1 min-w-0">
-              <span class="block truncate text-[var(--color-text)]">{{ hardcover_selected_edition.title }}</span>
-              {% if hardcover_selected_edition.language or hardcover_selected_edition.format %}
-                <span class="block text-xs text-[var(--color-text-muted)] truncate">
-                  {{ hardcover_selected_edition.language|default:"" }}{% if hardcover_selected_edition.language and hardcover_selected_edition.format %} · {% endif %}{{ hardcover_selected_edition.format|default:"" }}
-                </span>
-              {% endif %}
-            </span>
-          </div>
-        </div>
-      {% endif %}
-      <div class="relative">
-        <input type="text"
-               name="q"
-               placeholder="{% translate "Search editions..." %}"
-               autocomplete="off"
-               role="combobox"
-               aria-autocomplete="list"
-               aria-controls="hardcover-edition-results"
-               @focus="editionOpen = true"
-               hx-get="{% url 'list_hardcover_editions' media_id=hardcover_edition_media_id %}?return_url={{ return_url|urlencode }}"
-               hx-trigger="focus, keyup changed delay:250ms"
-               hx-target="#hardcover-edition-results"
-               hx-swap="innerHTML"
-               class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
-        <div id="hardcover-edition-results" x-show="editionOpen" x-cloak></div>
-      </div>
-    </section>
+    {% url 'list_hardcover_editions' media_id=hardcover_edition_media_id as hardcover_list_url %}
+    {% if metadata_item %}{% url 'set_hardcover_edition' item_id=metadata_item.id as hardcover_selection_url %}{% endif %}
+    {% include "app/components/edition_picker.html" with uid="hardcover-edition" picker_type="hardcover" title=_("Edition") description=_("Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition.") provider="Hardcover" placeholder=_("Search editions...") list_url=hardcover_list_url selection_url=hardcover_selection_url return_url=return_url selected=hardcover_selected_edition selected_id=hardcover_selected_edition.id|default:"" %}
   {% endif %}
 
   {% if music_release_picker.available %}
-    <section class="space-y-3"
-             x-data="{ releaseOpen: false }"
-             @click.outside="releaseOpen = false">
-      <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Specific release" %}</h3>
-        <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          {% translate "Pick a MusicBrainz pressing for its format, cover, and release details. Play history remains grouped under this album." %}
-        </p>
-      </div>
-      {% if selected_music_release %}
-        <div>
-          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected release" %}</p>
-          <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
-            {% if selected_music_release.image %}
-              <img src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
-            {% else %}
-              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
-                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
-              </span>
-            {% endif %}
-            <span class="flex-1 min-w-0">
-              <span class="block truncate text-[var(--color-text)]">{{ selected_music_release.title }}</span>
-              <span class="block text-xs text-[var(--color-text-muted)] truncate">
-                {{ selected_music_release.format|default:"Format unknown" }}
-                {% if selected_music_release.packaging %} · {{ selected_music_release.packaging }}{% endif %}
-                {% if selected_music_release.country %} · {{ selected_music_release.country }}{% endif %}
-                {% if selected_music_release.release_date %} · {{ selected_music_release.release_date }}{% endif %}
-              </span>
-              {% if selected_music_release.label or selected_music_release.barcode %}
-                <span class="block text-xs text-[var(--color-text-muted)] truncate">
-                  {{ selected_music_release.label }}{% if selected_music_release.label and selected_music_release.barcode %} · {% endif %}{{ selected_music_release.barcode }}
-                </span>
-              {% endif %}
-              {% if selected_music_release.track_count %}
-                <span class="block text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=selected_music_release.track_count %}{{ value_1 }} tracks in this release{% endblocktranslate %}</span>
-              {% endif %}
-            </span>
-          </div>
-        </div>
-      {% endif %}
-      <div class="relative">
-        <input type="text"
-               name="q"
-               placeholder="{% translate "Search releases..." %}"
-               autocomplete="off"
-               role="combobox"
-               aria-autocomplete="list"
-               aria-controls="music-release-results"
-               @focus="releaseOpen = true"
-               hx-get="{{ music_release_picker.list_url }}?return_url={{ return_url|urlencode }}"
-               hx-trigger="focus, keyup changed delay:250ms"
-               hx-target="#music-release-results"
-               hx-swap="innerHTML"
-               class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
-        <div id="music-release-results" x-show="releaseOpen" x-cloak></div>
-      </div>
-    </section>
+    {% include "app/components/edition_picker.html" with uid="music-release" picker_type="music" title=_("Specific release") description=_("Pick a MusicBrainz pressing for its format, cover, and release details. Play history remains grouped under this album.") provider="MusicBrainz" placeholder=_("Search releases...") list_url=music_release_picker.list_url selection_url=music_release_picker.selection_url return_url=return_url selected=selected_music_release selected_id=selected_music_release.release_id|default:"" %}
+  {% endif %}
+
+  {% if can_change_cover %}
+    {% include "app/components/cover_change_section.html" %}
   {% endif %}
 
   {% if manual_metadata_form %}
@@ -407,7 +311,7 @@
     </section>
   {% endif %}
 
-  {% if image_field and not manual_metadata_form %}
+  {% if image_field and not manual_metadata_form and not can_change_cover %}
     <section class="space-y-3"
              x-data="{ imageUrl: '{{ image_field.value|default_if_none:''|escapejs }}' }">
       <label class="block text-sm font-medium text-[var(--color-text-secondary)]"

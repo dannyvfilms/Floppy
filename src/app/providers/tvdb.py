@@ -1272,7 +1272,14 @@ def _normalize_season_metadata(
         "media_type": MediaTypes.SEASON.value,
         "season_title": _get_name(season_data)
         or ("Specials" if season_no == 0 else f"Season {season_no}"),
-        "max_progress": episodes[-1]["episode_number"] if episodes else 0,
+        # Count, not the last number: anime seasons continue the numbering
+        # (51-100), so the last number is not how many episodes the season has.
+        "max_progress": (
+            len([e for e in episodes if e["episode_number"] is not None])
+            if not episodes or episodes[-1]["episode_number"] is not None
+            else None
+        ),
+        "last_episode_number": episodes[-1]["episode_number"] if episodes else 0,
         "image": _get_image(season_data, language) or _get_image(series_data, language),
         "season_number": season_no,
         "synopsis": _get_synopsis(season_data, language),
@@ -1388,6 +1395,20 @@ def tv(media_id, *, routed_media_type=MediaTypes.TV.value, language=None):
     return data
 
 
+def _store_fetched_season_episode_count(media_id, season_number, season_metadata):
+    """Keep the stored season episode count in step with a payload just fetched."""
+    from app import metadata_utils
+
+    episodes = season_metadata.get("episodes")
+    if isinstance(episodes, list):
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TVDB.value,
+            len(episodes),
+            season_number=season_number,
+        )
+
+
 def tv_with_seasons(
     media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value, language=None
 ):
@@ -1440,6 +1461,11 @@ def tv_with_seasons(
                 cache_key,
                 season_metadata,
                 timeout=TVDB_METADATA_CACHE_TIMEOUT,
+            )
+            _store_fetched_season_episode_count(
+                media_id,
+                season_number,
+                season_metadata,
             )
         season_payloads[f"season/{season_number}"] = season_metadata
 

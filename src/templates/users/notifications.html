@@ -70,7 +70,7 @@
           <div class="bg-[var(--color-surface-strong)] p-4 rounded-md">
             {{ form.playback_webhook_url|add_class:"w-full p-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-[var(--color-border)] focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" }}
             <p class="mt-1 text-xs text-[var(--color-text-muted)]">
-              {% translate "POSTs the live playback state to this URL whenever it changes — the same body" %}
+              {% translate "POSTs the live playback state to this URL whenever it changes, with the same body" %}
               <code class="bg-[var(--color-surface)] px-1 py-0.5 rounded">/api/v1/playback/now-playing/</code>
               {% translate "returns. For home automation or a client that wants playback pushed to it rather than polled. Leave blank to send nothing." %}
             </p>

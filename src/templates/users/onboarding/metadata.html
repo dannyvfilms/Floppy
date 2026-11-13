@@ -1,5 +1,6 @@
 {% extends "users/onboarding/_layout.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 
 {% block step_title %}{% translate "Better artwork and data" %}{% endblock step_title %}
@@ -8,7 +9,7 @@
   <p>
     {% translate "Floppy works without any of these. Each one fills a gap, like logos and backdrops for games, or a higher request limit." %}
   </p>
-  <p>{% translate "Keys stay private to your account. You can add or change them anytime in Settings > Metadata." %}</p>
+  <p>{% translate "Keys stay private to your account. You can add or change them anytime in Settings > Providers." %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}
@@ -18,7 +19,7 @@
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 flex flex-col gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <h3 class="font-medium">{{ suggestion.spec.label }}</h3>
-          <span class="px-2 py-0.5 text-xs rounded-full bg-indigo-600/15 text-indigo-500">{% translate suggestion.badge %}</span>
+          {% translate suggestion.badge as badge_label %}{% badge badge_label "sm" "tint" %}
           <a href="{{ suggestion.spec.docs_url }}"
              target="_blank"
              rel="noopener noreferrer"
@@ -47,10 +48,7 @@
               class="px-4 py-2 text-sm rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
         {% translate "Skip for now" %}
       </button>
-      <button type="submit"
-              class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-        {% translate "Continue" %}
-      </button>
+      {% button _("Continue") submit=True %}
     </div>
   </form>
 {% endblock step_options %}

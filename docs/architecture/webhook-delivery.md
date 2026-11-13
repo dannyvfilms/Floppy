@@ -1,0 +1,149 @@
+# Webhook delivery and queue latency
+
+What happens between a media server sending a webhook and Floppy saving the
+result, what delay is normal, and how to tell queue wait from processing time.
+The acceptance criteria for this contract come from issue #1708.
+
+## Synchronous: the HTTP request
+
+The receiver does only work that must be bounded by the request timeout:
+
+- resolve the per-user token and reject unknown or inactive users
+- parse the body (Plex multipart `payload`, Jellyfin/Emby/Kodi JSON)
+- hand the payload to the worker with a receipt timestamp and a correlation id
+- fan the same payload out to enabled Plex webhook shares
+- return `200` (or `503` when the broker refused the task)
+
+No metadata lookups, identity resolution or tracking writes run on the web
+worker. A 200 means **queued**, not **processed**.
+
+## Asynchronous: the worker
+
+`integrations.tasks.process_webhook` runs on the dedicated `interactive` queue
+at the highest priority (see `CELERY_TASK_ROUTES`). That queue is separate from
+imports and backfills, which is what keeps normal webhook latency in the
+sub-second to low-seconds range.
+
+Each attempt is bounded:
+
+- soft time limit `120s`, hard time limit `150s`
+- `ProviderAPIError` and network errors retry up to 3 times with exponential
+  backoff and jitter; malformed payloads fail immediately
+
+A worker slot held by a wedged lookup is therefore recoverable, and a retry is
+visible in the worker log rather than looking like a mysterious late event.
+
+## Telemetry
+
+Every playback receiver logs at receipt:
+
+```
+webhook_received event_id=... provider=plex event=media.play user_id=... rating_key=...
+```
+
+The worker logs start, finish and slow waits under `integrations.tasks`:
+
+```
+webhook_started event_id=... provider=plex user_id=... event=... rating_key=... queue_delay_ms=... queue_delay_bucket=le_100ms
+webhook_finished event_id=... provider=plex user_id=... event=... rating_key=... outcome=persisted elapsed_ms=...
+webhook_slow_queue event_id=... ... queue_delay_ms=...
+```
+
+`queue_delay_ms` is measured from the HTTP receipt, not from broker enqueue, so
+it includes broker and worker-reservation time. `elapsed_ms` is the processing
+time after the task starts. `queue_delay_bucket` uses fixed buckets
+(`le_100ms`, `le_500ms`, `le_1s`, `le_5s`, `le_10s`, `le_30s`, `gt_30s`) so the
+distribution can be charted from logs without a metrics backend. A delay above
+`10s` also emits `webhook_slow_queue` at WARNING.
+
+`outcome` is one of:
+
+| outcome | meaning |
+| --- | --- |
+| `persisted` | a tracking row (or progress row) was written |
+| `live` | only the Now Playing card changed (e.g. Plex `media.play`) |
+| `unmatched` | the event identity could not be resolved to a title |
+| `ignored` | policy, user, library or reference review rejected the event |
+| `skipped` | processor returned without a decision (non-playback providers) |
+| `error` | processing raised; retries are logged by Celery |
+
+`event_id` is generated at receipt and carried into every task for the same
+request, including shared-recipient tasks. Use it to join the web worker log,
+the worker start/finish lines and the persisted row's timestamps. The Plex
+`ratingKey` and event type are logged alongside it; payload titles, usernames
+and addresses are not.
+
+## Ordering
+
+Webhooks are queued, so an older event can be processed after a newer one. The
+receipt timestamp is carried into the worker as epoch seconds with its
+fraction, because two events can arrive in the same second and a backlog can
+process them in reverse. It is used in two places:
+
+- `app.live_playback.apply_playback_event` drops a card update whose receipt
+  time is older than the card's last update, so a delayed `media.play` cannot
+  replace the card left by a later `media.scrobble`. The card keeps the precise
+  time as `event_ts`; its display timestamps (`updated_at_ts` and the expiry
+  times) stay whole seconds. A card without `event_ts` (cached before it
+  existed, or written without a receipt time) is compared by `updated_at_ts`.
+- `api.fork_views_playback.upsert_playback_progress` drops a progress write
+  whose receipt time is older than the row's `last_event_at` (the receipt time
+  of the newest event it applied), so a delayed Jellyfin Pause or Emby partial
+  Stop cannot undo a completed stop. A dropped write saves nothing and
+  publishes no progress change. It never compares against `updated_at`, which
+  is processing time: a backlog would make every queued event look older than
+  the one processed just before it. An equal receipt time applies in
+  processing order.
+
+`last_event_at` is unknown (null) on rows written before it existed and on rows
+only ever written without a receipt time. It is deliberately not backfilled
+from `updated_at`, for the reason above, so the next event on such a row
+applies and starts its clock; until then a late event on an upgraded row is not
+caught. Writes without a receipt time (the progress API, Check-in, the UI)
+always apply and leave `last_event_at` alone. The trade-off: a webhook received
+before such a write but processed after it still applies, because a
+processing-time stamp on the write would wrongly drop webhooks received just
+after it. A match correction that merges two progress rows keeps the newer of
+their two clocks, whichever row's values win.
+
+Every provider whose worker carries a receipt time passes it to both the card
+and the durable row, including the stop path that writes the row after media
+processing (Plex, Emby, Jellyfin). A stop that reached the row without its
+receipt time would leave the clock unset, and a Jellyfin Pause or Emby partial
+Stop received earlier in the same second could then be dropped by the card
+but still reset the row.
+
+Rollout: migration `app.0222` (`last_event_at`) and the worker code must ship
+together, so stop and restart every worker before taking webhooks again. An
+older worker still running alongside a new one writes progress without
+touching `last_event_at`, so its writes bypass the clock in both directions.
+Cards cached before the upgrade cannot recover fractional receipt times; they
+order by whole seconds until the next event replaces them. The migration adds
+the column only if no column of that name exists, which protects an
+installation where the column was already added; it does not check that
+column's type or repair a mismatched schema, and reversing the migration drops
+the column whether or not this migration created it.
+
+Final events still write their history rows regardless of order: Plex plays do
+not write tracking rows at all (`STOP_ONLY` policy, see
+`webhook-write-rules.md`), and a stop/scrobble persists through its own path.
+Ordering drops affect display/progress state, not the historical play.
+
+## Investigating a lag report
+
+1. Find `webhook_received` for the event and note its `event_id`.
+2. Search the worker log for the same `event_id`:
+   - only `webhook_started` and a large `queue_delay_ms` means queue wait
+     (worker busy or broker backlog)
+   - `webhook_started` to `webhook_finished` is processing time
+   - a missing `webhook_finished` means the attempt died or timed out
+   - `webhook_slow_queue` at WARNING marks anything past 10 seconds
+3. An `outcome=unmatched` line is an identity problem, not a latency problem
+   (for Plex see #1703).
+4. If `queue_delay_ms` is normal but `elapsed_ms` is large, look at provider
+   calls, not the queue.
+
+Receipt timestamps are currently emitted by the Plex, Jellyfin, Emby and Kodi
+receivers. Plex, Jellyfin and Emby pass the timestamp into the Now Playing
+card and progress writer; the task accepts the same fields for any future
+receiver.

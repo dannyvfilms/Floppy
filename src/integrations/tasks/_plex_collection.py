@@ -12,6 +12,7 @@ from app.log_safety import exception_summary, safe_url
 from app.models import CollectionEntry, Item, MediaTypes
 from integrations import plex as plex_api
 from integrations.plex import extract_external_ids_from_guids
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.tasks._import_helpers import _is_expected_plex_lookup_error
 
 logger = logging.getLogger(__name__)
@@ -782,7 +783,8 @@ def _aggregate_tv_show_collection_metadata(
 
     # Fetch seasons using the seasons key
     try:
-        response = requests.get(
+        response = send_to_self_hosted(
+            requests.get,
             f"{uri}{seasons_key}",
             headers=plex_api._headers(token),
             params={"X-Plex-Token": token},
@@ -861,7 +863,8 @@ def _aggregate_tv_show_collection_metadata(
 
         # Fetch episodes using the episodes key
         try:
-            season_response = requests.get(
+            season_response = send_to_self_hosted(
+                requests.get,
                 f"{uri}{episodes_key}",
                 headers=plex_api._headers(token),
                 params={"X-Plex-Token": token},

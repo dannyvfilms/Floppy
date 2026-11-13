@@ -153,3 +153,14 @@ def ensure_podcast_website_backfill_reconcile(
         )
     finally:
         reconcile_state.release(RECONCILE_KEY)
+
+
+@shared_task(name="Refresh podcast show from RSS", ignore_result=True)
+def refresh_podcast_show_from_rss_task(show_id: int):
+    """Reconcile a podcast show against its feed off the detail request path."""
+    from app.fork_services_podcast import refresh_show_from_rss
+    from app.models import PodcastShow
+
+    show = PodcastShow.objects.filter(pk=show_id).first()
+    if show is not None:
+        refresh_show_from_rss(show)

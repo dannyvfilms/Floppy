@@ -108,11 +108,11 @@ def _pick(medias, kind):
     return None
 
 
-def find(query, wanted):
-    """Return the wanted assets ScreenScraper has for the game on a retro system."""
+def _games(query):
+    """Yield matching games for the stored retro platforms."""
     auth = _request_credentials()
     if auth is None or not query.systems or not query.title:
-        return {}
+        return
     for system in query.systems:
         response = services.api_request(
             PROVIDER,
@@ -129,6 +129,12 @@ def find(query, wanted):
         names = [n.get("text") for n in game.get("noms") or []]
         if not game or (names and normalize(query.title) not in {normalize(n) for n in names}):
             continue
+        yield game
+
+
+def find(query, wanted):
+    """Return the wanted assets ScreenScraper has for a retro game."""
+    for game in _games(query):
         medias = game.get("medias") or []
         found = {}
         for kind in wanted:
@@ -138,3 +144,16 @@ def find(query, wanted):
         if found:
             return found
     return {}
+
+
+def gallery(query):
+    """Return credential-free fanart and screenshots for the matched game."""
+    for game in _games(query):
+        images = [
+            {"url": strip_credentials(media["url"])}
+            for media in game.get("medias") or []
+            if media.get("type") in ("fanart", "ss") and media.get("url")
+        ]
+        if images:
+            return images
+    return []

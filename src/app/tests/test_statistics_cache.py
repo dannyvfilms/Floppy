@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
@@ -17,14 +18,30 @@ from app import (
     statistics_refresh,
     statistics_sync,
 )
-from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.models import (
+    Album,
+    Artist,
+    BoardGame,
+    Book,
+    BookListeningSession,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    Sources,
+    Status,
+    Track,
+)
 from app.statistics_aggregator import (
     _aggregate_minutes_per_media_type_from_days,
     _build_combined_hours_charts,
     _build_platform_breakdown,
     _build_weekday_hour_charts,
 )
-from app.statistics_day_cache import _normalize_day_value
+from app.statistics_day_cache import STATISTICS_DAY_PREFIX, _normalize_day_value
 
 
 class StatisticsDayBatchingTests(SimpleTestCase):
@@ -130,7 +147,9 @@ class StatisticsRefreshSchedulingTests(TestCase):
         cache.clear()
 
     @patch("app.tasks_interactive.statistics_sync_task.apply_async")
-    def test_background_sync_yields_to_webhooks_but_not_to_imports(self, enqueue):
+    def test_background_sync_runs_on_the_bulk_lane_but_keeps_its_priority(
+        self, enqueue
+    ):
         scheduled = statistics_cache.schedule_statistics_refresh(
             self.user.id, "This Month", allow_inline=False
         )
@@ -140,11 +159,12 @@ class StatisticsRefreshSchedulingTests(TestCase):
         self.assertEqual(priority, settings.CELERY_TASK_PRIORITY_STATISTICS_SYNC)
         self.assertGreater(priority, settings.CELERY_TASK_PRIORITY_INTERACTIVE)
         self.assertLess(priority, settings.CELERY_TASK_PRIORITY_FOLLOWUP)
+        self.assertEqual(enqueue.call_args.kwargs["queue"], "celery")
         route = settings.CELERY_TASK_ROUTES["app.tasks.statistics_sync_task"]
-        self.assertEqual(route["queue"], "interactive")
+        self.assertEqual(route["queue"], "celery")
 
     @patch("app.tasks_interactive.statistics_sync_task.apply_async")
-    def test_forced_refresh_is_queued_ahead_of_other_syncs(self, enqueue):
+    def test_forced_refresh_stays_on_the_interactive_lane(self, enqueue):
         statistics_cache.schedule_statistics_refresh(
             self.user.id, "This Month", force=True
         )
@@ -153,6 +173,11 @@ class StatisticsRefreshSchedulingTests(TestCase):
             enqueue.call_args.kwargs["priority"],
             settings.CELERY_TASK_PRIORITY_INTERACTIVE,
         )
+        self.assertEqual(enqueue.call_args.kwargs["queue"], "interactive")
+
+    def test_talent_fragment_rebuild_runs_on_the_bulk_lane(self):
+        route = settings.CELERY_TASK_ROUTES["Refresh statistics talent fragment"]
+        self.assertEqual(route["queue"], "celery")
 
     def test_schedule_all_ranges_refresh_records_a_change(self):
         before = statistics_sync.current_generation(self.user.id)
@@ -313,7 +338,9 @@ class StatisticsStaleResultTests(TestCase):
             self.user, None, None, "This Month"
         )
 
-        self.assertEqual(result["hours_per_media_type"], self.data["hours_per_media_type"])
+        self.assertEqual(
+            result["hours_per_media_type"], self.data["hours_per_media_type"]
+        )
         self.assertNotIn("statistics_building", result)
 
     @patch("app.tasks_interactive.statistics_sync_task.apply_async")
@@ -380,6 +407,345 @@ class StatisticsHourBucketTests(TestCase):
         self.assertEqual(
             day_stats["totals"]["plays_by_type"][MediaTypes.MOVIE.value],
             2,
+        )
+        # Day payloads cross the cache boundary before the range aggregator
+        # consumes them. IDs/hours and datetimes must survive serialization.
+        serialized_day = json.loads(json.dumps(day_stats))
+        self.assertEqual(serialized_day["day"], midnight.date().isoformat())
+        self.assertEqual(serialized_day["activity"], {"count": 2})
+        self.assertEqual(
+            set(serialized_day["items"]["movie"]),
+            {str(item_id) for item_id in Item.objects.values_list("id", flat=True)},
+        )
+        self.assertEqual(
+            {
+                entry["activity_dt"]
+                for entry in serialized_day["items"]["movie"].values()
+            },
+            {midnight.isoformat(), (midnight + timedelta(minutes=30)).isoformat()},
+        )
+        self.assertEqual(
+            _aggregate_minutes_per_media_type_from_days(self.user, [midnight.date()]),
+            {"movie": 210},
+        )
+
+
+class StatisticsBoardGameDayTests(TestCase):
+    """Board game plays contribute minutes, one play and spread daily time."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-boardgame-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _boardgame(self, key, progress, start, end):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOARDGAME.value,
+            title=key,
+        )
+        BoardGame.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=start,
+            end_date=end,
+        )
+        return item
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_ending_today_counts_minutes_play_and_top_played(self):
+        item = self._boardgame("bg-same-day", 90, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 90)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 90)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["plays"], 1)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["minutes"], 90)
+        self.assertIn(str(item.id), stats["items"][key])
+
+    def test_multi_day_span_spreads_daily_time_without_counting_a_play(self):
+        self._boardgame(
+            "bg-span",
+            300,
+            self.day - timedelta(days=1),
+            self.day + timedelta(days=1),
+        )
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["daily_minutes_by_type"][key], 100)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
+
+    def test_zero_progress_records_item_but_no_time(self):
+        item = self._boardgame("bg-zero", 0, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertIn(str(item.id), stats["items"][key])
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["daily_minutes_by_type"].get(key, 0), 0)
+
+
+class StatisticsAudiobookDayTests(TestCase):
+    """Pages and listening minutes are counted apart, never summed."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-audiobook-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 3, 10, 12))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _book(self, key, fmt, progress, *, end=None):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title=key,
+            format=fmt,
+        )
+        return Book.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=end or self.day,
+            end_date=end or self.day,
+        )
+
+    def test_audiobook_minutes_do_not_become_pages(self):
+        self._book("ebook", "ebook", 120)
+        audio = self._book("audio", "audiobook", 300)
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=84,
+        )
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.BOOK.value
+        self.assertEqual(stats["daily_minutes_by_type"][key], 120)
+        self.assertEqual(stats["totals"]["listening_minutes"], 84)
+
+    def test_listening_only_day_is_active(self):
+        audio = self._book("audio2", "audiobook", 300, end=self.day - timedelta(days=9))
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=47,
+        )
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        self.assertEqual(stats["totals"]["listening_minutes"], 47)
+        self.assertGreaterEqual(stats["activity"]["count"], 1)
+
+    def test_saving_a_session_marks_its_statistics_day_dirty(self):
+        from app.models import StatisticsDirtyDay
+
+        audio = self._book("audio3", "audiobook", 10)
+        StatisticsDirtyDay.objects.all().delete()
+
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=30,
+        )
+
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(
+                user=self.user, day=self.day.date(),
+            ).exists(),
+        )
+
+    def test_legacy_consumption_keeps_pages_and_listening_apart(self):
+        from app import statistics as stats_module
+
+        self._book("ebook2", "ebook", 120)
+        audio = self._book("audio4", "audiobook", 300)
+        BookListeningSession.objects.create(
+            book=audio, session_id="s1", started_at=self.day, minutes=84,
+        )
+
+        result = stats_module.get_reading_consumption_stats(
+            {MediaTypes.BOOK.value: Book.objects.filter(user=self.user)},
+            None,
+            None,
+            MediaTypes.BOOK.value,
+        )
+
+        self.assertEqual(result["units"]["total"], 120)
+        self.assertEqual(result["listening"]["minutes"], 84)
+        self.assertEqual(result["listening"]["formatted"], "1h 24min")
+
+
+class StatisticsMusicDayTests(TestCase):
+    """Music plays count once, with runtime from the track and rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-music-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.artist = Artist.objects.create(name="Day Artist", genres=["rock"])
+        self.album = Album.objects.create(title="Day Album", artist=self.artist)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _music(self, key, duration_ms):
+        track = Track.objects.create(
+            album=self.album, title=key, track_number=1, duration_ms=duration_ms
+        )
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title=key,
+        )
+        return Music.objects.create(
+            item=item,
+            user=self.user,
+            album=self.album,
+            artist=self.artist,
+            track=track,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        music = self._music("song", 180000)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 3)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 3)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertEqual(stats["top_played"][key][str(music.item_id)]["plays"], 1)
+        rollups = stats["music"]
+        self.assertEqual(rollups["tracks"][str(music.id)]["minutes"], 3)
+        self.assertEqual(rollups["artists"][str(self.artist.id)]["plays"], 1)
+        self.assertEqual(rollups["albums"][str(self.album.id)]["minutes"], 3)
+        self.assertEqual(rollups["genres"]["Rock"]["plays"], 1)
+
+    def test_play_without_runtime_counts_play_but_no_minutes(self):
+        self._music("silent", 0)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
+
+
+class StatisticsPodcastDayTests(TestCase):
+    """Podcast plays count once, with runtime from the episode and show rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-podcast-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.show = PodcastShow.objects.create(
+            podcast_uuid="show-uuid-1", title="Day Show", slug="day-show"
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def _podcast(self, key, duration_seconds, *, with_episode=True, progress=0):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.PODCAST.value,
+            title=key,
+        )
+        episode = (
+            PodcastEpisode.objects.create(
+                show=self.show,
+                episode_uuid=f"ep-{key}",
+                title=f"Episode {key}",
+                duration=duration_seconds,
+            )
+            if with_episode
+            else None
+        )
+        return Podcast.objects.create(
+            item=item,
+            user=self.user,
+            show=self.show if with_episode else None,
+            episode=episode,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        podcast = self._podcast("pod", 1800)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 30)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 30)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertIn(str(podcast.item_id), stats["items"][key])
+        rollups = stats["podcast"]
+        self.assertEqual(rollups["shows"][str(self.show.id)]["plays"], 1)
+        self.assertEqual(rollups["shows"][str(self.show.id)]["title"], "Day Show")
+        episode_stats = rollups["episodes"][str(podcast.episode_id)]
+        self.assertEqual(episode_stats["title"], f"Episode {podcast.item.title}")
+        self.assertEqual(episode_stats["duration_seconds"], 1800)
+
+    def test_play_without_runtime_is_skipped(self):
+        self._podcast("silent", 0, with_episode=False)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["plays_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+
+    def test_progress_stands_in_when_episode_runtime_is_unknown(self):
+        podcast = self._podcast("progress", 0, with_episode=False, progress=12)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 12)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        # Without a show, the rollup is keyed by the entry and titled from the item.
+        self.assertEqual(
+            stats["podcast"]["shows"][str(podcast.id)]["title"], podcast.item.title
         )
 
 
@@ -516,7 +882,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     """
     Tests for statistics_cache._get_horizontal_history_image.
 
-    Every test mocks CustomList._get_tmdb_backdrop / _get_igdb_backdrop so no
+    Every test mocks backdrops.get_tmdb_backdrop / _get_igdb_backdrop so no
     real network calls are made. The Redis cache is cleared before each test so
     _cached_horizontal_backdrop always starts cold unless explicitly primed.
     """
@@ -554,7 +920,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Cached backdrop already in Redis — no network call needed
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tv_show_uses_redis_cache_without_network_call(self, mock_backdrop):
         item = _tv_item_dict()  # Breaking Bad, media_id=1396
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
@@ -564,7 +930,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_movie_uses_redis_cache_without_network_call(self, mock_backdrop):
         item = _movie_item_dict()  # On Stranger Tides, media_id=1865
         cache.set("tmdb_backdrop_movie_1865", BACKDROP_URL, 60)
@@ -578,7 +944,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB TV (Breaking Bad)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tv_show_fetches_tmdb_backdrop_when_cache_cold(self, mock_backdrop):
         """Breaking Bad (tv, 1396): cold Redis → should call TMDB and return backdrop."""
         item = _tv_item_dict(media_id="1396", title="Breaking Bad")
@@ -590,7 +956,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1396")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_anime_tmdb_fetches_backdrop_via_tv_endpoint(self, mock_backdrop):
         """
         Devil May Cry (media_type=anime, source=tmdb): cold Redis → backdrop fetched.
@@ -610,7 +976,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         # Anime from TMDB must use the /tv/{id} endpoint
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "94954")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_anime_tmdb_redis_cache_hit_skips_network(self, mock_backdrop):
         """TMDB anime whose backdrop is already in Redis must not re-fetch."""
         item = _anime_item_dict(media_id="94954")
@@ -622,7 +988,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_anime_mal_source_falls_back_to_portrait(self, mock_backdrop):
         """
         MAL-sourced anime has no backdrop provider, so the portrait poster is
@@ -641,7 +1007,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB movie (Pirates of the Caribbean: On Stranger Tides)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_movie_fetches_tmdb_backdrop_when_cache_cold(self, mock_backdrop):
         """On Stranger Tides (movie, 1865): cold Redis → should call TMDB."""
         item = _movie_item_dict(
@@ -660,7 +1026,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB episode (Game of Thrones)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_episode_fetches_show_backdrop_via_tv_path(self, mock_backdrop):
         """
         Game of Thrones episode (media_type=episode, media_id=1399).
@@ -676,7 +1042,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         # Must request the TV backdrop, not an episode-specific path
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_season_fetches_show_backdrop_via_tv_path(self, mock_backdrop):
         """Season items (media_type=season) also resolve via the TV backdrop path."""
         item = {
@@ -712,7 +1078,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Media types that have no backdrop path — should fall back gracefully
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_music_media_type_falls_back_to_portrait(self, mock_backdrop):
         """Music has no backdrop source; portrait poster should be returned."""
         item = {
@@ -733,7 +1099,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # allow_network=False — must NOT make network calls
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_allow_network_false_returns_fallback_without_network_call(
         self, mock_backdrop
     ):
@@ -755,7 +1121,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # TMDB returns IMG_NONE — fall back to portrait
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=settings.IMG_NONE)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=settings.IMG_NONE)
     def test_tmdb_returns_img_none_falls_back_to_portrait(self, mock_backdrop):
         item = _tv_item_dict()
 
@@ -770,7 +1136,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # ------------------------------------------------------------------
 
     @patch(
-        "lists.models.CustomList._get_tmdb_backdrop",
+        "app.backdrops.get_tmdb_backdrop",
         side_effect=Exception("network error"),
     )
     def test_tmdb_exception_falls_back_to_portrait(self, mock_backdrop):
@@ -786,7 +1152,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Model instance (not dict) — Breaking Bad as a real Item object
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_model_instance_tv_fetches_backdrop(self, mock_backdrop):
         """_get_horizontal_history_image must work with Django Item instances too."""
         item = Item.objects.create(
@@ -808,7 +1174,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # TVDB source — cross-reference to TMDB via provider_external_ids
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tvdb_tv_show_uses_tmdb_cross_reference(self, mock_backdrop):
         """
         Game of Thrones / Breaking Bad / HIMYM added via TVDB:
@@ -829,7 +1195,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tvdb_episode_uses_tmdb_cross_reference(self, mock_backdrop):
         """TVDB episodes carry the show-level provider_external_ids tmdb_id."""
         item = _tvdb_episode_item_dict(tvdb_id="121361", tmdb_id="1399")
@@ -841,7 +1207,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_redis_cache_hit_skips_network(self, mock_backdrop):
         """TVDB show whose TMDB backdrop is already cached avoids a network call."""
         item = _tvdb_tv_item_dict(tvdb_id="121361", tmdb_id="1399")
@@ -852,7 +1218,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_without_tmdb_cross_reference_falls_back_to_portrait(
         self, mock_backdrop
     ):
@@ -876,7 +1242,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, PORTRAIT_POSTER)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_missing_provider_external_ids_falls_back_to_portrait(
         self, mock_backdrop
     ):
@@ -906,7 +1272,7 @@ class GetHorizontalHistoryImageTests(TestCase):
 
 
 def _fill_tmdb_backdrop_cache(media_type, media_id):
-    """Stand-in for CustomList._get_tmdb_backdrop that caches like the real one."""
+    """Stand-in for backdrops.get_tmdb_backdrop that caches like the real one."""
     cache.set(f"tmdb_backdrop_{media_type}_{media_id}", BACKDROP_URL, 60)
     return BACKDROP_URL
 
@@ -940,7 +1306,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
         cache.clear()
 
     @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_serve_never_calls_the_provider(self, mock_backdrop, mock_warm):
         """Core regression test for issue #1249: a cold cache means no network."""
         data = {"history_highlights": _portrait_highlights()}
@@ -964,7 +1330,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
         )
 
     @patch(
-        "lists.models.CustomList._get_tmdb_backdrop",
+        "app.backdrops.get_tmdb_backdrop",
         side_effect=_fill_tmdb_backdrop_cache,
     )
     def test_portrait_poster_recovers_on_next_serve(self, mock_backdrop):
@@ -1005,9 +1371,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
 
     @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("app.backdrops.cached_backdrop")
-    def test_marked_backdrop_is_served_without_any_lookup(
-        self, mock_cached, mock_warm
-    ):
+    def test_marked_backdrop_is_served_without_any_lookup(self, mock_cached, mock_warm):
         """A payload built after #1249 keeps its backdrop after Redis expiry."""
         entry = _highlight_entry(_tv_item_dict(), image=BACKDROP_URL)
         entry["image_is_backdrop"] = True
@@ -1059,7 +1423,7 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
             statistics_cache._normalize_history_highlight_images(value)
             statistics_cache._normalize_history_highlights_by_type(value)
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_backdrop_already_stored_in_cache_is_reused(self, mock_backdrop):
         """A warm Redis backdrop (e.g. from a Lists Hub visit) is used directly."""
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
@@ -1085,7 +1449,7 @@ class HighlightArtworkRequestPathTests(TestCase):
         cache.clear()
 
     @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_warm_statistics_cache_serve_makes_no_provider_call(
         self, mock_backdrop, mock_warm
     ):
@@ -1131,6 +1495,31 @@ class HighlightArtworkRequestPathTests(TestCase):
         self.assertEqual(entry["image"], PORTRAIT_POSTER)
         mock_cached.assert_not_called()
         mock_resolve.assert_not_called()
+
+    def test_today_release_candidates_are_scanned_once_per_window(self):
+        """Every range and media type of a sync pass shares one library scan.
+
+        The scan cannot use a date index (it matches a month/day across all
+        years), so repeating it per range is what made range rebuilds slow.
+        """
+        release = timezone.now().replace(year=2001)
+        item = Item.objects.create(
+            media_id="release-cache-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Released today once",
+            release_datetime=release,
+        )
+        Movie.objects.create(
+            user=self.user, item=item, status=Status.COMPLETED.value
+        )
+
+        statistics_cache._get_today_release_entry(self.user)
+        with self.assertNumQueries(0):
+            entry, year = statistics_cache._get_today_release_entry(self.user)
+
+        self.assertEqual(year, 2001)
+        self.assertEqual(entry["item"].pk, item.pk)
 
 
 class RequestPathDayBuildTests(TestCase):
@@ -1210,7 +1599,7 @@ class DayCacheContractTests(SimpleTestCase):
             with self.subTest(day=day):
                 self.assertEqual(
                     statistics_cache._day_cache_key(42, day),
-                    "stats:day:v8:42:2026-09-05",
+                    f"{STATISTICS_DAY_PREFIX}:42:2026-09-05",
                 )
         self.assertEqual(statistics_cache._day_cache_key(42, "invalid"), "")
 

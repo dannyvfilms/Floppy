@@ -63,7 +63,7 @@ class StremioPlaybackTaskTests(SimpleTestCase):
 
         mock_process.assert_called_once()
         mock_apply.assert_called_once_with(
-            args=["session-1"], countdown=60, queue="interactive"
+            args=["session-1"], countdown=60
         )
 
     @patch.object(_webhook.verify_stremio_playback, "apply_async")
@@ -90,7 +90,7 @@ class StremioPlaybackTaskTests(SimpleTestCase):
         _webhook.verify_stremio_playback.run("session-1")
 
         mock_apply.assert_called_once_with(
-            args=["session-1"], countdown=90, queue="interactive"
+            args=["session-1"], countdown=90
         )
 
     @patch.object(_webhook, "_process_webhook")
