@@ -712,8 +712,10 @@ def podcast_show_save(request):
             if updated:
                 from app import cache_utils
 
-                cache_utils.clear_media_list_cache_for_user(request.user.id)
-                cache_utils.clear_home_row_cache_for_user(request.user.id)
+                cache_utils.clear_library_view_caches(
+                    request.user.id,
+                    media_types=(MediaTypes.PODCAST.value,),
+                )
 
         if request.headers.get("HX-Request"):
             htmx_trigger = {

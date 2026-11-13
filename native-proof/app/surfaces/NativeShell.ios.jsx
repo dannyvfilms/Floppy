@@ -11,12 +11,15 @@ import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { RailModalHost, RailModalProvider, useRailModal } from '../../../frontend/ui/Modal';
 import { menuGeometry } from './menuGeometry.mjs';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
+import { ShellLayoutContext } from './shellContext';
 
-function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, overlaySearch }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
   const [arrangement, setArrangement] = useState(null);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [searchHeight, setSearchHeight] = useState(96);
   const hinge = useHinge();
   const measuredDivision = division?.frame || (arrangement?.containerWidth === contentWidth ? arrangement : null);
   const target = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
@@ -55,10 +58,15 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
         {sidebar}
       </View>
     </View>
-    <View style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
+    <View onLayout={event => setViewport(event.nativeEvent.layout)}
+      style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
       importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
-      <View style={[styles.search, horizontalContentPadding(insets, 22)]}>{search}</View>
-      {children}
+      <View onLayout={event => setSearchHeight(event.nativeEvent.layout.height)}
+        style={[styles.search, horizontalContentPadding(insets, 22), overlaySearch && styles.searchOverlay]}>{search}</View>
+      <ShellLayoutContext.Provider value={{ ...viewport, insets,
+        headerHeight: overlaySearch ? searchHeight : 0 }}>
+        {children}
+      </ShellLayoutContext.Provider>
     </View>
   </View>;
 }
@@ -90,7 +98,7 @@ export default function NativeShell(props) {
     : <ReservedRegionsProvider style={styles.root}><MeasuredNativeShell {...props} /></ReservedRegionsProvider>;
 }
 
-function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division }) {
+function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division, overlaySearch }) {
   const modal = useRailModal()?.active;
   const insets = useSafeAreaInsets();
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -105,7 +113,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const menu = { open, sidebar, search, palette, children, reduceMotion };
+  const menu = { open, sidebar, search, palette, children, reduceMotion, overlaySearch };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.background } }} />
@@ -138,6 +146,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { zIndex: 2, width: '100%', minHeight: 44,
     justifyContent: 'center', paddingTop: 25, paddingBottom: 27 },
+  // Only Media Details paints beneath search; the reviewed Home/search shell stays in flow.
+  searchOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   // Not clipped: the menu panel extends through the safe-area insets.
   row: { flex: 1, flexDirection: 'row', minHeight: 0 },
   sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },

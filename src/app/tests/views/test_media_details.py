@@ -1204,11 +1204,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn(
             'class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10"', content
         )
-        self.assertIn('class="detail-media-grid"', content)
-        self.assertIn("window.matchMedia('(max-width: 768px)').matches", content)
-        self.assertIn(
-            "document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6", content
-        )
+        # Seasons render as the shared scrollable rail, not the old detail grid.
+        self.assertIn('data-home-row-wrapper="true"', content)
+        self.assertIn("home-row-card", content)
         self.assertIn(
             'class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"', content
         )
@@ -1220,10 +1218,6 @@ class MediaDetailsViewTests(TestCase):
         self.assertLess(
             content.index('class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"'),
             content.index('class="w-full md:w-3/4"'),
-        )
-        self.assertIn(
-            'class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden"',
-            content,
         )
 
     @patch("app.providers.services.get_media_metadata")

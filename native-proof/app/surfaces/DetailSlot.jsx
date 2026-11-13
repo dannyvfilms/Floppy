@@ -1,8 +1,11 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { Badge } from '../../../frontend/ui/Badge';
+import { detailSecondaryModel } from '../../../frontend/ui/detailSecondaryModel';
 import { palette, spacing } from '../theme';
 import { getActiveAuthSession } from '../data/authSession';
+import { detailHeaderText, trackingEntriesFromPayload } from '../data/detailTransportCore';
+import { formatUserDate, loadDatePreferences } from '../data/userDate';
 import { detailEndpoint, detailGalleryEndpoint, identityFromDetailItem } from './detailIdentity.mjs';
 
 export const surface = {
@@ -193,14 +196,13 @@ function detailFromProviderPayload(payload, item, identity) {
     seasonLabel: keyMediaType === 'season' ? (payload?.season_title || `Season ${seasonNumber}`) : '',
     seasonOptions: payload?.season_options || [],
     parentIdentity: keyMediaType === 'season' ? { mediaType: routeMediaType, source: key.source, mediaId: keyMediaId } : null,
-    activityText: [payload?.activity_subtitle?.primary_text,
-      payload?.activity_subtitle?.date_start, payload?.activity_subtitle?.date_end].filter(Boolean).join(' · '),
-    mobileMeta: [String(payload?.media_details?.first_air_date || '').slice(0, 4), payload?.media_details?.runtime].filter(Boolean).join(' · '),
+    ...detailHeaderText(payload?.activity_subtitle, payload?.media_details),
     publicView,
     readOnly: Boolean(payload?.read_only),
-    viewerRating: payload?.tracking && !publicView ? {
-      value: payload.tracking.score,
-      scaleMax: 10,
+    trackingEntries: trackingEntriesFromPayload(payload),
+    viewerRating: payload?.tracking && !publicView && payload?.viewer_rating?.enabled !== false ? {
+      value: payload.viewer_rating?.value ?? payload.tracking.score,
+      scaleMax: payload.viewer_rating?.scale_max || 10,
       editable: Boolean(capabilities.can_update),
     } : null,
     artwork: {
@@ -212,7 +214,7 @@ function detailFromProviderPayload(payload, item, identity) {
       gallerySupported: Boolean(payload?.artwork?.gallery_supported),
     },
     facts,
-    synopsis: { text: payload?.synopsis || '', previewLines: 4 },
+    synopsis: { text: payload?.synopsis || '', previewLines: 3 },
     labels,
     palette: detailPalette,
     sections,
@@ -228,12 +230,16 @@ function detailFromProviderPayload(payload, item, identity) {
     people: {
       cast: (payload?.people?.cast || []).map(person => ({
         ...(person && typeof person === 'object' ? person : { name: String(person || '') }),
+        person_id: person.personId || person.person_id,
+        imageUrl: person.imageUrl || person.image || person.image_url || person.profile_path || '',
         name: person.name || person.person || person.actor || person.title || '',
         role: person.role || person.character || person.job || '',
         image: person.image || person.image_url || person.profile_path || '',
       })),
       crew: (payload?.people?.crew || []).map(person => ({
         ...(person && typeof person === 'object' ? person : { name: String(person || '') }),
+        person_id: person.personId || person.person_id,
+        imageUrl: person.imageUrl || person.image || person.image_url || person.profile_path || '',
         name: person.name || person.person || person.title || '',
         role: person.role || person.job || '',
         image: person.image || person.image_url || person.profile_path || '',
@@ -248,6 +254,7 @@ function detailFromProviderPayload(payload, item, identity) {
       nextLabel: payload.children.next_label,
     } : null,
     details: payload?.media_details || {},
+    secondary: detailSecondaryModel(payload, { formatDate: formatUserDate }),
     providers: payload?.providers || [],
     linkSections: payload?.link_sections || [],
     gameLengths: payload?.game_lengths || null,
@@ -330,7 +337,7 @@ function fromMusicPayload(payload, item, kind, publicView = false) {
     subtitle: payload.artist_name || '',
     artwork: { src: payload.image || '', aspect: kind === 'artist' ? 'square' : 'poster' },
     facts: fields,
-    synopsis: { text: payload.description || '', previewLines: 4 },
+    synopsis: { text: payload.description || '', previewLines: 3 },
     publicView,
     readOnly: publicView || !request,
     labels,
@@ -365,6 +372,7 @@ export async function loadDetailModel(item, options = {}) {
   if (!identity) throw new Error('Open a detail from a media item or a Floppy detail link.');
   const request = options.request || getActiveAuthSession()?.request;
   if (typeof request !== 'function') throw new Error('Connect to your Floppy server to load this detail.');
+  await loadDatePreferences(request);
 
   if (identity.musicKind) {
     if (identity.musicKind === 'artist') {
@@ -390,7 +398,7 @@ export async function loadDetailModel(item, options = {}) {
     const episodes = await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.podcastId)}/episodes/?limit=30&offset=0`);
     return {
       ...fromMusicPayload({ ...response, name: response.title }, item, 'show', identity.publicView),
-      synopsis: { text: response.description || '', previewLines: 4 },
+      synopsis: { text: response.description || '', previewLines: 3 },
       children: {
         kind: 'episode',
         seasons: [],

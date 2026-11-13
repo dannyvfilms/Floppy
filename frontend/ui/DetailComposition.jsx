@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
-import { CardScrim } from './CardScrim';
+import { DetailBackdrop } from './DetailBackdrop';
+import { detailHeroLayout } from './detailHeroLayout';
 
 const defaultLabels = {
   altTitle: 'Show alternative title',
@@ -66,17 +67,18 @@ function Artwork({ artwork, palette, title, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>{frame}</Pressable>;
 }
 
-export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork }) {
+export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, compact = false, viewportWidth }) {
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const { width } = useWindowDimensions();
-  const artworkWidth = Math.max(120, Math.min(220, width * 0.34));
+  const artworkWidth = compact ? Math.min(160, (viewportWidth || width) * 0.4)
+    : Math.max(120, Math.min(220, width * 0.34));
   const facts = model?.facts || [];
   return <View style={[styles.header, showArtwork && styles.headerWithArtwork]}>
     {showArtwork ? <View style={{ width: artworkWidth }}>
       <Artwork artwork={model?.artwork} palette={colors} title={model?.title || ''} onPress={onPressArtwork} />
     </View> : null}
-    <View style={styles.headerBody}>
+    <View style={[styles.headerBody, compact && { minWidth: 0 }]}>
       {model?.subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{model.subtitle}</Text> : null}
       <View style={styles.titleRow}>
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>
@@ -86,7 +88,9 @@ export function DetailHeader({ model, labels, palette, showArtwork = false, onPr
         <Badge label={text.publicView} tone="outline"
           palette={{ outline: { color: colors.textSecondary, borderColor: colors.border, borderWidth: 1 } }} />
       </View> : null}
-      {facts.length ? <View style={styles.facts}>
+      {compact && model?.activityText ? <Text style={[styles.mobileHeroMeta, { color: colors.textMuted, textShadowRadius: 0 }]}>{model.activityText}</Text> : null}
+      {compact && model?.mobileMeta ? <Text style={[styles.mobileHeroMeta, { color: colors.textMuted, textShadowRadius: 0 }]}>{model.mobileMeta}</Text> : null}
+      {!compact && facts.length ? <View style={styles.facts}>
         {facts.map((fact, index) => <View key={`${fact.label}-${index}`} style={styles.fact}>
           <Text style={[styles.factLabel, { color: colors.textMuted }]}>{fact.label}</Text>
           <Text style={[styles.factValue, { color: colors.textSecondary }]}>{String(fact.value)}</Text>
@@ -143,24 +147,25 @@ export function DetailHero({ model, palette, onOpenVideo }) {
   </View>;
 }
 
-export function DetailMobileHero({ model, palette, onOpenItem, actions }) {
+export function DetailMobileHero({ model, palette, onOpenItem, actions, viewport }) {
   const colors = resolvePalette(palette);
   const [seasonsOpen, setSeasonsOpen] = useState(false);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const [logoAspect, setLogoAspect] = useState(0);
+  const layout = detailHeroLayout(viewport || { width, height }, logoAspect);
   const artwork = model?.artwork || {};
   const backdrop = artwork.backdrop || artwork.gallery?.hero?.url || artwork.gallery?.overview?.url;
   const logo = artwork.logo || artwork.gallery?.hero?.logo_url || artwork.gallery?.overview?.logo_url;
   if (!backdrop) return null;
-  return <View style={styles.mobileHero}>
-    <Image source={{ uri: backdrop }} resizeMode="cover" blurRadius={35}
-      style={StyleSheet.absoluteFill} accessible={false} />
-    <Image source={{ uri: backdrop }} resizeMode="cover"
-      style={[styles.mobileHeroImage, { height: Math.max(230, width * 0.83) }]} accessible={false} />
-    <CardScrim style={StyleSheet.absoluteFill} />
-    <View style={[styles.mobileHeroContent, { paddingTop: Math.max(120, width * 0.32) }]}>
-      {logo ? <Image source={{ uri: logo }} resizeMode="contain" style={styles.mobileHeroLogo}
+  return <View style={[styles.mobileHero, { marginLeft: -layout.gutterLeft, marginRight: -layout.gutterRight }]}>
+    <DetailBackdrop source={backdrop} layout={layout} background={colors.background} />
+    <View style={[styles.mobileHeroContent, { paddingLeft: layout.gutterLeft, paddingRight: layout.gutterRight,
+      paddingTop: Math.max(0, layout.line - (logo ? layout.logoHeight : 70)) }]}>
+      {logo ? <Image source={{ uri: logo }} resizeMode="contain"
+        style={{ width: layout.logoWidth, height: layout.logoHeight }}
+        onLoad={event => { const size = event.nativeEvent?.source; if (size?.width && size?.height) setLogoAspect(size.width / size.height); }}
         accessibilityLabel={`${model.title} logo`} /> :
-        <Text accessibilityRole="header" style={styles.mobileHeroTitle}>{model.title}</Text>}
+        <Text accessibilityRole="header" style={[styles.mobileHeroTitle, { minHeight: 70 }]}>{model.title}</Text>}
       {model.seasonLabel ? <View style={styles.seasonSelector}>
         <Pressable accessibilityRole="button" accessibilityLabel="Select season"
           accessibilityState={{ expanded: seasonsOpen }} onPress={() => setSeasonsOpen(value => !value)}
@@ -204,21 +209,54 @@ export function DetailSynopsis({ model, labels, palette, hideWhenEmpty = false }
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const synopsis = model?.synopsis || {};
-  const body = synopsis.text || '';
+  const { width } = useWindowDimensions();
+  const compact = width < 640;
+  const body = compact ? (synopsis.text || '').replace(/\s+/g, ' ').trim() : synopsis.text || '';
   const previewLines = synopsis.previewLines ?? 3;
   const [expanded, setExpanded] = useState(false);
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const [measurement, setMeasurement] = useState(null);
+  useEffect(() => { setExpanded(false); setMeasurement(null); }, [body, previewLines, compact, measuredWidth]);
   if (!body) return hideWhenEmpty ? null : <Text style={[styles.emptySynopsis, { color: colors.textMuted }]}>{text.noSynopsis}</Text>;
-  // A phone line holds about 42 characters: offer "Read more" past the preview
-  // without a hidden measuring copy (text layout events are not portable, and a
-  // second copy would be read twice by assistive technology).
   const showToggle = synopsis.clamped === undefined
-    ? body.length > previewLines * 42 || body.split('\n').length > previewLines
+    ? measurement?.clamped ?? (body.length > previewLines * 42 || body.split('\n').length > previewLines)
     : Boolean(synopsis.clamped);
-  return <View style={styles.synopsis}>
+  const testing = measurement?.testing;
+  const measureText = testing == null ? body : `${body.slice(0, testing).trimEnd()}... ${text.readMore}`;
+  const onMeasure = event => {
+    const lines = event.nativeEvent?.lines;
+    if (!lines?.length || measurement?.done) return;
+    const fits = lines.length <= previewLines;
+    if (testing == null) {
+      if (fits || !compact) { setMeasurement({ clamped: !fits, done: true }); return; }
+      setMeasurement({ clamped: true, low: 0, high: body.length, best: 0, testing: Math.floor(body.length / 2) });
+      return;
+    }
+    const low = fits ? testing + 1 : measurement.low;
+    const high = fits ? measurement.high : testing - 1;
+    const best = fits ? testing : measurement.best;
+    if (low > high) {
+      const excerpt = body.slice(0, best).trimEnd();
+      const boundary = excerpt.lastIndexOf(' ');
+      setMeasurement({ clamped: true, done: true, preview: (boundary > 0 ? excerpt.slice(0, boundary) : excerpt).replace(/[\s.,;:!?-]+$/u, '') });
+    } else setMeasurement({ ...measurement, low, high, best, testing: Math.floor((low + high) / 2) });
+  };
+  const inline = compact && showToggle && !expanded;
+  const preview = measurement?.preview || body.slice(0, previewLines * 42).replace(/\s+\S*$/, '');
+  return <View style={styles.synopsis} onLayout={event => setMeasuredWidth(event.nativeEvent.layout.width)}>
+    {/* Measure native line wrapping without exposing a second copy to accessibility.
+        The PWA adapter owns its equivalent DOM measurement. */}
+    {!measurement?.done ? <Text key={measureText} accessible={false} accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants" pointerEvents="none" onTextLayout={onMeasure}
+      style={[styles.synopsisText, { position: 'absolute', left: 0, right: 0, opacity: 0 }]}>{measureText}</Text> : null}
     <Text numberOfLines={expanded ? undefined : previewLines}
-      style={[styles.synopsisText, { color: colors.textSecondary }]}>{body}</Text>
-    {showToggle || expanded ? <Pressable accessibilityRole="button"
-      onPress={() => setExpanded(value => !value)} style={styles.synopsisToggle}>
+      style={[styles.synopsisText, { color: colors.textSecondary }]}>
+      {inline ? preview : body}
+      {inline ? <Text>... <Text accessibilityRole="button" accessibilityLabel={text.readMore}
+        onPress={() => setExpanded(true)} style={[styles.synopsisToggleText, { fontSize: 13, color: colors.link }]}>{text.readMore}</Text></Text> : null}
+    </Text>
+    {(showToggle || expanded) && !inline ? <Pressable accessibilityRole="button"
+      accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={styles.synopsisToggle}>
       <Text style={[styles.synopsisToggleText, { color: colors.link }]}>{expanded ? text.showLess : text.readMore}</Text>
     </Pressable> : null}
   </View>;
@@ -285,11 +323,9 @@ export function DetailComposition({ model, labels, palette, showArtwork = true }
 const styles = StyleSheet.create({
   composition: { gap: 18, width: '100%' },
   hero: { width: '100%', gap: 8 },
-  mobileHero: { overflow: 'hidden', marginHorizontal: -22, backgroundColor: '#18181b' },
-  mobileHeroImage: { position: 'absolute', top: 0, left: 0, right: 0, width: '100%' },
-  mobileHeroContent: { alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingBottom: 22 },
+  mobileHero: { overflow: 'visible' },
+  mobileHeroContent: { alignItems: 'center', gap: 8, paddingBottom: 8 },
   mobileHeroActions: { alignSelf: 'stretch' },
-  mobileHeroLogo: { width: '66%', height: 96 },
   mobileHeroTitle: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   mobileHeroMeta: { color: '#fff', fontSize: 14, textAlign: 'center', textShadowColor: '#000', textShadowRadius: 4 },
   seasonSelector: { alignItems: 'center', zIndex: 2 },

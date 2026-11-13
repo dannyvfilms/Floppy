@@ -19,6 +19,11 @@ The numbers are defined by the model properties named on each field. A
 change to one of those properties must be made here too;
 ``app.tests.test_tv_show_facts`` compares the two on every case it can build.
 
+``tracked_shows`` wraps the facts as ``TrackedShow`` rows, which answer what
+library ranking reads from a ``TV`` tracker (Home's shelves and the caught-up
+filter). The library-query engine attaches them instead of the hydrated graph
+when every sort and filter of a query says it reads nothing else.
+
 Nothing here is cached. A caller that stores a result owns its invalidation.
 """
 
@@ -28,7 +33,7 @@ from types import SimpleNamespace
 
 from django.db.models import Count, Max, Q
 
-from app.models import Episode, Season, Status
+from app.models import TV, BasicMedia, Episode, Media, Season, Status
 
 # Above this many shows the queries read the whole library of the user and
 # keep the requested shows, rather than sending every id as a parameter.
@@ -51,11 +56,19 @@ class SeasonFacts:
     max_episode_number: int = 0
     # ``Season.end_date``: the latest play date, in any pass.
     end_date: datetime | None = None
+    # The season item's provider identity, which names the show's episode
+    # catalogue (``BasicMedia.objects.attach_episode_queue``).
+    media_id: str = ""
+    source: str = ""
 
     @property
     def item(self):
-        """Let readers written for a ``Season`` find ``item.season_number``."""
+        """Let readers written for a ``Season`` find its item's columns here."""
         return self
+
+    def next_episode_number(self, episode_numbers):
+        """Return ``Season.next_episode_number`` for the given released numbers."""
+        return Season.next_episode_number(self, episode_numbers)
 
 
 @dataclass(slots=True)
@@ -108,7 +121,7 @@ def tv_show_facts(user, tv_ids=None):
     facts = {}
     seasons = {}
     rewatch_started = {}
-    for season_id, tv_id, season_number, status, rewatch_started_at in (
+    for season_id, tv_id, season_number, status, rewatch_started_at, media_id, source in (
         Season.objects.filter(**scope)
         .order_by("pk")
         .values_list(
@@ -117,11 +130,18 @@ def tv_show_facts(user, tv_ids=None):
             "item__season_number",
             "status",
             "rewatch_started_at",
+            "item__media_id",
+            "item__source",
         )
     ):
         if wanted is not None and tv_id not in wanted:
             continue
-        season = seasons[season_id] = SeasonFacts(season_number, status)
+        season = seasons[season_id] = SeasonFacts(
+            season_number,
+            status,
+            media_id=media_id,
+            source=source,
+        )
         facts.setdefault(tv_id, ShowFacts()).seasons.append(season)
         if rewatch_started_at is not None:
             rewatch_started[season_id] = rewatch_started_at
@@ -192,3 +212,112 @@ def _apply_rewatch_progress(seasons, rewatch_started, play_scope):
 
     for season_id in completed:
         seasons[season_id].progress = reached.get(season_id, 0)
+
+
+class _Related(list):
+    """A list that also answers ``.all()``, like a prefetched relation."""
+
+    def all(self):
+        """Return the rows."""
+        return self
+
+
+class TrackedShow:
+    """A ``TV`` tracker as library ranking reads it, without its model graph.
+
+    Carries the tracker's own columns, its item and its facts. Each attribute
+    is defined by the ``TV`` or ``Media`` member of the same name, and the
+    methods are the models' own. ``max_progress`` and
+    ``released_episode_breakdown`` are unset until
+    ``annotate_released_progress`` runs, as on a tracker.
+
+    It is not a tracker: a reader of anything else (score, dates other than
+    the last play, the plays themselves) needs the hydrated row.
+    """
+
+    __slots__ = (
+        "active_episode_order_id",
+        "created_at",
+        "facts",
+        "item",
+        "max_progress",
+        "next_episode_queue",
+        "next_event",
+        "pk",
+        "released_episode_breakdown",
+        "seasons",
+        "status",
+    )
+
+    def __init__(self, pk, item, status, created_at, active_episode_order_id, facts):
+        """Wrap one tracker row and the facts of its seasons."""
+        self.pk = pk
+        self.item = item
+        self.status = status
+        self.created_at = created_at
+        self.active_episode_order_id = active_episode_order_id
+        self.facts = facts
+        self.seasons = _Related(facts.seasons)
+
+    @property
+    def item_id(self):
+        """Return the tracked item's id."""
+        return self.item.pk
+
+    @property
+    def progress(self):
+        """Return ``TV.progress``."""
+        return self.facts.progress
+
+    @property
+    def progressed_at(self):
+        """Return ``TV.progressed_at``: the last play, the same date as ``TV.end_date``."""
+        return self.facts.end_date
+
+    end_date = progressed_at
+    episodes_left = Media.episodes_left
+    next_episode_target = TV.next_episode_target
+
+
+def tracked_shows(user, items):
+    """Return ``{item_id: TrackedShow}`` for the items the user tracks as shows.
+
+    Four value queries whatever the number of items, and no model.
+    """
+    by_id = {item.pk: item for item in items}
+    rows = list(
+        TV.objects.filter(user=user, item_id__in=by_id)
+        .order_by()
+        .values_list("pk", "item_id", "status", "created_at", "active_episode_order_id"),
+    )
+    facts = tv_show_facts(user, [row[0] for row in rows])
+    return {
+        item_id: TrackedShow(
+            pk,
+            by_id[item_id],
+            status,
+            created_at,
+            order_id,
+            facts.get(pk) or ShowFacts(),
+        )
+        for pk, item_id, status, created_at, order_id in rows
+    }
+
+
+def annotate_released_progress(shows, now=None):
+    """Set ``max_progress`` and the released breakdown, as ``annotate_max_progress`` does."""
+    if not shows:
+        return
+    manager = BasicMedia.objects
+    breakdowns = manager.released_episode_breakdowns(
+        {(show.item.media_id, show.item.source) for show in shows},
+        now,
+    )
+    for show in shows:
+        breakdown = breakdowns.get((show.item.media_id, show.item.source), {})
+        show.released_episode_breakdown = breakdown
+        show.max_progress = manager.released_max_progress(
+            show.item,
+            breakdown,
+            show.facts.dropped_season_numbers if breakdown else set(),
+        )

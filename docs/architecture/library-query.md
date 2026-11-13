@@ -95,6 +95,12 @@ needs Python. A sort's SQL form is either `sql` (one value) or `sql_order`
     come one batch at a time, with the same prefetches and aggregation Home
     and the list use.
   - Filters can declare a per-batch `prepare` step for bulk annotation.
+  - A show's tracker row is attached as grouped facts
+    (`app.tv_show_facts.TrackedShow`: four value queries a batch, no season,
+    play or event model) when every Python sort and filter of the query
+    declares `tv_facts`. Home's Up Next, upcoming, recent, completion and
+    episodes-left orders and the caught-up filter do. Any other reader of the
+    tracker row keeps the hydrated graph for the whole scan.
   - Memory is bounded by the batch and the page. Computing values in Python is
     still one pass over the narrowed candidates.
 
@@ -174,6 +180,13 @@ ranges are part of their cache keys.
   - Give it a `sql` expression, or `sql_order` plus `batch_values`. The two
     must order identically; see `users.tests.test_home_row_paging`.
   - `tracker=True` marks values derived from tracker rows.
+  - Set `tv_facts=True` (on a `SortDef` or a `FilterDef`) only if, for a
+    show, the Python code reads nothing beyond what `TrackedShow` defines:
+    status, creation date, progress, last play, the released counts and the
+    seasons' number, status and progress. It reads through `getattr` with a
+    default in places, so a missing attribute would not fail; it would
+    reorder. Add the sort to `users.tests.test_home_row_show_facts`, which
+    compares it with the hydrated order in both directions.
 
 `app.tests.test_library_query` checks that every SQL sort orders the same way
 on the scan path. A new sort is covered automatically.
@@ -225,7 +238,14 @@ switched over. They are intentional:
 - Python predicates: provider availability, author, progress, and a season's
   effective status where it has to be derived.
 - Python sorts: time to beat, next episode air date, time left, and Home's
-  upcoming, completion and episodes-left orders. These scan the SQL-narrowed
-  candidates.
+  Up Next, upcoming, completion and episodes-left orders. These scan the
+  SQL-narrowed candidates.
+  - For shows, Home's orders and the caught-up filter are O(n) in value rows,
+    not in models: one item per candidate is all a scan builds.
+  - Each scan reads its own facts and released-episode counts, for its own
+    candidates. Sharing one whole-library copy between Home's shelves was
+    measured and rejected: it made a shelf built on its own several times
+    slower and multiplied its memory, for no reliable gain on a full Home.
+  - Season shelves still hydrate each candidate season.
 - `ids()` for smart-list sync is O(n) by definition and runs in the
   background.

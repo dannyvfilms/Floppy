@@ -3,7 +3,7 @@ import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
-import { createSearchTransport, searchBarFromPayload, suggestionsFromPayload } from '../data/searchTransport';
+import { createSearchTransport, suggestionsFromPayload } from '../data/searchTransport';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { palette, radius } from '../theme';
 
@@ -12,10 +12,23 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared React Native search field renders here with the media-type menu, barcode types and copy from /api/v1/search/sources/, two-character suggestions from /api/v1/search/suggestions/ (saved titles, collected and tagged items, matched titles), the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed out, the menu offers All only and suggestions are empty; there is no sample content. Camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
+  note: 'The shared React Native search field renders here with the reviewed media-type menu, barcode types and copy, two-character suggestions from /api/v1/search/suggestions/ (saved titles, collected and tagged items, matched titles), the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed-out suggestions are empty; there is no sample content. Platform verification is recorded in the UI register.',
 };
 
-const ALL_TYPE = { display: 'All', value: 'all' };
+const mediaTypes = [
+  { display: 'All', value: 'all' },
+  { display: 'TV Shows', value: 'tv' },
+  { display: 'Movies', value: 'movie' },
+  { display: 'Anime', value: 'anime' },
+  { display: 'Manga', value: 'manga' },
+  { display: 'Games', value: 'game' },
+  { display: 'Books', value: 'book' },
+  { display: 'Comics', value: 'comic' },
+  { display: 'Board Games', value: 'boardgame' },
+  { display: 'Music', value: 'music' },
+  { display: 'Podcasts', value: 'podcast' },
+  { display: 'Videos', value: 'video' },
+];
 
 const labels = {
   inputLabel: 'Search your library or online',
@@ -33,7 +46,7 @@ const labels = {
   suggestionsEmptyAll: 'Nothing in your library matches “%(query)s”. Pick a media type to search online.',
   suggestionsEmptyType: 'Nothing saved matches “%(query)s”. Keep typing and press Enter to search online.',
   barcodeUnavailable: 'Barcode scanning is not available on this device. Enter an ISBN instead.',
-  barcodeUnreadable: 'Could not read barcode from image. Please try again or enter ISBN manually.',
+  barcodeUnreadable: 'Could not read a barcode from that image. Try again or type the ISBN.',
   barcodeFailed: 'Error scanning barcode: ',
   tryAgain: 'Please try again.',
   barcodeTitle: 'Scan a book barcode',
@@ -50,7 +63,7 @@ const labels = {
   barcodeChecking: 'Reading barcode…',
   barcodeInvalidManual: 'Enter a valid ISBN-10 or ISBN-13.',
   barcodeNotIsbn: 'That barcode is not an ISBN. Try a book barcode.',
-  barcodePhotoUnreadable: 'Could not read barcode from image. Please try again or enter ISBN manually.',
+  barcodePhotoUnreadable: 'Could not read a barcode from that photo. Try again or type the ISBN.',
   barcodeCameraError: 'The camera could not start. Choose a photo or type the ISBN.',
 };
 
@@ -88,27 +101,10 @@ export default function SearchSlot({
     [session],
   );
   const compact = width < 640;
-  const [bar, setBar] = useState({ mediaTypes: [ALL_TYPE], barcodeTypes: [], labels: {} });
   const [scannerVisible, setScannerVisible] = useState(false);
   const pendingBarcode = useRef(null);
 
-  // The type menu, barcode types and field copy come from the server, so the
-  // user's enabled media types decide what is offered.
-  useEffect(() => {
-    if (transport.mode !== 'server') {
-      setBar({ mediaTypes: [ALL_TYPE], barcodeTypes: [], labels: {} });
-      return undefined;
-    }
-    let active = true;
-    transport.loadSources({ mediaType: initialMediaType }).then(payload => {
-      if (active) setBar(searchBarFromPayload(payload));
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [transport, initialMediaType]);
-
-  const mediaTypes = bar.mediaTypes.length ? bar.mediaTypes : [ALL_TYPE];
   const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
-  const fieldLabels = { ...labels, ...bar.labels };
 
   const requestBarcode = useCallback(() => new Promise(resolve => {
     pendingBarcode.current = resolve;
@@ -141,9 +137,6 @@ export default function SearchSlot({
 
   return <>
     <GlobalSearch
-      // The field keeps its own selected type, so it restarts when the page's
-      // type changes or the server's type list arrives.
-      key={`${selectedType.value}:${mediaTypes.length}`}
       useKeyboardOverlap={useKeyboardOverlap}
       expanded={expanded}
       dismissSignal={dismissSignal}
@@ -151,8 +144,8 @@ export default function SearchSlot({
       query={initialQuery}
       selectedType={selectedType}
       mediaTypes={mediaTypes}
-      barcodeTypes={bar.barcodeTypes}
-      labels={fieldLabels}
+      barcodeTypes={['all', 'book', 'manga', 'comic', 'comicissue']}
+      labels={labels}
       palette={searchPalette}
       onLoadSuggestions={loadSuggestions}
       onSubmit={onSubmit || onOpenSearch}

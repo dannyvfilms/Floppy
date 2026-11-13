@@ -363,7 +363,9 @@ export async function loadTrack(identity, { trackTime = false, fresh = false } =
   const state = await request(`${mediaPath(identity)}/state/`);
   let detail = null;
   try { detail = await request(`${mediaPath(identity)}/`); } catch { detail = null; }
-  const consumption = fresh ? null : currentConsumption(state);
+  const consumption = fresh ? null : identity.instanceId != null
+    ? await request(`${mediaPath(identity)}/history/${encodeURIComponent(identity.instanceId)}/`)
+    : currentConsumption(state);
   const tracked = Boolean(state.tracked) && !fresh;
   const episodic = EPISODIC_TYPES.has(identity.mediaType);
   const tabs = [
@@ -388,6 +390,7 @@ export async function loadTrack(identity, { trackTime = false, fresh = false } =
     title,
     model: {
       mediaType: identity.mediaType,
+      instanceId: identity.instanceId ?? null,
       title,
       subtitle: identity.subtitle || '',
       action: `${mediaPath(identity)}/`,
@@ -509,7 +512,8 @@ export async function saveTrack(identity, model, values, tracked) {
   }
   const body = trackBody(model, values);
   if (tracked) {
-    await request(`${mediaPath(identity)}/`, { method: 'PATCH', body });
+    const path = identity.instanceId != null ? `${mediaPath(identity)}/history/${encodeURIComponent(identity.instanceId)}/` : `${mediaPath(identity)}/`;
+    await request(path, { method: 'PATCH', body });
     return { tracked: true };
   }
   await request(`/api/v1/media/${encodeURIComponent(identity.mediaType)}/`, {
@@ -545,7 +549,8 @@ export async function deleteTrack(identity, model) {
     await unwatchEpisode(identity);
     return;
   }
-  await request(`${mediaPath(identity)}/`, { method: 'DELETE' });
+  const path = identity.instanceId != null ? `${mediaPath(identity)}/history/${encodeURIComponent(identity.instanceId)}/` : `${mediaPath(identity)}/`;
+  await request(path, { method: 'DELETE' });
 }
 
 export async function setTags(identity, tagIds) {

@@ -427,6 +427,14 @@ export function createRemoteCollectionActions(request) {
         body,
       });
     },
+    updateSeason({ seasonId, values, initial }) {
+      const body = entryPayload(values, initial);
+      if (!Object.keys(body).length) return Promise.resolve({ unchanged: true });
+      return request(`${COLLECTION_PATH}seasons/${encodeURIComponent(seasonId)}/`, { method: 'PATCH', body });
+    },
+    removeSeason({ seasonId }) {
+      return request(`${COLLECTION_PATH}seasons/${encodeURIComponent(seasonId)}/`, { method: 'DELETE' });
+    },
     removeCopy({ entryId }) {
       return request(`${COLLECTION_PATH}${encodeURIComponent(entryId)}/`, {
         method: 'DELETE',
@@ -449,5 +457,7 @@ export function createLocalCollectionActions(reason) {
     addCopy: unavailable,
     updateCopy: unavailable,
     removeCopy: unavailable,
+    updateSeason: unavailable,
+    removeSeason: unavailable,
   };
 }

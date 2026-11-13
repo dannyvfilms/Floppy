@@ -1,7 +1,9 @@
 import { actionIcons } from './actionIcons';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
-import React, { useMemo, useState } from 'react';
+import { DropdownMenu } from './DropdownMenu';
+import { toggleDropdownSelection } from './dropdownMetrics';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const defaultPalette = {
@@ -58,29 +60,53 @@ export function SelectField({
   triggerStyle,
   triggerTextStyle,
   labelStyle,
+  popover = false,
+  multiple = false,
 }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState(null);
+  const trigger = useRef(null);
   const colors = useMemo(() => ({ ...defaultPalette, ...palette }), [palette]);
-  const selected = options.find(option => option.value === value);
+  const selectedValues = multiple && Array.isArray(value) ? value : [];
+  const selected = multiple ? options.filter(option => selectedValues.includes(option.value))
+    : options.find(option => option.value === value);
+  const selectedLabel = multiple ? selected.map(option => option.label).join(', ') : selected?.label;
   const labelId = id ? `${id}-label` : undefined;
-  const triggerLabel = accessibilityLabel || `${label}: ${selected?.label ?? placeholder}`;
+  const triggerLabel = accessibilityLabel || `${label}: ${selectedLabel || placeholder}`;
 
   function choose(option) {
     if (option.disabled) return;
-    onChange?.({ target: { name, value: option.value } });
-    setOpen(false);
+    const next = multiple ? toggleDropdownSelection(selectedValues, option.value) : option.value;
+    onChange?.({ target: { name, value: next } });
+    if (!multiple) setOpen(false);
   }
+
+  const choices = options.map(option => {
+    const active = multiple ? selectedValues.includes(option.value) : option.value === value;
+    return <Pressable key={option.value} accessibilityRole={multiple ? 'checkbox' : 'radio'}
+      accessibilityLabel={option.label} aria-checked={active} accessibilityState={{ checked: active, disabled: option.disabled || disabled }}
+      disabled={option.disabled || disabled} onPress={() => choose(option)}
+      style={({ pressed }) => [styles.option, active && { backgroundColor: colors.surfaceStrong },
+        pressed && !option.disabled && { backgroundColor: colors.surfaceMuted }, option.disabled && { opacity: 0.5 }]}>
+      <Text style={[styles.optionText, { color: active ? colors.text : colors.textSecondary }]}>{option.label}</Text>
+      {active ? <Text style={[styles.check, { color: colors.accent }]}>✓</Text> : null}
+    </Pressable>;
+  });
 
   return <View style={styles.field} testID={testID}>
     {!labelHidden && <Text nativeID={labelId} style={[styles.label, { color: colors.textMuted }, colors.preferenceCards && { fontSize: 14, lineHeight: 19 }, labelStyle]}>{label}</Text>}
     {help ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
-    <Pressable
+    <Pressable ref={trigger}
       accessibilityRole="button"
       accessibilityLabel={triggerLabel}
       accessibilityState={{ expanded: open, disabled }}
       accessibilityHint={labelHidden ? undefined : `Opens ${label} choices`}
       disabled={disabled}
-      onPress={() => setOpen(true)}
+      onPress={() => {
+        if (popover && trigger.current?.measureInWindow) {
+          trigger.current.measureInWindow((x, y, width, height) => { setAnchor({ x, y, width, height }); setOpen(true); });
+        } else { setAnchor(null); setOpen(true); }
+      }}
       style={({ pressed }) => [
         styles.trigger,
         filter && styles.filterTrigger,
@@ -93,14 +119,17 @@ export function SelectField({
         triggerStyle,
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
-      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selected?.label ?? placeholder}</Text>
+      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selectedLabel || placeholder}</Text>
       {filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
         : iconChevron
           ? <View style={styles.chevron}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
           : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
-    <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
+    {popover ? <DropdownMenu open={open} anchor={anchor} palette={colors} closeLabel={defaultLabels.close}
+      estimatedHeight={Math.min(420, options.length * 40 + 8)} onClose={() => setOpen(false)}>
+      <ScrollView keyboardShouldPersistTaps="handled">{choices}</ScrollView>
+    </DropdownMenu> : <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
       <View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel={defaultLabels.close} onPress={() => setOpen(false)} style={styles.backdrop} />
         <View accessibilityViewIsModal style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -112,30 +141,11 @@ export function SelectField({
             </Pressable>
           </View>
           <ScrollView style={styles.options} keyboardShouldPersistTaps="handled">
-            {options.map(option => {
-              const active = option.value === value;
-              return <Pressable
-                key={option.value}
-                accessibilityRole="radio"
-                  aria-checked={active}
-                accessibilityLabel={option.label}
-                accessibilityState={{ checked: active, disabled: option.disabled || disabled }}
-                disabled={option.disabled || disabled}
-                onPress={() => choose(option)}
-                style={({ pressed }) => [
-                  styles.option,
-                  active && { backgroundColor: colors.surfaceStrong },
-                  pressed && !option.disabled && { backgroundColor: colors.surfaceMuted },
-                  option.disabled && { opacity: 0.5 },
-                ]}>
-                <Text style={[styles.optionText, { color: active ? colors.text : colors.textSecondary }]}>{option.label}</Text>
-                {active ? <Text style={[styles.check, { color: colors.accent }]}>✓</Text> : null}
-              </Pressable>;
-            })}
+            {choices}
           </ScrollView>
         </View>
       </View>
-    </Modal>
+    </Modal>}
   </View>;
 }
 

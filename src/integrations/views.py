@@ -2674,18 +2674,17 @@ def radarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=RADARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="radarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="radarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "radarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Radarr", _disconnect)
     messages.info(request, "Disconnected Radarr.")
     return redirect("import_data")
@@ -2765,18 +2764,17 @@ def mylar_disconnect(request):
             task=MYLAR_RECURRING_TASK_NAME,
         ).delete()
         # Through the reconciling helper, so copies only Mylar3 created go too.
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="mylar", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="mylar",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "mylar",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Mylar3", _disconnect)
     messages.info(request, "Disconnected Mylar3.")
     return redirect("import_data")
@@ -2946,18 +2944,17 @@ def sonarr_disconnect(request):
             _periodic_task_filter_for_instance(instance.id),
             task=SONARR_RECURRING_TASK_NAME,
         ).delete()
-        states = CollectionSourceState.objects.filter(
-            user=request.user, source="sonarr", source_instance_id=instance.id
-        ).select_related("item")
-        for state in states:
-            remove_collection_source_state(
-                user=request.user,
-                item=state.item,
-                source="sonarr",
-                source_instance_id=instance.id,
-            )
         instance.delete()
 
+    # Queue the row cleanup first: it is too slow for the request (#1911).
+    if _queue_task_or_message(
+        request,
+        tasks.remove_collection_source_states,
+        request.user.id,
+        "sonarr",
+        instance.id,
+    ) is False:
+        return redirect("import_data")
     _run_with_lock_retry("disconnect Sonarr", _disconnect)
     messages.info(request, "Disconnected Sonarr.")
     return redirect("import_data")
