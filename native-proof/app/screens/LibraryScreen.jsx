@@ -666,7 +666,7 @@ function LibraryPage({ params, navigate }) {
       renderScroll={gridView ? ({ header, footer, ready }) => <LibraryGrid rows={ready ? rows : undefined}
         selecting={selectionMode} selected={selectedRows} onToggle={toggleSelected} groupBy={groupBy}
         onOpen={openRow} onOpenHistory={() => navigate('History')} onRate={onRate}
-        header={<>{rail}{header}</>} footer={footer} scrollProps={scrollProps}
+        header={header} footer={footer} scrollProps={scrollProps}
         onEndReached={ready && !loading ? loadMore : undefined} /> : undefined}
       content={gridView
         ? null
@@ -689,9 +689,12 @@ function LibraryPage({ params, navigate }) {
 
   // The grid scrolls itself (a windowed list) with Screen's own scroll settings;
   // the table keeps the page scroll.
-  return <Screen chrome={false} renderScroll={gridView ? page : undefined}>
-    {rail}
-    {page()}
+  // The A to Z rail stays outside the scrolling list: in grid view it goes in
+  // Screen's `floating` slot, beside the list, so its height spans the screen
+  // and it does not scroll away with the header.
+  return <Screen chrome={false} renderScroll={gridView ? page : undefined} floating={gridView ? rail : undefined}>
+    {gridView ? null : rail}
+    {gridView ? null : page()}
   </Screen>;
 }
 
