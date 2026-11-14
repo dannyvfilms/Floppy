@@ -2,10 +2,12 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
+// `onScroll` and `onContentSizeChange` pass through to the scrolling body (Home
+// uses them to load shelves near the screen).
 // `renderScroll(scrollProps)`: a page whose list scrolls itself (the native
 // Library's windowed grid) draws the body with the props this ScrollView would
 // have had, so its padding, safe-area and side-rail handling are the same.
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, scrollStyle, floating, artworkBleed = false, renderScroll }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, scrollStyle, floating, artworkBleed = false, onScroll, onContentSizeChange, renderScroll }) {
   const scrollProps = {
     style: [artworkBleed ? styles.bleed : null, scrollStyle],
     contentContainerStyle: [styles.content, contentStyle],
@@ -14,7 +16,8 @@ export function Screen({ title, subtitle, children, scroll = true, onBack, chrom
   const body = renderScroll
     ? renderScroll(scrollProps)
     : scroll
-      ? <ScrollView {...scrollProps}>{children}</ScrollView>
+      ? <ScrollView {...scrollProps} onScroll={onScroll} scrollEventThrottle={onScroll ? 100 : undefined}
+        onContentSizeChange={onContentSizeChange}>{children}</ScrollView>
       : <View style={[styles.content, contentStyle]}>{children}</View>;
   return <View style={[styles.screen, artworkBleed && styles.bleed]}>
     {chrome && (title || subtitle || onBack) ? <View style={styles.header}>

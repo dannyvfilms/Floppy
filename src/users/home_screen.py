@@ -3137,7 +3137,7 @@ def _library_row_executor(user, row, normalized_filters, *, seed: int):
         seed=seed,
         mixed=mixed,
     )
-    return LibraryQueryExecutor(user, query)
+    return LibraryQueryExecutor(user, query, share_shows=True)
 
 
 def _row_items(user, row, executor, offset, limit, *, seed):
@@ -3246,7 +3246,7 @@ def _custom_list_row_executor(user, row, *, seed: int):
         sort_list_id=row.custom_list_id,
         dedupe_cross_provider=False,
     )
-    return LibraryQueryExecutor(user, query)
+    return LibraryQueryExecutor(user, query, share_shows=True)
 
 
 def _custom_list_row_window(user, row, offset, limit, *, seed):
@@ -3692,7 +3692,7 @@ def _cached_released_ids(user, query) -> list[int]:
     released_ids = cache.get(key)
     if released_ids is None:
         with boundary("home_rank"):
-            released_ids = LibraryQueryExecutor(user, query).ranked_ids()
+            released_ids = LibraryQueryExecutor(user, query, share_shows=True).ranked_ids()
         cache.set(key, released_ids, cache_utils.HOME_ROW_RELEASED_CACHE_TTL)
         cache_utils.register_home_row_cache_key(user.id, key)
     return released_ids
@@ -3728,7 +3728,7 @@ def _episode_feed_row_window(user, row, offset, limit, seed):
     items, total = _row_items(
         user,
         row,
-        LibraryQueryExecutor(user, query),
+        LibraryQueryExecutor(user, query, share_shows=True),
         offset,
         limit,
         seed=seed,

@@ -70,11 +70,24 @@ class Page:
 class LibraryQueryExecutor:
     """Evaluate one ``LibraryQuery`` for one user."""
 
-    def __init__(self, user, query: LibraryQuery, *, batch_size: int = DEFAULT_BATCH_SIZE):
-        """Prepare ``query`` for ``user``; nothing runs until it is asked for."""
+    def __init__(
+        self,
+        user,
+        query: LibraryQuery,
+        *,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        share_shows: bool = False,
+    ):
+        """Prepare ``query`` for ``user``; nothing runs until it is asked for.
+
+        ``share_shows`` lets a scan that reads show facts reuse, and add to,
+        the records other shelves of the user's Home computed
+        (``app.tv_show_facts.SharedShows``). Only Home asks for it.
+        """
         self.user = user
         self.query = query
         self.batch_size = batch_size
+        self.share_shows = share_shows
         self.today = timezone.localdate()
 
     # -- compilation ----------------------------------------------------------
@@ -584,6 +597,12 @@ class LibraryQueryExecutor:
             )
         )
 
+        shared = None
+        if show_facts and self.share_shows:
+            from app.tv_show_facts import SharedShows
+
+            shared = SharedShows(self.user)
+
         rows = []
         iterator = queryset.iterator(chunk_size=self.batch_size)
         while True:
@@ -591,7 +610,7 @@ class LibraryQueryExecutor:
             if not batch:
                 break
             if filter_registry.NEEDS_MEDIA in needs:
-                _attach_media(self.user, batch, needs, show_facts=show_facts)
+                _attach_media(self.user, batch, needs, show_facts=show_facts, shared=shared)
             for ctx in self.contexts:
                 for definition in self._predicates(ctx):
                     if definition.prepare is not None:
@@ -625,6 +644,8 @@ class LibraryQueryExecutor:
                 else:
                     value = python_key(candidate)
                 rows.append(rank_row(value, candidate.item))
+        if shared is not None:
+            shared.save()
         return rows
 
 
@@ -681,6 +702,7 @@ def _attach_media(
     needs: set[str],
     *,
     show_facts: bool = False,
+    shared=None,
 ) -> None:
     """Load each candidate's aggregated tracker row, for this batch only.
 
@@ -707,11 +729,16 @@ def _attach_media(
         if show_facts and media_type == MediaTypes.TV.value:
             from app.tv_show_facts import annotate_released_progress, tracked_shows
 
-            shows = tracked_shows(user, [candidate.item for candidate in candidates])
+            items = [candidate.item for candidate in candidates]
+            released = filter_registry.NEEDS_MAX_PROGRESS in needs
+            if shared is not None:
+                shows = shared.tracked(items, released=released)
+            else:
+                shows = tracked_shows(user, items)
+                if released:
+                    annotate_released_progress(list(shows.values()))
             for candidate in candidates:
                 candidate.media = shows.get(candidate.item.pk)
-            if filter_registry.NEEDS_MAX_PROGRESS in needs:
-                annotate_released_progress(list(shows.values()))
             continue
         rows = model.objects.filter(
             user=user,

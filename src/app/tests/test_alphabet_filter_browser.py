@@ -318,7 +318,7 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                     }"""
                 )
                 rail = page.locator(".alphabet-rail")
-                self.assertEqual(rail.bounding_box()["width"], 32)
+                self.assertEqual(rail.bounding_box()["width"], 24)
                 page.wait_for_function(
                     """() => {
                       const rail = document.querySelector('.alphabet-rail');
@@ -443,5 +443,5 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 ),
                 "fixed",
             )
-            self.assertEqual(page.locator(".alphabet-rail").bounding_box()["width"], 32)
+            self.assertEqual(page.locator(".alphabet-rail").bounding_box()["width"], 24)
             context.close()
