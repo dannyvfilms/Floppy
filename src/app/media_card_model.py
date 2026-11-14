@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
+from app.artwork_sizes import card_image_url
 from app.icon_specs import file_icon
 from app.models import MediaTypes, Status
 from app.templatetags import app_tags
@@ -416,7 +417,7 @@ def card_model(ctx):
         "href": _href(ctx),
         "image": {
             "src": app_tags.image_url(
-                app_tags.youtube_landscape_thumbnail(image) if video else image,
+                app_tags.youtube_landscape_thumbnail(image) if video else card_image_url(image),
             ),
             "fallback": app_tags.image_url(image) if video else "",
             "source": ctx.get("image_source") or "primary",
@@ -559,7 +560,7 @@ def history_card_model(entry, card_class, history_mode, user, request=None):
         "href": href,
         "image": {
             "src": app_tags.image_url(
-                app_tags.youtube_landscape_thumbnail(poster) if video else poster,
+                app_tags.youtube_landscape_thumbnail(poster) if video else card_image_url(poster),
             ),
             "fallback": app_tags.image_url(poster) if video else "",
             "source": "primary",
@@ -598,7 +599,11 @@ def row_card_model(item, media, title, matched_title, user, request=None):
         "layout": "row",
         "mediaType": media_type,
         "href": _href(ctx),
-        "image": {"src": app_tags.image_url(_safe(item, "image")), "fallback": "", "source": "primary"},
+        "image": {
+            "src": app_tags.image_url(card_image_url(_safe(item, "image"))),
+            "fallback": "",
+            "source": "primary",
+        },
         "title": resolved,
         "altTitle": app_tags.alternative_title(item, user),
         "matched": (

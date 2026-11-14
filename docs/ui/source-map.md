@@ -131,6 +131,7 @@ Custom native surface/panel opacity and runtime radius getters are live; static 
 ## ARTWORK-LOADING
 
 Status: `Legacy`
+- `src/app/artwork_sizes.py` (card image size; consumers `src/app/media_card_model.py`, `src/api/fork_views_detail.py`, `src/api/serializers.py` `card_image`, `src/users/home_screen.py` flip prefetch). `frontend/ui/ArtworkImage.native.jsx` renders through `expo-image` (native-only cache carve-out).
 
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`
@@ -209,6 +210,7 @@ Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The 
 ## MEDIA-CARD
 
 Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
+- Render cost: `frontend/ui/MediaCard.jsx` and `MediaCard.web.jsx` are memoized; `native-proof/app/surfaces/MediaCardSlot.jsx` (`SlotCard`, optional windowed `virtualized` mode); test `scripts/cardRenderCost.test.mjs` with `scripts/test-support/`.
 
 Status: `Web Migrated`
 
@@ -252,6 +254,7 @@ Status: `Partial / coexisting`
 ## LIBRARY
 
 Status: `Partial / coexisting`
+- Native windowing: `native-proof/app/surfaces/LibraryGrid.jsx` and `MediaCardSlot.jsx` render the grid as a `FlatList` with the page as header/footer from `frontend/pages/LibraryPageView.jsx` (`renderScroll`); web paging unchanged.
 
 - `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
 - `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
@@ -420,6 +423,7 @@ Status: `Legacy`
 ## HOME
 
 `native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
+- Render cost: `frontend/ui/HomeShelves.jsx` (`ShelfCard`, stable labels/palette/loadMore).
 
 Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
 

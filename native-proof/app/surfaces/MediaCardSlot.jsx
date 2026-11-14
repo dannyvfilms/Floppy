@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, FlatList, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
@@ -504,6 +504,46 @@ function applyMediaCardChange(model, change) {
   return next;
 }
 
+function renderRatingStars({ value: score, label, scaleMax, palette: colors, onSelect }) {
+  return <RatingStars scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={colors}
+    renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? colors.lit : colors.unlit }]}>★</Text>} />;
+}
+
+// One grid card. Memoized, with callbacks bound to its item through stable
+// handlers, so appending a page or toggling another card's selection skips it.
+const SlotCard = React.memo(function SlotCard({
+  item, model, cardWidth, readOnly, selectionMode, selected, dragging, dropTarget, handlers,
+}) {
+  const selection = useMemo(() => (selectionMode ? {
+    active: true,
+    selected,
+    label: `Select ${model.title}`,
+    toggle: () => handlers.toggle(item),
+  } : undefined), [selectionMode, selected, model.title, handlers, item]);
+  const onOpen = useCallback(() => handlers.open(item), [handlers, item]);
+  const onOpenLink = useCallback(href => handlers.openLink(item, href), [handlers, item]);
+  const onReorder = useCallback(step => handlers.reorder(item, step), [handlers, item]);
+  const onReorderDrag = useCallback(event => handlers.drag(item, event), [handlers, item]);
+  const onRate = useCallback(score => handlers.rate(item, score), [handlers, item]);
+  const onLayout = useCallback(event => handlers.layout(item, event), [handlers, item]);
+  return <View onLayout={onLayout}
+    style={[dragging && styles.draggingCard, !dragging && dropTarget && styles.dropTarget]}>
+    <MediaCard model={model} labels={labels} palette={mediaCardPalette}
+      width={cardWidth}
+      onOpen={handlers.hasOpen() ? onOpen : undefined}
+      onOpenLink={handlers.hasLink() ? onOpenLink : undefined}
+      onAction={handlers.runAction}
+      readOnly={readOnly}
+      selection={selection}
+      onReorder={onReorder}
+      onReorderDrag={onReorderDrag}
+      dragging={dragging}
+      renderActionIcon={renderActionIcon}
+      onRate={onRate}
+      renderRating={renderRatingStars} />
+  </View>;
+});
+
 export default function MediaCardSlot({
   items = [],
   onOpenDetail,
@@ -516,6 +556,15 @@ export default function MediaCardSlot({
   mobileGridLayout = 'compact',
   cardWidth: cardWidthProp,
   gridGap: gridGapProp,
+  // Native Library: the grid becomes the page's scrolling list (a FlatList that
+  // mounts only rows near the screen), with the page above and below it as
+  // `header` and `footer`. Other surfaces keep the plain wrapping grid.
+  virtualized = false,
+  header = null,
+  footer = null,
+  onEndReached,
+  // The props Screen's ScrollView would have had (style, padding, safe area).
+  scrollProps,
 }) {
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
@@ -526,6 +575,7 @@ export default function MediaCardSlot({
   const [changes, setChanges] = useState({});
   const [drag, setDrag] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [listWidth, setListWidth] = useState(0);
   const layouts = useRef({});
   const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
   // The library page sizes cards like the web grid: three compact columns on a phone.
@@ -646,82 +696,128 @@ export default function MediaCardSlot({
     }
   }
 
+  // Card callbacks go through a ref to this render's functions, so the
+  // handlers object never changes and memoized cards skip unrelated renders.
+  const latest = useRef(null);
+  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, reorder, handleReorderDrag, rate };
+  const handlers = useMemo(() => ({
+    hasOpen: () => !!latest.current.onOpenDetail,
+    hasLink: () => !!(latest.current.onOpenLink || latest.current.onOpenDetail),
+    open: item => latest.current.onOpenDetail?.(item.row ?? item.model),
+    openLink: (item, href) => (latest.current.onOpenLink
+      ? latest.current.onOpenLink(href)
+      : latest.current.onOpenDetail?.(item.row ?? item.model)),
+    runAction: action => latest.current.runAction(action),
+    toggle: item => latest.current.onToggleSelection?.(item.key),
+    reorder: (item, step) => latest.current.reorder(item, step),
+    drag: (item, event) => latest.current.handleReorderDrag(item, event),
+    rate: (item, score) => latest.current.rate(item, score),
+    layout: (item, event) => { layouts.current[item.key] = event.nativeEvent.layout; },
+  }), []);
+
+  const itemsByKey = useMemo(() => new Map(items.map(item => [item.key, item])), [items]);
   const orderedItems = order
-    .map(key => items.find(item => item.key === key))
+    .map(key => itemsByKey.get(key))
     .filter(Boolean);
+
+  function cardModel(item, index) {
+    const value = ratings[item.key];
+    let model = item.model;
+    if (value !== undefined) {
+      model = {
+        ...model,
+        rating: model.rating && {
+          ...model.rating,
+          value,
+          label: value == null ? null : String(value),
+        },
+      };
+    }
+    model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
+    if (model.actions?.ordering) {
+      model = {
+        ...model,
+        actions: {
+          ...model.actions,
+          ordering: {
+            ...model.actions.ordering,
+            position: index + 1,
+            count: orderedItems.length,
+          },
+        },
+      };
+    }
+    return model;
+  }
+
+  function renderCard(item, index) {
+    return <SlotCard key={item.key} item={item} model={cardModel(item, index)}
+      cardWidth={cardWidth} readOnly={readOnly} selectionMode={selectionMode}
+      selected={selectionMode && selectedKeys.includes(item.key)}
+      dragging={drag?.key === item.key}
+      dropTarget={!!drag && drag.key !== item.key && drag.targetIndex === index}
+      handlers={handlers} />;
+  }
+
+  const errorText = actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
+    style={styles.actionError}>{actionError}</Text> : null;
+  const host = <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
+    palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
+    <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}
+      onClose={() => setPendingAction(null)} />
+  </MediaCardActionHost>;
+
+  if (virtualized) {
+    // Native-only windowing: hundreds of mounted cards in a ScrollView is the
+    // known expensive case on phones, so only rows near the screen stay
+    // mounted. Web keeps its server-paged document scroll (find-in-page and
+    // anchors keep working, and its images already load lazily).
+    // The column count matches the wrapping grid at this width, so the layout
+    // is unchanged.
+    const content = StyleSheet.flatten(scrollProps?.contentContainerStyle) || {};
+    const side = key => content[key] ?? content.paddingHorizontal ?? content.padding ?? 0;
+    const available = (listWidth || width) - side('paddingLeft') - side('paddingRight');
+    const columns = Math.max(1, Math.floor((available + gridGap + 0.5) / (cardWidth + gridGap)));
+    return <>
+      <FlatList
+        key={`columns-${columns}`}
+        data={orderedItems}
+        keyExtractor={item => item.key}
+        numColumns={columns}
+        renderItem={({ item, index }) => renderCard(item, index)}
+        columnWrapperStyle={columns > 1 ? { gap: gridGap } : undefined}
+        ItemSeparatorComponent={() => <View style={{ height: gridGap }} />}
+        ListHeaderComponent={header}
+        ListFooterComponent={<>{errorText}{footer}</>}
+        {...scrollProps}
+        style={[styles.list, scrollProps?.style]}
+        contentContainerStyle={[scrollProps?.contentContainerStyle, styles.listContent]}
+        onLayout={event => setListWidth(event.nativeEvent.layout.width)}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.6}
+        initialNumToRender={columns * 5}
+        maxToRenderPerBatch={columns * 4}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        />
+      {host}
+    </>;
+  }
 
   return <>
     <View style={[styles.grid, { gap: gridGap }]}>
-      {orderedItems.map((item, index) => {
-        const value = ratings[item.key];
-        let model = item.model;
-        if (value !== undefined) {
-          model = {
-            ...model,
-            rating: model.rating && {
-              ...model.rating,
-              value,
-              label: value == null ? null : String(value),
-            },
-          };
-        }
-        model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
-        if (model.actions?.ordering) {
-          model = {
-            ...model,
-            actions: {
-              ...model.actions,
-              ordering: {
-                ...model.actions.ordering,
-                position: index + 1,
-                count: orderedItems.length,
-              },
-            },
-          };
-        }
-        const selection = selectionMode ? {
-          active: true,
-          selected: selectedKeys.includes(item.key),
-          label: `Select ${model.title}`,
-          toggle: () => onToggleSelection?.(item.key),
-        } : undefined;
-        const isDragging = drag?.key === item.key;
-        return <View key={item.key}
-          onLayout={event => { layouts.current[item.key] = event.nativeEvent.layout; }}
-          style={[
-            isDragging && styles.draggingCard,
-            !isDragging && drag && drag.targetIndex === index && styles.dropTarget,
-          ]}>
-          <MediaCard model={model} labels={labels} palette={mediaCardPalette}
-            width={cardWidth}
-            onOpen={onOpenDetail ? () => onOpenDetail(item.row ?? item.model) : undefined}
-            onOpenLink={onOpenLink || (onOpenDetail ? () => onOpenDetail(item.row ?? item.model) : undefined)}
-            onAction={runAction}
-            readOnly={readOnly}
-            selection={selection}
-            onReorder={step => reorder(item, step)}
-            onReorderDrag={event => handleReorderDrag(item, event)}
-            dragging={isDragging}
-            renderActionIcon={renderActionIcon}
-            onRate={score => rate(item, score)}
-            renderRating={({ value: score, label, scaleMax, palette, onSelect }) => <RatingStars
-              scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={palette}
-              renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />
-        </View>;
-      })}
+      {orderedItems.map((item, index) => renderCard(item, index))}
     </View>
-    {actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
-      style={styles.actionError}>{actionError}</Text> : null}
-    <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
-      palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
-      <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}
-        onClose={() => setPendingAction(null)} />
-    </MediaCardActionHost>
+    {errorText}
+    {host}
   </>;
 }
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  list: { flex: 1 },
+  // Rows are spaced by the grid gap, not the page's section gap.
+  listContent: { gap: 0, rowGap: 0 },
   draggingCard: { zIndex: 20, elevation: 8, opacity: 0.9 },
   dropTarget: { opacity: 0.72 },
   pickerStar: { fontSize: 20 },
