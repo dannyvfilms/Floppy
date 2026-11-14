@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
 import { MediaCard } from './MediaCard.web';
@@ -130,6 +131,7 @@ function CastRail({ props, palette }) {
     ...person,
     ageLabel: ageLabels[person.id] || '',
   }));
+  const tapToReveal = window.matchMedia('(pointer: coarse)').matches;
   return <PeopleView
     part="cast"
     items={items}
@@ -138,12 +140,15 @@ function CastRail({ props, palette }) {
     palette={palette}
     web
     castWidth={width}
-    renderPersonCard={person => <MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
+    renderPersonCard={person => <View nativeID={person.cardId} style={{ flex: 1 }}><MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
       shape: 'poster', image: { src: person.imageUrl || person.imageFallback },
       lines: [...(person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
-        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })),
-      ...(person.showCreditAge !== false && person.ageLabel ? [{ parts: [{ text: person.ageLabel }], dormant: true }] : [])]
-    }} />}
+        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] }))),
+      ...(person.showCreditAge !== false && person.ageLabel
+        ? [{ variant: 'credit-age', parts: [{ text: person.ageLabel }] }]
+        : [])],
+      ...(tapToReveal && person.cardLines?.some(line => !line.dormant) ? { actions: { href: person.href, items: [] } } : {})
+    }} /></View>}
     viewAll={viewAll}
     collapsible={Boolean(props.collapseKey)}
     collapsed={props.collapseKey ? collapsed : undefined}

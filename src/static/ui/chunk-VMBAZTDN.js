@@ -1,0 +1,1 @@
+function n(e,o){return!!(e?.items?.length&&!e.clickable&&!o)}function t(e,o,r){return!!(e&&o&&!r)}function a(e,o,r){return!e.hoverMetadata||r||!!o?.dormant}function d(e,o,r){return!e.hoverMetadata||r||o.kind!=="runtime"}export{n as a,t as b,a as c,d};

@@ -35,7 +35,7 @@ class AddFieldIfNotExists(migrations.AddField):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('app', '0228_deletedentry'),
+        ('app', '0229_podcast_show_url_derived_titles'),
     ]
 
     operations = [
