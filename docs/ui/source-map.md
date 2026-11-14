@@ -1063,6 +1063,10 @@ Status: `Partial / coexisting`
 - `src/templates/users/components/outbound_service_modal.html`
 - `src/templates/users/components/outbound_service_status.html`
 - `src/templates/users/components/outbound_services.html`
+- `src/templates/users/components/plex_push_preview.html`
+- `src/templates/users/components/plex_push_result.html`
+- `src/templates/users/components/plex_push_targets.html`
+- `src/templates/users/components/plex_watched_push.html` (Plex Sync tab push review body; HTMX-owned, inside the `settings_card` shell)
 - `src/templates/users/components/stremio_catalog_status.html`
 - `src/templates/users/components/sync_state_section.html`
 - `src/templates/users/components/tmdb_proxy.html`
@@ -1076,7 +1080,7 @@ Status: `Partial / coexisting`
 - `src/templates/users/providers/integrations/kodi.html`
 - `src/templates/users/providers/integrations/navidrome.html`
 - `src/templates/users/providers/integrations/nuvio.html`
-- `src/templates/users/providers/integrations/plex.html`
+- `src/templates/users/providers/integrations/plex.html` (Sync tab: "Send Watched to Plex" uses the `settings_card` React header with a server-owned body)
 - `src/templates/users/providers/integrations/seerr.html`
 - `src/templates/users/providers/integrations/stremio.html`
 - `src/templates/users/providers/mal_connection.html`

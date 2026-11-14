@@ -377,6 +377,7 @@ def fetch_section_all_items(
     start: int = 0,
     size: int | None = None,
     max_retries: int = 3,
+    item_type: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Fetch all items from a Plex library section.
 
@@ -387,6 +388,8 @@ def fetch_section_all_items(
         start: Starting offset for pagination
         size: Number of items to fetch per page
         max_retries: Maximum number of retry attempts for network errors
+        item_type: Plex metadata type to list instead of the section's
+            top-level items, e.g. 4 for every episode of a TV section
 
     Returns:
         Tuple of (items list, total count)
@@ -403,6 +406,8 @@ def fetch_section_all_items(
         # resolve TMDB/IMDB/TVDB ids.
         "includeGuids": 1,
     }
+    if item_type is not None:
+        params["type"] = item_type
 
     # Ensure section_key is numeric (section ID) or use it as-is if it's already a path
     if not section_key.startswith("/"):
@@ -501,6 +506,91 @@ def fetch_metadata(
         msg = f"Could not parse Plex metadata: {exc}"
         raise PlexClientError(msg) from exc
     return entries[0] if entries else None
+
+
+def list_home_users(token: str) -> list[dict[str, Any]]:
+    """Return the Plex Home users of the account, the owner included.
+
+    Unlike ``list_users`` this raises on failure, for callers that must not
+    mistake an outage for an empty Home.
+    """
+    try:
+        response = requests.get(
+            "https://plex.tv/api/v2/home/users",
+            headers=_headers(token),
+            timeout=10,
+        )
+    except RequestException as exc:
+        raise PlexClientError(exception_summary(exc)) from exc
+    _raise_for_auth(response)
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        msg = "Could not parse Plex Home users"
+        raise PlexClientError(msg) from exc
+    return [user for user in _extract_users_payload(payload) if isinstance(user, dict)]
+
+
+def switch_home_user(token: str, user_uuid: str, pin: str | None = None) -> str:
+    """Return an auth token for one Plex Home user of the owner's account.
+
+    The token acts as that user, so it is meant for the request at hand and
+    must not be stored. A protected Home user needs their PIN. A response
+    naming a different user is refused rather than trusted.
+    """
+    params = {"pin": pin} if pin else {}
+    try:
+        response = requests.post(
+            f"https://plex.tv/api/v2/home/users/{quote_plus(user_uuid)}/switch",
+            headers=_headers(token),
+            params=params,
+            timeout=15,
+        )
+    except RequestException as exc:
+        raise PlexClientError(exception_summary(exc)) from exc
+    if response.status_code == HTTPStatus.FORBIDDEN:
+        msg = "Plex rejected the Home user PIN"
+        raise PlexAuthError(msg)
+    _raise_for_auth(response)
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        msg = "Could not parse the Plex Home user switch response"
+        raise PlexClientError(msg) from exc
+    returned_uuid = payload.get("uuid")
+    if returned_uuid and returned_uuid != user_uuid:
+        msg = "Plex switched to a different Home user than requested"
+        raise PlexClientError(msg)
+    auth_token = payload.get("authToken")
+    if not auth_token:
+        msg = "Plex did not return a token for the Home user"
+        raise PlexClientError(msg)
+    return auth_token
+
+
+def mark_watched(token: str, uri: str, rating_key: str) -> None:
+    """Mark one movie or episode watched for the user the token belongs to.
+
+    ``/:/scrobble`` is undocumented and adds a play rather than setting a flag,
+    so callers must confirm the item is unwatched first or every call becomes
+    another play in that user's Plex history.
+    """
+    try:
+        response = send_to_self_hosted(
+            requests.get,
+            f"{uri}/:/scrobble",
+            headers=_headers(token),
+            params={
+                "key": rating_key,
+                "identifier": "com.plexapp.plugins.library",
+            },
+            timeout=15,
+            verify=settings.PLEX_SSL_VERIFY,
+        )
+    except RequestException as exc:
+        raise PlexClientError(exception_summary(exc)) from exc
+    _raise_for_auth(response)
 
 
 def find_cached_section(

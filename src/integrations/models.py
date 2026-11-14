@@ -228,6 +228,46 @@ class PlexWatchlistSyncItem(models.Model):
         return f"PlexWatchlistSyncItem({self.user.username}, {self.item_id})"
 
 
+class PlexWatchedPush(models.Model):
+    """One watched mark Floppy sent to Plex.
+
+    The audit trail of what Floppy changed, and the echo filter: the mark lands
+    in Plex history, and the history importer skips it rather than recording
+    a second play.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="plex_watched_pushes",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="plex_watched_pushes",
+    )
+    machine_identifier = models.CharField(max_length=255)
+    rating_key = models.CharField(max_length=50)
+    plex_user_uuid = models.CharField(max_length=64, blank=True, default="")
+    plex_user_title = models.CharField(max_length=255, blank=True, default="")
+    pushed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Plex watched push"
+        verbose_name_plural = "Plex watched pushes"
+        indexes = [
+            models.Index(fields=["user", "machine_identifier", "rating_key"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"PlexWatchedPush({self.user_id}, {self.rating_key})"
+
+
 class PocketCastsAccount(models.Model):
     """Store Pocket Casts authentication tokens for a user."""
 
