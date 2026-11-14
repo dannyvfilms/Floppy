@@ -253,7 +253,8 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
+- `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
 - `native-proof/app/surfaces/LibraryGrid.jsx`
 - `native-proof/app/surfaces/LibraryBulkActions.jsx`
 - `native-proof/app/data/libraryTransport.js`
@@ -289,6 +290,9 @@ Status: `Web Migrated`
 Status: `Partial / coexisting`
 
 - `frontend/ui/FilterBar.jsx`
+- `frontend/ui/SettingsMenu.jsx`
+- `frontend/ui/keyboardOverlapContext.js`
+- `frontend/ui/devicePose.js`, `frontend/settings/pose.web.js`, `native-proof/app/data/useDevicePose.js`, `native-proof/app/components/PoseBadge.jsx` (device poses; see `docs/architecture/device-poses.md`)
 - `native-proof/app/screens/LibraryScreen.jsx`
 - `native-proof/app/data/libraryTransportCore.js`
 
@@ -480,16 +484,29 @@ viewer rating preferences. `DetailBackdrop` and its layout logic anchor sharp
 artwork and clearlogos to the inner content strip. Intentional native carve-out:
 artwork extends underneath the search bar and into the side rail; the PWA keeps
 its search divider. Search overlay and overflow are enabled only for Details.
+Expo fades the sharp image in from halfway through the search overlay while retaining the blur
+behind it; the PWA has a separate header and needs no equivalent offset.
+For mobile clearlogos, `DetailBackdrop` reports the fade endpoint to the shared
+hero or browser adapter, placing the logo bottom and subtitle top equally around that line.
+Desktop remains on its separate carousel layout.
+`native-proof/app/data/prepareDetailArtwork.mjs`, `native-proof/app/data/loadDetailHeader.mjs`, `native-proof/app/screens/DetailScreen.jsx`
+and `native-proof/app/surfaces/DetailFeatures.jsx` start native header requests
+alongside detail, prepare gallery artwork as soon as it arrives, and coordinate the initial reveal; the web hero adapter waits for its images and keeps a bounded
+fallback. The PWA's cold gallery request starts immediately. The server detail
+shell and deferred secondary sections remain partial/coexisting.
 `ProviderLogo` renders native SVG sources in its native adapter. Shared components
 remain props-only; permissions, requests and dialogs stay in feature adapters.
 PWA secondary templates remain server-owned; ownership is partial/coexisting.
 Retire those consumers only after shared web mounting preserves all section
 preferences, responsive states and interactions. Genre/link modal contents remain
-deferred. Current revision evidence: web — unverified comparison; iOS — pending
-simulator comparison; Android — pending emulator comparison. Builds and logic tests
-do not establish native appearance or complete page parity.
+deferred. Current backdrop revision evidence: web — runtime, mobile PWA on iPhone
+Duo compared before and after; desktop comparison pending. iOS — runtime, Expo on
+iPhone Duo compared before and after. Android — unverified; runtime comparison
+pending. These checks do not establish complete page parity.
 
 - `frontend/ui/DetailBackdrop.jsx`, `frontend/ui/DetailBackdrop.native.jsx`, `frontend/ui/DetailBackdrop.web.jsx`, `frontend/ui/detailHeroLayout.js` (inner-area hero geometry and platform image gradients).
+- `frontend/ui/DetailActivitySubtitle.jsx`, `frontend/ui/mountDetailActivitySubtitle.jsx`, `src/templates/app/components/detail_activity_subtitle.html` (shared activity subtitle, browser history-button adapter and server fallback); Expo receives formatted text from `native-proof/app/data/detailTransportCore.js`. The subtitle is shared React-owned; the surrounding detail page remains partial/coexisting.
+- `frontend/ui/mountDetailBackdrop.jsx` mounts the shared mobile backdrop in the PWA; the server image remains its loading and no-JavaScript fallback. The surrounding hero and desktop carousel remain server-owned, so ownership is partial/coexisting.
 - `frontend/ui/ProviderLogo.jsx`, `frontend/ui/ProviderLogo.native.jsx`, `frontend/ui/ProviderLogo.web.jsx` (provider logo presentation).
 - `frontend/ui/DetailSecondary.jsx`, `frontend/ui/detailSecondaryModel.js` (ordered metadata and secondary-section composition).
 - `scripts/detailHeroLayout.test.mjs`, `scripts/detailSecondaryModel.test.mjs` (geometry and safe projection regression checks).
@@ -499,7 +516,6 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
-- `src/templates/app/components/detail_activity_subtitle.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
@@ -934,6 +950,7 @@ Status: `Partial / coexisting`
 - `native-proof/app/screens/ProvidersScreen.jsx`, `native-proof/app/screens/ProviderDetailScreen.jsx`, `native-proof/app/screens/integrationPalette.js` (native SettingsSurface consumers; directory/frame/account-order fixes, medium themed controls; browser comparison remains partial)
 - `native-proof/app/data/providersTransportCore.js` (retains browser account status and binary import payloads; current iOS/Android paths unverified)
 
+
 ProviderDetailView consumes portable AccountSettings/ProviderSettingsView, native-only active sign-in slots and CatalogGrantsCard on Stremio Tracking. Existing Django/web adapter bodies coexist until full browser parity and migration acceptance; no platform classification is changed by these native composition edits.
 
 ## CONNECTIONS
@@ -1133,6 +1150,7 @@ Native device sign-in uses the first-party Floppy app client and a full-access t
 - `src/templates/users/password_recover.html`
 - `frontend/auth/AuthEntrance.jsx`
 - `native-proof/app/screens/ListDetailScreen.jsx` (native list detail with the media type breakdown popover; consumers of `FilterBar`, `ListResults`, `BulkActionBar`, `ListMembership`)
+- `native-proof/app/screens/LibraryScreen.jsx`, `native-proof/app/surfaces/LibraryBulkActions.jsx` (native Library header, settings gear `ActionMenu` and `FilterBar variant="toolbar" showClear={false}`; `showClear` is the new `FilterBar` prop that hides the inline Clear button, whose reset stays in the Filters sheet)
 - `native-proof/app/surfaces/shellContext.js` (open page's media type for the header search), `native-proof/app/data/userDate.js` (+ `userDate.test.mjs`) (server time zone and user date format), `native-proof/app/data/accountDisplay.js` (display preferences from `/api/v1/user/preferences/`)
 - `native-proof/app/screens/AuthScreen.jsx`
 - `native-proof/app/data/serverDiscovery.native.js`
@@ -1430,6 +1448,8 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountDeviceApproval.jsx`
 - `frontend/ui/mountDeviceConnect.jsx`
 - `frontend/ui/mountFilterBar.jsx`
+- `src/templates/app/components/filter_bar.html` (island host for the toolbar's Filters, Status and Sort dropdowns; props from `src/app/filter_bar.py`)
+- `frontend/ui/mountSettingsMenu.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `frontend/ui/mountHome.jsx`
 - `frontend/ui/mountLibraryPage.jsx`
@@ -1496,3 +1516,5 @@ Status: `Partial / coexisting`
 - Collection detail Summary, CollectionEntryGroup, CollectionEpisodeList, CollectionEpisodeToggle, CollectionShowMore and CollectionSectionHeading: shared props-only `CollectionContextCard` in `CollectionCopyDialog`, used by the Expo detail sheet and the web Collection dialog through a browser adapter. Status: partial/coexisting; web retains its server-owned editing controls inside the shared group; the native Collection screen and detail sheet use the same group for copies; detail shows season audit rows and read-only episode disclosures including missing locally known episodes; web and Expo initially show five collection rows with the shared show-more control; the web footer compensates for its server-rendered final row’s different margin and keeps the collapsed and expanded spacing consistent, with a consistent divider position and season edits and removal through the collection API. Resolution breakdown, completion and the Missing row use episode coverage; the latest copy determines each episode’s resolution, and specials are excluded from show totals. A secondary disclosure groups copies by season and episode with titles and comma-separated resolutions, initially limiting the list to five rows when an item has multiple copies. PWA: earlier Summary inspected on a physical Duo; grouped entry card and edit interactions not runtime verified. Desktop browser: not verified. iOS: grouped entries, expanded episodes including a Missing row, and 68-of-69 summary inspected on a physical Duo; save and remove not runtime verified. Android: not verified.
 
 - `frontend/ui/sectionSpacing.js`: `sectionSpacing` shares Home shelf and Collection section gaps across viewport sizes. Web, iOS and Android: pure shared layout rule; runtime verification follows its consumers.
+
+DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the modal host, including an explicit iOS height animation on the Duo rail; Android applies the settled keyboard size; its existing web and native consumers and retirement conditions are unchanged. The user accepted the quartic animation on a physical iOS Duo; browser and Android animation remain unverified.

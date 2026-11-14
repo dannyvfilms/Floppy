@@ -2,9 +2,9 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, floating, artworkBleed = false }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, scrollStyle, floating, artworkBleed = false }) {
   const body = scroll
-    ? <ScrollView style={artworkBleed ? styles.bleed : undefined}
+    ? <ScrollView style={[artworkBleed ? styles.bleed : null, scrollStyle]}
       contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
     : <View style={[styles.content, contentStyle]}>{children}</View>;
   return <View style={[styles.screen, artworkBleed && styles.bleed]}>
