@@ -2,7 +2,7 @@ import { ROW_LOOKAHEAD_SCREENS } from './homeRowLoading.js';
 
 // Platform difference: the browser reports row positions with
 // IntersectionObserver; native measures rows on scroll (native-proof
-// homeRowWatcher.js). Both feed the same shared load decision in HomeShelves.
+// homeRowWatcherCore.js). Both feed the same shared load decision in HomeShelves.
 
 function scrollParent(node) {
   for (let current = node?.parentElement; current; current = current.parentElement) {
@@ -12,6 +12,17 @@ function scrollParent(node) {
     }
   }
   return null;
+}
+
+// The visible height the look-ahead is measured in: the scroll panel's, or the window's.
+function viewHeight(root) {
+  return root ? root.clientHeight : window.innerHeight;
+}
+
+// IntersectionObserver resolves a percentage margin against the root's width,
+// so a 1.5-screen look-ahead has to be a pixel margin taken from its height.
+function lookaheadMargin(root, lookahead) {
+  return `${Math.round(viewHeight(root) * lookahead)}px 0px`;
 }
 
 // Returns `watchRow(id, node, onChange)` for HomeShelves, or undefined when the
@@ -30,22 +41,48 @@ export function createViewportRowWatcher({ lookahead = ROW_LOOKAHEAD_SCREENS } =
     entry.onChange(level);
   }
 
+  const update = flag => entries => entries.forEach(item => {
+    const entry = watched.get(item.target);
+    if (!entry) return;
+    entry[flag] = item.isIntersecting;
+    report(item.target);
+  });
+
+  function makeNear(root) {
+    return new window.IntersectionObserver(update('near'), {
+      root,
+      rootMargin: lookaheadMargin(root, lookahead),
+    });
+  }
+
   function observersFor(root) {
     if (observers.has(root)) return observers.get(root);
-    const margin = `${Math.round(lookahead * 100)}% 0px`;
-    const update = flag => entries => entries.forEach(item => {
-      const entry = watched.get(item.target);
-      if (!entry) return;
-      entry[flag] = item.isIntersecting;
-      report(item.target);
-    });
     const pair = {
       visible: new window.IntersectionObserver(update('visible'), { root }),
-      near: new window.IntersectionObserver(update('near'), { root, rootMargin: margin }),
+      near: makeNear(root),
+      height: viewHeight(root),
+      nodes: new Set(),
     };
     observers.set(root, pair);
     return pair;
   }
+
+  // A resize (rotation, window drag, the phone's address bar) changes the
+  // height the margin is measured in; rebuild the near observers to match.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      observers.forEach((pair, root) => {
+        const height = viewHeight(root);
+        if (Math.abs(height - pair.height) < 1) return;
+        pair.height = height;
+        pair.near.disconnect();
+        pair.near = makeNear(root);
+        pair.nodes.forEach(node => pair.near.observe(node));
+      });
+    }, 150);
+  });
 
   return function watchRow(_id, node, onChange) {
     if (!node || typeof node.getBoundingClientRect !== 'function') return undefined;
@@ -53,9 +90,11 @@ export function createViewportRowWatcher({ lookahead = ROW_LOOKAHEAD_SCREENS } =
     // panel, the look-ahead margin must apply to that panel.
     const pair = observersFor(scrollParent(node));
     watched.set(node, { onChange, visible: false, near: false, level: null });
+    pair.nodes.add(node);
     pair.near.observe(node);
     pair.visible.observe(node);
     return () => {
+      pair.nodes.delete(node);
       pair.near.unobserve(node);
       pair.visible.unobserve(node);
       watched.delete(node);
