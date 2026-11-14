@@ -164,6 +164,7 @@ class CustomList(models.Model):
         ("trakt", "Trakt"),
         ("mdblist", "MDBList"),
         ("wetrakr", "WeTrakr"),
+        ("audiobookshelf", "Audiobookshelf"),
     ]
 
     VISIBILITY_CHOICES = [
