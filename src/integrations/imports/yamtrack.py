@@ -9,7 +9,8 @@ from io import TextIOWrapper
 from django.apps import apps
 from django.conf import settings
 from django.db import IntegrityError
-from django.utils.dateparse import parse_datetime
+from django.db.models import DateField, DateTimeField
+from django.utils.dateparse import parse_date, parse_datetime
 
 import app
 from app import config
@@ -469,6 +470,25 @@ class YamtrackImporter:
                 backfill_completed=False,
             ),
         )
+        for media_type, media_list in batch.items():
+            restored_by_fields = defaultdict(list)
+            for media in media_list:
+                temporal_values = getattr(media, "_yamtrack_temporal_values", {})
+                if not media.pk or not temporal_values:
+                    continue
+                fields = tuple(sorted(temporal_values))
+                for field, value in temporal_values.items():
+                    setattr(media, field, value)
+                restored_by_fields[fields].append(media)
+            model = apps.get_model("app", media_type)
+            for fields, restored_media in restored_by_fields.items():
+                model.objects.bulk_update(
+                    restored_media,
+                    fields,
+                    batch_size=YAMTRACK_IMPORT_BATCH_SIZE,
+                )
+            if media_type == MediaTypes.TV.value:
+                self._restore_episode_order_history(media_list)
         # existing_media/existing_children are intentionally left as the
         # pre-import snapshot from __init__ and not updated with what this
         # loop just created: a repeat watch of an already-tracked item is a
@@ -731,6 +751,39 @@ class YamtrackImporter:
 
         if form.is_valid():
             self.seen_media_keys.add(media_key)
+            form.instance._yamtrack_temporal_values = self._temporal_values(
+                row,
+                model,
+            )
+            if media_type == MediaTypes.TV.value:
+                active_order = _parse_json_dict(
+                    row.get("active_episode_order_data"),
+                )
+                if active_order:
+                    from integrations.episode_orders import restore_order
+
+                    try:
+                        form.instance.active_episode_order = restore_order(
+                            active_order,
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        self.warnings.append(
+                            f"{row.get('title', '')}: invalid active episode order, skipped.",
+                        )
+                try:
+                    episode_order_history = json.loads(
+                        row.get("episode_order_history") or "[]",
+                    )
+                except json.JSONDecodeError:
+                    episode_order_history = []
+                    self.warnings.append(
+                        f"{row.get('title', '')}: invalid episode order history, skipped.",
+                    )
+                form.instance._yamtrack_episode_order_history = (
+                    episode_order_history
+                    if isinstance(episode_order_history, list)
+                    else []
+                )
             if isinstance(watch_instance, datetime.datetime):
                 form.instance._history_date = watch_instance
             if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
@@ -744,11 +797,6 @@ class YamtrackImporter:
                         self.status_overrides[media_type][
                             (row["source"], row["media_id"], season_number)
                         ] = status_value
-            # Keep the backup's rating time; otherwise the insert stamps "now".
-            scored_at = parse_datetime(row.get("scored_at") or "")
-            # A cleared rating keeps its time too, so the removal survives.
-            if scored_at:
-                form.instance.scored_at = scored_at
             self.bulk_media[media_type].append(form.instance)
         else:
             error_msg = f"{row['title']} ({media_type}): {form.errors.as_json()}"
@@ -758,6 +806,59 @@ class YamtrackImporter:
                 media_type,
                 mapping_keys(form.errors),
             )
+
+    @staticmethod
+    def _temporal_values(row, model):
+        """Parse exported date/time fields supported by this media model."""
+        values = {}
+        for field in model._meta.concrete_fields:
+            if isinstance(field, DateTimeField):
+                parse_value = parse_datetime
+            elif isinstance(field, DateField):
+                parse_value = parse_date
+            else:
+                continue
+            raw_value = (row.get(field.name) or "").strip()
+            if not raw_value:
+                if field.name == "progressed_at":
+                    values[field.name] = None
+                continue
+            parsed = parse_value(raw_value)
+            if parsed is not None:
+                values[field.name] = parsed
+        return values
+
+    def _restore_episode_order_history(self, media_list):
+        """Restore portable TV order changes, including their original times."""
+        from integrations.episode_orders import restore_order
+
+        change_model = apps.get_model("app", "EpisodeOrderChange")
+        for tv in media_list:
+            for raw_change in getattr(tv, "_yamtrack_episode_order_history", []):
+                if not isinstance(raw_change, dict):
+                    continue
+                order_data = raw_change.get("order")
+                if not isinstance(order_data, dict):
+                    continue
+                try:
+                    order = restore_order(order_data)
+                except (KeyError, TypeError, ValueError):
+                    self.warnings.append(
+                        f"{tv.item.title}: invalid episode order history entry, skipped.",
+                    )
+                    continue
+                change = change_model.objects.create(
+                    user=self.user,
+                    tv=tv,
+                    order=order,
+                    mappings=raw_change.get("mappings") or [],
+                    before_state=raw_change.get("before_state") or {},
+                )
+                created_at = parse_datetime(raw_change.get("created_at") or "")
+                if created_at:
+                    change_model.objects.filter(pk=change.pk).update(
+                        created_at=created_at,
+                    )
 
     def _process_list_row(self, row):
         """Process a list definition row."""
@@ -1438,17 +1539,22 @@ class YamtrackImporter:
         }
 
         if self.mode == "overwrite":
-            ArtistTracker.objects.update_or_create(
+            tracker, created = ArtistTracker.objects.update_or_create(
                 user=self.user,
                 artist=artist,
                 defaults=tracker_defaults,
             )
         else:
-            ArtistTracker.objects.get_or_create(
+            tracker, created = ArtistTracker.objects.get_or_create(
                 user=self.user,
                 artist=artist,
                 defaults=tracker_defaults,
             )
+        self._restore_tracker_created_at(
+            tracker,
+            row,
+            created or self.mode == "overwrite",
+        )
 
         self.music_tracker_counts["music_artist"] += 1
 
@@ -1494,16 +1600,32 @@ class YamtrackImporter:
         }
 
         if self.mode == "overwrite":
-            AlbumTracker.objects.update_or_create(
+            tracker, created = AlbumTracker.objects.update_or_create(
                 user=self.user,
                 album=album,
                 defaults=tracker_defaults,
             )
         else:
-            AlbumTracker.objects.get_or_create(
+            tracker, created = AlbumTracker.objects.get_or_create(
                 user=self.user,
                 album=album,
                 defaults=tracker_defaults,
             )
+        self._restore_tracker_created_at(
+            tracker,
+            row,
+            created or self.mode == "overwrite",
+        )
 
         self.music_tracker_counts["music_album"] += 1
+
+    @staticmethod
+    def _restore_tracker_created_at(tracker, row, should_restore):
+        """Restore a tracker timestamp only when this import creates/replaces it."""
+        if not should_restore or not tracker.pk:
+            return
+        created_at = parse_datetime(row.get("created_at") or "")
+        if created_at:
+            tracker.__class__.objects.filter(pk=tracker.pk).update(
+                created_at=created_at,
+            )
