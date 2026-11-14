@@ -126,6 +126,7 @@ from users.models import (
     HISTORY_VIEW_TYPE,
     ActivityHistoryViewChoices,
     DateFormatChoices,
+    DefaultEditEntryDateChoices,
     DurationFormatChoices,
     GameLoggingStyleChoices,
     ImportFrequencyChoices,
@@ -1915,6 +1916,14 @@ def preferences(request):
                 request.user.id, game_logging_style, debounce_seconds=0
             )
 
+        default_edit_entry_date = request.POST.get("default_edit_entry_date")
+        if (
+            default_edit_entry_date in DefaultEditEntryDateChoices.values
+            and request.user.default_edit_entry_date != default_edit_entry_date
+        ):
+            request.user.default_edit_entry_date = default_edit_entry_date
+            fields_to_update.append("default_edit_entry_date")
+
         if (
             mobile_grid_layout
             and mobile_grid_layout
@@ -2086,6 +2095,7 @@ def preferences(request):
         "session_duration_choices": SessionDurationChoices.choices,
         "week_start_day_choices": WeekStartDayChoices.choices,
         "currency_choices": User._meta.get_field("currency").choices,
+        "default_edit_entry_date_choices": DefaultEditEntryDateChoices.choices,
     }
 
     return render(request, "users/preferences.html", context)

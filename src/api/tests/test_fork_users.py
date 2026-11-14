@@ -10,6 +10,49 @@ from .base import FloppyApiTestCase
 class PreferencesTests(FloppyApiTestCase):
     """GET/PATCH user/preferences."""
 
+    def test_default_edit_entry_date_is_readable_and_writable(self):
+        """The preference round-trips through the shared settings API."""
+        response = self.call_api(
+            "get",
+            "api_user_preferences",
+            headers=self.auth_headers,
+        )
+        self.assertEqual(
+            response.json()["preferences"].get("default_edit_entry_date"),
+            "current_date",
+        )
+        self.assertEqual(
+            response.json()["choices"].get("default_edit_entry_date"),
+            ["current_date", "no_date"],
+        )
+
+        response = self.call_api(
+            "patch",
+            "api_user_preferences",
+            payload={"default_edit_entry_date": "no_date"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.user1.refresh_from_db()
+        self.assertEqual(self.user1.default_edit_entry_date, "no_date")
+        self.assertEqual(
+            response.json()["preferences"]["default_edit_entry_date"],
+            "no_date",
+        )
+
+    def test_default_edit_entry_date_rejects_unknown_choice(self):
+        """The settings API rejects values outside the model choice contract."""
+        response = self.call_api(
+            "patch",
+            "api_user_preferences",
+            payload={"default_edit_entry_date": "not-a-choice"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.user1.refresh_from_db()
+        self.assertEqual(self.user1.default_edit_entry_date, "current_date")
+
     def test_playback_webhook_fields_are_writable(self):
         """A client configures its own delivery instead of the reader copying it."""
         response = self.call_api(

@@ -14,7 +14,8 @@
     </button>
   </div>
 
-  <form method="post" x-data="mediaForm" x-init="init">
+  <form method="post" x-data="mediaForm" x-init="init"
+        data-default-edit-entry-date="{{ request.user.default_edit_entry_date }}">
     {% csrf_token %}
     {{ form.album_id }}
 

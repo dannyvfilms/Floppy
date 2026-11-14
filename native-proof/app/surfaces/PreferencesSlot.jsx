@@ -14,7 +14,7 @@ export const surface = {
   title: 'Preferences and save states',
   where: 'Settings preferences',
   status: 'ported',
-  note: 'Every control of the web preferences form loads from and saves to /api/v1/user/preferences/, including theme, logo, region, metadata and interface language, recommendations and auto-pause rules. Region and metadata-language options come from /api/v1/user/preferences/choices/ (the TMDB lists the web page renders). Saving a theme applies it to the running app. Loading, signed-out and error-with-retry states are real; a failed load never enables Save.',
+  note: 'Every control of the web preferences form loads from and saves to /api/v1/user/preferences/, including theme, logo, region, metadata and interface language, recommendations, auto-pause rules and the default track-entry end date. Region and metadata-language options come from /api/v1/user/preferences/choices/ (the TMDB lists the web page renders). Saving a theme applies it to the running app. Loading, signed-out and error-with-retry states are real; a failed load never enables Save.',
 };
 
 const currencies = [
@@ -158,6 +158,14 @@ const baseSections = [
         options: [
           { value: 'sessions', label: 'Sessions: new entry per play; exact history' },
           { value: 'repeats', label: 'Repeats: update one entry; spreads time across range' },
+        ],
+      },
+      {
+        name: 'default_edit_entry_date', label: 'Default End Date',
+        help: 'Whether a new entry or a status change to Completed or In Progress fills an empty End Date automatically.', type: 'select',
+        options: [
+          { value: 'current_date', label: 'Current Date' },
+          { value: 'no_date', label: 'No End Date' },
         ],
       },
       {
