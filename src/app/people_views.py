@@ -1,9 +1,13 @@
+from datetime import date, datetime
 from urllib.parse import quote
 
+import requests
 from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 
 from app import (
@@ -24,6 +28,7 @@ from app.models import (
     Manga,
     MediaTypes,
     Movie,
+    Person,
     Sources,
     Status,
     Studio,
@@ -42,6 +47,127 @@ from app.providers import (
 from users.models import MediaSortChoices
 
 logger = __import__("logging").getLogger(__name__)
+
+
+def _person_date(value):
+    """Normalize provider ISO strings and date/datetime values to a date."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
+
+
+def _person_credit_age_label(birth_date, death_date, event_date, event_label):
+    """Return event age, noting death only when the event is posthumous."""
+    try:
+        birthday = _person_date(birth_date)
+        event_day = _person_date(event_date)
+    except (TypeError, ValueError):
+        return ""
+
+    def age_on(day):
+        age = day.year - birthday.year
+        return age - ((day.month, day.day) < (birthday.month, birthday.day))
+
+    try:
+        death_day = _person_date(death_date) if death_date else None
+    except (TypeError, ValueError):
+        death_day = None
+    age = age_on(event_day)
+    if age < 0:
+        return ""
+    label = _("%(age)s yo at %(event)s") % {
+        "age": age,
+        "event": event_label,
+    }
+    if death_day and event_day > death_day:
+        return f"{label}\n{_('Died')} {death_day.year}"
+    return label
+
+
+def _person_cast_age_label(birth_date, death_date, event_date, event_label):
+    """Show the death year on cast cards only for posthumous releases."""
+    label = _person_credit_age_label(birth_date, None, event_date, event_label)
+    if not death_date or not event_date:
+        return label
+    try:
+        death_day = _person_date(death_date)
+        event_day = _person_date(event_date)
+    except (TypeError, ValueError):
+        return label
+    if event_day <= death_day:
+        return label
+    if label:
+        return f"{label}\n{_('Died')} {death_day.year}"
+    return _("Died %(year)s") % {"year": death_day.year}
+
+
+@require_GET
+def person_credit_facts(request, source, person_id):
+    """Return the cached dates needed for one lazily-rendered credit card."""
+    person_id = str(person_id)
+    local_person = Person.objects.filter(
+        source=source,
+        source_person_id=person_id,
+    ).only("birth_date", "death_date", "profile_dates_checked_at").first()
+    birth_date = local_person.birth_date.isoformat() if local_person and local_person.birth_date else None
+    death_date = local_person.death_date.isoformat() if local_person and local_person.death_date else None
+
+    if not local_person or not local_person.profile_dates_checked_at:
+        profile = None
+        try:
+            with services.interactive_request_scope():
+                if source == Sources.TMDB.value:
+                    profile = tmdb.person_dates(person_id)
+                elif source == Sources.TVDB.value:
+                    profile = tvdb.person(person_id) or {}
+                elif source == Sources.COMICVINE.value:
+                    profile = comicvine.person_profile(person_id, request.user) or {}
+        except (requests.exceptions.RequestException, services.ProviderAPIError):
+            profile = None
+        if profile:
+            birth_date = birth_date or profile.get("birth_date")
+            death_date = death_date or profile.get("death_date")
+            if local_person:
+                update_fields = ["profile_dates_checked_at"]
+                local_person.profile_dates_checked_at = timezone.now()
+                for field, value in (
+                    ("birth_date", profile.get("birth_date")),
+                    ("death_date", profile.get("death_date")),
+                ):
+                    if not value:
+                        continue
+                    try:
+                        parsed = value if isinstance(value, date) else date.fromisoformat(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if getattr(local_person, field) != parsed:
+                        setattr(local_person, field, parsed)
+                        update_fields.append(field)
+                if update_fields:
+                    local_person.save(update_fields=update_fields)
+            else:
+                credits.upsert_person_profile(source, person_id, profile)
+
+    birth_date = str(birth_date)[:10] if birth_date else None
+    death_date = str(death_date)[:10] if death_date else None
+    event_date = request.GET.get("event_date")
+    event_label = request.GET.get("event_label")
+    if event_label not in {"filming", "production", "release", "first air"}:
+        event_label = (
+            "first air"
+            if request.GET.get("media_type") in {MediaTypes.TV.value, MediaTypes.ANIME.value}
+            else "release"
+        )
+    return JsonResponse({
+        "ageLabel": _person_cast_age_label(
+            birth_date,
+            death_date,
+            event_date,
+            event_label,
+        ),
+    })
 
 
 def attach_card_media(user, entries, source):
@@ -135,6 +261,7 @@ def _people_credit_contract(entry, source, user):
         "mediaId": media_id,
         "year": entry.get("year"),
         "role": role,
+        "ageLabel": entry.get("age_label") or "",
         "imageUrl": image_url(entry.get("image") or ""),
         "href": href,
         "watched": bool(entry.get("is_watched")),
@@ -348,6 +475,14 @@ def person_detail(request, source, person_id, name):
                 "image": raw_entry.get("image") or settings.IMG_NONE,
                 "year": raw_entry.get("year"),
                 "role": raw_entry.get("role") or "",
+                "age_label": _person_credit_age_label(
+                    person_data["birth_date"],
+                    person_data["death_date"],
+                    raw_entry.get("release_date"),
+                    "first air"
+                    if media_type == MediaTypes.TV.value
+                    else "release",
+                ),
                 "department": raw_entry.get("department") or "",
                 "credit_type": raw_entry.get("credit_type")
                 or ("author" if is_author else ""),

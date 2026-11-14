@@ -1174,6 +1174,27 @@ def _build_detail_person_rows(media_metadata, item=None):
         and item.source == Sources.IGDB.value
     ):
         cast, crew = _game_cast_and_crew_from_credits(item)
+    details = media_metadata.get("details") or {}
+    media_type = item.media_type if item else media_metadata.get("media_type")
+    release_datetime = getattr(item, "release_datetime", None) if item else None
+    filming_date = (
+        media_metadata.get("filming_date")
+        or details.get("filming_date")
+        or media_metadata.get("production_date")
+        or details.get("production_date")
+    )
+    is_tv = media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}
+    if filming_date:
+        credit_event_date = str(filming_date)[:10]
+        credit_event_label = "filming" if media_metadata.get("filming_date") or details.get("filming_date") else "production"
+    else:
+        credit_event_date = (
+            release_datetime.date().isoformat()
+            if release_datetime
+            else (media_metadata.get("first_air_date") or details.get("first_air_date") if is_tv
+                  else media_metadata.get("release_date") or details.get("release_date"))
+        )
+        credit_event_label = "first air" if is_tv else "release"
     raw_recommendations = (media_metadata.get("related") or {}).get(
         "recommendations"
     ) or []
@@ -1195,15 +1216,21 @@ def _build_detail_person_rows(media_metadata, item=None):
         view_all_url = source_url
         view_all_text = f"Full cast ({total_cast})"
 
-    return {
-        "cast_row": _build_static_row(
+    cast_row = _build_static_row(
             "detail-cast",
             "Cast",
             cast[:20],
             view_all_url=view_all_url,
             view_all_text=view_all_text,
-        ),
-        "crew_row": _build_static_row("detail-crew", "Crew", crew[:20]),
+        )
+    crew_row = _build_static_row("detail-crew", "Crew", crew[:20])
+    for row in (cast_row, crew_row):
+        row["credit_event_date"] = credit_event_date
+        row["credit_event_label"] = credit_event_label
+        row["credit_event_media_type"] = media_type
+    return {
+        "cast_row": cast_row,
+        "crew_row": crew_row,
         "seasons_row": _build_static_row(
             "detail-seasons", "Seasons", (media_metadata.get("related") or {}).get("seasons") or [],
             card_width_class="w-44",

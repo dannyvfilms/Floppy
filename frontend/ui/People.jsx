@@ -14,6 +14,7 @@ import { Badge } from './Badge';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
+import { shouldRevealPersonCardRole } from './mediaCardBehavior';
 
 // Shared person, studio, credit, gallery and medium-extra presentation. Values
 // arrive already shaped by the server or feature adapter; these components
@@ -87,6 +88,8 @@ const DEFAULT_LABELS = {
   noBibliography: 'No bibliography available.',
   noWatched: 'No watched titles yet.',
   noRead: 'No read titles yet.',
+  tapToShowRole: 'Tap to show role',
+  agePending: 'Age…',
 };
 
 function mergePalette(palette) {
@@ -259,12 +262,13 @@ export function StudioHero({
   </View>;
 }
 
-export function PersonCard({ person = {}, labels, palette, onOpen, web = false }) {
+export function PersonCard({ person = {}, labels, palette, onOpen, web = false, tapToReveal = false, titleOptions }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const name = person.name || 'Unknown Person';
   const subtitle = person.subtitle || person.role;
   const [hovered, setHovered] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const overlay = web ? null : { backgroundColor: 'rgba(0, 0, 0, 0.58)' };
   const shade = web ? {
     backgroundImage: 'linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)',
@@ -278,6 +282,26 @@ export function PersonCard({ person = {}, labels, palette, onOpen, web = false }
       ...(subtitle ? [{ text: subtitle, visible: false }] : []),
       ...(person.lines || []).map(text => ({ text, visible: false })),
     ];
+  if (person.showCreditAge !== false && (person.ageLabel || person.agePending)) {
+    metaLines.push({ text: person.ageLabel || copy.agePending, visible: true });
+  }
+  const hasHiddenLines = metaLines.some(line => !line.visible);
+  const ageAccessibility = person.showCreditAge !== false && person.ageLabel ? `, ${person.ageLabel}` : '';
+  const titleStyle = web
+    ? titleOptions?.overflow === 'wrap'
+      ? { whiteSpace: 'normal', overflowWrap: 'anywhere' }
+      : { whiteSpace: 'nowrap', textOverflow: titleOptions?.overflow === 'clip' ? 'clip' : 'ellipsis' }
+    : undefined;
+  const titleLineCount = web && (hovered || revealed) && titleOptions?.hover === 'bleed'
+    ? titleOptions.hover_lines
+    : titleOptions?.lines ?? 1;
+  const openOnPress = () => {
+    if (shouldRevealPersonCardRole(tapToReveal, hasHiddenLines, revealed)) {
+      setRevealed(true);
+      return;
+    }
+    onOpen(person);
+  };
   const body = <>
     <Artwork uri={person.imageUrl} fallback={person.imageFallback} title={name} palette={colors}>
       {person.episodeCount ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
@@ -289,11 +313,13 @@ export function PersonCard({ person = {}, labels, palette, onOpen, web = false }
     {shade ? <View style={[styles.cardShade, shade]} /> : null}
     <View style={[styles.cardBody, styles.cardBodyOverlay, overlay]}>
       <View style={styles.cardTitleRow}>
-        <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
+        <Text numberOfLines={titleLineCount === 'all' ? undefined : Number(titleLineCount)}
+          ellipsizeMode={titleOptions?.overflow === 'clip' ? 'clip' : 'tail'}
+          style={[styles.cardTitle, titleStyle, { color: colors.text }]}>{name}</Text>
       </View>
       {metaLines.length ? <View style={styles.cardMetaStack}>
         {metaLines.map((line, index) => <View key={index}
-          style={[styles.cardMetaWrap, (!web || hovered || line.visible) ? styles.cardMetaVisible : styles.cardMetaHidden]}>
+          style={[styles.cardMetaWrap, (!web || hovered || revealed || line.visible) ? styles.cardMetaVisible : styles.cardMetaHidden]}>
           <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{line.text}</Text>
         </View>)}
       </View> : null}
@@ -301,8 +327,11 @@ export function PersonCard({ person = {}, labels, palette, onOpen, web = false }
   </>;
   if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}
     onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>{body}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={subtitle ? `${name}, ${subtitle}` : name}
-    onPress={() => onOpen(person)} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)}
+  return <Pressable accessibilityRole={tapToReveal && hasHiddenLines && !revealed ? 'button' : 'link'}
+    accessibilityLabel={tapToReveal && hasHiddenLines && !revealed
+      ? `${name}, ${copy.tapToShowRole}${ageAccessibility}`
+      : subtitle ? `${name}, ${subtitle}${ageAccessibility}` : `${name}${ageAccessibility}`}
+    onPress={openOnPress} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)}
     style={({ pressed }) => [styles.cardShell,
       { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}>{body}</Pressable>;
 }
@@ -322,11 +351,13 @@ export function CreditCard({ entry = {}, labels, palette, onOpen }) {
     <View style={[styles.cardBody, { backgroundColor: colors.surface }]}>
       <Text numberOfLines={2} style={[styles.cardTitle, { color: entry.watched ? colors.link : colors.text }]}>{entry.title}</Text>
       {roleLine ? <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textSecondary }]}>{roleLine}</Text> : null}
+      {entry.ageLabel ? <Text numberOfLines={2} style={[styles.cardMeta, { color: colors.textMuted }]}>{entry.ageLabel}</Text> : null}
       {meta ? <Text numberOfLines={1} style={[styles.cardMeta, { color: colors.textMuted }]}>{meta}</Text> : null}
     </View>
   </>;
   if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}>{body}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={roleLine ? `${entry.title}, ${roleLine}` : entry.title}
+  const ageAccessibility = entry.ageLabel ? `, ${entry.ageLabel.replace(/\s*\n\s*/g, ', ')}` : '';
+  return <Pressable accessibilityRole="link" accessibilityLabel={`${entry.title}${roleLine ? `, ${roleLine}` : ''}${ageAccessibility}`}
     onPress={() => onOpen(entry)} style={({ pressed }) => [styles.cardShell,
       { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}>{body}</Pressable>;
 }

@@ -2339,12 +2339,77 @@ def search_person_profile(name, language=None):
     return profile
 
 
+def _person_dates_cache_key(person_id):
+    """Return the language-independent cache key for person birth/death dates."""
+    return f"{Sources.TMDB.value}_person_dates_v1_{person_id}"
+
+
+def _cache_person_dates(person_id, profile):
+    """Cache the compact person fields needed by cast-card age labels."""
+    cache.set(
+        _person_dates_cache_key(person_id),
+        {
+            "person_id": str(person_id),
+            "source": Sources.TMDB.value,
+            "name": profile.get("name") or "",
+            "image": profile.get("image") or settings.IMG_NONE,
+            "known_for_department": profile.get("known_for_department") or "",
+            "gender": profile.get("gender") or "unknown",
+            "birth_date": profile.get("birth_date") or None,
+            "death_date": profile.get("death_date") or None,
+            "place_of_birth": profile.get("place_of_birth") or "",
+        },
+    )
+
+
+def person_dates(person_id):
+    """Return cached birthday/deathday without fetching combined credits."""
+    person_id = str(person_id)
+    if not person_id.isdecimal() or int(person_id) <= 0:
+        msg = f"Invalid TMDB person ID: {person_id!r}"
+        raise ValueError(msg)
+
+    cache_key = _person_dates_cache_key(person_id)
+    dates = cache.get(cache_key)
+    if dates is not None:
+        return dates
+
+    cached_profile = cache.get(f"{Sources.TMDB.value}_person_{person_id}")
+    if cached_profile is not None:
+        _cache_person_dates(person_id, cached_profile)
+        return cache.get(cache_key)
+
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            f"{base_url}/person/{person_id}",
+            params=base_params(),
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+    profile = {
+        "person_id": str(response.get("id") or person_id),
+        "source": Sources.TMDB.value,
+        "name": response.get("name") or "",
+        "image": get_profile_image_url(response.get("profile_path"), size="h632"),
+        "known_for_department": response.get("known_for_department") or "",
+        "gender": get_gender(response.get("gender")),
+        "birth_date": response.get("birthday") or None,
+        "death_date": response.get("deathday") or None,
+        "place_of_birth": response.get("place_of_birth") or "",
+    }
+    cache.set(cache_key, profile)
+    return profile
+
+
 def person(person_id, language=None):
     """Return metadata for a TMDB person profile."""
     cache_key = f"{Sources.TMDB.value}_person_{person_id}{_language_suffix(language)}"
     data = cache.get(cache_key)
 
     if data is not None:
+        _cache_person_dates(person_id, data)
         upgraded_image = _upgrade_person_image_url(data.get("image"))
         if upgraded_image != data.get("image"):
             data = {**data, "image": upgraded_image}
@@ -2386,6 +2451,7 @@ def person(person_id, language=None):
     }
 
     cache.set(cache_key, data)
+    _cache_person_dates(person_id, data)
 
     return data
 

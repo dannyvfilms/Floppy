@@ -26,6 +26,22 @@ class CardMetadataTests(SimpleTestCase):
         self.assertEqual(profile["display"], "hover")
         self.assertFalse(profile["options"]["rating"]["hide_zero"])
 
+    def test_person_age_visibility_is_separate_from_role_lines(self):
+        """Person age visibility defaults on and round-trips independently."""
+        from users.card_metadata import PERSON
+
+        self.assertTrue(default_profile(PERSON)["options"]["show_credit_age"])
+        parsed = parse_card_metadata({
+            "types": {
+                PERSON: {
+                    "fields": ["role"],
+                    "options": {"show_credit_age": False},
+                },
+            },
+        })["types"][PERSON]
+        self.assertEqual(parsed["fields"], ["role"])
+        self.assertFalse(parsed["options"]["show_credit_age"])
+
     def test_parser_drops_unknown_fields(self):
         """A stale field id cannot land in the stored profile."""
         parsed = parse_card_metadata(
