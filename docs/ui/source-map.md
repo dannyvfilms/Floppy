@@ -1485,7 +1485,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `src/templates/app/components/detail_composition.html`
 - `src/templates/app/components/detail_related.html`
 - `src/templates/app/components/edition_picker.html`
-- `src/templates/app/components/filter_bar.html`
 - `src/templates/app/components/people_hero.html`
 - `src/templates/app/components/people_island.html`
 - `src/templates/app/components/rating_chip.html`
