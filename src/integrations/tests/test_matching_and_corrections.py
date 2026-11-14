@@ -465,6 +465,87 @@ class MatchCorrectionTests(TestCase):
         self.assertEqual(episode.item.source, Sources.TMDB.value)
         self.assertEqual(episode.related_season_id, source_season.pk)
 
+    def test_episode_mapped_to_another_season_moves_to_that_season(self):
+        """A play mapped to a special must sit under the specials season row.
+
+        The season row used to follow its first mapping key, and every play
+        stayed under it: 3x22 mapped to S0E14 kept S0E14's item under season 3.
+        """
+        source = Item.objects.create(
+            media_id="601",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Wrong Show",
+        )
+        destination = self._item("602", MediaTypes.TV.value, "Right Show")
+        source_tv = TV.objects.create(
+            user=self.user,
+            item=source,
+            status=Status.COMPLETED.value,
+        )
+        source_season = Season.objects.create(
+            user=self.user,
+            item=Item.objects.create(
+                media_id="601",
+                source=Sources.TVDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Season 3",
+                season_number=3,
+            ),
+            related_tv=source_tv,
+            status=Status.COMPLETED.value,
+        )
+        plays = {}
+        for number in (1, 2, 22):
+            plays[number] = Episode.objects.create(
+                item=Item.objects.create(
+                    media_id="601",
+                    source=Sources.TVDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    title=f"Episode {number}",
+                    season_number=3,
+                    episode_number=number,
+                ),
+                related_season=source_season,
+                end_date="2024-01-01T00:00:00Z",
+            )
+        mapping = {
+            "3:22": {"season": 0, "episode": 14},
+            "3:1": {"season": 3, "episode": 1},
+            "3:2": {"season": 3, "episode": 2},
+        }
+
+        preview = preview_match_correction(
+            self.user, source, destination, episode_mapping=mapping
+        )
+        with (
+            patch("app.models.Item.fetch_releases"),
+            patch("events.tasks.reload_calendar.apply_async") as reload_calendar,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            apply_match_correction(
+                self.user,
+                source.pk,
+                destination.pk,
+                preview["token"],
+                episode_mapping=mapping,
+            )
+
+        seasons = {
+            season.item.season_number: season
+            for season in Season.objects.filter(related_tv=source_tv).select_related("item")
+        }
+        self.assertEqual(sorted(seasons), [0, 3])
+        for number, season_number in ((1, 3), (2, 3), (22, 0)):
+            plays[number].refresh_from_db()
+            self.assertEqual(plays[number].related_season_id, seasons[season_number].pk)
+            self.assertEqual(plays[number].item.season_number, season_number)
+        self.assertEqual(seasons[0].item.media_id, "602")
+        reload_calendar.assert_called_once_with(
+            kwargs={"item_ids": [destination.pk]},
+            countdown=3,
+        )
+
     @patch("integrations.views.services.search")
     def test_match_fix_search_does_not_persist_candidate_items(self, mock_search):
         """Listing search results must not write an Item per candidate.

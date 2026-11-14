@@ -18,8 +18,9 @@ const defaultLabels = {
  * Presentation only: the caller owns the value, the rewatch window, the theme
  * and what opening the breakdown means.
  */
-export function ProgressCard({ model, labels, palette, onOpen }) {
+export function ProgressCard({ model, labels, palette, onOpen, variant }) {
   const colors = { ...progressFallbackPalette, ...palette };
+  const detail = variant === 'detail';
   const text = { ...defaultLabels, ...labels };
   const [infoOpen, setInfoOpen] = useState(false);
   const percent = Math.max(0, Math.min(100, Number(model?.percent) || 0));
@@ -30,9 +31,9 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
       accessibilityLabel={`${text.yourProgress}, ${percent}%${subtitle ? `, ${subtitle}` : ''}`}
       accessibilityHint={text.openBreakdown}
       onPress={() => onOpen?.()}
-      style={({ pressed, focused }) => [styles.card, {
-        borderColor: colors.surfaceBorder,
-        backgroundColor: pressed ? colors.surfaceHover : colors.surface,
+      style={({ pressed, focused }) => [styles.card, detail ? styles.detailCard : null, {
+        borderColor: detail ? (colors.watchedBorder || colors.surfaceBorder) : colors.surfaceBorder,
+        backgroundColor: pressed ? colors.surfaceHover : detail ? (colors.watchedBg || colors.surface) : colors.surface,
       }, focused && colors.focusStyle]}>
       <Text style={[styles.title, { color: colors.text }]}>{text.yourProgress}
         {subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>  {subtitle}</Text> : null}
@@ -41,7 +42,7 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
         <View style={styles.bar}>
           <ProgressBar percent={percent} rewatch={rewatch} height={8} palette={colors} label={text.yourProgress} />
         </View>
-        <Text style={[styles.value, { color: colors.text }]}>{percent}%</Text>
+        <Text style={[styles.value, detail ? styles.detailValue : null, { color: colors.text }]}>{percent}%</Text>
       </View>
     </Pressable>
     <View style={styles.infoWrap}>
@@ -62,6 +63,8 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
 const styles = StyleSheet.create({
   root: { position: 'relative', width: '100%' },
   card: { gap: 14, width: '100%', borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16 },
+  detailCard: { height: 375 / 4, gap: 8 },
+  detailValue: { fontSize: 18 },
   title: { fontSize: 14, fontWeight: '600' },
   subtitle: { fontSize: 12, fontWeight: '500' },
   value: { fontSize: 20, fontWeight: '700' },

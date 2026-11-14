@@ -258,6 +258,8 @@ def drop_episode(related_season, episode_number):
         status=Status.DROPPED.value,
     )
     logger.info("%s dropped successfully.", episode_record)
-    cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-    cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+    cache_utils.clear_library_view_caches(
+        related_season.user_id,
+        media_types=(MediaTypes.EPISODE.value,),
+    )
     return episode_record

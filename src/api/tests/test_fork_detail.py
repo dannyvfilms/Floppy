@@ -2,6 +2,8 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import MagicMock, patch
 
+from django.urls import reverse
+
 from app.models import TV, ComicIssue, Episode, Item, MediaTypes, Season, Sources
 from integrations import seerr_api
 
@@ -279,6 +281,54 @@ class SeerrRequestTests(FloppyApiTestCase):
 class CollectionEntriesTests(FloppyApiTestCase):
     """GET /media/{type}/{source}/{id}/collection/entries/ finds one title's copies."""
 
+    def test_season_disclosure_includes_missing_episodes_for_current_user(self):
+        from app.models import CollectionEntry
+
+        show = self.items_by_type[MediaTypes.TV.value][0]
+        season = Item.objects.create(media_type="season", source=show.source, media_id=show.media_id,
+                                     title="Season", season_number=79)
+        episodes = [Item.objects.create(media_type="episode", source=show.source, media_id=show.media_id,
+                                       title=f"Episode {number}", season_number=79, episode_number=number)
+                    for number in (1, 2)]
+        CollectionEntry.objects.create(user=self.user1, item=episodes[0], resolution="720p")
+        CollectionEntry.objects.create(user=self.user2, item=episodes[1], resolution="1080p")
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/tv/{show.source}/{show.media_id}/collection/entries/",
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        row = next(row for row in response.json()["audit_entries"] if row["id"] == season.id)
+        self.assertEqual([(episode["id"], episode["resolutions"]) for episode in row["episodes"]],
+                         [(episodes[0].id, ["720p"]), (episodes[1].id, [])])
+
+    def test_episode_resolution_counts_follow_coverage_not_record_count(self):
+        from api.fork_views_detail import _collection_episode_resolution_counts
+        from app.models import CollectionEntry, Item
+
+        show = self.items_by_type[MediaTypes.TV.value][0]
+        season = Item.objects.create(media_type="season", source=show.source,
+                                     media_id=show.media_id, title="Season", season_number=77)
+        episodes = [Item.objects.create(media_type="episode", source=show.source,
+                                       media_id=show.media_id, title=f"Episode {number}",
+                                       season_number=77, episode_number=number)
+                    for number in range(1, 4)]
+        special = Item.objects.create(media_type="episode", source=show.source,
+                                      media_id=show.media_id, title="Special",
+                                      season_number=0, episode_number=1)
+        CollectionEntry.objects.create(user=self.user1, item=season)
+        CollectionEntry.objects.create(user=self.user1, item=episodes[0], resolution="720p")
+        CollectionEntry.objects.create(user=self.user1, item=episodes[0], resolution="1080p")
+        CollectionEntry.objects.create(user=self.user1, item=episodes[1], resolution="720p")
+        CollectionEntry.objects.create(user=self.user1, item=special)
+        CollectionEntry.objects.create(user=self.user2, item=episodes[2], resolution="4k")
+
+        counts = _collection_episode_resolution_counts(self.user1, show, {"collected_episodes": 3})
+        self.assertEqual({row["resolution"]: row["count"] for row in counts},
+                         {"1080p": 1, "720p": 1, "": 1})
+        counts = _collection_episode_resolution_counts(self.user1, season, {"collected_episodes": 2})
+        self.assertEqual({row["resolution"]: row["count"] for row in counts},
+                         {"1080p": 1, "720p": 1})
+
     def test_entries_are_found_past_the_first_page(self):
         """Only this item's copies come back, whatever else the collection holds."""
         from app.models import CollectionEntry
@@ -299,7 +349,30 @@ class CollectionEntriesTests(FloppyApiTestCase):
         """A title with no copies is an empty list, not an error."""
         self.client.force_login(self.user1)
         response = self.client.get("/api/v1/media/movie/tmdb/nope/collection/entries/")
-        self.assertEqual(response.json(), {"results": []})
+        self.assertEqual(response.json(), {"results": [], "context_copies": []})
+
+    def test_context_includes_owned_descendants_but_not_other_users(self):
+        """Resolution breakdown includes episode copies without changing edit scope."""
+        from app.models import CollectionEntry, Item
+
+        show = self.items_by_type[MediaTypes.TV.value][0]
+        episode = Item.objects.create(
+            media_type=MediaTypes.EPISODE.value, library_media_type=MediaTypes.EPISODE.value,
+            source=show.source, media_id=show.media_id, title="Episode",
+            season_number=40, episode_number=40,
+        )
+        own = CollectionEntry.objects.create(
+            user=self.user1, item=episode, resolution="1080p", audio_codec="DTS",
+        )
+        CollectionEntry.objects.create(user=self.user2, item=episode, resolution="4k")
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/tv/{show.source}/{show.media_id}/collection/entries/",
+        )
+        self.assertEqual(response.json()["results"], [])
+        context_copies = response.json()["context_copies"]
+        self.assertEqual([copy["id"] for copy in context_copies], [own.id])
+        self.assertEqual(context_copies[0]["audio_codec"], "DTS")
 
     def test_show_carries_the_collected_counts(self):
         """A show answers with the web card's seasons and episodes counts."""
@@ -313,6 +386,37 @@ class CollectionEntriesTests(FloppyApiTestCase):
         self.assertEqual(stats["collected_seasons"], 0)
         self.assertEqual(stats["collected_episodes"], 0)
         self.assertIn("total_episodes", stats)
+
+    def test_season_audit_updates_and_removes_only_the_owners_episodes(self):
+        """Bulk season actions keep other users and other seasons untouched."""
+        from app.models import CollectionEntry, Item
+
+        show = self.items_by_type[MediaTypes.TV.value][0]
+        season = Item.objects.create(
+            media_type=MediaTypes.SEASON.value, source=show.source, media_id=show.media_id,
+            title="Audit season", season_number=77,
+        )
+        episode = Item.objects.create(
+            media_type=MediaTypes.EPISODE.value, source=show.source, media_id=show.media_id,
+            title="Audit episode", season_number=77, episode_number=77,
+        )
+        mine = CollectionEntry.objects.create(user=self.user1, item=episode, resolution="720p")
+        other = CollectionEntry.objects.create(user=self.user2, item=episode, resolution="720p")
+        self.client.force_login(self.user1)
+        url = reverse("api_collection_season_audit", args=[season.id])
+        rejected = self.client.patch(url, data={"bitrate": "invalid"}, content_type="application/json")
+        self.assertEqual(rejected.status_code, HTTP.BAD_REQUEST)
+        mine.refresh_from_db()
+        self.assertEqual(mine.resolution, "720p")
+        response = self.client.patch(url, data={"resolution": "1080p"}, content_type="application/json")
+        self.assertEqual(response.status_code, HTTP.OK)
+        mine.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(mine.resolution, "1080p")
+        self.assertEqual(other.resolution, "720p")
+        self.assertEqual(self.client.delete(url).status_code, HTTP.NO_CONTENT)
+        self.assertFalse(CollectionEntry.objects.filter(id=mine.id).exists())
+        self.assertTrue(CollectionEntry.objects.filter(id=other.id).exists())
 
     def test_season_requires_tv(self):
         """Season coordinates only exist under tv."""

@@ -780,6 +780,8 @@ class MediaDetailsViewTests(TestCase):
         # Movies and TV reserve the hero up front so the page does not jump
         # when the carousel fragment brings the backdrop.
         self.assertIn('class="detail-carousel-grid detail-hero-pending"', content)
+        self.assertIn('hx-trigger="load"', content)
+        self.assertIn("detail-hero-waiting", content)
         self.assertIn("detail-carousel-grid__title", content)
         self.assertIn("detail-carousel-grid__actions", content)
         self.assertIn('<p class="detail-mobile-meta md:hidden">2020 · 2h 6min</p>', content)
@@ -859,7 +861,7 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn('src="https://x/logo.png"', content)
         self.assertEqual(content.count('id="detail-carousel-logo-slot"'), 1)
         self.assertNotIn('hx-trigger="load delay:100ms"', content)
-        self.assertNotIn("detail-hero-pending", content)
+        self.assertNotIn('class="detail-carousel-grid detail-hero-pending"', content)
         gallery.assert_not_called()
 
     @patch("app.providers.services.get_media_metadata")
@@ -1204,11 +1206,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn(
             'class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10"', content
         )
-        self.assertIn('class="detail-media-grid"', content)
-        self.assertIn("window.matchMedia('(max-width: 768px)').matches", content)
-        self.assertIn(
-            "document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6", content
-        )
+        # Seasons render as the shared scrollable rail, not the old detail grid.
+        self.assertIn('data-home-row-wrapper="true"', content)
+        self.assertIn("home-row-card", content)
         self.assertIn(
             'class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"', content
         )
@@ -1220,10 +1220,6 @@ class MediaDetailsViewTests(TestCase):
         self.assertLess(
             content.index('class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"'),
             content.index('class="w-full md:w-3/4"'),
-        )
-        self.assertIn(
-            'class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden"',
-            content,
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -4800,15 +4796,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "2026-03-01 - 2026-03-12")
         self.assertContains(response, "1h 30min watched")
         self.assertIn('<div class="mb-3 md:mb-1 text-center md:text-start">', content)
-        self.assertIn(
-            'class="flex w-full items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] @max-[26rem]:flex-col md:hidden group cursor-pointer hover:text-[var(--color-text)] hover:underline"',
-            content,
-        )
-        self.assertIn("1h 30min (1/8)", content)
-        self.assertIn(
-            'class="hidden w-full flex-wrap items-center justify-center gap-y-1 md:flex md:justify-start group cursor-pointer hover:text-[var(--color-text)] hover:underline"',
-            content,
-        )
+        self.assertIn("data-detail-activity-subtitle-root", content)
+        self.assertIn('data-dates="2026-03-01 - 2026-03-12"', content)
+        self.assertIn('data-duration="1h 30min watched"', content)
         self.assertNotContains(response, "Your History")
         self.assertNotContains(response, "FIRST PLAYED")
         self.assertNotContains(response, "LAST PLAYED")

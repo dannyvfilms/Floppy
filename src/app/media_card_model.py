@@ -271,7 +271,7 @@ def _item_lines(ctx, media_type):
         and _safe(item, "episode_number") is not None
     ):
         season, episode = _safe(item, "season_number"), _safe(item, "episode_number")
-        lines.append({"parts": [{"text": f"S{season:02d} E{episode:02d}"}]})
+        lines.append({"parts": [{"text": f"S{season:02d}E{episode:02d}"}]})
         return lines
     if ctx.get("use_podcast_show") and show:
         text = show.title
@@ -423,7 +423,7 @@ def card_model(ctx):
         },
         "title": _title(ctx, media_type),
         "altTitle": None
-        if ctx.get("use_podcast_show") or media_type == MediaTypes.SEASON.value
+        if ctx.get("use_podcast_show") or ctx.get("hide_alt_title") or media_type == MediaTypes.SEASON.value
         else app_tags.alternative_title(item, ctx.get("user")),
         "statusChip": _status_chip(ctx),
         "cornerChips": _corner_chips(ctx, media_type),

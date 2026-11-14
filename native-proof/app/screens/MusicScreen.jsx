@@ -6,8 +6,6 @@ import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview.native';
 import { Screen } from '../components/Screen';
 import { setShellPageType } from '../surfaces/shellContext';
 import {
-  AlbumPage,
-  ArtistPage,
   BrowseList,
   DateEntryModal,
   ManageEpisodesModal,
@@ -15,15 +13,22 @@ import {
   ReleasePickerModal,
   SectionHeading,
   SheetModal,
-  ShowPage,
-  TrackPage,
+  ScoreChip,
+  MusicBrainzScore,
+  TrackRow,
+  EpisodeRow,
+  FilterChips,
+  listenDate,
   TrackingModal,
 } from '../components/MusicParts';
+import { AlbumPage, ArtistPage, ShowPage, TrackPage } from '../../../frontend/ui/MusicParts';
 import { MusicView } from '../../../frontend/pages/MusicView';
 import { createMusicTransport } from '../data/musicTransport';
+import { formatUserDate } from '../data/userDate';
 import {
   endDateStamp,
   flattenAlbums,
+  loadArtistWithRelations,
   mapAlbumPayload,
   mapArtistPayload,
   mapBrowseList,
@@ -38,7 +43,21 @@ import {
   mapTracker,
   nowDateTimeStr,
 } from '../data/musicTransportCore';
-import { palette, radius, spacing } from '../theme';
+import { mediaCardPalette, palette, radius, spacing } from '../theme';
+
+// Platform rendering stays in this adapter; the detail page layout is shared.
+const detailPresentation = {
+  palette,
+  cardPalette: mediaCardPalette,
+  formatDate: value => /^\d{4}-\d{2}-\d{2}/.test(String(value || '')) ? formatUserDate(value) : String(value || ''),
+  formatListenDate: listenDate,
+  renderScore: (value, onSelect) => <ScoreChip value={value} onSelect={onSelect} />,
+  renderProviderScore: (rating, votes) => <MusicBrainzScore rating={rating} votes={votes} />,
+  renderNotes: markdown => <MarkdownPreview markdown={markdown} palette={palette} />,
+  renderTrack: (track, album, actions) => <TrackRow key={track.id} track={{ ...track, image: album.image }} {...actions} />,
+  renderEpisode: (episode, show, actions) => <EpisodeRow key={episode.id} episode={episode} showImage={show.image} {...actions} />,
+  renderFilters: (options, value, onChange) => <FilterChips label="Filter episodes" options={options} value={value} onChange={onChange} />,
+};
 
 export const surface = {
   id: 'MUSIC',
@@ -187,8 +206,14 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     if (!serverMode || !artistId) return undefined;
     let active = true;
     setLoadingArtist(true);
-    transport.loadArtist({ artistId }).then(payload => {
-      if (active) setArtist(mapArtistPayload(payload));
+    loadArtistWithRelations(transport, artistId).then(({ artist: payload, relations }) => {
+      if (!active) return;
+      const next = mapArtistPayload(payload);
+      if (next && relations) next.relations = {
+        members: (relations.members || []).map(relationModel),
+        alsoIn: (relations.also_in || []).map(relationModel),
+      };
+      setArtist(next);
     }).catch(error => {
       if (active) {
         setArtist(null);
@@ -196,18 +221,6 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
       }
     }).finally(() => {
       if (active) setLoadingArtist(false);
-    });
-    transport.loadArtistRelations({ artistId }).then(payload => {
-      if (!active || !payload) return;
-      setArtist(current => (current ? {
-        ...current,
-        relations: {
-          members: (payload.members || []).map(relationModel),
-          alsoIn: (payload.also_in || []).map(relationModel),
-        },
-      } : current));
-    }).catch(() => {
-      // Relations stay empty; the sync members action can refill them.
     });
     return () => { active = false; };
   }, [artistId, reloadToken, serverMode, transport]);
@@ -338,7 +351,11 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
   function reloadArtist() {
     if (!serverMode || !artistRemoteId) return Promise.resolve();
     return transport.loadArtist({ artistId: artistRemoteId })
-      .then(payload => setArtist(mapArtistPayload(payload)))
+      .then(payload => setArtist(current => {
+        const next = mapArtistPayload(payload);
+        if (next && current?.id === next.id) next.relations = current.relations;
+        return next;
+      }))
       .catch(error => setTransportError(error?.message || 'The artist could not be reloaded.'));
   }
 
@@ -856,11 +873,13 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
       ? (artist
         ? <>
           <View style={styles.actionRow}><Button label="All artists" tone="surface" onPress={() => browseAgain('artist')} /></View>
-          <ArtistPage artist={artist} albums={albums}
+          <ArtistPage {...detailPresentation} artist={artist} albums={albums}
             onOpenAlbum={openAlbum}
+            onOpenArtist={relation => openBrowseRow({ kind: 'artist', id: relation.id })}
             onTrack={() => openTracking('artist', artist)}
             onHistory={() => openHistory('artist', { title: artist.name })}
             onRate={rateArtist}
+            onOpenNotes={() => openTracking('artist', artist)}
             onSyncMembers={artistRemoteId ? syncArtistMembers : null} />
           {artist.relations.members.length || artist.relations.alsoIn.length
             ? null
@@ -900,12 +919,13 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     {tab === 'album' && albumId && !selectedTrack
       ? (album
         ? <>
-          <AlbumPage album={{ ...album, tracks, format: album.format || album.releaseType, runtime: albumRuntime(tracks) }}
+          <AlbumPage {...detailPresentation} album={{ ...album, tracks, format: album.format || album.releaseType, runtime: albumRuntime(tracks) }}
             onBack={() => setTab('artist')}
             onOpenTrack={track => setSelectedTrackId(track.id)}
             onTrack={() => openTracking('album', album)}
             onHistory={() => openHistory('album', { title: album.title })}
             onRate={rateAlbum}
+            onOpenNotes={() => openTracking('album', album)}
             onAction={handleTrackAction}
             onTrackRate={rateTrack}
             onSyncMetadata={albumRemoteId ? syncAlbumMetadata : null}
@@ -931,7 +951,7 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
       : null}
 
     {tab === 'album' && selectedTrack
-      ? <TrackPage key={selectedTrack.id} album={album} track={selectedTrack}
+      ? <TrackPage {...detailPresentation} key={selectedTrack.id} album={album} track={selectedTrack}
         onBack={() => setSelectedTrackId(null)}
         onRate={score => rateTrack(selectedTrack, score)}
         onAddListen={() => openDateDialog('track', selectedTrack)}
@@ -952,7 +972,7 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
       ? (show
         ? <>
           <View style={styles.actionRow}><Button label="All podcasts" tone="surface" onPress={() => browseAgain('show')} /></View>
-          <ShowPage show={show} episodes={episodes} episodeTotal={episodeTotal}
+          <ShowPage {...detailPresentation} show={show} episodes={episodes} episodeTotal={episodeTotal}
             episodeFilter={episodeFilter}
             onFilter={value => { setEpisodeFilter(value); setNotice(''); }}
             hasMore={episodes.length < episodeTotal}

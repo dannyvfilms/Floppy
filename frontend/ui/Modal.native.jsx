@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useId, useLay
 import { Modal as NativeModal, Pressable, StyleSheet, View } from 'react-native';
 
 const RailModalContext = createContext(null);
+const RailModalActiveContext = createContext(null);
 
 // The Duo rail belongs to the screen controller. Keep dialogs in its canvas
 // rather than presenting a second controller that takes ownership of the rail.
@@ -14,14 +15,20 @@ export function RailModalProvider({ enabled, children }) {
   }), []);
   const unregister = useCallback(id => setEntries(current => current.filter(item => item.id !== id)), []);
   const active = enabled ? entries[entries.length - 1] : null;
-  const value = useMemo(() => ({ enabled, register, unregister, active }), [enabled, register, unregister, active]);
-  return <RailModalContext.Provider value={value}>{children}</RailModalContext.Provider>;
+  const value = useMemo(() => ({ enabled, register, unregister }), [enabled, register, unregister]);
+  return <RailModalContext.Provider value={value}>
+    <RailModalActiveContext.Provider value={active}>{children}</RailModalActiveContext.Provider>
+  </RailModalContext.Provider>;
 }
 
-export function useRailModal() { return useContext(RailModalContext); }
+export function useRailModal() {
+  const rail = useContext(RailModalContext);
+  const active = useContext(RailModalActiveContext);
+  return rail ? { ...rail, active } : null;
+}
 
 export function Modal({ visible = true, children, onRequestClose, onShow, ...props }) {
-  const rail = useRailModal();
+  const rail = useContext(RailModalContext);
   const id = useId();
   const enabled = rail?.enabled;
   const register = rail?.register;
@@ -36,7 +43,7 @@ export function Modal({ visible = true, children, onRequestClose, onShow, ...pro
 }
 
 export function ModalCloseButton(props) {
-  const rail = useRailModal();
+  const rail = useContext(RailModalContext);
   return rail?.enabled ? null : <Pressable {...props} />;
 }
 

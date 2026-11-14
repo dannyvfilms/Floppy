@@ -133,8 +133,10 @@ def delete_history_record_core(user, media_type, history_id):
 
         if related_season:
             related_season._sync_status_after_episode_change()
-            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            cache_utils.clear_library_view_caches(
+                related_season.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
 
         try:
             model = apps.get_model(app_label="app", model_name=media_type_lower)
@@ -224,8 +226,10 @@ def delete_instance_without_history(user, media_type, media_instance):
     media_instance.delete()
     if related_season:
         related_season._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+        cache_utils.clear_library_view_caches(
+            related_season.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
     _invalidate_after_delete(user, media_type_lower, start_date, end_date, created_at)
 
 

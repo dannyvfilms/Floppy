@@ -25,9 +25,12 @@ Other Settings destinations are not established as working by the native report.
 
 ### Accepted direction
 
-- Home, Sidebar, Search and the Track modal must retain the current `latest`
-  presentation and behavior. Similar screenshots do not prove all underlying
-  changes have been retained.
+- Home, Sidebar, the Search bar and Search Results are the reviewed baseline on
+  `latest`. Preserve their shared shelf cards, drawer layout, search menu, copy
+  and result rows in future changes and merges. Architecture or API work does not
+  authorize changing that presentation. Compare the rendered result against this
+  baseline; commit ancestry and similar screenshots alone do not prove retention.
+- The native Track modal is not accepted at web parity and remains separate work.
 - History is accepted by the owner on web, and functions in Expo.
 - Statistics is accepted as a starting point, with polish remaining.
 - Neither web Collection implementation is the accepted visual target. Both put
@@ -44,9 +47,11 @@ renders. Saving, date shortcuts and keyboard behavior are not established by tho
 captures. Data Management's backup paths and recorded backup history differ with
 the preview environment; those differences are not evidence of a design change.
 
-Home, Sidebar, Search and Track preservation is integrated, including the Home
-loading improvements. Home retains its existing quick progress actions on web and
-Expo; their absence in earlier captures was not an instruction to remove them.
+Home, Sidebar, Search and Search Results use the reviewed Expo presentation,
+including the Home loading improvements. Web Home retains its quick progress
+actions; the approved Expo composition uses shared shelf cards without separate
+progress rows. The main native Track modal does not yet match the web and remains
+a separate parity gap.
 Historical acceptance below is not full native parity acceptance.
 
 ### Evidence and acceptance limits

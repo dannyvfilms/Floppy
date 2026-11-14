@@ -965,8 +965,11 @@ def _apply_bulk_podcast_plays(
             statistics_day_values=sorted(affected_day_keys),
         )
 
-    cache_utils.clear_time_left_cache_for_user(user.id)
-    cache_utils.clear_media_list_cache_for_user(user.id)
+    if created_count or replaced_episode_count:
+        cache_utils.clear_library_view_caches(
+            user.id,
+            media_types=(MediaTypes.PODCAST.value,),
+        )
     if created_items:
         events.tasks.reload_calendar.apply_async(
             kwargs={"item_ids": [item.id for item in created_items]},
@@ -1180,8 +1183,11 @@ def apply_bulk_episode_plays(
     if created_count:
         _enqueue_bulk_episode_credits_backfill(grouped_tv, credit_item_ids)
 
-    cache_utils.clear_time_left_cache_for_user(user.id)
-    cache_utils.clear_media_list_cache_for_user(user.id)
+    if created_count or replaced_episode_count:
+        cache_utils.clear_library_view_caches(
+            user.id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
     if created_items:
         events.tasks.reload_calendar.apply_async(
             kwargs={"item_ids": [grouped_tv.item.id]},

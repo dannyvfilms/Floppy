@@ -461,7 +461,7 @@ def build_progress_breakdown(*, tv=None, season=None):
         )
 
     run = resolve_rewatch(tv, seasons)
-    if run is not None and not run.explicit:
+    if run is not None:
         for row in seasons:
             row.rewatching = any(key[0] == row.number for key in run.keys)
             for episode in row.episodes:

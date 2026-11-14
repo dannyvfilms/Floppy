@@ -26,6 +26,7 @@ class CardSurface:
     secondary_color: bool = False
     # Body rendered by the shared React card (frontend/ui/MediaCard.jsx).
     react_card: bool = False
+    hide_alt_title: bool = False
 
 
 SURFACES = {
@@ -39,6 +40,12 @@ SURFACES = {
         show_next_event_chip=True,
         show_next_event_subtitle=True,
         react_card=True,
+    ),
+    "detail_recommendations": CardSurface(
+        show_next_event_chip=True,
+        show_next_event_subtitle=True,
+        react_card=True,
+        hide_alt_title=True,
     ),
     # Home card with the Behind or countdown chip in the next-episode slot.
     "up_next": CardSurface(

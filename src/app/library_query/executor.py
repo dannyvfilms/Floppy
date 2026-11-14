@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from functools import cached_property
-from itertools import islice
+from itertools import batched, islice
 from typing import TYPE_CHECKING
 
 from django.db.models import Exists, F, OuterRef, Q
@@ -70,11 +70,24 @@ class Page:
 class LibraryQueryExecutor:
     """Evaluate one ``LibraryQuery`` for one user."""
 
-    def __init__(self, user, query: LibraryQuery, *, batch_size: int = DEFAULT_BATCH_SIZE):
-        """Prepare ``query`` for ``user``; nothing runs until it is asked for."""
+    def __init__(
+        self,
+        user,
+        query: LibraryQuery,
+        *,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        share_shows: bool = False,
+    ):
+        """Prepare ``query`` for ``user``; nothing runs until it is asked for.
+
+        ``share_shows`` lets a scan that reads show facts reuse, and add to,
+        the records other shelves of the user's Home computed
+        (``app.tv_show_facts.SharedShows``). Only Home asks for it.
+        """
         self.user = user
         self.query = query
         self.batch_size = batch_size
+        self.share_shows = share_shows
         self.today = timezone.localdate()
 
     # -- compilation ----------------------------------------------------------
@@ -86,7 +99,11 @@ class LibraryQueryExecutor:
             filter_registry.TypeContext(
                 user=self.user,
                 media_type=media_type,
-                sources=tuple(tracker_sources(self.user, media_type, self.query.routing)),
+                sources=tuple(tracker_sources(
+                    self.user, media_type, self.query.routing,
+                    include_podcast_shows=self.query.include_podcast_shows,
+                    include_albums=self.query.sort_list_id is not None,
+                )),
                 today=self.today,
                 provider_region=self.query.provider_region,
                 pinned_providers=self.query.pinned_providers,
@@ -417,6 +434,21 @@ class LibraryQueryExecutor:
             return candidates.exists()
         return bool(self._scan(candidates, with_sort=False))
 
+    def matching_among(self, item_ids, *, chunk_size: int) -> set[int]:
+        """Return which of ``item_ids`` match, asking once per ``chunk_size`` ids.
+
+        The set form of ``contains``: the same conditions, Python filters and
+        cross-provider hiding, so each id gets the answer ``contains`` gives.
+        """
+        matched = set()
+        for chunk in batched(dict.fromkeys(item_ids), max(1, chunk_size)):
+            candidates = self.filtered.filter(pk__in=chunk)
+            if not self._needs_scan:
+                matched.update(candidates.values_list("pk", flat=True))
+            else:
+                matched.update(row[-1] for row in self._scan(candidates, with_sort=False))
+        return matched
+
     def page(
         self,
         offset: int,
@@ -571,6 +603,24 @@ class LibraryQueryExecutor:
             # A tracker value computed in Python reads the aggregated row.
             needs.add(filter_registry.NEEDS_MEDIA)
         requested_direction = self.query.sort.direction
+        # Shows are attached as facts, not as hydrated trackers, when every
+        # reader of the tracker row in this scan says facts are all it reads.
+        show_facts = (
+            filter_registry.NEEDS_RUNTIME not in needs
+            and (sql_sort or not with_sort or self.sort.tv_facts)
+            and all(
+                definition.tv_facts
+                for ctx in self.contexts
+                for definition in self._predicates(ctx)
+                if filter_registry.NEEDS_MEDIA in definition.needs
+            )
+        )
+
+        shared = None
+        if show_facts and self.share_shows:
+            from app.tv_show_facts import SharedShows
+
+            shared = SharedShows(self.user)
 
         rows = []
         iterator = queryset.iterator(chunk_size=self.batch_size)
@@ -579,7 +629,7 @@ class LibraryQueryExecutor:
             if not batch:
                 break
             if filter_registry.NEEDS_MEDIA in needs:
-                _attach_media(self.user, batch, needs)
+                _attach_media(self.user, batch, needs, show_facts=show_facts, shared=shared, include_albums=self.query.sort_list_id is not None)
             for ctx in self.contexts:
                 for definition in self._predicates(ctx):
                     if definition.prepare is not None:
@@ -613,6 +663,8 @@ class LibraryQueryExecutor:
                 else:
                     value = python_key(candidate)
                 rows.append(rank_row(value, candidate.item))
+        if shared is not None:
+            shared.save()
         return rows
 
 
@@ -663,8 +715,22 @@ def _context_for(item, contexts_by_type):
     return None
 
 
-def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
-    """Load each candidate's aggregated tracker row, for this batch only."""
+def _attach_media(
+    user,
+    batch: list[Candidate],
+    needs: set[str],
+    *,
+    show_facts: bool = False,
+    include_albums: bool = False,
+    shared=None,
+) -> None:
+    """Load each candidate's aggregated tracker row, for this batch only.
+
+    With ``show_facts``, a show gets an ``app.tv_show_facts.TrackedShow``
+    instead: its numbers come from grouped rows, so no season, play or event
+    is loaded for it. Only a scan whose sort and filters all declare
+    ``tv_facts`` may ask for that.
+    """
     from django.apps import apps
 
     from app.models import BasicMedia
@@ -680,6 +746,20 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             for candidate in candidates:
                 candidate.media = latest.get(candidate.item.pk)
             continue
+        if show_facts and media_type == MediaTypes.TV.value:
+            from app.tv_show_facts import annotate_released_progress, tracked_shows
+
+            items = [candidate.item for candidate in candidates]
+            released = filter_registry.NEEDS_MAX_PROGRESS in needs
+            if shared is not None:
+                shows = shared.tracked(items, released=released)
+            else:
+                shows = tracked_shows(user, items)
+                if released:
+                    annotate_released_progress(list(shows.values()))
+            for candidate in candidates:
+                candidate.media = shows.get(candidate.item.pk)
+            continue
         rows = model.objects.filter(
             user=user,
             item_id__in=[candidate.item.pk for candidate in candidates],
@@ -688,6 +768,12 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             # The scan's candidate queryset defers this blob; the tracker rows
             # must not bring it back through their own select_related.
             rows = rows.defer("item__watch_providers")
+        if media_type == MediaTypes.SEASON.value:
+            # The season graph joins each row's show item, and with it a copy
+            # of the show's provider blob per season. Ranking never reads the
+            # show's providers (the provider filter reads the season's own),
+            # so leave it in the database, as episode rows already do.
+            rows = rows.defer("related_tv__item__watch_providers")
         # Progress and derived status read episodes and seasons; fetch them
         # once for the batch instead of once per row. Ranking only reads the
         # compact episode fields: runtime comes from the bulk runtime index
@@ -705,6 +791,16 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
             current = latest.get(media.item_id)
             if current is None or media.created_at > current.created_at:
                 latest[media.item_id] = media
+        if media_type == MediaTypes.PODCAST.value:
+            from app.services.podcast_list_tracking import (
+                podcast_show_trackers_for_items,
+            )
+
+            latest.update(podcast_show_trackers_for_items(user, [candidate.item for candidate in candidates]))
+        if include_albums and media_type == MediaTypes.MUSIC.value:
+            from app.services.music import album_trackers_for_list_items
+
+            latest.update(album_trackers_for_list_items(user, [candidate.item for candidate in candidates]))
         tracked = []
         for candidate in candidates:
             candidate.media = latest.get(candidate.item.pk)

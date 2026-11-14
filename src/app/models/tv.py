@@ -225,8 +225,10 @@ class TV(Media):
             # Keep TV+Season state aligned even when status was already IN_PROGRESS.
             self._start_next_available_season()
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.TV.value,),
+        )
 
     @cached_property
     def progress(self):
@@ -1347,8 +1349,10 @@ class Season(Media):
 
             self.item.fetch_releases(delay=True)
 
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.SEASON.value,),
+        )
 
     @property
     def progress(self):
@@ -1799,8 +1803,10 @@ class Season(Media):
         )
         if result.created:
             logger.info("%s created successfully.", result.episode)
-            cache_utils.clear_time_left_cache_for_user(self.user_id)
-            cache_utils.clear_media_list_cache_for_user(self.user_id)
+            cache_utils.clear_library_view_caches(
+                self.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
 
             entry_source = episode_fields.get("entry_source")
             if entry_source and self.entry_source != entry_source:
@@ -1855,8 +1861,10 @@ class Season(Media):
         if hasattr(self, "_episode_stats_cache"):
             delattr(self, "_episode_stats_cache")
         self._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(self.user_id)
-        cache_utils.clear_media_list_cache_for_user(self.user_id)
+        cache_utils.clear_library_view_caches(
+            self.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     def _sync_status_after_episode_change(self, *, max_progress=None, plays_added=False):
         """Recalculate season (and TV) status from local episode history.

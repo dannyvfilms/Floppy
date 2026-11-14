@@ -1204,12 +1204,16 @@ def _build_detail_person_rows(media_metadata, item=None):
             view_all_text=view_all_text,
         ),
         "crew_row": _build_static_row("detail-crew", "Crew", crew[:20]),
-        "recommendations_row": _build_static_row(
+        "seasons_row": _build_static_row(
+            "detail-seasons", "Seasons", (media_metadata.get("related") or {}).get("seasons") or [],
+            card_width_class="w-44",
+        ),
+        "recommendations_row": {**_build_static_row(
             "detail-recommendations",
             "Recommendations",
             recommendations,
-            card_width_class="w-36",
-        ),
+            card_width_class="w-44",
+        ), "card_surface": "detail_recommendations"},
     }
 
 

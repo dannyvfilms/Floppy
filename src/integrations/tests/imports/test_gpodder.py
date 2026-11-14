@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
@@ -14,6 +15,7 @@ from app.models import (
     Sources,
     Status,
 )
+from integrations import gpodder_api
 from integrations.imports import gpodder as gpodder_import
 from integrations.imports.helpers import MediaImportError, encrypt
 from integrations.models import GPodderAccount
@@ -815,3 +817,99 @@ class GPodderRecurringPollCostTests(TestCase):
             [(c.args, c.kwargs) for c in mock_invalidate.call_args_list],
         )
         mock_stats_refresh.assert_not_called()
+
+
+@patch("integrations.imports.gpodder.gpodder_api.register_device")
+@patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
+@patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
+@patch("integrations.imports.gpodder.gpodder_api.verify_login")
+@patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
+class GPodderPrivateFeedTitleTests(TestCase):
+    """A feed with no readable title never names its show after its URL."""
+
+    FEED = "https://feeds.example.com/private/path-secret-abc123/feed.xml?token=query-secret-xyz789"
+    SECRETS = ("path-secret-abc123", "path secret abc123", "query-secret-xyz789", "query secret xyz789")
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="owner")
+        self.other = get_user_model().objects.create_user(username="other")
+        GPodderAccount.objects.create(
+            user=self.user,
+            server_url=encrypt("https://gpodder.net"),
+            username=encrypt("owner"),
+            password=encrypt("secret"),
+            device_id=f"yamtrack-{self.user.id}",
+        )
+
+    def _import(self, mock_fetch_feed, mock_subscriptions, mock_actions, *, actions=()):
+        mock_fetch_feed.side_effect = RuntimeError("feed unavailable")
+        mock_subscriptions.return_value = [self.FEED] if not actions else []
+        mock_actions.return_value = (list(actions), 1)
+        gpodder_import.importer(None, self.user, "new")
+
+    def _assert_no_secret(self, text):
+        for secret in self.SECRETS:
+            self.assertNotIn(secret, text.lower())
+
+    def test_failed_feed_hides_url_from_another_users_api(
+        self, mock_fetch_feed, _login, mock_subscriptions, mock_actions, _register
+    ):
+        self._import(mock_fetch_feed, mock_subscriptions, mock_actions)
+
+        show = PodcastShow.objects.get()
+        self.assertEqual(show.title, gpodder_import.UNKNOWN_SHOW_TITLE)
+        self._assert_no_secret(f"{show.title} {show.slug}")
+        response = self.client.get(
+            reverse("api_podcast_show_detail", args=(show.id,)),
+            HTTP_X_API_KEY=self.other.token,
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_no_secret(response.content.decode())
+
+    def test_play_for_an_unsubscribed_feed_hides_url(
+        self, mock_fetch_feed, _login, mock_subscriptions, mock_actions, _register
+    ):
+        action = {
+            "action": "play",
+            "podcast": self.FEED,
+            "episode": "https://cdn.example.com/ep1.mp3",
+            "timestamp": "2026-01-01T12:00:00Z",
+            "position": 10,
+            "total": 300,
+        }
+        self._import(mock_fetch_feed, mock_subscriptions, mock_actions, actions=[action])
+
+        show = PodcastShow.objects.get()
+        self._assert_no_secret(f"{show.title} {show.slug}")
+
+    def test_failed_feed_keeps_a_genuine_title(
+        self, mock_fetch_feed, _login, mock_subscriptions, mock_actions, _register
+    ):
+        PodcastShow.objects.create(
+            podcast_uuid="pc-1",
+            title="Real Show",
+            slug="real-show",
+            rss_feed_url=self.FEED,
+        )
+
+        self._import(mock_fetch_feed, mock_subscriptions, mock_actions)
+
+        show = PodcastShow.objects.get()
+        self.assertEqual((show.title, show.slug), ("Real Show", "real-show"))
+
+    def test_failed_feed_repairs_a_title_older_imports_derived_from_the_url(
+        self, mock_fetch_feed, _login, mock_subscriptions, mock_actions, _register
+    ):
+        normalized = gpodder_api.normalize_external_url(self.FEED)
+        PodcastShow.objects.create(
+            podcast_uuid=gpodder_import.show_key_for_feed(normalized),
+            title=gpodder_import.legacy_url_title(normalized),
+            slug=gpodder_import.legacy_url_slug(normalized),
+            rss_feed_url=self.FEED,
+        )
+
+        self._import(mock_fetch_feed, mock_subscriptions, mock_actions)
+
+        show = PodcastShow.objects.get()
+        self.assertEqual(show.title, gpodder_import.UNKNOWN_SHOW_TITLE)
+        self.assertEqual(show.slug, "unknown-podcast")

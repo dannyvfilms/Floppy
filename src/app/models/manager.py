@@ -1383,14 +1383,12 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         today = timezone.localdate(now)
         show_keys = {}
         seasons_by_show = {}
-        catalogue_query = Q(pk__in=[])
         for media in medias:
             seasons = {season.item.season_number: season for season in media.seasons.all()}
             seasons_by_show[id(media)] = seasons
             item = next(iter(seasons.values())).item if seasons else media.item
             key = (item.media_id, item.source, media.active_episode_order_id)
             show_keys[id(media)] = key
-            catalogue_query |= Q(media_id=key[0], source=key[1], episode_order_id=key[2])
         calendar = self._season_events_by_show(
             [(key[0], key[1]) for key in show_keys.values()],
         )
@@ -1401,30 +1399,41 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     continue
                 coordinate = (event.item.season_number, event.content_number)
                 records[key][coordinate] = {"air_date": event.datetime, "title": ""}
-        for item in Item.objects.filter(
-            catalogue_query,
-            media_type=MediaTypes.EPISODE.value,
-            library_media_type=MediaTypes.EPISODE.value,
-            season_number__gt=0,
-            episode_number__isnull=False,
-        ).only(
-            "media_id",
-            "source",
-            "episode_order_id",
-            "season_number",
-            "episode_number",
-            "title",
-            "release_datetime",
-        ):
-            key = (item.media_id, item.source, item.episode_order_id)
-            record = records[key].setdefault(
-                (item.season_number, item.episode_number),
-                {"air_date": None},
-            )
-            record["title"] = item.title
-            date = item.release_datetime
-            if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
-                record["air_date"] = min(filter(None, (record["air_date"], date)))
+        # The catalogue is read by provider identity, in the form the episode
+        # index serves, and as columns: one condition per show made SQLite
+        # weigh every show against every episode row, and a model per episode
+        # is the largest thing a ranked shelf would otherwise build.
+        wanted = set(show_keys.values())
+        media_ids = sorted({key[0] for key in wanted})
+        for start in range(0, len(media_ids), 500):
+            for media_id, source, order_id, season_number, episode_number, title, date in (
+                Item.objects.filter(
+                    media_id__in=media_ids[start : start + 500],
+                    source__in={key[1] for key in wanted},
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=MediaTypes.EPISODE.value,
+                    season_number__gt=0,
+                    episode_number__isnull=False,
+                ).values_list(
+                    "media_id",
+                    "source",
+                    "episode_order_id",
+                    "season_number",
+                    "episode_number",
+                    "title",
+                    "release_datetime",
+                )
+            ):
+                key = (media_id, source, order_id)
+                if key not in wanted:
+                    continue
+                record = records[key].setdefault(
+                    (season_number, episode_number),
+                    {"air_date": None},
+                )
+                record["title"] = title
+                if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
+                    record["air_date"] = min(filter(None, (record["air_date"], date)))
         for media in medias:
             key = show_keys[id(media)]
             seasons = seasons_by_show[id(media)]

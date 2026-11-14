@@ -112,6 +112,7 @@ from app.detail_builders import (
     _apply_cached_hltb_link,
     _build_detail_link_entry,
     _build_detail_link_sections,
+    _build_detail_person_rows,
     _build_game_length_card,
     _build_game_lengths_context,
     _build_imdb_rating_context,
@@ -1088,6 +1089,7 @@ def episode_details(
         or (episode_data or {}).get("title")
         or f"Episode {episode_number}",
         "detail_return_url": request.build_absolute_uri(),
+        **_build_detail_person_rows(episode_metadata),
     }
     return render(request, "app/episode_details.html", context)
 

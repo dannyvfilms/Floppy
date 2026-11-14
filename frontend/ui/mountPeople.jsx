@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { MediaCard } from './MediaCard.web';
+import { shelfCardWidth } from './HomeShelves';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -75,6 +77,14 @@ function readCollapsed(key) {
 
 function CastRail({ props, palette }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(props.collapseKey));
+  const [width, setWidth] = useState(() => shelfCardWidth(window.innerWidth, document.body.dataset.mobileGrid));
+  useEffect(() => {
+    const update = () => setWidth(shelfCardWidth(window.innerWidth, document.body.dataset.mobileGrid));
+    window.addEventListener('resize', update);
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-mobile-grid'] });
+    return () => { window.removeEventListener('resize', update); observer.disconnect(); };
+  }, []);
   useEffect(() => {
     if (!props.collapseKey) return;
     try {
@@ -92,7 +102,11 @@ function CastRail({ props, palette }) {
     labels={props.labels}
     palette={palette}
     web
-    castWidth={128}
+    castWidth={width}
+    renderPersonCard={person => <MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
+      shape: 'poster', image: { src: person.imageUrl || person.imageFallback },
+      lines: person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
+        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })) }} />}
     viewAll={viewAll}
     collapsible={Boolean(props.collapseKey)}
     collapsed={props.collapseKey ? collapsed : undefined}

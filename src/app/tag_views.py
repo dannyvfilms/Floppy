@@ -524,7 +524,7 @@ def tag_item_toggle(request):
     else:
         ItemTag.objects.create(tag=tag, item=item)
         has_tag = True
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     preview_genres = _parse_detail_tag_preview_genres(
         request.POST.get("preview_genres_json"),
@@ -585,7 +585,7 @@ def tag_bulk_toggle(request):
         )
     else:
         ItemTag.objects.filter(tag=tag, item_id__in=item_ids).delete()
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     return HttpResponse(status=204)
 
@@ -611,7 +611,7 @@ def tag_create(request):
                 ItemTag.objects.get_or_create(tag=tag, item=item)
             except Item.DoesNotExist:
                 pass
-        cache_utils.clear_media_list_cache_for_user(request.user.id)
+        cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     if item_id:
         try:
@@ -646,7 +646,7 @@ def tag_delete(request):
 
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
     tag.delete()
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     if item_id:
         try:

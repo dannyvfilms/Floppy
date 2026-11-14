@@ -81,6 +81,10 @@ class SortDef:
     # expensive subquery is computed once per row. It must order exactly like
     # ``batch_values``, which still serves queries a Python filter scans.
     sql_order: Callable[[TypeContext, int, str], tuple | None] | None = None
+    # The Python value reads nothing from a show's tracker row beyond what
+    # ``app.tv_show_facts.TrackedShow`` carries, so a scan need not hydrate
+    # seasons and plays to compute it. Other media types are unaffected.
+    tv_facts: bool = False
 
 
 def _field(name: str):

@@ -150,7 +150,8 @@
   </div>
 
   {% if show_delete and delete_url and show_date == False %}
-    <div class="absolute inset-y-0 right-3 flex items-center gap-1" {% if edit_form %}x-show="!editing"{% endif %}>
+    <div class="absolute top-2 {% if flat_list %}right-0{% else %}right-3{% endif %} flex items-center gap-1" {% if edit_form %}x-show="!editing"{% endif %}>
+      {% if episode_season != None %}<span data-collection-season-toggle="{{ episode_season }}"></span>{% endif %}
       {% if edit_form %}
       <button type="button"
               @click="editing = true; $dispatch('collection-edit', 1)"
@@ -197,6 +198,9 @@
         {% button _("Save") "primary" "base" submit=True %}
       </div>
     </form>
+  {% endif %}
+  {% if episode_season != None %}
+    <div data-collection-season-disclosure="{{ episode_season }}" {% if edit_form %}x-show="!editing"{% endif %}></div>
   {% endif %}
   {% endwith %}
 </div>

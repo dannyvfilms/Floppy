@@ -111,6 +111,8 @@ _EXPORT_MODULES = {
             "import_simkl",
             "import_sonarr",
             "import_sonarr_recurring",
+    "remove_collection_source_states",
+            "remove_collection_source_states",
             "import_steam",
             "import_storygraph",
             "import_storyteller",

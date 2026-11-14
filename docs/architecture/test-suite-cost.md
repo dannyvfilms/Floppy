@@ -1,5 +1,49 @@
 # What the test suite costs
 
+
+## November 12, 2026: publish-gate evidence
+
+[PR #1917](https://github.com/dannyvfilms/Floppy/pull/1917) moved
+traced coverage to a separate `Coverage` workflow and added an **opt-in**
+path for reusing a green pull request's tests when the tree tested on
+`refs/pull/N/merge` is identical to the tree published on `latest`.
+
+**Observed after merge, with reuse OFF:** The `Reuse PR test result?`
+job in 14 `Docker Image` push runs reported `Decision: run (shadow
+mode). Every condition for reuse held`, and recorded matching
+`pushed tree` and `tested tree` values. Examples:
+[#1917's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43112262627),
+[#1933's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43222624986),
+and [#1938's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43325180912).
+All three test shards still executed and passed. The first four
+post-merge Docker Image workflows failed at the *distributed image
+verification* step despite passing the quality gate and build; later
+[Docker Image runs](https://github.com/dannyvfilms/Floppy/actions/runs/43325180912)
+passed end to end. The independent
+[Coverage workflow](https://github.com/dannyvfilms/Floppy/actions/runs/43325180826)
+also completed successfully.
+
+**Live direct-push negative case:** A documentation-only direct push
+([Docker Image run 43352328375](https://github.com/dannyvfilms/Floppy/actions/runs/43352328375))
+correctly reported `Decision: run` with the reason
+`no pull request is associated with this commit`, so the full gate
+was selected. The run's eventual completion is tracked separately.
+
+**Still not proven:** a squash merge and a merge while the PR branch
+is behind `latest`; an end-to-end scratch-repository exercise with
+the reuse variable enabled and the three shards skipped. Unit tests
+cover the decision paths, but do not replace those live exercises.
+Keep `REUSE_PR_TEST_RESULTS` unset until those cases are checked and
+the maintainer approves the 72-hour age limit and trust assumptions
+in #1917. Track outstanding validation in
+[#1918](https://github.com/dannyvfilms/Floppy/issues/1918).
+
+This is a *correctness* observation, not a before/after speed
+benchmark: collect controlled CI medians and an enabled-vs-disabled
+publish latency comparison separately. Do not treat different commits
+or runs with broken distribution verification as a controlled baseline.
+
+
 The suite got slow enough that waiting on it became the bottleneck for both
 people and agents. This records what was measured, what the causes actually
 are, and what was changed.

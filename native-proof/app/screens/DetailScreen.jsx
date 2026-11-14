@@ -1,21 +1,48 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking } from 'react-native';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Image, Linking, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DetailView } from '../../../frontend/pages/DetailView';
+import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import WindowedRail from '../surfaces/WindowedRail';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
+import { useDevicePose } from '../data/useDevicePose';
 import { Screen } from '../components/Screen';
 import { createDetailModelForItem, loadDetailModel } from '../surfaces/DetailSlot';
+import { identityFromDetailItem } from '../surfaces/detailIdentity.mjs';
 import { useDetailFeatures } from '../surfaces/DetailFeatures';
-import { setShellPageType } from '../surfaces/shellContext';
+import { setShellPageType, ShellLayoutContext } from '../surfaces/shellContext';
+import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { getActiveAuthSession } from '../data/authSession';
 import { formatUserDate } from '../data/userDate';
+import { prepareDetailArtwork } from '../data/prepareDetailArtwork.mjs';
 import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack, navigate }) {
+  const viewportWindow = useWindowDimensions();
+  const mobileGridLayout = useMobileGridLayout();
+  // The device pose (closed, open or partial; vertical or horizontal), for laying Media Details out per pose.
+  const pose = useDevicePose();
+  const insets = useSafeAreaInsets();
+  const shellLayout = useContext(ShellLayoutContext);
+  const heroViewport = { width: shellLayout?.width || viewportWindow.width - insets.left - insets.right,
+    height: shellLayout?.height || viewportWindow.height - insets.top - insets.bottom,
+    headerHeight: shellLayout?.headerHeight || 0, insets, pose,
+    gutters: horizontalContentPadding(insets, 22) };
   const item = useMemo(
     () => params?.item || (params?.href ? { href: params.href } : null),
     [params?.item, params?.href],
   );
+  const pendingModel = useMemo(() => {
+    const identity = identityFromDetailItem(item);
+    if (!identity?.mediaType || !identity.source || !identity.mediaId) return null;
+    return { ...createDetailModelForItem(item),
+      identity: { ...identity, mediaType: identity.detailType || identity.mediaType,
+        ...(identity.detailType && identity.mediaType === 'anime' ? { libraryMediaType: 'anime' } : {}) },
+      publicView: Boolean(identity.publicView || params?.publicView) };
+  }, [item, params?.publicView]);
   const [model, setModel] = useState(() => createDetailModelForItem(item));
   const [loading, setLoading] = useState(Boolean(item));
+  const [dataReady, setDataReady] = useState(false);
   const [error, setError] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -25,16 +52,39 @@ export default function DetailScreen({ params, onBack, navigate }) {
   useEffect(() => {
     if (!item) {
       setLoading(false);
+      setDataReady(false);
       setModel(createDetailModelForItem(null));
       return undefined;
     }
     let cancelled = false;
     setLoading(true);
+    setDataReady(false);
     setLoadFailed(false);
     setError('');
-    loadDetailModel(item, { publicView: params?.publicView }).then(next => {
+    let earlyArtwork;
+    loadDetailModel(item, {
+      publicView: params?.publicView,
+      onGallery: gallery => {
+        if (cancelled) return;
+        const backdrop = gallery?.hero?.url || gallery?.overview?.url || '';
+        const logo = gallery?.overview?.logo_url || gallery?.hero?.logo_url || '';
+        if (backdrop || logo) {
+          earlyArtwork = { backdrop, logo, prepared: prepareDetailArtwork({ artwork: { backdrop, logo } }, Image) };
+        }
+      },
+    }).then(async next => {
       if (cancelled) return;
+      // Start the header requests while artwork is being prepared.
       setModel(next);
+      setDataReady(true);
+      const matchesEarly = earlyArtwork && earlyArtwork.backdrop === next.artwork?.backdrop
+        && earlyArtwork.logo === (next.artwork?.logo || '');
+      const earlyResult = matchesEarly ? await earlyArtwork.prepared : null;
+      const prepared = earlyResult
+        ? { ...next, artwork: { ...next.artwork, ...earlyResult.artwork } }
+        : await prepareDetailArtwork(next, Image);
+      if (cancelled) return;
+      setModel(prepared);
       setLoading(false);
     }).catch(cause => {
       if (cancelled) return;
@@ -160,7 +210,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     setError('');
     try {
       await request(`/api/v1/media/tv/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.mediaId)}/${encodeURIComponent(identity.seasonNumber)}/episodes/${encodeURIComponent(identity.episodeNumber)}/score/`, {
-        method: 'PATCH', json: { score },
+        method: 'PATCH', json: { score: score == null ? null : score * 10 / (child.scaleMax || 10) },
       });
       setModel(await loadDetailModel(item, { publicView: params?.publicView }));
     } catch (cause) {
@@ -183,7 +233,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     setError('');
     try {
       await request(path, {
-        method: 'PATCH', json: { score },
+        method: 'PATCH', json: { score: score == null ? null : Number(score) * 10 / (model.viewerRating?.scaleMax || 10) },
       });
       setModel(await loadDetailModel(item, { publicView: params?.publicView }));
     } catch (cause) {
@@ -194,13 +244,17 @@ export default function DetailScreen({ params, onBack, navigate }) {
   }
 
   const features = useDetailFeatures({
-    model,
-    ready: !loading && !loadFailed,
+    // Native starts read-only header requests from the navigation identity;
+    // web receives the same information in its server-rendered response.
+    model: dataReady ? model : (pendingModel || model),
+    ready: Boolean(item) && !loadFailed,
+    dataReady,
     version,
     refresh,
     navigate,
     onOpenItem: openDetail,
     onOpenExternal: openExternal,
+    shelfWidth: shelfCardWidth(viewportWindow.width, mobileGridLayout),
   });
 
   // The header search follows the page like the web header: a film page searches Movies.
@@ -238,12 +292,16 @@ export default function DetailScreen({ params, onBack, navigate }) {
     });
   }
 
-  return <Screen onBack={onBack} chrome={false}>
+  return <Screen onBack={onBack} chrome={false} artworkBleed
+    contentStyle={{ paddingTop: heroViewport.headerHeight }}>
     <DetailView
       model={viewModel}
+      heroViewport={heroViewport}
+      shelfCardWidth={shelfCardWidth(viewportWindow.width, mobileGridLayout)}
+      railComponent={WindowedRail}
       labels={model.labels}
       palette={palette}
-      loading={loading}
+      loading={loading || (features.enabled && !features.headerReady)}
       error={error}
       hideContent={loadFailed}
       onRetry={item ? () => setAttempt(value => value + 1) : undefined}
@@ -259,6 +317,10 @@ export default function DetailScreen({ params, onBack, navigate }) {
       actionsSlot={features.actionsSlot}
       scoreSlot={features.headerSlot || features.scoreSlot
         ? <>{features.headerSlot}{features.scoreSlot}</> : null}
+      sectionSlots={features.sectionSlots}
+      childSlots={features.childSlots}
+      noticeSlot={features.noticeSlot}
+      ratingInScoreRow={features.ratingInScoreRow}
       sectionsSlot={features.sectionsSlot}
       childrenSlot={features.childrenSlot}
     >{features.overlays}</DetailView>
