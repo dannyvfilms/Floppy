@@ -3147,7 +3147,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertEqual(
             {entry["label"] for entry in external_section["entries"]},
-            {"Letterboxd", "IMDb", "TVDB", "Wikidata"},
+            {"Letterboxd", "IMDb", "IMDb Parent's Guide", "TVDB", "Wikidata"},
         )
 
     @patch("app.providers.services.get_media_metadata")

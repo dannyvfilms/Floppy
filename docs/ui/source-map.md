@@ -530,6 +530,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
+- External-link producers: `src/app/providers/igdb.py`, `src/app/providers/tmdb.py`, and `src/app/detail_builders.py`. Steam links are game-only; IMDb Parent's Guide applies to TMDB movies/TV and any detail item with a stored `imdb_id`. Local chip marks: `src/static/img/steamdb-logo.svg`, `protondb-logo.png`, and `pcgamingwiki-logo.svg`; the guide reuses `imdb-logo.png`.
 - `native-proof/app/screens/DetailScreen.jsx`
 - `native-proof/app/surfaces/DetailSlot.jsx`
 - `native-proof/app/surfaces/DetailFeatures.jsx`
