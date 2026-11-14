@@ -45,6 +45,7 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
             viewport={"width": 390, "height": 844},
             is_mobile=True,
             has_touch=True,
+            color_scheme="dark",
             service_workers="block",
         )
         self.addCleanup(self.context.close)
@@ -158,6 +159,7 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
             "labels": {},
         }
         self.page.goto(f"{self.live_server_url}{reverse('cards')}")
+        cards_url = self.page.url
         self.page.evaluate(
             """props => {
               const wrapper = document.createElement('div');
@@ -175,35 +177,33 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
         )
         host = self.page.locator('[data-people-cast-root][data-react-mounted="true"]')
         expect(host).to_have_count(1)
-        role_button = self.page.get_by_role(
-            "button",
-            name=re.compile(r"^Jane Star, Tap to show role"),
-        )
-        expect(role_button).to_be_visible()
-        role_button.scroll_into_view_if_needed()
-        expect(self.page.get_by_text("29 yo at release\nDied 1993", exact=True)).to_be_visible()
+        card = host.locator("#people-card-tmdb-123").locator(".media-card")
+        expect(card).to_be_visible()
+        card.scroll_into_view_if_needed()
+        age_line = card.get_by_text("29 yo at release\nDied 1993", exact=True)
+        expect(age_line).to_be_visible()
         persisted_person = Person.objects.get(
             source=Sources.TMDB.value,
             source_person_id="123",
         )
         self.assertEqual(persisted_person.death_date.isoformat(), "1993-03-31")
         self.assertIsNotNone(persisted_person.profile_dates_checked_at)
-        role_text = role_button.get_by_text("Rae of Light", exact=True)
+        role_text = card.get_by_text("Rae of Light", exact=True)
         self.assertEqual(
-            role_text.evaluate("element => getComputedStyle(element.parentElement).opacity"),
+            role_text.evaluate("element => getComputedStyle(element).opacity"),
             "0",
         )
+        self.assertNotIn("media-card-revealed", card.get_attribute("class") or "")
 
-        role_button.click()
-        self.assertEqual(
-            self.page.get_by_text("Rae of Light", exact=True).evaluate(
-                "element => getComputedStyle(element.parentElement).opacity"
-            ),
-            "1",
-        )
-        person_link = self.page.get_by_role("link", name="Jane Star, Rae of Light")
+        card.locator("img.media-card-poster").click()
+        self.assertEqual(self.page.url, cards_url)
+        expect(card).to_have_class(re.compile("media-card-revealed"))
+        expect(role_text).to_have_css("opacity", "1")
+        screenshot = Path(os.environ["TMPDIR"]) / "person-credit-cast-rail.png"
+        host.screenshot(path=screenshot)
+        person_link = card.get_by_role("link", name="Jane Star", exact=True)
         expect(person_link).to_be_visible()
         with self.page.expect_navigation():
-            person_link.click(force=True)
+            card.locator(".media-card-overlay a[href]").click()
         self.assertIn("/person/tmdb/123/jane-star", self.page.url)
         self.assertEqual(self.page_errors, [])
