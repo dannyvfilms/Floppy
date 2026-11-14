@@ -484,16 +484,29 @@ viewer rating preferences. `DetailBackdrop` and its layout logic anchor sharp
 artwork and clearlogos to the inner content strip. Intentional native carve-out:
 artwork extends underneath the search bar and into the side rail; the PWA keeps
 its search divider. Search overlay and overflow are enabled only for Details.
+Expo fades the sharp image in from halfway through the search overlay while retaining the blur
+behind it; the PWA has a separate header and needs no equivalent offset.
+For mobile clearlogos, `DetailBackdrop` reports the fade endpoint to the shared
+hero or browser adapter, placing the logo bottom and subtitle top equally around that line.
+Desktop remains on its separate carousel layout.
+`native-proof/app/data/prepareDetailArtwork.mjs`, `native-proof/app/data/loadDetailHeader.mjs`, `native-proof/app/screens/DetailScreen.jsx`
+and `native-proof/app/surfaces/DetailFeatures.jsx` start native header requests
+alongside detail, prepare gallery artwork as soon as it arrives, and coordinate the initial reveal; the web hero adapter waits for its images and keeps a bounded
+fallback. The PWA's cold gallery request starts immediately. The server detail
+shell and deferred secondary sections remain partial/coexisting.
 `ProviderLogo` renders native SVG sources in its native adapter. Shared components
 remain props-only; permissions, requests and dialogs stay in feature adapters.
 PWA secondary templates remain server-owned; ownership is partial/coexisting.
 Retire those consumers only after shared web mounting preserves all section
 preferences, responsive states and interactions. Genre/link modal contents remain
-deferred. Current revision evidence: web — unverified comparison; iOS — pending
-simulator comparison; Android — pending emulator comparison. Builds and logic tests
-do not establish native appearance or complete page parity.
+deferred. Current backdrop revision evidence: web — runtime, mobile PWA on iPhone
+Duo compared before and after; desktop comparison pending. iOS — runtime, Expo on
+iPhone Duo compared before and after. Android — unverified; runtime comparison
+pending. These checks do not establish complete page parity.
 
 - `frontend/ui/DetailBackdrop.jsx`, `frontend/ui/DetailBackdrop.native.jsx`, `frontend/ui/DetailBackdrop.web.jsx`, `frontend/ui/detailHeroLayout.js` (inner-area hero geometry and platform image gradients).
+- `frontend/ui/DetailActivitySubtitle.jsx`, `frontend/ui/mountDetailActivitySubtitle.jsx`, `src/templates/app/components/detail_activity_subtitle.html` (shared activity subtitle, browser history-button adapter and server fallback); Expo receives formatted text from `native-proof/app/data/detailTransportCore.js`. The subtitle is shared React-owned; the surrounding detail page remains partial/coexisting.
+- `frontend/ui/mountDetailBackdrop.jsx` mounts the shared mobile backdrop in the PWA; the server image remains its loading and no-JavaScript fallback. The surrounding hero and desktop carousel remain server-owned, so ownership is partial/coexisting.
 - `frontend/ui/ProviderLogo.jsx`, `frontend/ui/ProviderLogo.native.jsx`, `frontend/ui/ProviderLogo.web.jsx` (provider logo presentation).
 - `frontend/ui/DetailSecondary.jsx`, `frontend/ui/detailSecondaryModel.js` (ordered metadata and secondary-section composition).
 - `scripts/detailHeroLayout.test.mjs`, `scripts/detailSecondaryModel.test.mjs` (geometry and safe projection regression checks).
@@ -503,7 +516,6 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
-- `src/templates/app/components/detail_activity_subtitle.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
@@ -937,6 +949,7 @@ Status: `Partial / coexisting`
 - `frontend/providers/ProviderLinkCard.jsx`
 - `native-proof/app/screens/ProvidersScreen.jsx`, `native-proof/app/screens/ProviderDetailScreen.jsx`, `native-proof/app/screens/integrationPalette.js` (native SettingsSurface consumers; directory/frame/account-order fixes, medium themed controls; browser comparison remains partial)
 - `native-proof/app/data/providersTransportCore.js` (retains browser account status and binary import payloads; current iOS/Android paths unverified)
+
 
 ProviderDetailView consumes portable AccountSettings/ProviderSettingsView, native-only active sign-in slots and CatalogGrantsCard on Stremio Tracking. Existing Django/web adapter bodies coexist until full browser parity and migration acceptance; no platform classification is changed by these native composition edits.
 

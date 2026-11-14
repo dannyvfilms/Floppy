@@ -558,19 +558,42 @@ sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` an
 places the viewer rating beside provider scores; `ProgressCard` has an opt-in
 detail presentation. Native metadata adapters preserve server formatting and
 viewer rating preferences. `detailHeroLayout` and `detailArtworkCrop` anchor artwork geometry.
+`DetailActivitySubtitle` renders the same activity dates and duration on desktop,
+mobile web and Expo, with a white separator. Web retains its history button and
+server fallback; Expo supplies formatted dates through its detail adapter. This
+component is shared React-owned; the surrounding detail page remains partial.
+The PWA mobile backdrop mounts shared `DetailBackdrop` via `mountDetailBackdrop`;
+the server image remains its loading and no-JavaScript fallback. The surrounding
+PWA hero and desktop carousel remain server-owned, so ownership is partial.
 `detailSecondaryModel` and `detailSecondaryOrder` project ordered sections.
 `DetailBackdrop` and its layout logic anchor sharp
 artwork and clearlogos to the inner content strip. Intentional native carve-out:
 artwork extends underneath the search bar and into the side rail; the PWA keeps
 its search divider. Search overlay and overflow are enabled only for Details.
+Expo fades the sharp image in from halfway through its search overlay while the blurred layer remains
+behind search; the PWA starts its sharp image below the separate header.
+On mobile, the clearlogo bottom and activity subtitle top sit on either side of
+the sharp backdrop's fade endpoint with equal spacing; the web adapter measures that endpoint for its server
+shell, while Expo lays out its shared hero directly. Desktop keeps its own hero.
+The gap matches each platform's action-row spacing: 8px on web and 12 points in Expo.
+Expo prepares backdrop and logo dimensions and coordinates initial tracking,
+progress, scores and actions before revealing the detail header. It starts the
+gallery and header requests from the navigation identity alongside detail, date
+preferences and artwork preparation. The mobile web adapter waits for hero images before revealing the
+server header and starts a cold gallery request immediately. Both have bounded
+artwork waits; a late or failed image may still appear after the fallback.
+Seerr availability comes from the private detail capability; its external state
+loads on demand so an unavailable integration cannot hold the initial header.
+Older servers retain asynchronous Seerr discovery.
 `ProviderLogo` renders native SVG sources in its native adapter. Shared components
 remain props-only; permissions, requests and dialogs stay in feature adapters.
 PWA secondary templates remain server-owned; ownership is partial/coexisting.
 Retire those consumers only after shared web mounting preserves all section
 preferences, responsive states and interactions. Genre/link modal contents remain
-deferred. Current revision evidence: web — unverified comparison; iOS — pending
-simulator comparison; Android — pending emulator comparison. Builds and logic tests
-do not establish native appearance or complete page parity.
+deferred. Current backdrop revision evidence: web — runtime, mobile PWA on iPhone
+Duo compared before and after; desktop comparison pending. iOS — runtime, Expo on
+iPhone Duo compared before and after. Android — unverified; runtime comparison
+pending. These checks do not establish complete page parity.
 
 - Shared components `DetailPageView`, `DetailEpisodePageView`, `DetailChipCard`, `DetailListCard`, `DetailIssueCards` and `DetailEpisodeCards` (`frontend/pages/DetailView.jsx`, `frontend/ui/DetailPage.jsx`, `frontend/ui/DetailEpisode.jsx`) have no mounting screen: Expo `DetailScreen` renders `DetailView` from the structured detail endpoint. Status `Partial / coexisting`, native readiness `Primitives`. Browser, iOS and Android: not verified.
 

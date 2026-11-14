@@ -1697,6 +1697,15 @@ html.light .theme-toggle-icon-moon {
       "synopsis";
   }
 
+  /* Web waits for the hero artwork before revealing its already-laid-out
+     controls; native coordinates its header data and image loading instead. */
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__title,
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__actions,
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__chips,
+  .detail-carousel-grid.detail-hero-waiting .detail-mobile-hero {
+    visibility: hidden;
+  }
+
   .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__poster,
   .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__poster {
     display: none;
@@ -1788,7 +1797,7 @@ html.light .theme-toggle-icon-moon {
     display: inline;
   }
 
-  .detail-carousel-grid:has(.detail-mobile-hero):has(.detail-activity-mobile-meta) .detail-mobile-meta {
+  .detail-carousel-grid:has(.detail-mobile-hero):has([data-detail-activity-subtitle-root]) .detail-mobile-meta {
     display: none;
   }
 
@@ -1825,6 +1834,15 @@ html.light .theme-toggle-icon-moon {
     position: absolute;
     inset: 0;
     overflow: hidden;
+  }
+
+  .detail-mobile-hero__backdrop [data-detail-backdrop-root] {
+    position: absolute;
+    inset: 0;
+  }
+
+  .detail-mobile-hero__backdrop:has([data-detail-backdrop-root][data-ready]) > img {
+    visibility: hidden;
   }
 
   .detail-mobile-hero__blur {
@@ -2035,6 +2053,22 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-mobile-hero {
     height: calc(140vw - 4rem - var(--header-safe-top));
+  }
+}
+
+/* The web hero retains its server shell; the shared backdrop supplies the
+   measured fade endpoint so the logo and activity line can meet there. */
+@media (max-width: 767.98px) {
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) {
+    grid-template-rows: max(0px, calc(var(--hero-content-line) - var(--hero-pad-y) - var(--hero-title-offset, 5.25rem) + 0.25rem)) auto;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) .detail-carousel-grid__title {
+    padding-top: 3.25rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) .detail-mobile-hero__logo {
+    top: calc(var(--hero-content-line) - 0.25rem);
   }
 }
 

@@ -82,6 +82,15 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
 
 ## Operating Principles
 
+Do not stop an authorized task merely because it requires a migration, unfamiliar
+architecture, or verification work. Implement the necessary changes and use the
+available devices and tools; report incomplete work only after making a sustained
+attempt and identifying a concrete blocker that prevents further progress.
+When the user demonstrates a defect or asks you to inspect it in the course of a
+fix, treat the demonstration as part of the work: investigate, implement the fix,
+and verify it. Do not end with findings alone when a fix is within the authorized
+task and can be made safely.
+
 When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
 
 Keep it simple. Simple is better than complex.
