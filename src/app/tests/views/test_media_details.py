@@ -2695,7 +2695,23 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertContains(response, "Watched on YouTube")
+        self.assertContains(response, "Dispatch ep 1")
         self.assertEqual(response.context["youtube_watch"]["seconds"], 1800)
+
+        video_response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.YOUTUBE.value,
+                    "media_type": MediaTypes.VIDEO.value,
+                    "media_id": "HQp_b8VHtgI",
+                    "title": "dispatch-ep-1",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+        self.assertContains(video_response, 'id="video-game-panel"')
+        self.assertEqual(video_response.context["video_game"]["how"], "tagged")
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_notes_button_opens_notes_for_latest_entry(

@@ -216,10 +216,69 @@ class WatchedForGameTests(TestCase):
         self._video(self.user, "v2", self.game.title, "2023", 5000, 1000)
         self._video(self.user, "v3", "Minecraft", "2009", 900, 900)
         self._video(self.other, "v4", self.game.title, "2023", 900, 900)
+        result = watch.watched_for_game(self.user, self.game)
         self.assertEqual(
-            watch.watched_for_game(self.user, self.game),
+            {k: v for k, v in result.items() if k != "items"},
             {"videos": 2, "seconds": 1600, "hours_label": "26m", "estimated": True},
         )
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual({row["how"] for row in result["items"]}, {"tagged"})
+
+    def test_a_link_counts_an_untagged_video(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        video = self._video(self.user, "v1", "", "", 600, 1000, "not_found")
+        VideoGameLink.objects.create(video=video, game_item=self.game)
+        result = watch.watched_for_game(self.user, self.game)
+        self.assertEqual(result["videos"], 1)
+        self.assertEqual(result["items"][0]["how"], "linked")
+
+    def test_a_link_to_another_game_moves_the_video(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        other_game = Item.objects.create(
+            media_id="2",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Minecraft",
+        )
+        video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
+        VideoGameLink.objects.create(video=video, game_item=other_game)
+        self.assertIsNone(watch.watched_for_game(self.user, self.game))
+        self.assertEqual(watch.watched_for_game(self.user, other_game)["videos"], 1)
+
+    def test_not_a_game_stops_the_automatic_match(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
+        VideoGameLink.objects.create(video=video, game_item=None)
+        self.assertIsNone(watch.watched_for_game(self.user, self.game))
+
+    def test_another_users_link_changes_nothing(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
+        theirs = self._video(self.other, "v1", self.game.title, "2023", 600, 1000)
+        VideoGameLink.objects.create(video=theirs, game_item=None)
+        self.assertEqual(watch.watched_for_game(self.user, self.game)["videos"], 1)
+
+    def test_game_for_video_reports_how_it_matched(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
+        found = watch.game_for_video(self.user, video.item)
+        self.assertEqual((found["game"], found["how"]), (self.game, "tagged"))
+        VideoGameLink.objects.create(video=video, game_item=None)
+        found = watch.game_for_video(self.user, video.item)
+        self.assertEqual((found["game"], found["how"]), (None, "none"))
+        VideoGameLink.objects.all().delete()
+        VideoGameLink.objects.create(video=video, game_item=self.game)
+        self.assertEqual(watch.game_for_video(self.user, video.item)["how"], "linked")
 
     def test_wrong_year_and_missing_tags_do_not_match(self):
         from app.services import youtube_game_watch as watch

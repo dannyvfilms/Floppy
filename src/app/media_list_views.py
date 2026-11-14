@@ -1642,9 +1642,16 @@ def media_list(request, media_type):
     )
 
     if "status" in request.GET:
+        # Match case-insensitively, as the API parser does, so a link written
+        # as "In Progress" still finds the stored "In progress".
+        status_by_lowercase = {
+            value.lower(): value for value in allowed_status_values
+        }
         status_filter = tuple(
             dict.fromkeys(
-                value for value in raw_status_filter if value in allowed_status_values
+                status_by_lowercase[value.strip().lower()]
+                for value in raw_status_filter
+                if value.strip().lower() in status_by_lowercase
             ),
         )
         request.user.update_preference(

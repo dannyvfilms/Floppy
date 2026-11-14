@@ -10,7 +10,7 @@ import unicodedata
 
 from django.db.models import Q
 
-from app.models import MediaTypes, Video, VideoGameTag
+from app.models import Item, MediaTypes, Video, VideoGameLink, VideoGameTag
 
 
 def normalize_title(title):
@@ -34,13 +34,25 @@ def tag_matches_game(tag_title, tag_year, game_item):
     )
 
 
+def _seconds_watched(progress, length):
+    """Furthest position, capped at the runtime. A rewatch can pass the runtime."""
+    return min(progress, length) if length else progress
+
+
+def _hours_label(seconds):
+    hours, minutes = divmod(seconds // 60, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
 def watched_for_game(user, game_item):
     """Estimate how long `user` watched videos about this game.
 
     A video counts when the user linked it to this game, or when YouTube's tag
-    matches it and the user has not unlinked or relinked it elsewhere.
+    matches it and the user has not unlinked or relinked it elsewhere. Takeout
+    imports carry no position, so those videos add to the count but not to the time.
 
-    @returns `{"videos", "seconds", "hours_label", "estimated"}`, or None when nothing matches.
+    @returns `{"videos", "seconds", "hours_label", "estimated", "items"}`, or None
+    when nothing matches. `items` lists each video, newest first.
     """
     if game_item.media_type != MediaTypes.GAME.value:
         return None
@@ -50,27 +62,72 @@ def watched_for_game(user, game_item):
         game_link__isnull=True,
         item__video_game_tag__status=VideoGameTag.Status.FOUND,
     ).filter(~Q(pk__in=manual.values("pk")))
-    rows = [(v.progress, v.length_seconds) for v in manual]
-    rows += [
-        (progress, length)
-        for progress, length, title, year in tagged.values_list(
-            "progress",
-            "length_seconds",
-            "item__video_game_tag__game_title",
-            "item__video_game_tag__release_year",
+    matched = [(video, "linked") for video in manual.select_related("item")]
+    matched += [
+        (video, "tagged")
+        for video in tagged.select_related("item", "item__video_game_tag")
+        if tag_matches_game(
+            video.item.video_game_tag.game_title,
+            video.item.video_game_tag.release_year,
+            game_item,
         )
-        if tag_matches_game(title, year, game_item)
     ]
-    if not rows:
+    if not matched:
         return None
-    videos = len(rows)
-    # Position can pass the runtime after a rewatch or a seek past the end.
-    seconds = sum(min(p, n) if n else p for p, n in rows)
-    hours, minutes = divmod(seconds // 60, 60)
-    label = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+    items = []
+    seconds = 0
+    for video, how in matched:
+        watched = _seconds_watched(video.progress, video.length_seconds)
+        seconds += watched
+        items.append(
+            {
+                "video": video,
+                "item": video.item,
+                "seconds": watched,
+                "label": _hours_label(watched) if watched else "",
+                "how": how,
+                "when": video.end_date,
+            }
+        )
+    items.sort(
+        key=lambda row: (row["when"] is not None, row["when"] or row["video"].pk),
+        reverse=True,
+    )
     return {
-        "videos": videos,
+        "videos": len(items),
         "seconds": seconds,
-        "hours_label": label,
+        "hours_label": _hours_label(seconds),
         "estimated": True,
+        "items": items,
     }
+
+
+def game_for_video(user, video_item):
+    """Return what a video is about for `user`.
+
+    @returns `{"game", "how", "tag"}`. `game` is the Floppy game Item or None.
+    `how` is "linked" (user's choice), "none" (user said no game), "tagged"
+    (matched from YouTube's tag), or "" (nothing known).
+    """
+    tag = VideoGameTag.objects.filter(
+        item=video_item, status=VideoGameTag.Status.FOUND
+    ).first()
+    link = (
+        VideoGameLink.objects.filter(video__user=user, video__item=video_item)
+        .select_related("game_item")
+        .first()
+    )
+    if link:
+        return {
+            "game": link.game_item,
+            "how": "linked" if link.game_item else "none",
+            "tag": tag,
+        }
+    if tag:
+        candidates = Item.objects.filter(
+            media_type=MediaTypes.GAME.value, title__icontains=tag.game_title
+        )[:20]
+        for game in candidates:
+            if tag_matches_game(tag.game_title, tag.release_year, game):
+                return {"game": game, "how": "tagged", "tag": tag}
+    return {"game": None, "how": "", "tag": tag}

@@ -8,6 +8,7 @@ from app import (
     history_views,
     media_details_views,
     progress_views,
+    video_game_views,
     views,
 )
 from app.discover import feeds as discover_feeds
@@ -17,6 +18,13 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path("video/<int:item_id>/game/", video_game_views.video_game_panel, name="video_game_panel"),
+    path("video/<int:item_id>/game/set/", video_game_views.video_game_set, name="video_game_set"),
+    path(
+        "video/<int:item_id>/game/search/",
+        video_game_views.video_game_search,
+        name="video_game_search",
+    ),
     path("youtube-player", media_details_views.youtube_player, name="youtube_player"),
     path("progress/cancel-rewatch/", progress_views.cancel_progress_rewatch, name="cancel_progress_rewatch"),
     path(
