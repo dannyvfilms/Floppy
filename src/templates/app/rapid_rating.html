@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Rapid Rating" %} - Floppy{% endblock title %}
+
+{% block extra_head %}
+  <style>
+    .rr-shell{max-width:1080px;margin:0 auto}.rr-panel{background:var(--color-surface);border:1px solid var(--color-border);border-radius:14px}.rr-head{display:flex;justify-content:space-between;gap:1.25rem;margin-bottom:1rem}.rr-tabs{display:inline-flex;gap:.25rem;padding:.25rem;margin-bottom:.9rem;border:1px solid var(--color-border);border-radius:.65rem;background:var(--color-surface)}.rr-tab{padding:.55rem .9rem;border-radius:.45rem;color:var(--color-text-muted);font-weight:600}.rr-tab.active,.rr-tab:hover{background:var(--color-border);color:var(--color-text)}.rr-toolbar{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:.75rem;padding:.9rem;margin-bottom:1rem}.rr-toolbar label{display:block;margin-bottom:.25rem;color:var(--color-text-muted);font-size:.72rem;font-weight:700;text-transform:uppercase}.rr-toolbar select{width:100%;height:2.35rem;padding:0 .6rem;border:1px solid var(--color-border);border-radius:.45rem;background:var(--color-page-bg);color:var(--color-text)}.rr-progress{height:5px;margin-bottom:1rem;overflow:hidden;border-radius:999px;background:var(--color-border)}.rr-progress>div{height:100%;background:var(--color-link);transition:width .12s ease}.rr-card{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:2rem;align-items:center;min-height:470px;padding:1.6rem}.rr-poster{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:.7rem;background:var(--color-page-bg);box-shadow:0 12px 30px rgba(0,0,0,.2)}.rr-title{font-size:clamp(1.7rem,4vw,2.5rem);font-weight:750;line-height:1.1}.rr-subtitle{margin-top:.45rem;color:var(--color-text-secondary);font-size:1.05rem}.rr-meta{margin-top:.5rem;color:var(--color-text-muted);font-size:.85rem}.rr-aggregates{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:1.1rem}.rr-aggregate{padding:.7rem;border:1px solid var(--color-border);border-radius:.55rem;background:var(--color-page-bg)}.rr-aggregate strong{display:block;margin-top:.2rem;font-size:1.2rem}.rr-aggregate small{color:var(--color-text-muted)}.rr-rating-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:.4rem;margin-top:.7rem}.rr-rate{height:3.2rem;border:1px solid var(--color-border);border-radius:.5rem;background:var(--color-page-bg);color:var(--color-text-secondary);font-weight:700}.rr-rate:hover,.rr-rate.current{border-color:var(--color-link);color:var(--color-link);background:var(--color-hover-dim)}.rr-rate small{display:block;font-size:.52rem;color:var(--color-text-muted);font-weight:500}.rr-actions{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:1rem}.rr-action{padding:.55rem .8rem;border:1px solid var(--color-border);border-radius:.5rem;color:var(--color-text-muted)}.rr-action:hover{background:var(--color-hover-dim);color:var(--color-text)}.rr-status{min-height:1.2rem;margin-top:.75rem;color:var(--color-text-muted);font-size:.75rem}.rr-error{color:#f87171}.rr-done{display:none;padding:4rem 1rem;text-align:center}.rr-stats{text-align:right;color:var(--color-text-muted);font-size:.8rem}.rr-stats strong{color:var(--color-text)}@media(max-width:850px){.rr-toolbar{grid-template-columns:1fr 1fr}.rr-card{grid-template-columns:1fr}.rr-poster{max-width:220px;margin:0 auto}.rr-rating-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.rr-details{text-align:center}.rr-aggregates{text-align:left}}@media(max-width:520px){.rr-head{flex-direction:column}.rr-stats{text-align:left}.rr-toolbar{grid-template-columns:1fr}.rr-aggregates{grid-template-columns:1fr}}
+  </style>
+{% endblock extra_head %}
+
+{% block content %}
+{{ rapid_items|json_script:"rapid-rating-data" }}
+<div class="rr-shell">
+  <header class="rr-head">
+    <div>
+      <h1 class="text-3xl font-bold">{% translate "Rapid Rating" %}</h1>
+      <p class="mt-1 text-sm text-[var(--color-text-muted)]">
+        {% if rapid_media == "tv" %}{% translate "Rate individual TV episodes. Season and show scores are derived from episode ratings." %}{% else %}{% translate "Completed movies without your rating." %}{% endif %}
+      </p>
+    </div>
+    <div class="rr-stats">
+      <div>{% translate "Matching" %}: <strong>{{ rapid_total }}</strong></div>
+      {% if rapid_media == "tv" and rapid_total > rapid_loaded %}<div>{% translate "Loaded batch" %}: <strong>{{ rapid_loaded }}</strong></div>{% endif %}
+      <div>{% translate "Remaining in batch" %}: <strong id="rrRemaining">{{ rapid_loaded }}</strong></div>
+      <div>{% translate "Saved this session" %}: <strong id="rrSaved">0</strong></div>
+      <div>{% translate "Skipped" %}: <strong id="rrSkipped">0</strong></div>
+    </div>
+  </header>
+
+  <nav class="rr-tabs" aria-label="{% translate 'Media type' %}">
+    <a class="rr-tab {% if rapid_media == 'movies' %}active{% endif %}" href="{% url 'rapid_rating' %}?media=movies">{% translate "Movies" %}</a>
+    <a class="rr-tab {% if rapid_media == 'tv' %}active{% endif %}" href="{% url 'rapid_rating' %}?media=tv">{% translate "TV Episodes" %}</a>
+  </nav>
+
+  {% if rapid_media == "tv" %}
+  <form class="rr-toolbar rr-panel" method="get" action="{% url 'rapid_rating' %}" id="rapidTvFilters">
+    <input type="hidden" name="media" value="tv">
+    <div><label for="rapidShow">{% translate "TV Show" %}</label><select id="rapidShow" name="show"><option value="">{% translate "All TV Shows" %}</option>{% for option in rapid_show_options %}<option value="{{ option.id }}" {% if rapid_selected_show == option.id %}selected{% endif %}>{{ option.title }} - {{ option.rated_count }}/{{ option.episode_count }} {% translate "rated" %}</option>{% endfor %}</select></div>
+    <div><label for="rapidSeason">{% translate "Season" %}</label><select id="rapidSeason" name="season" {% if not rapid_selected_show %}disabled{% endif %}><option value="">{% translate "All Seasons" %}</option>{% for option in rapid_season_options %}<option value="{{ option.id }}" {% if rapid_selected_season == option.id %}selected{% endif %}>{{ option.label }} - {{ option.rated_count }}/{{ option.episode_count }} {% translate "rated" %}</option>{% endfor %}</select></div>
+    <div><label for="rapidState">{% translate "Rating state" %}</label><select id="rapidState" name="state"><option value="unrated" {% if rapid_rating_state == 'unrated' %}selected{% endif %}>{% translate "Unrated" %}</option><option value="rated" {% if rapid_rating_state == 'rated' %}selected{% endif %}>{% translate "Rated" %}</option><option value="all" {% if rapid_rating_state == 'all' %}selected{% endif %}>{% translate "All" %}</option></select></div>
+    <div><label for="rapidOrder">{% translate "Order" %}</label><select id="rapidOrder" name="order"><option value="recent" {% if rapid_order == 'recent' %}selected{% endif %}>{% translate "Recently watched" %}</option><option value="oldest" {% if rapid_order == 'oldest' %}selected{% endif %}>{% translate "Oldest watched" %}</option><option value="episode" {% if rapid_order == 'episode' %}selected{% endif %}>{% translate "Episode order" %}</option><option value="random" {% if rapid_order == 'random' %}selected{% endif %}>{% translate "Random" %}</option></select></div>
+  </form>
+  {% endif %}
+
+  <div class="rr-progress"><div id="rrProgress"></div></div>
+
+  <section class="rr-card rr-panel" id="rrCard">
+    <div><img class="rr-poster" id="rrPoster" alt=""><div id="rrNoPoster" class="rr-poster hidden items-center justify-center text-center text-[var(--color-text-muted)]">{% translate "No poster" %}</div></div>
+    <div class="rr-details">
+      <h2 class="rr-title" id="rrTitle"></h2>
+      <div class="rr-subtitle" id="rrEpisode"></div>
+      <div class="rr-meta" id="rrMeta"></div>
+      <div class="rr-meta" id="rrWatched"></div>
+      <div class="rr-aggregates" id="rrAggregates">
+        <div class="rr-aggregate"><small id="rrSeasonLabel"></small><strong id="rrSeasonScore">-</strong><small id="rrSeasonCoverage"></small></div>
+        <div class="rr-aggregate"><small>{% translate "TV Show" %}</small><strong id="rrShowScore">-</strong><small id="rrShowCoverage"></small></div>
+      </div>
+      <div class="mt-6 font-semibold">{% translate "Your rating" %} <span class="text-sm font-normal text-[var(--color-text-muted)]" id="rrCurrent"></span></div>
+      <div class="rr-rating-grid" id="rrRatings"></div>
+      <div class="rr-actions"><button class="rr-action" type="button" id="rrSkip">{% translate "Skip" %} (S)</button><button class="rr-action" type="button" id="rrUndo">{% translate "Undo" %} (←)</button><button class="rr-action" type="button" id="rrClearSkipped">{% translate "Clear skipped" %}</button></div>
+      <div class="rr-status" id="rrStatus"></div>
+    </div>
+  </section>
+
+  <section class="rr-done rr-panel" id="rrDone"><h2 class="text-2xl font-bold">{% translate "Batch complete" %}</h2><p class="mt-2 text-[var(--color-text-muted)]" id="rrDoneText"></p><div class="mt-5 flex justify-center gap-2"><button class="rr-action" type="button" id="rrReload">{% translate "Reload batch" %}</button><button class="rr-action" type="button" id="rrDoneClear">{% translate "Clear skipped" %}</button></div></section>
+</div>
+
+<script>
+(() => {
+  const items = JSON.parse(document.getElementById('rapid-rating-data').textContent || '[]');
+  const scale = Number('{{ rapid_rating_scale }}') || 10;
+  const mode = '{{ rapid_media|escapejs }}';
+  const skipKey = `floppy:rapid-rating:v2:skipped:${mode}`;
+  const processed = new Set();
+  const skipped = new Set(JSON.parse(localStorage.getItem(skipKey) || '[]'));
+  const history = [];
+  const pending = new Map();
+  let cursor = -1;
+  let saving = 0;
+  let lastError = '';
+
+  const $ = id => document.getElementById(id);
+  const card = $('rrCard'), done = $('rrDone'), poster = $('rrPoster'), noPoster = $('rrNoPoster');
+  const seasonStats = new Map(), showStats = new Map();
+  for (const item of items) {
+    if (item.season_id && item.season_stats) seasonStats.set(item.season_id, {...item.season_stats});
+    if (item.show_id && item.show_stats) showStats.set(item.show_id, {...item.show_stats});
+  }
+
+  const csrf = () => document.cookie.match(/(?:^|; )csrftoken=([^;]+)/)?.[1] ? decodeURIComponent(document.cookie.match(/(?:^|; )csrftoken=([^;]+)/)[1]) : '';
+  const available = item => item && !processed.has(item.id) && !skipped.has(item.id);
+  const nextIndex = start => { for (let i = Math.max(0,start); i < items.length; i++) if (available(items[i])) return i; return -1; };
+  const current = () => cursor >= 0 ? items[cursor] : null;
+  const saveSkipped = () => localStorage.setItem(skipKey, JSON.stringify([...skipped]));
+  const scoreText = stat => stat && stat.rated ? (stat.sum / stat.rated).toFixed(2) : '-';
+  const coverageText = (stat, specials) => stat ? `${stat.rated}/${stat.total} rated${specials ? ' · Specials excluded' : ''}` : '';
+  const formatDate = iso => { if (!iso) return ''; const [y,m,d]=iso.split('-').map(Number); try{return new Intl.DateTimeFormat(document.documentElement.lang || undefined,{year:'numeric',month:'short',day:'numeric'}).format(new Date(y,m-1,d));}catch{return iso;} };
+
+  function delta(stat, oldScore, newScore) {
+    if (!stat) return;
+    if (oldScore !== null && oldScore !== undefined) { stat.rated = Math.max(0, stat.rated - 1); stat.sum -= Number(oldScore); }
+    if (newScore !== null && newScore !== undefined) { stat.rated += 1; stat.sum += Number(newScore); }
+  }
+  function aggregateDelta(item, oldScore, newScore) {
+    if (item.kind !== 'episode') return;
+    delta(seasonStats.get(item.season_id), oldScore, newScore);
+    if (Number(item.season_number) !== 0) delta(showStats.get(item.show_id), oldScore, newScore);
+  }
+  function status() {
+    const el = $('rrStatus'); el.classList.toggle('rr-error', Boolean(lastError));
+    if (lastError) el.textContent = lastError;
+    else if (saving) el.textContent = `Saving ${saving} rating${saving === 1 ? '' : 's'}…`;
+    else el.textContent = scale === 10 ? 'Keyboard: 1-9 = rating, 0 = 10, S = skip, ← / Backspace = undo' : `Keyboard: 1-${scale} = rating, S = skip, ← / Backspace = undo`;
+  }
+  function stats() {
+    const remaining = items.filter(available).length;
+    $('rrRemaining').textContent = remaining; $('rrSaved').textContent = processed.size;
+    $('rrSkipped').textContent = items.filter(i => skipped.has(i.id)).length;
+    $('rrProgress').style.width = `${items.length ? ((items.length-remaining)/items.length)*100 : 100}%`;
+    $('rrUndo').disabled = history.length === 0;
+  }
+  function renderAggregates(item) {
+    $('rrAggregates').style.display = item.kind === 'episode' ? 'grid' : 'none';
+    if (item.kind !== 'episode') return;
+    const ss = seasonStats.get(item.season_id), ts = showStats.get(item.show_id);
+    $('rrSeasonLabel').textContent = Number(item.season_number) === 0 ? 'Specials' : `Season ${item.season_number}`;
+    $('rrSeasonScore').textContent = scoreText(ss); $('rrSeasonCoverage').textContent = coverageText(ss,false);
+    $('rrShowScore').textContent = scoreText(ts); $('rrShowCoverage').textContent = coverageText(ts,true);
+  }
+  function renderButtons(item) {
+    $('rrRatings').querySelectorAll('button').forEach(btn => btn.classList.toggle('current', item.current_score !== null && Number(item.current_score) === Number(btn.dataset.score)));
+    $('rrCurrent').textContent = item.current_score === null || item.current_score === undefined ? '· unrated' : `· current ${item.current_score}`;
+  }
+  function render() {
+    stats(); status(); const item = current();
+    if (!available(item)) { card.style.display='none'; done.style.display='block'; $('rrDoneText').textContent = mode === 'tv' ? 'This batch is complete. Reload for a fresh matching batch or change the filters.' : 'There are no more unskipped unrated movies in this session.'; return; }
+    done.style.display='none'; card.style.display='grid';
+    $('rrTitle').textContent = item.kind === 'episode' ? item.show_title : item.title;
+    $('rrEpisode').textContent = item.kind === 'episode' ? `${item.subtitle} · ${item.title}` : (item.year ? `(${item.year})` : '');
+    $('rrMeta').textContent = Array.isArray(item.genres) ? item.genres.join(' · ') : '';
+    $('rrWatched').textContent = item.watched ? `Watched ${formatDate(item.watched)}` : '';
+    if (item.poster) { poster.src=item.poster; poster.alt=`${item.show_title || item.title} poster`; poster.style.display='block'; noPoster.style.display='none'; } else { poster.removeAttribute('src'); poster.style.display='none'; noPoster.style.display='flex'; }
+    renderAggregates(item); renderButtons(item);
+  }
+  function queueScore(item, score) {
+    const previous = pending.get(item.id) || Promise.resolve();
+    const task = previous.catch(()=>{}).then(async()=>{ saving++; lastError=''; status(); const body=new URLSearchParams(); body.set('score', score === null ? 'null' : String(score)); const response=await fetch(item.rate_url,{method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':csrf(),'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:body.toString()}); if(!response.ok) throw new Error(`HTTP ${response.status}`); }).catch(error=>{ console.error('Rapid Rating save failed',error); lastError=`Could not save rating for "${item.title}". Reload before continuing with that item.`; }).finally(()=>{saving=Math.max(0,saving-1);status();});
+    pending.set(item.id,task);
+  }
+  function forward(){ cursor=nextIndex(cursor+1); render(); }
+  function rate(score){ const item=current(); if(!item)return; const old=item.current_score==null?null:Number(item.current_score); history.push({type:'rating',index:cursor,item,previousScore:old,newScore:score}); aggregateDelta(item,old,score); item.current_score=score; processed.add(item.id); queueScore(item,score); forward(); }
+  function skip(){ const item=current(); if(!item)return; history.push({type:'skip',index:cursor,item}); skipped.add(item.id); saveSkipped(); forward(); }
+  function undo(){ if(!history.length)return; const action=history.pop(); if(action.type==='rating'){processed.delete(action.item.id);aggregateDelta(action.item,action.newScore,action.previousScore);action.item.current_score=action.previousScore;queueScore(action.item,action.previousScore);}else{skipped.delete(action.item.id);saveSkipped();} cursor=action.index;render(); }
+  function clearSkipped(){ skipped.clear(); saveSkipped(); if(cursor<0 || !available(current())) cursor=nextIndex(0); render(); }
+
+  for(let score=1;score<=scale;score++){ const button=document.createElement('button');button.type='button';button.className='rr-rate';button.dataset.score=String(score);const key=scale===10&&score===10?'0':String(score);button.innerHTML=`${score}<small>key ${key}</small>`;button.addEventListener('click',()=>rate(score));$('rrRatings').appendChild(button); }
+  poster.addEventListener('error',()=>{poster.style.display='none';noPoster.style.display='flex';});
+  $('rrSkip').addEventListener('click',skip);$('rrUndo').addEventListener('click',undo);$('rrClearSkipped').addEventListener('click',clearSkipped);$('rrDoneClear').addEventListener('click',clearSkipped);$('rrReload').addEventListener('click',()=>location.reload());
+  document.querySelectorAll('#rapidTvFilters select').forEach(el=>el.addEventListener('change',()=>$('rapidTvFilters').submit()));
+  window.addEventListener('keydown',event=>{ const target=event.target;if(target && ['SELECT','INPUT','TEXTAREA'].includes(target.tagName))return;if(event.ctrlKey||event.altKey||event.metaKey)return;const key=event.key.toLowerCase();if(/^[1-9]$/.test(key)&&Number(key)<=scale){event.preventDefault();rate(Number(key));}else if(scale===10&&key==='0'){event.preventDefault();rate(10);}else if(key==='s'){event.preventDefault();skip();}else if(key==='backspace'||key==='arrowleft'){event.preventDefault();undo();} });
+  cursor=nextIndex(0);render();
+})();
+</script>
+{% endblock content %}

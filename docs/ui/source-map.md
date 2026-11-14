@@ -248,6 +248,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/media_card_rating.html`
 - `src/templates/app/components/media_card_rating_oob.html`
 - `src/templates/app/components/rating_picker.html`
+- `src/templates/app/rapid_rating.html` (Rapid Rating queue page)
 
 ## LIBRARY
 
