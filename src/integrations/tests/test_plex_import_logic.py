@@ -348,6 +348,63 @@ class TestPlexHybridImport(TestCase):
         self.assertEqual(episode.item.media_id, "1515183")
         self.assertEqual(episode.item.title, "Yellowstone")
 
+    def test_new_season_of_a_dropped_or_paused_show_does_not_reopen_it(self):
+        """History for a new season is recorded, but the show stays off the shelf (#1133)."""
+        for status in (Status.DROPPED.value, Status.PAUSED.value):
+            with self.subTest(status=status):
+                TV.objects.filter(user=self.user).delete()
+                tv_item, _ = Item.objects.get_or_create(
+                    title="Yellowstone",
+                    media_id="73586",
+                    media_type=MediaTypes.TV.value,
+                    source=Sources.TMDB.value,
+                    image="https://example.com/show.jpg",
+                )
+                existing_tv = TV.objects.create(
+                    item=tv_item,
+                    user=self.user,
+                    status=status,
+                )
+                importer = PlexHistoryImporter(
+                    user=self.user,
+                    account=self.account,
+                    mode="new",
+                    library="machine::1",
+                )
+                importer._episode_records = [
+                    {
+                        "tmdb_id": "73586",
+                        "season_number": 2,
+                        "episode_number": 1,
+                        "watched_at": timezone.now().replace(second=0, microsecond=0),
+                        "viewed_at_ts": 1700000000,
+                        "plex_rating_key": "rk-yellowstone",
+                        "rating": None,
+                        "title": "Episode",
+                        "series_title": "Yellowstone",
+                    }
+                ]
+                importer._tv_metadata_cache = {
+                    "73586": {
+                        "media_id": "73586",
+                        "title": "Yellowstone",
+                        "original_title": "Yellowstone",
+                        "localized_title": "Yellowstone",
+                        "image": "https://example.com/show.jpg",
+                        "season/2": {
+                            "image": "https://example.com/season2.jpg",
+                            "episodes": [{"episode_number": 1}],
+                        },
+                    }
+                }
+
+                importer._build_bulk_media()
+
+                seasons = importer.bulk_media[MediaTypes.SEASON.value]
+                self.assertEqual([s.status for s in seasons], [status])
+                self.assertEqual(seasons[0].related_tv, existing_tv)
+                self.assertEqual(len(importer.bulk_media[MediaTypes.EPISODE.value]), 1)
+
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.providers.tvdb.tv_with_seasons")
     @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=True)
