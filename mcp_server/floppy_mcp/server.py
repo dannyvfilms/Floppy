@@ -9,11 +9,13 @@ FLOPPY_TOKEN environment variables (see client.py).
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Any, Literal
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .client import (
     FloppyAPIError,
@@ -23,6 +25,12 @@ from .client import (
 )
 from .resolve import resolve_candidates
 
+_allowed_hosts = [
+    host.strip()
+    for host in os.environ.get("FLOPPY_MCP_ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+
 mcp = FastMCP(
     name="floppy",
     instructions=(
@@ -31,6 +39,11 @@ mcp = FastMCP(
         "custom lists, history, statistics, and account settings. Call "
         "search_media before track_media when you don't already have a "
         "known source/media_id — track_media requires exact identifiers."
+    ),
+    transport_security=(
+        TransportSecuritySettings(allowed_hosts=_allowed_hosts)
+        if _allowed_hosts
+        else None
     ),
 )
 
