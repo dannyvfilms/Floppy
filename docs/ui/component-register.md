@@ -568,6 +568,16 @@ HomeView forwards optional card/progress renderers and row-title callbacks; the 
 
 ### DETAIL — Detail composition and metadata
 
+`DetailTrackSplit` shares the tracking button between the PWA and Expo's
+`DetailActionBar`. The web adapter bridges actions to the server-rendered fallback
+and its modal/HTMX behavior; Expo supplies actions and its native menu sheet.
+Status: partial/coexisting, Primitives. The fallback retires when web owns the
+tracking dialogs and server response lifecycle. The web menu is anchored while
+native uses its existing adaptive sheet. iOS and Android: Expo Go simulator and
+emulator preview compared the shared button before and after; the full signed-in
+detail flow was not exercised. Browser: Chromium compared desktop and phone
+legacy fallbacks with the shared menu after an edit and exercised the edit flow.
+
 Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
 `DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
 sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and

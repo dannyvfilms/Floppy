@@ -3602,6 +3602,15 @@
         }
       }
     },
+    "frontend/ui/DetailTrackSplit.jsx": {
+      "components": ["DetailTrackSplit"],
+      "register": "DETAIL",
+      "verification": {
+        "web": {"status": "verified", "evidence": "Chromium desktop and phone fallback comparison and edit/save flow."},
+        "ios": {"status": "verified", "evidence": "Expo Go simulator component preview compared before and after; signed-in flow not exercised."},
+        "android": {"status": "verified", "evidence": "Expo Go emulator component preview compared before and after; signed-in flow not exercised."}
+      }
+    },
     "frontend/ui/DetailEpisode.jsx": {
       "components": [
         "DetailEpisodeHeader"
@@ -5534,6 +5543,10 @@
     "frontend/ui/mountRatingStars.jsx": {
       "register": "RATING",
       "purpose": "Django/browser integration for the shared star row."
+    },
+    "frontend/ui/mountDetailTrackSplit.jsx": {
+      "register": "DETAIL",
+      "purpose": "Mount shared detail tracking controls and bridge actions to the server fallback."
     },
     "frontend/ui/mountDetailActivitySubtitle.jsx": {
       "register": "DETAIL",

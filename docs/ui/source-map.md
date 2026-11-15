@@ -219,6 +219,8 @@ Quick status uses the shared MediaCard and MediaCardActions, the browser card ad
 
 `frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `native-proof/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
 
+- `frontend/ui/mediaCardQuickStatus.web.js`
+
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
 
 `native-proof/app/surfaces/NativeCardMenu.ios.jsx` renders the iOS context menu and its menu-style Picker; `NativeCardMenu.android.jsx` supplies the Android Material menu and haptic, while `NativeCardMenu.jsx` supplies the shared dropdown on Expo web. The Picker changes the native submenu control; its iOS runtime appearance is not yet verified.
@@ -601,6 +603,13 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/detail_track_action_attrs.html`
 - `src/templates/app/components/detail_track_open_attrs.html`
 - `src/templates/app/components/detail_track_split.html`
+- `frontend/ui/mountDetailTrackSplit.jsx` and `frontend/ui/DetailTrackSplit.jsx`:
+  PWA mounts the shared split button over its server fallback;
+  Expo consumes the same button through `DetailActionBar` in `DetailFeatures`.
+  Partial/coexisting; retire the web fallback after its modal and HTMX lifecycle
+  migrate. Browser: Chromium compared desktop and phone fallback and shared menus
+  and exercised edit/save. iOS and Android: Expo Go simulator/emulator component previews
+  compared the button; signed-in detail flows were not exercised.
 - `src/templates/app/components/fill_track.html`
 - `src/templates/app/components/fill_track_episode.html`
 - `src/templates/app/components/fill_track_episode_bulk.html`
