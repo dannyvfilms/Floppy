@@ -7,6 +7,8 @@ import { getActiveAuthSession } from '../data/authSession';
 import { detailHeaderText, trackingEntriesFromPayload } from '../data/detailTransportCore';
 import { formatUserDate, loadDatePreferences } from '../data/userDate';
 import { detailEndpoint, detailGalleryEndpoint, identityFromDetailItem } from './detailIdentity.mjs';
+import { loadAlbumWithTracks, loadShowWithEpisodes } from './detailLoads.mjs';
+import { scoreChipsFromPayload, trackingFactsFromPayload, viewerRatingFromPayload } from './detailActions.mjs';
 
 export const surface = {
   id: 'DETAIL',
@@ -150,13 +152,7 @@ function detailFromProviderPayload(payload, item, identity) {
     title: 'Your notes',
     body: <Text style={{ color: palette.textSecondary }}>{payload.tracking.notes}</Text>,
   });
-  const facts = [...(payload?.facts || [])];
-  if (payload?.tracking?.status) facts.push({ label: 'Status', value: String(payload.tracking.status) });
-  if (payload?.tracking?.score != null) facts.push({ label: 'Your score', value: String(payload.tracking.score) });
-  if (payload?.tracking?.progress != null) {
-    const max = payload.tracking.max_progress;
-    facts.push({ label: 'Progress', value: max ? `${payload.tracking.progress} / ${max}` : String(payload.tracking.progress) });
-  }
+  const facts = trackingFactsFromPayload(payload);
   const capabilities = payload?.capabilities || {};
   const canTrack = capabilities.can_track;
   const canUpdate = capabilities.can_update;
@@ -199,12 +195,9 @@ function detailFromProviderPayload(payload, item, identity) {
     ...detailHeaderText(payload?.activity_subtitle, payload?.media_details),
     publicView,
     readOnly: Boolean(payload?.read_only),
+    seerrConfigured: capabilities.can_request_seerr,
     trackingEntries: trackingEntriesFromPayload(payload),
-    viewerRating: payload?.tracking && !publicView && payload?.viewer_rating?.enabled !== false ? {
-      value: payload.viewer_rating?.value ?? payload.tracking.score,
-      scaleMax: payload.viewer_rating?.scale_max || 10,
-      editable: Boolean(capabilities.can_update),
-    } : null,
+    viewerRating: viewerRatingFromPayload(payload, publicView),
     artwork: {
       src: payload?.artwork?.src || item?.image?.src || item?.image || '',
       aspect: payload?.artwork?.aspect || 'poster',
@@ -218,14 +211,7 @@ function detailFromProviderPayload(payload, item, identity) {
     labels,
     palette: detailPalette,
     sections,
-    scoreChips: [
-      ...(payload?.score_chips || []).map(chip => ({ ...chip, value: chip.value ?? chip.rating ?? chip.score ?? chip.tier })),
-      ...(payload?.tag_sections || []).flatMap(group => (group.entries || []).map(entry => ({
-        ...entry,
-        label: group.title_label || group.title,
-        text: entry.label,
-      }))),
-    ],
+    scoreChips: scoreChipsFromPayload(payload),
     relatedSections: payload?.related_sections || [],
     people: {
       cast: (payload?.people?.cast || []).map(person => ({
@@ -372,30 +358,30 @@ export async function loadDetailModel(item, options = {}) {
   if (!identity) throw new Error('Open a detail from a media item or a Floppy detail link.');
   const request = options.request || getActiveAuthSession()?.request;
   if (typeof request !== 'function') throw new Error('Connect to your Floppy server to load this detail.');
-  await loadDatePreferences(request);
+  const datePreferences = loadDatePreferences(request);
 
   if (identity.musicKind) {
     if (identity.musicKind === 'artist') {
-      const response = await request(`/api/v1/music/artists/${encodeURIComponent(identity.musicId)}/`);
-      return fromMusicPayload(response, item, 'artist', identity.publicView);
+      const [artist] = await Promise.all([
+        request(`/api/v1/music/artists/${encodeURIComponent(identity.musicId)}/`), datePreferences]);
+      return fromMusicPayload(artist, item, 'artist', identity.publicView);
     }
     if (identity.musicKind === 'album') {
-      const response = await request(`/api/v1/music/albums/${encodeURIComponent(identity.musicId)}/`);
-      const tracks = await request(`/api/v1/music/albums/${encodeURIComponent(identity.musicId)}/tracks/`);
+      // The album and its tracks load together; neither needs the other.
+      const [[response, tracks]] = await Promise.all([loadAlbumWithTracks(request, identity.musicId), datePreferences]);
       return fromMusicPayload({ ...response, artist_id: identity.artistId, tracks: tracks.results || tracks }, item, 'album', identity.publicView);
     }
     const albumId = identity.albumId;
     if (!albumId) throw new Error('The track link does not include its album.');
-    const album = await request(`/api/v1/music/albums/${encodeURIComponent(albumId)}/`);
-    const tracks = await request(`/api/v1/music/albums/${encodeURIComponent(albumId)}/tracks/`);
+    const [[album, tracks]] = await Promise.all([loadAlbumWithTracks(request, albumId), datePreferences]);
     const track = asList(tracks.results || tracks).find(value => String(value.id) === String(identity.musicId));
     if (!track) throw new Error('This track is no longer available in its album.');
     return fromMusicPayload({ ...track, artist_id: identity.artistId, album_id: albumId, artist_name: album.artist_name, release_date: album.release_date }, item, 'track', identity.publicView);
   }
 
   if (identity.podcastId) {
-    const response = await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.podcastId)}/`);
-    const episodes = await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.podcastId)}/episodes/?limit=30&offset=0`);
+    // The show and its first episodes load together; neither needs the other.
+    const [[response, episodes]] = await Promise.all([loadShowWithEpisodes(request, identity.podcastId), datePreferences]);
     return {
       ...fromMusicPayload({ ...response, name: response.title }, item, 'show', identity.publicView),
       synopsis: { text: response.description || '', previewLines: 3 },
@@ -423,10 +409,21 @@ export async function loadDetailModel(item, options = {}) {
     episodePage: options.episodePage,
   };
   try {
+    // Start supported gallery lookups alongside detail, rather than waiting
+    // for detail before starting a cold provider request.
+    // A refresh after an action keeps the artwork already on screen (`gallery: false`).
+    const wantsGallery = options.gallery !== false;
+    const mayHaveGallery = wantsGallery && ((requestIdentity.source === 'tmdb' && ['movie', 'tv'].includes(requestIdentity.mediaType))
+      || (requestIdentity.source === 'igdb' && requestIdentity.mediaType === 'game'));
+    const galleryRequest = mayHaveGallery
+      ? request(detailGalleryEndpoint(requestIdentity)).then(result => {
+        options.onGallery?.(result?.gallery);
+        return result;
+      }).catch(() => null) : null;
     const response = await request(detailEndpoint(requestIdentity));
-    if (response?.artwork?.gallery_supported) {
+    if (wantsGallery && response?.artwork?.gallery_supported && !response.artwork.backdrop) {
       try {
-        const gallery = await request(detailGalleryEndpoint(requestIdentity));
+        const gallery = galleryRequest ? await galleryRequest : await request(detailGalleryEndpoint(requestIdentity));
         response.artwork.gallery = gallery?.gallery || response.artwork.gallery;
         response.artwork.backdrop = response.artwork.backdrop
           || gallery?.gallery?.hero?.url
@@ -440,6 +437,7 @@ export async function loadDetailModel(item, options = {}) {
         // The detail data remains useful if a provider gallery is unavailable.
       }
     }
+    await datePreferences;
     return detailFromProviderPayload(response, item, requestIdentity);
   } catch (error) {
     if (error?.status === 404 && !/media not found/i.test(error?.message || '')) {

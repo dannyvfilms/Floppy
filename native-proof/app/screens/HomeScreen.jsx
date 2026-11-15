@@ -3,13 +3,16 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
 import { Icon } from '../../../frontend/ui/Icon';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import WindowedRail from '../surfaces/WindowedRail';
+import MediaCardSlot from '../surfaces/MediaCardSlot';
 import {
   createHomeTransport,
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
+import { createMeasuredRowWatcher, measureInWindow } from '../data/homeRowWatcherCore';
 import { routeCardHref } from '../data/serverCardCore';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
@@ -28,6 +31,12 @@ export const surface = {
 };
 
 const PAGE_LIMIT = 14;
+// Waiting Home rows take the height loaded rows had earlier in this app session.
+const rememberedRowHeights = new Map();
+const rowHeightMemory = {
+  get: key => rememberedRowHeights.get(key),
+  set: (key, height) => rememberedRowHeights.set(key, height),
+};
 
 const emptyModel = () => ({
   groups: [],
@@ -38,7 +47,10 @@ const emptyModel = () => ({
 });
 
 export default function HomeScreen({ navigate }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  // Shelves below the screen load as scrolling brings them within reach.
+  const [rowWatcher] = useState(() => createMeasuredRowWatcher({ measure: measureInWindow, viewportHeight: height }));
+  useEffect(() => { rowWatcher.setViewportHeight(height); }, [height, rowWatcher]);
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
   const mobileGridLayout = useMobileGridLayout();
@@ -111,9 +123,23 @@ export default function HomeScreen({ navigate }) {
     if (!routeCardHref(card?.href, navigate)) navigate?.('Detail', { item: card });
   }, [navigate]);
 
+  const renderCard = useCallback(item => {
+    const card = item.card;
+    const identity = card?.quickStatus?.identity;
+    if (!identity || model.readOnly) return <MediaCard model={card} palette={palette} width={itemWidth}
+      readOnly={model.readOnly} onOpen={() => openCard(card)} onOpenLink={() => openCard(card)}
+      onAction={() => openCard(card)} />;
+    const enriched = { ...card, identity, actions: card.actions && {
+      ...card.actions, items: card.actions.items.map(action => ({ ...action, media: identity })),
+    } };
+    return <MediaCardSlot items={[{ key: item.key || card.cardKey || card.href, model: enriched }]}
+      cardWidth={itemWidth} gridGap={0} onOpenDetail={() => openCard(card)}
+      onOpenLink={href => { if (!routeCardHref(href, navigate)) openCard(card); }} />;
+  }, [itemWidth, model.readOnly, navigate, openCard]);
+
   // Restore the reviewed Expo composition: shared shelf cards own their sizing.
   // Web retains its existing in-place controls; the approved native shelf opens Detail.
-  return <Screen chrome={false}>
+  return <Screen chrome={false} onScroll={rowWatcher.check} onContentSizeChange={rowWatcher.check}>
     <HomeView
       notice={serverMode ? null : <View style={[styles.signedOut, { borderColor: palette.border }]}>
         <Text style={[styles.signedOutText, { color: palette.textSecondary }]}>Sign in to your Floppy server to see Home.</Text>
@@ -128,6 +154,7 @@ export default function HomeScreen({ navigate }) {
       palette={palette}
       readOnly={model.readOnly}
       itemWidth={itemWidth}
+      renderCard={renderCard}
       railComponent={WindowedRail}
       renderActionIcon={action => action.icon ? <Icon spec={action.icon} color={palette.accentContrast} size={18} /> : null}
       loading={loading}
@@ -142,6 +169,8 @@ export default function HomeScreen({ navigate }) {
         if (target) navigate?.('Library', target);
       }}
       onLoadRow={loadRow}
+      watchRow={rowWatcher.watchRow}
+      rowHeights={rowHeightMemory}
       onLoadMore={loadMore}
       onSortRow={sortRow}
       onRefreshCovers={refreshCovers}
