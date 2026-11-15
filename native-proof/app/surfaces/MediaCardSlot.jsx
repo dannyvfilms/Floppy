@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, FlatList, Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, FlatList, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { Icon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
-import { TrackForm } from '../../../frontend/ui/TrackForm';
+import { TrackDialog } from '../../../frontend/ui/TrackDialog';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import {
   applyListToggle,
@@ -17,6 +17,8 @@ import {
 } from '../../../frontend/ui/mediaCardForms';
 import { libraryGridLayout } from '../../../frontend/ui/mediaCardSizing';
 import { mediaCardPalette, palette, spacing } from '../theme';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import NativeCardMenu from './NativeCardMenu';
 import { emitMediaCardChange, subscribeMediaCardChange } from './mediaCardEvents';
 import {
   createTag,
@@ -77,6 +79,18 @@ function actionGlyph(action) {
   if (action.vals?.action === 'dismiss') return '⦸';
   if (action.kind === 'link') return '◷';
   return '•';
+}
+
+function menuActionLabel(action) {
+  if (action.modal === 'track') {
+    if (action.media?.mediaType === 'episode') return action.title === 'Watched' ? 'Edit watch' : 'Mark watched';
+    return 'Edit tracking';
+  }
+  if (action.modal === 'lists') return 'Edit lists';
+  if (action.kind === 'link' && /\/history(?:[/?#]|$)/.test(action.href || '')) return 'View history';
+  if (action.vals?.action === 'planning') return 'Plan title';
+  if (action.vals?.action === 'dismiss') return 'Hide title';
+  return action.title;
 }
 
 // The shapes the web card's action buttons draw, by the action they perform.
@@ -170,7 +184,7 @@ function ListsAction({ action, onClose }) {
     let alive = true;
     setStatus('loading');
     setErrors({});
-    loadLists(identity, action.title)
+    loadLists(identity, action.mediaTitle || identity.title || '')
       .then(data => {
         if (!alive) return;
         const next = normalizeListsModel(data);
@@ -180,7 +194,7 @@ function ListsAction({ action, onClose }) {
       })
       .catch(() => { if (alive) setStatus('error'); });
     return () => { alive = false; };
-  }, [attempt, transportReady, identity?.mediaType, identity?.source, identity?.mediaId, action?.title]);
+  }, [attempt, transportReady, identity?.mediaType, identity?.source, identity?.mediaId, action?.mediaTitle]);
 
   async function toggle(list) {
     if (pending[list.id]) return;
@@ -235,7 +249,7 @@ function TrackAction({ action, onClose }) {
     let alive = true;
     setStatus('loading');
     setServerError('');
-    loadTrack(identity)
+    loadTrack(identity, { trackTime: true })
       .then(data => {
         if (!alive) return;
         const next = normalizeTrackForm(data.model);
@@ -259,20 +273,20 @@ function TrackAction({ action, onClose }) {
     setErrors(current => ({ ...current, [name]: '' }));
   }
 
-  async function submit() {
+  async function submit(nextValues = values) {
     setBusy(true);
     setServerError('');
     try {
-      await saveTrack(identity, model, values, tracked);
-      const refreshed = await loadTrack(identity);
+      await saveTrack(identity, model, nextValues, tracked);
+      const refreshed = await loadTrack(identity, { trackTime: true });
       setTracked(Boolean(refreshed.tracked));
       setTabs(refreshed.tabs || []);
       emitMediaCardChange({
         identity,
         source: 'track',
         tracked: true,
-        ...(values.status !== undefined ? { status: values.status } : {}),
-        ...(values.score !== undefined ? { score: values.score === '' ? null : Number(values.score) } : {}),
+        ...(nextValues.status !== undefined ? { status: nextValues.status } : {}),
+        ...(nextValues.score !== undefined ? { score: nextValues.score === '' ? null : Number(nextValues.score) } : {}),
       });
       onClose?.();
     } catch (error) {
@@ -356,7 +370,9 @@ function TrackAction({ action, onClose }) {
     return <SignInPrompt />;
   }
 
-  return <TrackForm
+  return <TrackDialog
+    open
+    embedded
     model={model}
     values={values}
     errors={errors}
@@ -370,7 +386,7 @@ function TrackAction({ action, onClose }) {
     onChange={change}
     onRetry={() => setAttempt(current => current + 1)}
     onRetryTabs={retryTabs}
-    onDelete={remove}
+    onDelete={tracked ? remove : undefined}
     onClose={onClose}
     onSubmit={submit}
     onTagToggle={toggleTag}
@@ -489,7 +505,7 @@ function moveByStep(order, key, step) {
 function applyMediaCardChange(model, change) {
   if (!change) return model;
   const next = { ...model };
-  if (Object.prototype.hasOwnProperty.call(change, 'status') && model.statusChip) {
+  if (Object.prototype.hasOwnProperty.call(change, 'status')) {
     next.statusChip = change.status
       ? { kind: 'status', status: change.status, hideOnMobile: false }
       : { kind: 'no-status', hideOnMobile: false };
@@ -526,23 +542,47 @@ const SlotCard = React.memo(function SlotCard({
   const onReorderDrag = useCallback(event => handlers.drag(item, event), [handlers, item]);
   const onRate = useCallback(score => handlers.rate(item, score), [handlers, item]);
   const onLayout = useCallback(event => handlers.layout(item, event), [handlers, item]);
+  const onAction = useCallback(action => handlers.runAction(action, model.title), [handlers, model.title]);
+  const canMenu = Boolean(model.actions?.items?.length && !readOnly && !selectionMode && !dragging);
+  const menuActions = useMemo(() => {
+    if (!canMenu) return [];
+    const canStatus = model.identity && ['movie', 'tv', 'season', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame'].includes(model.identity.mediaType)
+      && model.actions?.items?.some(action => action.modal === 'track');
+    const actions = (model.actions?.items || []).map((action, index) => ({
+      id: `action-${index}`, title: menuActionLabel(action), attributes: { disabled: Boolean(action.disabled) },
+    }));
+    if (canStatus) actions.push({ id: 'statuses', title: 'Update status',
+      subactions: ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped'].map(status => ({
+        id: `status-${status}`, title: status, state: model.statusChip?.status === status ? 'on' : 'off',
+      })) });
+    return actions;
+  }, [canMenu, model]);
+  const onPressMenu = useCallback(event => {
+    const id = event.nativeEvent.event;
+    if (id.startsWith('status-')) handlers.changeStatus({ ...item, model }, id.slice(7));
+    else if (id.startsWith('action-')) handlers.runAction(model.actions.items[Number(id.slice(7))], model.title);
+  }, [handlers, item, model]);
+  const card = <MediaCard model={model} labels={labels} palette={mediaCardPalette}
+    width={cardWidth}
+    onOpen={handlers.hasOpen() ? onOpen : undefined}
+    onOpenLink={handlers.hasLink() ? onOpenLink : undefined}
+    onAction={onAction}
+    readOnly={readOnly}
+    selection={selection}
+    onReorder={onReorder}
+    onReorderDrag={onReorderDrag}
+    dragging={dragging}
+    renderActionIcon={renderActionIcon}
+    onRate={onRate}
+    renderRating={renderRatingStars} />;
   return <View onLayout={onLayout}
     style={[dragging && styles.draggingCard, !dragging && dropTarget && styles.dropTarget]}>
-    <MediaCard model={model} labels={labels} palette={mediaCardPalette}
-      width={cardWidth}
-      onOpen={handlers.hasOpen() ? onOpen : undefined}
-      onOpenLink={handlers.hasLink() ? onOpenLink : undefined}
-      onAction={handlers.runAction}
-      readOnly={readOnly}
-      selection={selection}
-      onReorder={onReorder}
-      onReorderDrag={onReorderDrag}
-      dragging={dragging}
-      renderActionIcon={renderActionIcon}
-      onRate={onRate}
-      renderRating={renderRatingStars} />
+    {/* Native platforms use system menus; Expo web uses the shared dropdown. */}
+    {canMenu ? <NativeCardMenu actions={menuActions} palette={{ ...palette, overlay: 'rgba(0, 0, 0, 0.55)' }}
+      onPressAction={onPressMenu}>{card}</NativeCardMenu> : card}
   </View>;
 });
+
 
 export default function MediaCardSlot({
   items = [],
@@ -569,6 +609,7 @@ export default function MediaCardSlot({
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
+  const [sheetMounted, setSheetMounted] = useState(false);
   const itemKeys = items.map(item => item.key);
   const orderKey = itemKeys.join('|');
   const [order, setOrder] = useState(itemKeys);
@@ -623,14 +664,31 @@ export default function MediaCardSlot({
     AccessibilityInfo.announceForAccessibility?.(message);
   }
 
-  function runAction(action) {
+  function runAction(action, mediaTitle) {
     if (!action) return;
     if (action.kind === 'link') {
       setPendingAction(null);
       (onOpenLink || onOpenDetail)?.(action.href);
       return;
     }
-    setPendingAction(action);
+    if (['track', 'lists'].includes(action.modal)) setSheetMounted(true);
+    setPendingAction({ ...action, mediaTitle });
+  }
+
+  async function changeStatus(item, status) {
+    setActionError('');
+    try {
+      const identity = item.model.identity;
+      const tracking = await loadTrack(identity);
+      if (!tracking.tracked && identity.source === 'manual') throw new Error('Use the tracking dialog to add this manual item.');
+      await saveTrack(identity, tracking.model, { status }, tracking.tracked);
+      emitMediaCardChange({ identity, source: 'track', tracked: true, status });
+      announce(`Status changed to ${status}.`);
+    } catch (error) {
+      const message = error.message || 'Could not change status.';
+      setActionError(message);
+      announce(message);
+    }
   }
 
   async function reorder(item, step) {
@@ -699,7 +757,7 @@ export default function MediaCardSlot({
   // Card callbacks go through a ref to this render's functions, so the
   // handlers object never changes and memoized cards skip unrelated renders.
   const latest = useRef(null);
-  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, reorder, handleReorderDrag, rate };
+  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, changeStatus, reorder, handleReorderDrag, rate };
   const handlers = useMemo(() => ({
     hasOpen: () => !!latest.current.onOpenDetail,
     hasLink: () => !!(latest.current.onOpenLink || latest.current.onOpenDetail),
@@ -707,7 +765,8 @@ export default function MediaCardSlot({
     openLink: (item, href) => (latest.current.onOpenLink
       ? latest.current.onOpenLink(href)
       : latest.current.onOpenDetail?.(item.row ?? item.model)),
-    runAction: action => latest.current.runAction(action),
+    runAction: (action, mediaTitle) => latest.current.runAction(action, mediaTitle),
+    changeStatus: (item, status) => latest.current.changeStatus(item, status),
     toggle: item => latest.current.onToggleSelection?.(item.key),
     reorder: (item, step) => latest.current.reorder(item, step),
     drag: (item, event) => latest.current.handleReorderDrag(item, event),
@@ -761,11 +820,25 @@ export default function MediaCardSlot({
 
   const errorText = actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
     style={styles.actionError}>{actionError}</Text> : null;
-  const host = <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
-    palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
-    <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}
-      onClose={() => setPendingAction(null)} />
-  </MediaCardActionHost>;
+  const host = <>
+    {sheetMounted && <AdaptivePresentationSheet isPresented={['track', 'lists'].includes(pendingAction?.modal)}
+      onDismiss={() => setPendingAction(null)} onClose={() => setPendingAction(null)}
+      title={pendingAction?.modal === 'track' ? 'Tracking' : 'Lists'} titleColor={formPalette.text}
+      containerColor={palette.sidebar}>
+      {pendingAction?.modal === 'track' ? <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <TrackAction key={pendingAction?.target || 'track'} action={pendingAction} onClose={() => setPendingAction(null)} />
+      </View> : pendingAction?.modal === 'lists' ? <ScrollView keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <ListsAction key={pendingAction?.target || 'lists'} action={pendingAction} onClose={() => setPendingAction(null)} />
+      </ScrollView> : null}
+    </AdaptivePresentationSheet>}
+    <MediaCardActionHost action={pendingAction} open={!!pendingAction && !['track', 'lists'].includes(pendingAction.modal)} labels={labels}
+      palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
+      {pendingAction && !['track', 'lists'].includes(pendingAction.modal) ? <ActionBody
+        key={pendingAction.target || pendingAction.title || 'closed'} action={pendingAction}
+        onClose={() => setPendingAction(null)} /> : null}
+    </MediaCardActionHost>
+  </>;
 
   if (virtualized) {
     // Native-only windowing: hundreds of mounted cards in a ScrollView is the
