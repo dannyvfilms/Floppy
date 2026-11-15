@@ -1678,7 +1678,7 @@ class Season(Media):
             if (
                 ep._card_completed_count
                 if getattr(ep, "_card_is_summary", False)
-                else ep.status == Status.COMPLETED.value
+                else Episode.is_watch(ep)
             )
         }
 
@@ -1687,7 +1687,7 @@ class Season(Media):
             count = (
                 ep._card_completed_count
                 if getattr(ep, "_card_is_summary", False)
-                else int(ep.status == Status.COMPLETED.value)
+                else int(Episode.is_watch(ep))
             )
             if count:
                 completed_episode_numbers.add(ep_num)
@@ -2612,6 +2612,28 @@ class Episode(models.Model):
     # Episode is not a Media subclass; share its score formatting so an episode
     # card shows its rating like every other card.
     formatted_score = Media.formatted_score
+
+    # One rule for "this play is a watch": only a finished play counts. An open
+    # play (a check-in, a paused scrobble) is not one yet, and a dropped row
+    # never is. Every play count, watched flag and sync push reads it here.
+    @staticmethod
+    def watch_q(prefix=""):
+        """Return the filter for plays that count as a watch.
+
+        ``prefix`` reaches episodes through a relation, e.g. ``"episodes__"``.
+        """
+        return models.Q(
+            **{f"{prefix}status": Status.COMPLETED.value, f"{prefix}dropped": False},
+        )
+
+    @staticmethod
+    def is_watch(row):
+        """Return whether a play row counts as a watch (Episode or values row)."""
+        return getattr(row, "status", None) == Status.COMPLETED.value and not getattr(
+            row,
+            "dropped",
+            False,
+        )
 
     @property
     def progress(self):
