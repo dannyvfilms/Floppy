@@ -280,6 +280,7 @@ export default function ShellSlot({
       // Carve-out: web reveals the saved-views arrow on hover or on the current library; touch has no
       // hover, so native always shows it.
       rowActions="always"
+      // Native signs out through its session transport; there is no browser link to expose.
       onLogout={() => {
         setOpen(false);
         setSignOutError('');
