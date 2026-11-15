@@ -287,6 +287,17 @@
                             </div>
                           </template>
 
+                          <template x-if="row.row_type === 'up_next'">
+                            <button type="button"
+                                    class="home-settings-chip flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                    :aria-pressed="row.hide_caught_up === true ? 'true' : 'false'"
+                                    title="{% translate "Leave out shows you have watched up to the latest episode until the next one airs." %}"
+                                    @click.stop="openMenu = null; row.hide_caught_up = row.hide_caught_up !== true">
+                              <span x-show="row.hide_caught_up !== true">{% translate "Show Caught Up" %}</span>
+                              <span x-show="row.hide_caught_up === true">{% translate "Hide Caught Up" %}</span>
+                            </button>
+                          </template>
+
                           <template x-if="row.row_type === 'custom_list'">
                             <button type="button"
                                     class="home-settings-chip flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
@@ -522,6 +533,7 @@
             editorOpen: row.row_type === 'custom_list' && !row.id,
             filters: { ...(row.filters || {}) },
             recent_show: row.recent_show || 'album',
+            hide_caught_up: row.hide_caught_up === true,
             listQuery: row.custom_list_name || '',
             listResults: []
           }))
@@ -885,6 +897,7 @@
             sort_by: rowType === 'recently_unrated' ? 'recent' : defaultSort,
             direction: rowType === 'recently_unrated' ? 'desc' : this.defaultSortDirection(defaultSort),
             recent_show: 'album',
+            hide_caught_up: false,
             filters: this.defaultFilters(section, rowType),
             editorOpen: rowType === 'custom_list',
             listQuery: '',
@@ -984,6 +997,7 @@
               sort_by: row.sort_by,
               direction: row.direction,
               recent_show: row.recent_show || 'album',
+              hide_caught_up: row.row_type === 'up_next' && row.hide_caught_up === true,
               filters: row.filters || {}
             }))
           }));

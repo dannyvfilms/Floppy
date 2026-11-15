@@ -1663,6 +1663,26 @@ class HomeScreenViewTests(TestCase):
         self.assertIn("status", {field["key"] for field in fields})
         self.assertNotIn("provider", {field["key"] for field in fields})
 
+    def test_up_next_hide_caught_up_round_trips(self):
+        self._set_enabled_media_types(MediaTypes.TV.value)
+        response = self.client.get(reverse("home_screen"))
+        sections = json.loads(response.context["home_screen_sections_json"])
+        all_section = next(section for section in sections if section["media_type"] == "all")
+        all_section["rows"].append({"row_type": "up_next", "hide_caught_up": True})
+        self.client.post(reverse("home_screen"), {"home_screen_sections": json.dumps(sections)})
+        row = HomeScreenRow.objects.get(user=self.user, row_type="up_next")
+        self.assertEqual(row.filters, {"hide_caught_up": True})
+        response = self.client.get(reverse("home_screen"))
+        sections = json.loads(response.context["home_screen_sections_json"])
+        saved = next(
+            row
+            for section in sections
+            for row in section["rows"]
+            if row["row_type"] == "up_next"
+        )
+        self.assertIs(saved["hide_caught_up"], True)
+        self.assertNotIn("hide_caught_up", saved["filters"])
+
     def test_home_screen_get_upgrades_legacy_seeded_defaults(self):
         self._set_enabled_media_types(
             MediaTypes.SEASON.value,

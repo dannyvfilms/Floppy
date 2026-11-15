@@ -977,6 +977,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 - `HomeScreenEditor` and `SettingsHomeView` use shared measured-layout drag handles, parsed media icons, complete filter summaries, color swatch dialog and native page-card framing; native `HomeSettingsSlot` omits the duplicate heading and uses the web's inline save action and Label appearance dropdown. Browser Django/SortableJS consumers remain; retirement requires native reorder and full editor parity. Browser: compared at 375x812; Label appearance Outline saved and Soft restored with web confirmation. Section/row drag and expanded editor parity remain pending. iOS: Not verified. Android: Not verified. Native readiness: `Primitives`.
 
+- Up Next rows have a "Hide caught-up shows" option (`hide_caught_up`, stored in the row's filters), drawn by shared `HomeScreenEditor` as a `ToggleChip` in the row editor for Expo and by the Django editor as a "Show/Hide Caught Up" chip for the browser. Both consumers carry the same payload; the browser editor stays Django/Alpine under the retirement conditions above. Browser: toggled, saved and reloaded at 1280x800 and 375x812. iOS: Not verified (no simulator on the host). Android: Not verified (no emulator). Expo: structural only (bundle build and checks pass).
 - Purpose/usage: Home rows/filter/sort/list-backed sections.
 - Native readiness: `Primitives`. Browser evidence only; no iOS or Android runtime verification.
 - Status: `Partial / coexisting`. Browser server templates remain; Expo consumes shared React presentation.
