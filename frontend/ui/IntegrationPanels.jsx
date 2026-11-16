@@ -52,6 +52,8 @@ const FALLBACK_LABELS = {
   blocklisted: 'Blocklisted',
   unknown: 'Not requested',
   noLibraryPanels: 'No Radarr or Sonarr instances have this title.',
+  openIn: 'Open in %s',
+  notFound: 'Not in %s',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -82,7 +84,7 @@ function buttonPalette(colors) {
   };
 }
 
-function badgePalette(colors, tone) {
+function badgePalette(colors, tone, variant) {
   const color = {
     success: colors.success,
     info: colors.accent,
@@ -90,7 +92,8 @@ function badgePalette(colors, tone) {
     danger: colors.danger,
     neutral: colors.textMuted,
   }[tone] || colors.textMuted;
-  return { outline: { color, borderColor: color, borderWidth: 1 } };
+  // The web track modal draws status pills with a neutral border and toned text.
+  return { outline: { color, borderColor: variant === 'web' ? colors.border : color, borderWidth: 1 } };
 }
 
 function toDate(value) {
@@ -104,6 +107,11 @@ function formatDate(value) {
   const date = toDate(value);
   if (!date) return '';
   return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+function formatShortDate(value) {
+  const date = toDate(value);
+  return date ? `${MONTHS[date.getMonth()]} ${date.getDate()}` : '';
 }
 
 function formatDateTime(value) {
@@ -122,8 +130,38 @@ function formatSize(value) {
     amount /= 1024;
     index += 1;
   }
-  const rounded = amount >= 10 || index === 0 ? Math.round(amount) : Math.round(amount * 10) / 10;
-  return `${rounded} ${units[index]}`;
+  // One decimal, like the server's filesizeformat ("48.4 GB").
+  return index === 0 ? `${size} ${units[0]}` : `${amount.toFixed(1)} ${units[index]}`;
+}
+
+function OpenLink({ url, app, colors, copy, linkProps, onOpenUrl }) {
+  if (!url) return null;
+  const label = copy.openIn.replace('%s', app);
+  // linkProps lets each platform decide how a link opens (the web adapter
+  // renders a real anchor; native passes onOpenUrl to the system browser).
+  return <Pressable accessibilityRole="link" accessibilityLabel={label}
+    {...(linkProps?.(url) || {})} onPress={onOpenUrl ? () => onOpenUrl(url) : undefined}>
+    {({ hovered }) => <Text style={[styles.linkText, { color: colors.link || colors.accent },
+      hovered && styles.linkHovered]}>{label}</Text>}
+  </Pressable>;
+}
+
+// Native groups each server in a SettingsCard; the web variant keeps the flat,
+// divided sections the server-rendered track modal has always shown.
+function PanelSection({ title, headerAction, colors, variant, first, compact = false, children }) {
+  if (variant !== 'web') {
+    return <SettingsCard title={title} headerAction={headerAction} palette={settingsPalette(colors)}>
+      {children}
+    </SettingsCard>;
+  }
+  return <View style={[styles.webSection, compact && styles.webSectionCompact, !first && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+    <View style={styles.webHeading}>
+      <Text role="heading" aria-level={3} numberOfLines={1}
+        style={[styles.webTitle, { color: colors.textMuted }]}>{title}</Text>
+      {headerAction}
+    </View>
+    {children}
+  </View>;
 }
 
 function arrStatus(status, labels) {
@@ -144,11 +182,23 @@ function seerrStatus(status, labels) {
   return { label, tone };
 }
 
-function StatusBadge({ label, tone, colors }) {
-  return <Badge label={label} size="sm" tone="outline" palette={badgePalette(colors, tone)} />;
+function StatusBadge({ label, tone, colors, variant }) {
+  return <Badge label={label} size="sm" tone="outline" palette={badgePalette(colors, tone, variant)} />;
 }
 
-function CopyPathRow({ path, colors, copy, onCopy }) {
+function SearchButton({ label, colors, variant, onPress }) {
+  if (variant !== 'web') {
+    return <Button label={label} tone="surface" size="sm" palette={buttonPalette(colors)} onPress={onPress} />;
+  }
+  // Matches the compact bordered button the web panel has always used.
+  return <Pressable accessibilityRole="button" onPress={onPress}>
+    {({ hovered }) => <View style={[styles.webButton, {
+      borderRadius: colors.radius, borderColor: colors.border, backgroundColor: hovered ? colors.surfaceMuted : colors.surface,
+    }]}><Text style={[styles.webButtonText, { color: colors.text }]}>{label}</Text></View>}
+  </Pressable>;
+}
+
+function CopyPathRow({ path, colors, copy, variant, onCopy }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return undefined;
@@ -159,11 +209,12 @@ function CopyPathRow({ path, colors, copy, onCopy }) {
     onCopy?.(path);
     setCopied(true);
   }
-  return <View style={[styles.pathRow, { backgroundColor: colors.background }]}>
-    <Text numberOfLines={1} style={[styles.pathText, { color: colors.textSecondary }]}>{path}</Text>
+  const web = variant === 'web';
+  return <View style={[styles.pathRow, web && [styles.webPathRow, { borderRadius: colors.radius }], { backgroundColor: colors.background }]}>
+    <Text numberOfLines={1} style={[styles.pathText, variant === 'web' && styles.webMono, { color: colors.textSecondary }]}>{path}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={copied ? copy.copied : copy.copy}
       onPress={copyPath} style={styles.copyButton}>
-      <Text style={[styles.copyText, { color: colors.textMuted }]}>{copied ? copy.copied : copy.copy}</Text>
+      <Text style={[styles.copyText, web && styles.webCopyText, { color: colors.textMuted }]}>{copied ? copy.copied : copy.copy}</Text>
     </Pressable>
   </View>;
 }
@@ -186,17 +237,21 @@ function DownloadRow({ download, colors }) {
   </View>;
 }
 
-function HistoryList({ history, colors, copy }) {
+function HistoryList({ history, colors, copy, variant }) {
   const [expanded, setExpanded] = useState(false);
   if (!history.length) return null;
   const first = history[0];
   return <View>
     <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
       accessibilityLabel={`${copy.activity} (${history.length})`}
-      onPress={() => setExpanded(current => !current)} style={styles.historyToggle}>
-      <Text style={[styles.historyToggleText, { color: colors.textMuted }]}>
+      onPress={() => setExpanded(current => !current)} style={[styles.historyToggle, variant === 'web' && styles.webHistoryToggle]}>
+      {variant === 'web' ? <Text style={[styles.historyToggleText, { color: colors.textMuted }]}>
+        <Text style={styles.webMarker}>{expanded ? '▼ ' : '▶ '}</Text>
+        {copy.activity} ({history.length})
+        <Text style={{ color: colors.textSecondary }}>{`  · ${first.label} ${formatShortDate(first.when)}`}</Text>
+      </Text> : <Text style={[styles.historyToggleText, { color: colors.textMuted }]}>
         {copy.activity} ({history.length}) · {first.label} {formatDate(first.when)}
-      </Text>
+      </Text>}
     </Pressable>
     {expanded ? <View style={styles.historyRows}>
       {history.map((event, index) => {
@@ -212,13 +267,22 @@ function HistoryList({ history, colors, copy }) {
   </View>;
 }
 
-function ArrPanel({ panel, colors, copy, onSearch, onCopy }) {
+function ArrPanel({ panel, colors, copy, variant, first, onSearch, onCopy, linkProps, onOpenUrl }) {
   const status = arrStatus(panel.status, copy);
-  const headerAction = panel.error ? null : <View style={styles.headerActions}>
-    <StatusBadge label={status.label} tone={status.tone} colors={colors} />
-    {panel.search ? <Button label={copy.searchNow} tone="surface" size="sm"
-      palette={buttonPalette(colors)} onPress={() => onSearch?.(panel)} /> : null}
-  </View>;
+  const absent = panel.status === 'absent';
+  const link = <OpenLink url={panel.url} app={panel.app} colors={colors} copy={copy}
+    linkProps={linkProps} onOpenUrl={onOpenUrl} />;
+  const headerAction = panel.error
+    ? <Text accessibilityLiveRegion="assertive" style={[styles.headerError, { color: colors.danger }]}>{panel.error}</Text>
+    : absent ? <View style={styles.headerActions}>
+      <Text style={[styles.headerNote, { color: colors.textMuted }]}>{copy.notFound.replace('%s', panel.app)}</Text>
+      {link}
+    </View> : <View style={styles.headerActions}>
+      {link}
+      <StatusBadge label={status.label} tone={status.tone} colors={colors} variant={variant} />
+      {panel.search ? <SearchButton label={copy.searchNow} colors={colors} variant={variant}
+        onPress={() => onSearch?.(panel)} /> : null}
+    </View>;
   const summary = Array.isArray(panel.summary)
     ? copy.episodesHaveFiles.replace('%s', panel.summary[0]).replace('%s', panel.summary[1])
     : '';
@@ -230,14 +294,14 @@ function ArrPanel({ panel, colors, copy, onSearch, onCopy }) {
     panel.monitored === false ? copy.notMonitored : '',
   ].filter(Boolean).join(' · ');
   const title = panel.name && panel.name !== panel.app ? `${panel.app} · ${panel.name}` : panel.app;
-  return <SettingsCard title={title} headerAction={headerAction} palette={settingsPalette(colors)}>
-    {panel.error ? <Text accessibilityLiveRegion="assertive" style={[styles.errorText, { color: colors.danger }]}>{panel.error}</Text> : <>
-      {details ? <Text style={[styles.detailText, { color: colors.textSecondary }]}>{details}</Text> : null}
-      {panel.path ? <CopyPathRow path={panel.path} colors={colors} copy={copy} onCopy={onCopy} /> : null}
+  return <PanelSection title={title} headerAction={headerAction} colors={colors} variant={variant} first={first}>
+    {panel.error || absent ? null : <>
+      {details ? <Text style={[styles.detailText, variant === 'web' && styles.webText, { color: colors.textSecondary }]}>{details}</Text> : null}
+      {panel.path ? <CopyPathRow path={panel.path} colors={colors} copy={copy} variant={variant} onCopy={onCopy} /> : null}
       {(panel.queue || []).map((download, index) => <DownloadRow key={`${download.title}-${index}`} download={download} colors={colors} />)}
-      <HistoryList history={panel.history || []} colors={colors} copy={copy} />
+      <HistoryList history={panel.history || []} colors={colors} copy={copy} variant={variant} />
     </>}
-  </SettingsCard>;
+  </PanelSection>;
 }
 
 export function ArrLibraryPanels({
@@ -246,43 +310,59 @@ export function ArrLibraryPanels({
   error = '',
   seerrRequests,
   seerrError = '',
+  seerrUrl = '',
   labels,
   palette,
+  variant = 'native',
   onSearch,
   onCopy,
   onOpenRequest,
+  linkProps,
+  onOpenUrl,
   emptyLabel,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
   const showRequests = seerrRequests !== undefined || Boolean(seerrError);
   const showEmpty = Boolean(emptyLabel) && !panels.length && !showRequests && !message && !error;
-  return <View style={styles.stack}>
-    {message ? <Text accessibilityLiveRegion="polite" style={[styles.feedback, { color: colors.success }]}>{message}</Text> : null}
-    {error ? <Text accessibilityLiveRegion="assertive" style={[styles.feedback, { color: colors.danger }]}>{error}</Text> : null}
+  const web = variant === 'web';
+  return <View style={web ? null : styles.stack}>
+    {message ? <Text accessibilityLiveRegion="polite" style={[styles.feedback, web && styles.webFeedback, { color: colors.success }]}>{message}</Text> : null}
+    {error ? <Text accessibilityLiveRegion="assertive" style={[styles.feedback, web && styles.webFeedback, { color: colors.danger }]}>{error}</Text> : null}
     {panels.map((panel, index) => <ArrPanel key={panel.instance_id || `${panel.app}-${panel.name}-${index}`}
-      panel={panel} colors={colors} copy={copy} onSearch={onSearch} onCopy={onCopy} />)}
+      panel={panel} colors={colors} copy={copy} variant={variant} first={index === 0}
+      onSearch={onSearch} onCopy={onCopy} linkProps={linkProps} onOpenUrl={onOpenUrl} />)}
     {showRequests ? <SeerrRequestsCard requests={seerrRequests || []} error={seerrError}
-      labels={copy} colors={colors} onOpenRequest={onOpenRequest} /> : null}
+      seerrUrl={seerrUrl} labels={copy} palette={colors} variant={variant} first={!panels.length}
+      onOpenRequest={onOpenRequest} linkProps={linkProps} onOpenUrl={onOpenUrl} /> : null}
     {showEmpty ? <Text style={[styles.detailText, { color: colors.textMuted }]}>{emptyLabel}</Text> : null}
   </View>;
 }
 
-export function SeerrRequestsCard({ requests = [], error = '', labels, palette, onOpenRequest }) {
+export function SeerrRequestsCard({
+  requests = [], error = '', seerrUrl = '', labels, palette, variant = 'native', first = true,
+  onOpenRequest, linkProps, onOpenUrl,
+}) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  return <SettingsCard title={copy.requests} palette={settingsPalette(colors)}
-    headerAction={onOpenRequest ? <Button label={copy.requestInSeerr} tone="surface" size="sm"
-      palette={buttonPalette(colors)} onPress={onOpenRequest} /> : null}>
+  const link = <OpenLink url={seerrUrl} app="Seerr" colors={colors} copy={copy}
+    linkProps={linkProps} onOpenUrl={onOpenUrl} />;
+  const headerAction = seerrUrl || onOpenRequest ? <View style={styles.headerActions}>
+    {link}
+    {onOpenRequest ? <Button label={copy.requestInSeerr} tone="surface" size="sm"
+      palette={buttonPalette(colors)} onPress={onOpenRequest} /> : null}
+  </View> : null;
+  return <PanelSection title={copy.requests} colors={colors} variant={variant} first={first} compact
+    headerAction={headerAction}>
     {error ? <Text accessibilityLiveRegion="assertive" style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
-      : requests.length ? <View style={styles.requestRows}>
+      : requests.length ? <View style={[styles.requestRows, variant === 'web' && styles.webRequestRows]}>
         {requests.map((request, index) => <View key={`${request.by}-${request.created || index}`} style={styles.requestRow}>
-          <Text numberOfLines={1} style={[styles.requestBy, { color: colors.textSecondary }]}>{request.by || '-'}</Text>
-          <Text style={[styles.requestWhen, { color: colors.textMuted }]}>{formatDate(request.when || request.created)}</Text>
-          <StatusBadge label={request.status} tone="neutral" colors={colors} />
+          <Text numberOfLines={1} style={[styles.requestBy, variant === 'web' && styles.webRequestBy, { color: colors.textSecondary }]}>{request.by || '-'}</Text>
+          <Text style={[styles.requestWhen, variant === 'web' && styles.webRequestWhen, { color: colors.textMuted }]}>{formatDate(request.when || request.created)}</Text>
+          <View style={variant === 'web' ? styles.webPushEnd : null}><StatusBadge label={request.status} tone="neutral" colors={colors} variant={variant} /></View>
         </View>)}
-      </View> : <Text style={[styles.detailText, { color: colors.textMuted }]}>{copy.notRequested}</Text>}
-  </SettingsCard>;
+      </View> : <Text style={[styles.detailText, variant === 'web' && styles.webText, { color: colors.textMuted }]}>{copy.notRequested}</Text>}
+  </PanelSection>;
 }
 
 export function SeerrStatusBadge({ status, labels, palette }) {
@@ -335,6 +415,27 @@ const styles = StyleSheet.create({
   feedback: { fontSize: 13, lineHeight: 18 },
   errorText: { fontSize: 13, lineHeight: 18 },
   detailText: { fontSize: 13, lineHeight: 18 },
+  webSection: { paddingVertical: 12, gap: 8 },
+  webSectionCompact: { gap: 4 },
+  webHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  webTitle: { flexShrink: 1, fontSize: 14, lineHeight: 20, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.35 },
+  webPathRow: { paddingVertical: 4 },
+  webCopyText: { fontSize: 12, fontWeight: '400' },
+  webHistoryToggle: { paddingVertical: 0 },
+  webMarker: { fontSize: 9 },
+  webText: { fontSize: 14, lineHeight: 20 },
+  webMono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, lineHeight: 16 },
+  webButton: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 4 },
+  webButtonText: { fontSize: 12, lineHeight: 16 },
+  webRequestRows: { gap: 4 },
+  webRequestBy: { fontSize: 14, lineHeight: 20, minWidth: 0 },
+  webRequestWhen: { fontSize: 12, lineHeight: 16 },
+  webPushEnd: { marginLeft: 'auto' },
+  webFeedback: { paddingBottom: 8, fontSize: 14, lineHeight: 20 },
+  headerError: { fontSize: 12, lineHeight: 16 },
+  headerNote: { fontSize: 12, lineHeight: 16 },
+  linkText: { fontSize: 12, lineHeight: 16 },
+  linkHovered: { textDecorationLine: 'underline' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
   pathRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 },
   pathText: { flex: 1, fontSize: 11 },

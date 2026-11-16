@@ -1259,12 +1259,16 @@ templates are compatibility/composition sources, not equally active parallel pag
 ### INTEGRATION-PANELS — Library/download and Seerr requests
 
 - Purpose/usage: detail Arr/Seerr status/request actions.
-- Status: `Legacy`. Server panels with HTMX swaps; Arr and Seerr status use `Badge`.
-- Implementation: `src/templates/integrations/library_panel.html`, `seerr_request.html`, `seerr_status.html`.
-- Contract: nearest-panel replacement, instance/media/season/episode, copy feedback, per-season request/status, permissions/provider errors and parent modal close state.
-- Data: `src/integrations/arr_library.py` and integration handlers.
-- Reuse/blockers: status/actions shared; parent Alpine/HTMX coupling must be removed deliberately; server capabilities required.
-- Validation targets: owning integration view tests; browser/native lifecycle unverified.
+- Status: `Partial / coexisting`. The track modal library panel (Radarr/Sonarr status, file, queue, activity, Search now, Seerr requests, Open in Radarr/Sonarr/Seerr links, and the "Not in Radarr/Sonarr" state for a connected server that lacks the title) is React-owned on the web: `ArrLibraryPanels` (`frontend/ui/IntegrationPanels.jsx`, `variant="web"`) mounted by `frontend/ui/mountIntegrationPanels.jsx` over `library_panel.html`, which stays the server fallback. The Seerr request dialog and status button (`seerr_request.html`, `seerr_status.html`) are still legacy server panels with HTMX swaps.
+- Implementation: `src/templates/integrations/library_panel.html` (fallback + props), `seerr_request.html`, `seerr_status.html`; shared `ArrLibraryPanels`, `SeerrRequestsCard`, `SeerrStatusBadge`, `SeerrRequestDialog`.
+- Consumers: track modal Collection tab (`app/components/fill_track.html`, lazy `library_panel` fetch) for movies, shows, seasons and episodes; detail action Seerr button (`app/components/detail_action_buttons.html`) for the legacy request dialog.
+- Contract: nearest-panel replacement (Search now posts to the panel URL and swaps `.library-panel`), instance/media/season/episode, copy feedback, per-season request/status, permissions/provider errors and parent modal close state. Links use the configured server address (`base_url` / `seerr_url`), so a server reached on an internal Docker address links to that address.
+- Platform carve-out: web sections are flat and divided (`variant="web"`) to keep the release look; native groups each server in a `SettingsCard`. Links are anchors on the web (`linkProps`) and `onOpenUrl` on native.
+- Data: `src/integrations/arr_library.py` (panel dicts incl. `url`, `status="absent"`) and `library_panel` in `src/integrations/views.py` (`panel_props`).
+- Reuse/blockers: Seerr request dialog/status still to migrate (parent Alpine/HTMX coupling); native has no consumer screen or API endpoint for panel data yet.
+- Retirement: drop the `library_panel.html` fallback markup once the island is the only path; migrate `seerr_request.html`/`seerr_status.html` to `SeerrRequestDialog`/`SeerrStatusBadge`.
+- Verification: Browser — verified (built-in browser and Chrome via Playwright against local Arr/Seerr stubs; movie, show and not-found states in dark/light at 1100px and 390px matched the fallback within 1px; links and Search now checked). iOS — not verified (no native consumer). Android — not verified (no native consumer).
+- Validation targets: `src/integrations/tests/test_arr_library.py`.
 
 ### DEVICE-CONNECT — Trakt/device-code connection
 

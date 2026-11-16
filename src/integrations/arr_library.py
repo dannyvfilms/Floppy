@@ -126,8 +126,19 @@ def _panel(app, instance, **fields):
         "queue": [],
         "history": [],
         "search": None,
+        "url": "",
         **fields,
     }
+
+
+def _web_url(instance, path):
+    """Return the Radarr/Sonarr page for a title, on the address Floppy uses."""
+    return f"{instance.base_url.rstrip('/')}/{path}"
+
+
+def _absent_panel(app, instance, url=""):
+    """Return the panel for a connected server that lacks this title."""
+    return _panel(app, instance, found=False, status="absent", url=url)
 
 
 def _error_panel(app, instance, error):
@@ -148,7 +159,7 @@ def _radarr_panel(instance, tmdb_id):
     client = _client(RadarrClient, instance)
     row = client.movie_by_tmdb_id(tmdb_id)
     if not row:
-        return None
+        return _absent_panel("Radarr", instance)
     queue = _queue_rows(client.queue(row["id"]))
     status, label = _status(bool(row.get("hasFile")), queue)
     return _panel(
@@ -160,6 +171,7 @@ def _radarr_panel(instance, tmdb_id):
         queue=queue,
         history=_history_rows(client.history(row["id"])),
         search={"kind": "movie", "arr_id": row["id"]},
+        url=_web_url(instance, f"movie/{row.get('titleSlug') or tmdb_id}"),
         **_file_fields(row.get("movieFile")),
     )
 
@@ -187,8 +199,13 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
     client = _client(SonarrClient, instance)
     series = _series_row(client, instance, source, media_id)
     if not series:
-        return None
+        return _absent_panel("Sonarr", instance)
     series_id = series["id"]
+    url = (
+        _web_url(instance, f"series/{series['titleSlug']}")
+        if series.get("titleSlug")
+        else ""
+    )
     queue_rows = client.queue(series_id)
     fields = {"monitored": bool(series.get("monitored"))}
 
@@ -212,7 +229,7 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
                 None,
             )
             if not episode:
-                return None
+                return _absent_panel("Sonarr", instance, url)
             episode_id = episode["id"]
             queue = _queue_rows(
                 [r for r in queue_rows if r.get("episodeId") == episode_id]
@@ -248,12 +265,13 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
         queue=queue,
         history=_history_rows(history),
         search=search,
+        url=url,
         **fields,
     )
 
 
 def library_panels(user, source, media_type, media_id, season=None, episode=None):
-    """Return one panel per connected Radarr/Sonarr that has this title."""
+    """Return one panel per connected Radarr/Sonarr, marking titles it lacks."""
     panels = []
     if media_type == MediaTypes.MOVIE.value and source == Sources.TMDB.value:
         for instance in user.radarr_instances.all():

@@ -128,9 +128,12 @@ class RadarrPanelTests(TestCase):
         self.assertEqual(panel["status"], "missing")
         self.assertEqual(panel["path"], "")
 
-    def test_movie_radarr_does_not_have_gets_no_panel(self):
+    def test_movie_radarr_does_not_have_is_marked_absent(self):
         with patch(RADARR_GET, _router({"/api/v3/movie": []})):
-            self.assertEqual(self._panels(), [])
+            (panel,) = self._panels()
+        self.assertEqual(panel["status"], "absent")
+        self.assertFalse(panel["found"])
+        self.assertIsNone(panel["search"])
 
     def test_unreachable_server_becomes_an_error_panel_without_the_url(self):
         with patch(
@@ -270,9 +273,11 @@ class SonarrPanelTests(TestCase):
         self.assertEqual(panel["queue"][0]["percent"], 50)
         self.assertEqual([e["label"] for e in panel["history"]], ["Failed"])
 
-    def test_unknown_episode_gets_no_panel(self):
-        panels, _ = self._panels("episode", season=2, episode=40)
-        self.assertEqual(panels, [])
+    def test_unknown_episode_is_absent_and_links_the_series(self):
+        self.routes["/api/v3/series"][0]["titleSlug"] = "severance"
+        (panel,), _ = self._panels("episode", season=2, episode=40)
+        self.assertEqual(panel["status"], "absent")
+        self.assertEqual(panel["url"], "https://127.0.0.1:8989/series/severance")
 
     def test_season_counts_only_aired_monitored_episodes(self):
         (panel,), _ = self._panels("season", season=2)
@@ -293,9 +298,14 @@ class SonarrPanelTests(TestCase):
         (panel,), _ = self._panels("tv", source="tvdb", media_id="371572")
         self.assertEqual(panel["name"], "Sonarr")
 
-    def test_series_not_in_sonarr_gets_no_panel(self):
-        panels, _ = self._panels("tv", media_id="1")
-        self.assertEqual(panels, [])
+    def test_series_not_in_sonarr_is_marked_absent(self):
+        (panel,), _ = self._panels("tv", media_id="1")
+        self.assertEqual(panel["status"], "absent")
+        self.assertEqual(panel["url"], "")
+
+    def test_series_without_a_slug_has_no_link(self):
+        (panel,), _ = self._panels("tv")
+        self.assertEqual(panel["url"], "")
 
     def test_series_list_is_cached_between_opens(self):
         self._panels("tv")
@@ -449,7 +459,13 @@ class LibraryPanelViewTests(TestCase):
         self.assertContains(response, "Dune.mkv")
         self.assertContains(response, "Bluray-2160p")
         self.assertContains(response, "Search now")
-        self.assertNotContains(response, "Requests")
+        self.assertContains(response, 'href="https://radarr.local/movie/693134"')
+        self.assertIsNone(response.context["seerr_requests"])
+        self.assertEqual(response.context["seerr_url"], "")
+        self.assertEqual(
+            response.context["panel_props"]["panels"][0]["url"],
+            "https://radarr.local/movie/693134",
+        )
 
     def test_post_starts_the_search_and_shows_it(self):
         instance = RadarrInstance.objects.get(user=self.user)
@@ -492,6 +508,8 @@ class LibraryPanelViewTests(TestCase):
         self.assertContains(response, "Requests")
         self.assertContains(response, "maya")
         self.assertContains(response, "Approved")
+        self.assertEqual(response.context["seerr_url"], "http://seerr:5055/movie/693134")
+        self.assertContains(response, 'href="http://seerr:5055/movie/693134"')
 
     def test_episode_lists_only_requests_for_its_season(self):
         RadarrInstance.objects.all().delete()
@@ -538,7 +556,7 @@ class LibraryPanelViewTests(TestCase):
         RadarrInstance.objects.all().delete()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Search now")
+        self.assertEqual(response.context["panels"], [])
 
 
 class TrackModalLibraryTabTests(TestCase):
