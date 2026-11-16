@@ -735,6 +735,8 @@ Status: `Legacy`
 
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
+The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
+
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
 - `src/templates/app/components/game_lengths_section.html`
@@ -826,6 +828,15 @@ Status: `Partial / coexisting` — shared React islands and native presentation 
 - Web parity pass against v26.10.29: `frontend/ui/StatisticsSummary.jsx` caps the summary card text block at the card width.
 
 ## RELEASE-CALENDAR
+
+- `frontend/ui/calendarFilterState.js`: normalizes legacy per-media statuses and applies one status selection across applicable types for web and Expo. Browser: latest mobile layout inspected with an empty calendar. iOS and Android: latest layout not yet inspected.
+- `ReleaseCalendar` uses equal mobile gaps from the grid to its divider and from the divider to filter chips, matching weekday-to-grid spacing; web and `CalendarSlot` share this presentation. The web server grid remains the no-JavaScript fallback. Browser: synthetic before/after inspected and all three gaps measured at 12 pixels. iOS and Android: native bundles built; runtime verification of this spacing is pending.
+- `frontend/ui/cardTypography.js`: shared card title, secondary and item text sizes used by `ReleaseCalendar` and `CollectionCopies` on web and Expo. Browser: synthetic card comparisons inspected. iOS: earlier styling inspected on Duo; final inset unverified. Android: bundle built, runtime unverified. Existing Collection and calendar server fallbacks remain.
+- `frontend/ui/CardRow.jsx`: props-only shared row layout for calendar releases and Collection copies, including compact spacing, alignment and an optional first-row top inset. Calendar uses 2:3 artwork and a single metadata line; native calendar mapping limits page counts to books. Browser: synthetic before/after inspected for both cards. iOS: earlier row styling and page-label fix inspected on Duo; latest compact spacing and first-row inset need runtime verification. Android: bundle built, runtime not verified. Existing server fallbacks remain.
+- Month navigation retains the visible shared `ReleaseCalendar` while `mountReleaseCalendar` fetches server props or `CalendarScreen` fetches Expo data, then swaps the month; the compact agenda divider uses the surface-border theme token. Expo omits the page heading and reduces top spacing, while web keeps its heading. The server-rendered calendar remains the no-JavaScript fallback. Browser: light and dark month swaps inspected; iOS: isolated Expo preview inspected; Android: native bundle built, latest runtime unavailable.
+- Expo `CalendarScreen` presents an empty shared grid while its initial data loads, and `calendarTransportCore` overlaps event and status requests with calendar preferences. `accountDisplay` exposes the session-cached week start to avoid rearranging the grid when available. Web keeps its server-rendered first load. iOS: isolated loading and loaded previews inspected; Android: latest runtime unavailable.
+
+- `ReleaseCalendar` and `DropdownItem`: shared mobile date/count grid header, attached agenda, available media chips and two-level media/status filter; web mount and `native-proof/app/surfaces/CalendarSlot.jsx` consume them. Saved per-media statuses merge into one selection and release-date restrictions retire. The server grid is the no-JavaScript fallback. Expo retains the mobile layout at wide sizes; `CalendarRailControls.ios.jsx` supplies grouped system filter and settings menus and a separate weekday/date Today control when the rail is present; `AdaptivePresentationSheet` hosts actions on other Expo devices. Latest layout was inspected in a browser with an empty calendar; iOS and Android verification is pending.
 
 Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified.
 
@@ -1558,3 +1569,4 @@ Status: `Partial / coexisting`
 DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the modal host, including an explicit iOS height animation on the Duo rail; Android applies the settled keyboard size; its existing web and native consumers and retirement conditions are unchanged. The user accepted the quartic animation on a physical iOS Duo; browser and Android animation remain unverified.
 
 - Episode label formatting: `ProgressBreakdown` serves the web progress mount and Expo `ProgressDialog`; history, media cards, and tracking dialogs receive their labels from their existing server adapters. Shared presentation remains React-owned, with existing legacy web history consumers coexisting; retirement conditions are unchanged. EpisodeOrdering uses shared React presentation on web with a coexisting server fallback; native metadata review remains unported. Retirement of the fallback requires preserving its no-JavaScript behavior. Browser, iOS, and Android verification are recorded separately in the component register.
+

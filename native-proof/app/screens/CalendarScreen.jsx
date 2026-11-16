@@ -44,7 +44,7 @@ export default function CalendarScreen({ navigate }) {
   const [linksSessionRequired, setLinksSessionRequired] = useState(false);
   const [linksReady, setLinksReady] = useState(!server);
   const [filters, setFilters] = useState(null);
-  const [weekStart, setWeekStart] = useState('monday');
+  const [weekStart, setWeekStart] = useState(() => display.weekStart || 'monday');
   const [hydrated, setHydrated] = useState(!server);
   const [actionNote, setActionNote] = useState('');
   const [period, setPeriod] = useState(currentMonth);
@@ -81,33 +81,38 @@ export default function CalendarScreen({ navigate }) {
   }, [transport, server]);
 
   useEffect(() => {
-    if (!server || !hydrated) return undefined;
+    if (!server) return undefined;
     let active = true;
     setLoading(true);
     setLoadError('');
     transport.readAll({ month: period.month, year: period.year })
       .then(result => {
         if (!active) return;
-        setPayload(result);
+        setPayload({ result, period });
         setLoading(false);
       })
       .catch(error => {
         if (!active) return;
-        setPayload(null);
         setLoadError(error?.message || 'Calendar could not be loaded from the server.');
         setLoading(false);
       });
     return () => { active = false; };
-  }, [transport, server, hydrated, period, reloadToken]);
+  }, [transport, server, period, reloadToken]);
 
   const model = useMemo(() => (payload
-    ? calendarModelFromPayload(payload, { month: period.month, year: period.year, weekStart, today: serverToday() })
-    : null), [payload, period, weekStart, display.loaded]);
+    ? calendarModelFromPayload(payload.result, { month: payload.period.month, year: payload.period.year, weekStart, today: serverToday() })
+    : null), [payload, weekStart, display.loaded]);
   const options = useMemo(() => {
     if (!model) return null;
     return (links && calendarOptionsFromLinks(links, model.releases))
       || calendarOptionsFromEvents(model.releases);
   }, [links, model]);
+  const initialPending = server && (!hydrated || !linksReady || (loading && !model));
+  const placeholder = useMemo(() => initialPending ? calendarModelFromPayload([], {
+    month: period.month, year: period.year, weekStart, today: serverToday(),
+  }) : null, [initialPending, period, weekStart, display.loaded]);
+  const shownModel = initialPending ? placeholder : model;
+  const shownOptions = initialPending ? calendarOptionsFromEvents({}) : options;
 
   function savePreferences(patch) {
     const next = { ...preferences.current, ...patch };
@@ -117,10 +122,12 @@ export default function CalendarScreen({ navigate }) {
 
   function moveMonth(delta) {
     setPeriod(current => {
-      const index = current.month - 1 + delta;
+      // After a failed request, navigation still starts from the displayed month.
+      const displayed = payload?.period || current;
+      const index = displayed.month - 1 + delta;
       return {
         month: ((index + 12) % 12) + 1,
-        year: current.year + Math.floor(index / 12),
+        year: displayed.year + Math.floor(index / 12),
       };
     });
     setActionNote('');
@@ -175,21 +182,24 @@ export default function CalendarScreen({ navigate }) {
 
   const localNotice = server ? '' : 'Sign in to your Floppy server to see the calendar.';
   const notice = loadError || actionNote || localNotice;
-  const empty = server && !loading && Boolean(model?.empty);
   const linksProps = options?.linksProps;
 
-  return <Screen chrome={false} contentStyle={{ paddingTop: 24 }}>
+  // Expo already has the screen context in its shell; use that space for the grid.
+  return <Screen chrome={false} contentStyle={{ paddingTop: 8 }}>
     <CalendarView
+      title=""
       subtitle={null}
       palette={palette}
-      loading={server && (!hydrated || !linksReady || loading)}
-      empty={empty}
+      loading={false}
       notice={notice}
       onRetry={loadError ? () => setReloadToken(current => current + 1) : undefined}
-      calendar={model && options ? <CalendarSlot
-        model={model}
-        options={options}
-        regionUnset={options.regionUnset}
+      calendar={shownModel && shownOptions ? <CalendarSlot
+        key={initialPending ? 'loading' : 'loaded'}
+        model={shownModel}
+        monthLoading={loading || initialPending}
+        initialLoading={initialPending}
+        options={shownOptions}
+        regionUnset={shownOptions.regionUnset}
         initialFilters={filters || undefined}
         weekStart={weekStart}
         onNavigate={handleNavigate}

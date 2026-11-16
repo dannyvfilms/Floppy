@@ -646,13 +646,14 @@
     },
     "frontend/ui/DropdownMenu.jsx": {
       "components": [
-        "DropdownMenu"
+        "DropdownMenu",
+        "DropdownItem"
       ],
       "register": "FORM-CONTROLS",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared sidebar menu presentation builds; browser runtime regression remains pending."
+          "evidence": "The Calendar checkbox menu was inspected in mobile Chromium; broader sidebar regression remains pending."
         },
         "ios": {
           "status": "unverified",
@@ -1089,15 +1090,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Native CalendarSlot now passes surfaceMutedSoft for blank days. Current blank-day browser comparison pending; prior browser evidence does not verify this change."
+          "evidence": "Mobile web toolbar and nested media/status filter inspected in Chromium; artwork-corner comparison remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Physical Duo calendar, native settings menu, Today control and shared Status submenu inspected; Media Types interaction remains unverified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Expo Go emulator toolbar and settings sheet inspected; artwork-corner comparison remains pending."
         }
       }
     },
@@ -3604,12 +3605,23 @@
       }
     },
     "frontend/ui/DetailTrackSplit.jsx": {
-      "components": ["DetailTrackSplit"],
+      "components": [
+        "DetailTrackSplit"
+      ],
       "register": "DETAIL",
       "verification": {
-        "web": {"status": "verified", "evidence": "Chromium desktop and phone fallback comparison and edit/save flow."},
-        "ios": {"status": "verified", "evidence": "Expo Go simulator component preview compared before and after; signed-in flow not exercised."},
-        "android": {"status": "verified", "evidence": "Expo Go emulator component preview compared before and after; signed-in flow not exercised."}
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium desktop and phone fallback comparison and edit/save flow."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go simulator component preview compared before and after; signed-in flow not exercised."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Expo Go emulator component preview compared before and after; signed-in flow not exercised."
+        }
       }
     },
     "frontend/ui/DetailEpisode.jsx": {
@@ -3654,13 +3666,24 @@
     },
     "frontend/ui/DetailActivitySubtitle.jsx": {
       "kind": "presentation",
-      "components": ["DetailActivitySubtitle"],
+      "components": [
+        "DetailActivitySubtitle"
+      ],
       "register": "DETAIL",
       "purpose": "Render activity dates and duration consistently across detail surfaces.",
       "verification": {
-        "web": {"status": "verified", "evidence": "Mobile PWA on iPhone Duo compared with Expo; desktop appearance pending."},
-        "ios": {"status": "verified", "evidence": "Expo on iPhone Duo compared with the mobile PWA."},
-        "android": {"status": "unverified", "evidence": "Shared presentation and data tests pass; Android runtime appearance pending."}
+        "web": {
+          "status": "verified",
+          "evidence": "Mobile PWA on iPhone Duo compared with Expo; desktop appearance pending."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo on iPhone Duo compared with the mobile PWA."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared presentation and data tests pass; Android runtime appearance pending."
+        }
       }
     },
     "frontend/ui/DetailBackdrop.jsx": {
@@ -3770,6 +3793,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native music screens; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/CardRow.jsx": {
+      "components": [
+        "CardRow"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
         }
       }
     }
@@ -3969,7 +4012,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
@@ -4016,6 +4059,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
+    "frontend/ui/calendarFilterState.js": {
+      "components": [
+        "normalizeCalendarStatuses",
+        "toggleCalendarStatus"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Status selection exercised in Chromium and shared-state unit tests pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Physical Duo Status submenu inspected; selection interaction remains unverified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared-state unit tests pass; Android filter interaction remains unverified."
         }
       }
     },
@@ -4184,6 +4248,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; not run on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/cardTypography.js": {
+      "components": [
+        "cardTypography"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
         }
       }
     }
@@ -5554,13 +5638,24 @@
       "purpose": "Mount the shared activity subtitle in the browser history button."
     },
     "frontend/ui/mountDetailBackdrop.jsx": {
-      "components": ["WebDetailBackdrop"],
+      "components": [
+        "WebDetailBackdrop"
+      ],
       "register": "DETAIL",
       "purpose": "Measure the server hero frame and mount the shared mobile backdrop, retaining the server fallback.",
       "verification": {
-        "web": {"status": "verified", "evidence": "Mobile PWA on iPhone Duo compared before and after; desktop comparison pending."},
-        "ios": {"status": "verified", "evidence": "Expo on iPhone Duo compared before and after."},
-        "android": {"status": "unverified", "evidence": "Expo uses the native adapter; runtime comparison pending."}
+        "web": {
+          "status": "verified",
+          "evidence": "Mobile PWA on iPhone Duo compared before and after; desktop comparison pending."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo on iPhone Duo compared before and after."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo uses the native adapter; runtime comparison pending."
+        }
       }
     },
     "frontend/ui/mountDetailComposition.jsx": {

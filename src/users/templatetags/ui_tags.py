@@ -1172,11 +1172,20 @@ class PeopleCastNode(template.Node):
             str(self.options["collapse_key"].resolve(context))
             if "collapse_key" in self.options else ""
         )
+        media = context.get("media")
+        media_source = media.get("source") if isinstance(media, dict) else getattr(media, "source", None)
+        # Episode pages have a route source but no media object for the legacy
+        # person-card fallback. Keep that fallback on the same provider as the rail.
+        if source and not media_source:
+            with context.push(media={"source": source}):
+                fallback = self.body.render(context)
+        else:
+            fallback = self.body.render(context)
         return _people_island(
             context,
             "cast",
             _people_cast_props(context, row, source, collapse_key),
-            self.body.render(context),
+            fallback,
         )
 
 
