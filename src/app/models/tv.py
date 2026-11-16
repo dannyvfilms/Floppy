@@ -724,9 +724,12 @@ class TV(Media):
         if episodes_to_create:
             # The bulk write fires no signals, and the show's own save signal
             # ran before these episodes existed.
-            from app import statistics_sync
+            from app import signals, statistics_sync
 
             statistics_sync.mark_rows(
+                self.user_id, episodes_to_create, reason="tv_completed_fan_out"
+            )
+            signals.invalidate_bulk_episode_history(
                 self.user_id, episodes_to_create, reason="tv_completed_fan_out"
             )
         return None
@@ -1275,9 +1278,14 @@ class Season(Media):
                             episodes_to_create,
                             Episode,
                         )
-                        from app import statistics_sync
+                        from app import signals, statistics_sync
 
                         statistics_sync.mark_rows(
+                            self.user_id,
+                            episodes_to_create,
+                            reason="season_completed_fan_out",
+                        )
+                        signals.invalidate_bulk_episode_history(
                             self.user_id,
                             episodes_to_create,
                             reason="season_completed_fan_out",
@@ -1665,8 +1673,12 @@ class Season(Media):
 
         # Filter in Python: season querysets prefetch `episodes`, and a
         # queryset filter here would bypass that cache and turn every list
-        # page into an N+1.
-        all_episodes = list(self.episodes.all())
+        # page into an N+1. Without a prefetch, join the catalogue rows so
+        # reading each episode number below is not one query per episode.
+        prefetched = getattr(self, "_prefetched_objects_cache", {}).get("episodes")
+        all_episodes = list(
+            prefetched if prefetched is not None else self.episodes.select_related("item")
+        )
         episodes = [ep for ep in all_episodes if self.play_counts_for_pass(ep)]
         completed_episode_numbers = set()
         max_episode_number = 0
@@ -1678,7 +1690,7 @@ class Season(Media):
             if (
                 ep._card_completed_count
                 if getattr(ep, "_card_is_summary", False)
-                else ep.status == Status.COMPLETED.value
+                else Episode.is_watch(ep)
             )
         }
 
@@ -1687,7 +1699,7 @@ class Season(Media):
             count = (
                 ep._card_completed_count
                 if getattr(ep, "_card_is_summary", False)
-                else int(ep.status == Status.COMPLETED.value)
+                else int(Episode.is_watch(ep))
             )
             if count:
                 completed_episode_numbers.add(ep_num)
@@ -2611,7 +2623,35 @@ class Episode(models.Model):
 
     # Episode is not a Media subclass; share its score formatting so an episode
     # card shows its rating like every other card.
+
+    @serialized_state_write
+    def delete(self, *args, **kwargs):
+        """Delete inside the same per-user barrier as a save."""
+        return super().delete(*args, **kwargs)
+
     formatted_score = Media.formatted_score
+
+    # One rule for "this play is a watch": only a finished play counts. An open
+    # play (a check-in, a paused scrobble) is not one yet, and a dropped row
+    # never is. Every play count, watched flag and sync push reads it here.
+    @staticmethod
+    def watch_q(prefix=""):
+        """Return the filter for plays that count as a watch.
+
+        ``prefix`` reaches episodes through a relation, e.g. ``"episodes__"``.
+        """
+        return models.Q(
+            **{f"{prefix}status": Status.COMPLETED.value, f"{prefix}dropped": False},
+        )
+
+    @staticmethod
+    def is_watch(row):
+        """Return whether a play row counts as a watch (Episode or values row)."""
+        return getattr(row, "status", None) == Status.COMPLETED.value and not getattr(
+            row,
+            "dropped",
+            False,
+        )
 
     @property
     def progress(self):
