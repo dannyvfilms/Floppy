@@ -132,3 +132,18 @@ class HistoryRefreshRerunTests(TestCase):
         self.refresh()
         # No save landed during either refresh: nothing is queued again.
         self.assertEqual(self.queued_day_keys(apply_async), [[self.day]])
+
+    def test_inline_fallback_releases_the_day_locks(self, apply_async):
+        apply_async.side_effect = RuntimeError("broker unavailable")
+        real_refresh = history_cache.refresh_history_cache
+        with patch.object(
+            history_cache, "refresh_history_cache", wraps=real_refresh
+        ) as inline:
+            history_cache.schedule_history_refresh(
+                self.user.id, STYLE, warm_days=0, day_keys=[self.day]
+            )
+        self.assertEqual(inline.call_args.kwargs["day_keys"], [self.day])
+
+        apply_async.side_effect = None
+        # The inline pass released its locks: the next save queues normally.
+        self.assertTrue(self.schedule())

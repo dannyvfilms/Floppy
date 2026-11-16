@@ -388,7 +388,14 @@ def schedule_history_refresh(
             refresh_history_cache,  # deferred to avoid circular import
         )
 
-        refresh_history_cache(user_id, logging_style=logging_style, warm_days=warm_days)
+        # Same days as the queued refresh would have had, so it releases the
+        # locks taken above under the same key.
+        refresh_history_cache(
+            user_id,
+            logging_style=logging_style,
+            warm_days=warm_days,
+            day_keys=normalized_day_keys or None,
+        )
         return False
     else:
         return True
