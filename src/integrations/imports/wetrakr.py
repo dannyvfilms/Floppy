@@ -25,7 +25,12 @@ from datetime import datetime
 from app.models import Status
 from app.providers import services
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
-from integrations.imports.trakt import MODE_STAGES, TRAKT_UNKNOWN_DATE, TraktImporter
+from integrations.imports.trakt import (
+    MODE_STAGES,
+    TRAKT_API_BASE_URL,
+    TRAKT_UNKNOWN_DATE,
+    TraktImporter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -396,7 +401,10 @@ class WeTrakrImporter(TraktImporter):
 
     def _get_paginated_data(self, endpoint, item_type="items"):
         """Serve the export rows standing in for a Trakt ``endpoint``."""
-        path = endpoint.removeprefix(self.user_base_url)
+        # Hidden sections live under /users/hidden/, not the per-user base URL.
+        path = endpoint.removeprefix(self.user_base_url).removeprefix(
+            f"{TRAKT_API_BASE_URL}/users"
+        )
         sections = {
             "/history": self.export.history,
             "/watchlist": self.export.watchlist,
