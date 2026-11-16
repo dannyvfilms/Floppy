@@ -132,6 +132,7 @@ Custom native surface/panel opacity and runtime radius getters are live; static 
 ## ARTWORK-LOADING
 
 Status: `Legacy`
+- `src/app/artwork_sizes.py` (card image size; consumers `src/app/media_card_model.py`, `src/api/fork_views_detail.py`, `src/api/serializers.py` `card_image`, `src/users/home_screen.py` flip prefetch). `frontend/ui/ArtworkImage.native.jsx` renders through `expo-image` (native-only cache carve-out).
 
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`
@@ -215,6 +216,8 @@ The iOS `NativeCardMenu.ios.jsx` defines the full rounded `MediaCard` as the sys
 
 Quick status uses the shared MediaCard and MediaCardActions, the browser card adapter and the Expo MediaCardSlot on Home, Library and Search. Existing fallback consumers and retirement conditions are unchanged. Manual untracked items and non-generic tracking retain their existing flow. Browser search and iOS library rendered; interaction verification and Android runtime verification remain pending separately.
 
+- `frontend/ui/mediaCardQuickStatus.web.js` (browser quick-status transport for the media card)
+
 `frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `native-proof/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
 
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
@@ -224,6 +227,7 @@ Quick status uses the shared MediaCard and MediaCardActions, the browser card ad
 Custom-list grid and table adapters supply podcast show status and score to the existing card and table components; native list detail receives those fields through the list API, and smart-list rules resolve show trackers by provider identity. Presentation ownership and remaining consumers are unchanged. Browser: before/after grid and table captures at desktop and phone widths. iOS and Android runtime verification is pending.
 
 Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
+- Render cost: `frontend/ui/MediaCard.jsx` and `MediaCard.web.jsx` are memoized; `native-proof/app/surfaces/MediaCardSlot.jsx` (`SlotCard`, optional windowed `virtualized` mode); test `scripts/cardRenderCost.test.mjs` with `scripts/test-support/`.
 
 Status: `Web Migrated`
 
@@ -267,6 +271,7 @@ Status: `Partial / coexisting`
 ## LIBRARY
 
 Status: `Partial / coexisting`
+- Native windowing: `native-proof/app/surfaces/LibraryGrid.jsx` and `MediaCardSlot.jsx` render the grid as a `FlatList` with the page as header/footer from `frontend/pages/LibraryPageView.jsx` (`renderScroll`); web paging unchanged.
 
 - `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
 - `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
@@ -435,6 +440,7 @@ Status: `Legacy`
 ## HOME
 
 `native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
+- Render cost: `frontend/ui/HomeShelves.jsx` (`ShelfCard`, stable labels/palette/loadMore).
 
 Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
 
@@ -454,6 +460,8 @@ Status: `Partial / coexisting`
 - `frontend/ui/homeRowLoading.js` (shared Home lazy-row decision: which waiting rows are visible, near or far, and in what order they start).
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
 - `native-proof/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
+- `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `native-proof/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK
 
@@ -820,7 +828,7 @@ Shared CalendarLinks accepts a session-required state from CalendarScreen. Calen
 Status: `Partial / coexisting`
 
 - `src/templates/events/calendar.html`
-- `src/templates/events/components/calendar_grid.html`
+- `src/templates/events/components/calendar_grid.html` (pre-paint agenda: selected day's panel only, SURFACE-16)
 - `src/templates/events/components/calendar_list.html`
 - `frontend/ui/mountCalendarLinks.jsx`
 
