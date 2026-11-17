@@ -44,7 +44,8 @@
   </div>
 
   {{ calendar_links_props|json_script:"calendar-links-props" }}
-  <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
+  {# Under md the React links render their own header-and-card groups (as the Collection modal does); the outer card is desktop only. #}
+  <div class="md:bg-[var(--color-surface)] md:p-5 md:rounded-lg mb-6"
        data-calendar-links-root
        data-props-id="calendar-links-props">
     <div class="flex items-center mb-3">

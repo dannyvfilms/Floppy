@@ -311,7 +311,7 @@ export function CalendarLinks({
       {group('Media Types', switchRows(mediaOptions, selectedMedia, mediaKey))}
       {feed === 'releases' && statuses.length ? group('Status', switchRows(statuses, statusesSelection, 'statuses')) : null}
       {feed === 'releases' && releaseTypes.length ? group('Release Dates', switchRows(releaseTypes, datesSelection, 'releaseTypes')) : null}
-      {actions.length ? group(null, withDividers(actions)) : null}
+      {actions.length ? group(copy.ics, withDividers(actions)) : null}
     </View>;
   }
 
