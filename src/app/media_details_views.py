@@ -1774,11 +1774,22 @@ def media_details(
     # Enrich related items with user tracking data
     # For public views, use list owner's data if available
     if render_secondary_only and media_metadata.get("related"):
+        # The viewer's show rows already hold their seasons and episodes; the
+        # season cards reuse them instead of loading them all again.
+        preloaded_seasons = None
+        if list_owner is None and user_medias:
+            preloaded_seasons = [
+                season
+                for user_media in user_medias
+                if "seasons" in getattr(user_media, "_prefetched_objects_cache", {})
+                for season in user_media.seasons.all()
+            ]
         enrich_detail_related_cards(
             request,
             media_metadata,
             media_type=media_type,
             tracking_user=list_owner,
+            preloaded_seasons=preloaded_seasons,
         )
 
     # For music tracks, get linked artist and album for navigation
