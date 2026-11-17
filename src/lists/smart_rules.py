@@ -376,20 +376,18 @@ def _distinct_json_elements(
                 END
             ) AS _el
             WHERE i.id IN ({scope_sql})
-        """
+        """  # noqa: S608 - quoted names only; values are parameters
         key_params = [key, key] if key is not None else []
         params = [*key_params, *target_params, *scope_params]
     else:
-        json_path = "$" + "".join(
-            '."' + step.replace('"', "") + '"' for step in path
-        )
+        json_path = "$" + "".join('."' + step.replace('"', "") + '"' for step in path)
         if key is not None:
             sql = f"""
                 SELECT DISTINCT
                     json_type(_el.value, %s), json_extract(_el.value, %s)
                 FROM {table} i, json_each(i.{column}, %s) AS _el
                 WHERE i.id IN ({scope_sql}) AND _el.type = 'object'
-            """
+            """  # noqa: S608 - quoted names only; values are parameters
             key_path = '$."' + key.replace('"', "") + '"'
             params = [key_path, key_path, json_path, *scope_params]
         else:
@@ -397,7 +395,7 @@ def _distinct_json_elements(
                 SELECT DISTINCT _el.type, _el.value
                 FROM {table} i, json_each(i.{column}, %s) AS _el
                 WHERE i.id IN ({scope_sql})
-            """
+            """  # noqa: S608 - quoted names only; values are parameters
             params = [json_path, *scope_params]
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
@@ -622,7 +620,9 @@ def normalize_rule_payload(payload, owner):
         deduped_tags.append(value)
 
     list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
-    semantics_version = str(_payload_get(payload, "semantics_version", "") or "").strip()
+    semantics_version = str(
+        _payload_get(payload, "semantics_version", "") or ""
+    ).strip()
     if not semantics_version.isdigit():
         semantics_version = ""
 
@@ -842,7 +842,9 @@ def _collection_only_item_ids(
     """Return collected item ids that do not already have a tracker row."""
     tracked_item_ids = tracked_item_ids or set()
     collected_item_ids, _collected_episode_pairs = _resolve_collection_context(
-        owner, None, collection_context_cache,
+        owner,
+        None,
+        collection_context_cache,
     )
     if not collected_item_ids:
         return set()
@@ -885,7 +887,9 @@ def _collection_only_item_ids(
         return set()
 
     result_ids = set()
-    for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
+    for id_batch in batched(
+        candidate_item_ids, _id_batch_size(len(candidate_item_ids))
+    ):
         candidate_queryset = Item.objects.filter(id__in=id_batch)
         if search_query:
             candidate_queryset = candidate_queryset.filter(
@@ -1039,7 +1043,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
     and skipped so the others still sync.
     """
     zero = {"checked": 0, "added": 0, "removed": 0}
-    item_ids = sorted({item.id for item in items or [] if item and getattr(item, "id", None)})
+    item_ids = sorted(
+        {item.id for item in items or [] if item and getattr(item, "id", None)}
+    )
     if not owner or not item_ids:
         return zero
 
@@ -1059,7 +1065,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
         return zero
 
     batch_size = min(SET_SYNC_ID_BATCH, _id_batch_size(len(item_ids)))
-    existing: dict[int, set[int]] = {custom_list.id: set() for custom_list in smart_lists}
+    existing: dict[int, set[int]] = {
+        custom_list.id: set() for custom_list in smart_lists
+    }
     for id_batch in batched(item_ids, batch_size):
         for list_id, item_id in CustomListItem.objects.filter(
             custom_list_id__in=existing.keys(),
@@ -1086,7 +1094,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
             if to_add:
                 CustomListItem.objects.bulk_create(
                     [
-                        CustomListItem(custom_list=custom_list, item_id=item_id, added_by=owner)
+                        CustomListItem(
+                            custom_list=custom_list, item_id=item_id, added_by=owner
+                        )
                         for item_id in to_add
                     ],
                     ignore_conflicts=True,
@@ -1212,7 +1222,7 @@ def build_filter_data_for_items(
         if not has_unknown_year:
             has_unknown_year = scope.filter(release_datetime__isnull=True).exists()
 
-        for source, country, format_value in (
+        for source, country, raw_format in (
             scope.values_list("source", "country", "format").distinct().order_by()
         ):
             if source:
@@ -1221,7 +1231,7 @@ def build_filter_data_for_items(
             if country_value:
                 countries_set.add(country_value)
                 origins_set.add(country_value)
-            format_value = str(format_value or "").strip()
+            format_value = str(raw_format or "").strip()
             if format_value:
                 formats_set.add(format_value)
 
@@ -1306,13 +1316,17 @@ def build_filter_data_for_items(
             media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
         ),
         "author_is_channel": bool(target_media_types)
-        and all(media_type == MediaTypes.VIDEO.value for media_type in target_media_types),
+        and all(
+            media_type == MediaTypes.VIDEO.value for media_type in target_media_types
+        ),
         "providers": [
             {"value": value, "label": value}
             for value in sorted(providers_set, key=lambda value: value.lower())
         ],
         "show_providers": show_providers_pane
-        and any(media_type in PROVIDER_MEDIA_TYPES for media_type in target_media_types),
+        and any(
+            media_type in PROVIDER_MEDIA_TYPES for media_type in target_media_types
+        ),
         "relative_date_units": [
             {"value": value, "label": label}
             for value, label in RELATIVE_DATE_UNIT_CHOICES

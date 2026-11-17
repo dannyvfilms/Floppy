@@ -84,7 +84,10 @@ class FilterOptionValuesTests(TestCase):
         self.assertEqual(data["implied_genres"], ["Noir"])
         self.assertEqual(
             data["years"],
-            [{"value": "1999", "label": "1999"}, {"value": "unknown", "label": "Unknown"}],
+            [
+                {"value": "1999", "label": "1999"},
+                {"value": "unknown", "label": "Unknown"},
+            ],
         )
         self.assertEqual(
             [entry["value"] for entry in data["sources"]],
