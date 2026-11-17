@@ -199,6 +199,18 @@ SOURCES_CONFIG = {
         "name": "Plex",
         "logo": static("img/plex-logo.svg"),
     },
+    "jellyfin": {
+        "name": "Jellyfin",
+        "logo": static("img/jellyfin-logo.svg"),
+    },
+    "emby": {
+        "name": "Emby",
+        "logo": static("img/emby-logo.png"),
+    },
+    "seerr": {
+        "name": "Seerr",
+        "logo": static("img/seerr-logo.svg"),
+    },
     "audiobookshelf": {
         "name": "Audiobookshelf",
         "logo": static("img/audiobookshelf-logo.svg"),
@@ -265,7 +277,7 @@ SOURCES_CONFIG = {
     },
     "storygraph": {
         "name": "StoryGraph",
-        "logo": static("img/storygraph-logo.svg"),
+        "logo": static("img/storygraph-logo.png"),
     },
     "youtube": {
         "name": "YouTube",
@@ -281,11 +293,11 @@ SOURCES_CONFIG = {
     },
     "radarr": {
         "name": "Radarr",
-        "logo": static("img/plex-logo.svg"),
+        "logo": static("img/radarr-logo.svg"),
     },
     "sonarr": {
         "name": "Sonarr",
-        "logo": static("img/plex-logo.svg"),
+        "logo": static("img/sonarr-logo.svg"),
     },
     "mylar": {
         "name": "Mylar3",
