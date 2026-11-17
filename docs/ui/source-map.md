@@ -132,6 +132,7 @@ Custom native surface/panel opacity and runtime radius getters are live; static 
 ## ARTWORK-LOADING
 
 Status: `Legacy`
+- `src/app/artwork_sizes.py` (card image size; consumers `src/app/media_card_model.py`, `src/api/fork_views_detail.py`, `src/api/serializers.py` `card_image`, `src/users/home_screen.py` flip prefetch). `frontend/ui/ArtworkImage.native.jsx` renders through `expo-image` (native-only cache carve-out).
 
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`
@@ -164,7 +165,7 @@ Shared `Badge` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS
 - `frontend/ui/mountBadge.jsx`
 - `src/templates/users/components/badge.html`
 - `src/users/templatetags/ui_tags.py` (`{% badge %}`)
-- Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
+- Consumers: `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
 
 ## BUTTON
 
@@ -215,6 +216,8 @@ The iOS `NativeCardMenu.ios.jsx` defines the full rounded `MediaCard` as the sys
 
 Quick status uses the shared MediaCard and MediaCardActions, the browser card adapter and the Expo MediaCardSlot on Home, Library and Search. Existing fallback consumers and retirement conditions are unchanged. Manual untracked items and non-generic tracking retain their existing flow. Browser search and iOS library rendered; interaction verification and Android runtime verification remain pending separately.
 
+- `frontend/ui/mediaCardQuickStatus.web.js` (browser quick-status transport for the media card)
+
 `frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `native-proof/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
 
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
@@ -224,6 +227,7 @@ Quick status uses the shared MediaCard and MediaCardActions, the browser card ad
 Custom-list grid and table adapters supply podcast show status and score to the existing card and table components; native list detail receives those fields through the list API, and smart-list rules resolve show trackers by provider identity. Presentation ownership and remaining consumers are unchanged. Browser: before/after grid and table captures at desktop and phone widths. iOS and Android runtime verification is pending.
 
 Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
+- Render cost: `frontend/ui/MediaCard.jsx` and `MediaCard.web.jsx` are memoized; `native-proof/app/surfaces/MediaCardSlot.jsx` (`SlotCard`, optional windowed `virtualized` mode); test `scripts/cardRenderCost.test.mjs` with `scripts/test-support/`.
 
 Status: `Web Migrated`
 
@@ -267,6 +271,7 @@ Status: `Partial / coexisting`
 ## LIBRARY
 
 Status: `Partial / coexisting`
+- Native windowing: `native-proof/app/surfaces/LibraryGrid.jsx` and `MediaCardSlot.jsx` render the grid as a `FlatList` with the page as header/footer from `frontend/pages/LibraryPageView.jsx` (`renderScroll`); web paging unchanged.
 
 - `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
 - `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
@@ -397,6 +402,8 @@ Status: `Partial / coexisting`
 
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
+Suggestion requests (2026-11-16): `GlobalSearch` cancels the superseded request with an `AbortController` and passes `signal` to the platform loader; web loads through `frontend/ui/webRequest.web.js`, Expo through `searchTransportCore` and `authTransportCore` `send`. Both send a per-box `sid` (made in `GlobalSearch.web.jsx`, and per transport by `searchBoxId` in `searchTransportCore`) that `search_views.suggestion_superseded_check` uses to stop older All-media requests early.
+
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
 
 - `src/templates/app/icons/magnifying-glass.svg` (connected SVG shared by GlobalSearch, CollectionBrowser, ProviderDirectoryView and remaining server-template search controls; shared SearchIcon is mapped under SHELL)
@@ -435,6 +442,7 @@ Status: `Legacy`
 ## HOME
 
 `native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
+- Render cost: `frontend/ui/HomeShelves.jsx` (`ShelfCard`, stable labels/palette/loadMore).
 
 Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
 
@@ -454,6 +462,8 @@ Status: `Partial / coexisting`
 - `frontend/ui/homeRowLoading.js` (shared Home lazy-row decision: which waiting rows are visible, near or far, and in what order they start).
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
 - `native-proof/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
+- `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `native-proof/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK
 
@@ -602,7 +612,8 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/fill_track.html`
 - `src/templates/app/components/fill_track_episode.html`
 - `src/templates/app/components/fill_track_episode_bulk.html`
-- `src/templates/app/components/fill_track_song.html`
+- `src/templates/app/components/fill_track_song.html` (album rows pass `play_count`, so the hidden fallback reads no per-track history)
+- `src/templates/app/components/fill_track_song_listen_count.html`
 - `src/templates/app/components/media_metadata_panel.html`
 - `src/templates/app/components/podcast_show_track_modal.html`
 - `src/templates/app/create_entry.html`
@@ -690,7 +701,8 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`
-- `src/templates/app/components/detail_music_album.html`
+- `src/templates/app/components/detail_music_album.html` (renders the first 50 track rows; totals cover every track)
+- `src/templates/app/components/detail_music_album_track_rows.html` (one page of album track rows plus the scroll trigger that loads the next page from `music_album_track_rows`; links in later pages return to the album page)
 - `src/templates/app/components/detail_music_album_activity_subtitle.html`
 - `src/templates/app/components/detail_music_artist.html`
 - `src/templates/app/components/detail_music_track.html`
@@ -699,7 +711,6 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/detail_music_track_history_line.html`
 - `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
-- `src/templates/app/podcast_show_detail.html`
 - `frontend/pages/MusicView.jsx`
 - `frontend/ui/MusicAlbumCard.jsx`
 - `frontend/ui/MusicParts.jsx`
@@ -722,11 +733,14 @@ Status: `Legacy`
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
 - `src/templates/app/components/detail_carousel_fragment.html`
-- `src/templates/app/components/detail_cast_grid.html`
+- `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
-- `src/templates/app/components/person_card_inline.html`
+- `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
+- `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
+- `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
@@ -820,7 +834,7 @@ Shared CalendarLinks accepts a session-required state from CalendarScreen. Calen
 Status: `Partial / coexisting`
 
 - `src/templates/events/calendar.html`
-- `src/templates/events/components/calendar_grid.html`
+- `src/templates/events/components/calendar_grid.html` (pre-paint agenda: selected day's panel only, SURFACE-16)
 - `src/templates/events/components/calendar_list.html`
 - `frontend/ui/mountCalendarLinks.jsx`
 
