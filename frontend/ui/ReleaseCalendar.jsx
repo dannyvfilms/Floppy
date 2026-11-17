@@ -1016,7 +1016,8 @@ function createStyles(colors, compact) {
       borderRadius: 12,
       ...(compact ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : {}),
       padding: compact ? 8 : 24,
-      paddingBottom: compact ? 12 : 24,
+      // Mobile: the grid-to-divider and divider-to-filter gaps match the header-to-grid gap.
+      paddingBottom: compact ? 16 : 24,
       gap: 8,
     },
     mobileCalendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 5 },
@@ -1134,7 +1135,7 @@ function createStyles(colors, compact) {
       alignItems: 'center',
       gap: 6,
       paddingHorizontal: 16,
-      paddingTop: compact ? 12 : 8,
+      paddingTop: compact ? 16 : 8,
       paddingBottom: 8,
     },
     filterChip: {

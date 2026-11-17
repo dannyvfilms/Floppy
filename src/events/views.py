@@ -19,7 +19,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app import backdrops
-from app.icon_specs import file_icon
+from app.icon_specs import file_icon, release_type_icon, status_icon, type_icon
 from app.models import Item, MediaTypes, PodcastEpisode, Status
 from app.templatetags.app_tags import (
     image_url,
@@ -372,6 +372,7 @@ def _calendar_links_props(request, context):
             {
                 "value": media_type,
                 "label": media_type_readable_plural(media_type),
+                "icon": type_icon(media_type),
             }
             for media_type in media_types
         ],
@@ -379,6 +380,7 @@ def _calendar_links_props(request, context):
             {
                 "value": media_type,
                 "label": media_type_readable_plural(media_type),
+                "icon": type_icon(media_type),
             }
             for media_type in HISTORY_MEDIA_TYPES
         ],
@@ -386,11 +388,12 @@ def _calendar_links_props(request, context):
             {
                 "value": status,
                 "label": media_status_readable(status),
+                "icon": status_icon(status),
             }
             for status in context["event_statuses"]
         ],
         "releaseTypes": [
-            {"value": value, "label": label}
+            {"value": value, "label": label, "icon": release_type_icon(value)}
             for value, label in release_type_choices
         ],
         "initialFeed": "releases",

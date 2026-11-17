@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import { CalendarView } from '../../../frontend/pages/CalendarView';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
+import { renderCalendarFeedPicker } from '../surfaces/CalendarFeedPicker';
 import { copyText } from '../../../frontend/ui/clipboard';
 import { Screen } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
@@ -184,11 +185,12 @@ export default function CalendarScreen({ navigate }) {
   const notice = loadError || actionNote || localNotice;
   const linksProps = options?.linksProps;
 
-  // Expo already has the screen context in its shell; use that space for the grid.
+  // Expo has the screen context in its shell and the inset links heading on the card.
   return <Screen chrome={false} contentStyle={{ paddingTop: 8 }}>
     <CalendarView
       title=""
       subtitle={null}
+      labels={{ linksTitle: '', linksCopy: '' }}
       palette={palette}
       loading={false}
       notice={notice}
@@ -211,6 +213,7 @@ export default function CalendarScreen({ navigate }) {
         onMenuAction={handleMenuAction} /> : null}
       links={linksProps || linksSessionRequired ? <CalendarLinks
         {...linksProps}
+        renderFeedPicker={renderCalendarFeedPicker}
         sessionRequired={linksSessionRequired}
         palette={{
           ...palette,

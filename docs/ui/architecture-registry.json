@@ -1070,15 +1070,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean. Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
+          "evidence": "The additive Collection-style feed picker was checked at phone and desktop sizes in Chromium; existing tabs remain. Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean. Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no iOS simulator run was performed."
+          "status": "verified",
+          "evidence": "Duo runtime: Collection heading and card and the iOS system picker inspected; choosing Watch history updates the existing tabs and help text."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no Android emulator run was performed."
+          "status": "verified",
+          "evidence": "Expo Go on Android emulator: before and after shared CalendarLinks previews inspected. Selection synchronization is covered in Chromium; Android menu interaction not inspected."
         }
       }
     },
