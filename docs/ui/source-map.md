@@ -746,6 +746,8 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
+- `src/templates/app/components/video_game_panel.html`
+- `src/templates/app/components/video_game_results.html`
 - `src/templates/app/components/youtube_player.html`
 - `src/templates/app/components/youtube_watch_section.html`
 - `src/templates/app/person_detail.html`

@@ -1,0 +1,46 @@
+{% load i18n %}
+<div id="video-game-panel" class="mb-6 rounded-lg bg-[var(--color-surface)] p-4" x-data="{ picking: false }">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <div class="min-w-0">
+      <h2 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "Game" %}</h2>
+      {% if video_game.game %}
+        <a class="text-lg font-semibold hover:underline"
+           href="{% url 'media_details' source=video_game.game.source media_type=video_game.game.media_type media_id=video_game.game.media_id title=video_game.game.title|slugify %}">{{ video_game.game.title }}</a>
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% if video_game.how == "linked" %}{% translate "Linked by you" %}{% else %}{% translate "From YouTube's game tag" %}{% endif %}
+        </p>
+      {% elif video_game.how == "none" %}
+        <p class="text-lg font-semibold">{% translate "Not about a game" %}</p>
+      {% else %}
+        <p class="text-lg font-semibold">{% translate "No game linked" %}</p>
+        {% if video_game.tag %}
+          <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate with title=video_game.tag.game_title %}YouTube tags this video "{{ title }}", which is not in Floppy yet.{% endblocktranslate %}</p>
+        {% endif %}
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <button type="button" class="rounded bg-[var(--color-surface-strong)] px-3 py-1 hover:bg-[var(--color-surface-hover)]" @click="picking = !picking">
+        {% if video_game.game %}{% translate "Change" %}{% else %}{% translate "Link a game" %}{% endif %}
+      </button>
+      {% if video_game.game %}
+        <button type="button" class="rounded bg-[var(--color-surface-strong)] px-3 py-1 hover:bg-[var(--color-surface-hover)]"
+                hx-post="{% url 'video_game_set' video_item.pk %}" hx-vals='{"mode": "none"}'
+                hx-target="#video-game-panel" hx-swap="outerHTML">{% translate "Not this game" %}</button>
+      {% endif %}
+      {% if video_game.how == "linked" or video_game.how == "none" %}
+        {% if video_game.tag %}
+          <button type="button" class="rounded bg-[var(--color-surface-strong)] px-3 py-1 hover:bg-[var(--color-surface-hover)]"
+                  hx-post="{% url 'video_game_set' video_item.pk %}" hx-vals='{"mode": "auto"}'
+                  hx-target="#video-game-panel" hx-swap="outerHTML">{% translate "Use YouTube's tag" %}</button>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+  <div x-show="picking" x-cloak class="mt-3">
+    <input type="search" name="q" autocomplete="off" placeholder="{% translate 'Search your games' %}"
+           class="w-full rounded bg-[var(--color-surface-strong)] px-3 py-2 text-sm"
+           hx-get="{% url 'video_game_search' video_item.pk %}" hx-trigger="input changed delay:250ms, search"
+           hx-target="#video-game-results" hx-swap="innerHTML">
+    <div id="video-game-results" class="mt-2"></div>
+  </div>
+</div>

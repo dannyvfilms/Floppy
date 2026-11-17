@@ -1,0 +1,18 @@
+{% load i18n %}
+{% if games %}
+  <ul class="divide-y divide-[var(--color-border)] rounded bg-[var(--color-surface-strong)] text-sm">
+    {% for game in games %}
+      <li>
+        <button type="button" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--color-surface)]"
+                hx-post="{% url 'video_game_set' video_item.pk %}"
+                hx-vals='{"mode": "game", "game_item_id": "{{ game.pk }}"}'
+                hx-target="#video-game-panel" hx-swap="outerHTML">
+          <span class="truncate">{{ game.title }}</span>
+          {% if game.release_datetime %}<span class="shrink-0 text-xs text-[var(--color-text-muted)]">{{ game.release_datetime.year }}</span>{% endif %}
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif query|length >= 2 %}
+  <p class="px-1 text-sm text-[var(--color-text-muted)]">{% translate "No games found. Add the game to Floppy first." %}</p>
+{% endif %}
