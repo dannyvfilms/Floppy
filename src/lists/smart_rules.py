@@ -1208,9 +1208,9 @@ def build_filter_data_for_items(
         platforms_set.update(_distinct_json_texts(scope, "platforms"))
         authors_set.update(_distinct_json_authors(scope))
 
+        # A missing date reads as a NULL year, which is the "Unknown" option.
         for year in (
-            scope.filter(release_datetime__isnull=False)
-            .annotate(
+            scope.annotate(
                 _release_year=ExtractYear("release_datetime", tzinfo=datetime.UTC),
             )
             .values_list("_release_year", flat=True)
@@ -1219,8 +1219,8 @@ def build_filter_data_for_items(
         ):
             if year:
                 years_set.add(year)
-        if not has_unknown_year:
-            has_unknown_year = scope.filter(release_datetime__isnull=True).exists()
+            else:
+                has_unknown_year = True
 
         for source, country, raw_format in (
             scope.values_list("source", "country", "format").distinct().order_by()
