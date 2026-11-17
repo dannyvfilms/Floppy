@@ -5,14 +5,12 @@
   <div class="flex items-end justify-between gap-3 mb-4">
     <h2 class="text-xl font-bold">{% if is_author %}{% translate "Read Content" %}{% else %}{% translate "Watched Content" %}{% endif %}</h2>
     <p class="text-xs text-[var(--color-text-muted)]">
-      {% blocktranslate trimmed with value_1=watched_filmography|length count count=watched_filmography|length %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}
+      {% blocktranslate trimmed with value_1=watched_total count count=watched_total %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}
     </p>
   </div>
   {% if watched_filmography %}
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-      {% for entry in watched_filmography %}
-        {% media_card "credit" item=entry.card_item media=entry.media title=entry.title card_media_type=entry.media_type credit=entry %}
-      {% endfor %}
+    <div id="person-watched-grid" class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+      {% include "app/components/person_credit_cards.html" with section="watched" %}
     </div>
   {% else %}
     <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
@@ -24,13 +22,11 @@
 <section>
   <div class="flex items-end justify-between gap-3 mb-4">
     <h2 class="text-xl font-bold">{% if is_author %}{% translate "Bibliography" %}{% else %}{% translate "Filmography" %}{% endif %}</h2>
-    <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=filmography|length count count=filmography|length %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}</p>
+    <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=filmography_total count count=filmography_total %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}</p>
   </div>
   {% if filmography %}
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-      {% for entry in filmography %}
-        {% media_card "credit" item=entry.card_item media=entry.media title=entry.title card_media_type=entry.media_type credit=entry %}
-      {% endfor %}
+    <div id="person-filmography-grid" class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+      {% include "app/components/person_credit_cards.html" with section="filmography" %}
     </div>
   {% else %}
     <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">

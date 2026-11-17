@@ -1,0 +1,17 @@
+{% load app_tags %}
+{% comment %}One page of a person's credit cards (watched or filmography grid).
+   The last card asks for the next page when it scrolls into view and adds it
+   after itself, keeping the chosen filters and sort.{% endcomment %}
+{% if section == "watched" %}
+  {% for entry in watched_filmography %}
+    <div data-person-credit{% if forloop.last and watched_next_page %} hx-get="{{ person_detail_url }}" hx-vals='{"section": "watched", "watched_page": "{{ watched_next_page }}"}' hx-include="#filter-form" hx-trigger="revealed threshold:200px once" hx-swap="afterend" hx-indicator="#loading-indicator"{% endif %}>
+      {% media_card "credit" item=entry.card_item media=entry.media title=entry.title card_media_type=entry.media_type credit=entry %}
+    </div>
+  {% endfor %}
+{% else %}
+  {% for entry in filmography %}
+    <div data-person-credit{% if forloop.last and filmography_next_page %} hx-get="{{ person_detail_url }}" hx-vals='{"section": "filmography", "credits_page": "{{ filmography_next_page }}"}' hx-include="#filter-form" hx-trigger="revealed threshold:200px once" hx-swap="afterend" hx-indicator="#loading-indicator"{% endif %}>
+      {% media_card "credit" item=entry.card_item media=entry.media title=entry.title card_media_type=entry.media_type credit=entry %}
+    </div>
+  {% endfor %}
+{% endif %}

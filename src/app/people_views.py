@@ -197,6 +197,12 @@ def _people_person_contract(context):
             _people_credit_contract(entry, context.get("source"), context["user"])
             for entry in context.get("filmography") or []
         ],
+        # Credits come a page at a time: totals for the headings, and the page
+        # to ask for next (watched_page / credits_page), or null at the end.
+        "watchedTotal": context.get("watched_total", 0),
+        "filmographyTotal": context.get("filmography_total", 0),
+        "watchedNextPage": context.get("watched_next_page"),
+        "filmographyNextPage": context.get("filmography_next_page"),
     }
 
 
@@ -219,6 +225,43 @@ def _people_studio_contract(context):
             for entry in context.get("credited_titles") or []
         ],
     }
+
+
+# Credits are sent in pages: a person with a thousand credits would otherwise
+# send every card at once (about 11 MB of HTML). The web grid asks for the next
+# page as it scrolls into view; the app asks with "Show more".
+PERSON_CREDITS_PAGE_SIZE = 60
+PERSON_CREDIT_SECTIONS = {
+    # section -> (page parameter, "already shown" parameter)
+    "watched": ("watched_page", "watched_shown"),
+    "filmography": ("credits_page", "credits_shown"),
+}
+
+
+def _positive_int(value, default):
+    try:
+        return max(default, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _credit_window(request, entries, section, *, paged):
+    """Return (this page of entries, next page number or None).
+
+    ``*_shown`` keeps a refresh (the play-totals fill-in) from shrinking a grid
+    the viewer already scrolled: the first page grows to cover what is shown.
+    Without ``paged`` (a whole web page) the page number is ignored.
+    """
+    page_param, shown_param = PERSON_CREDIT_SECTIONS[section]
+    size = PERSON_CREDITS_PAGE_SIZE
+    page = _positive_int(request.GET.get(page_param), 1) if paged else 1
+    start = (page - 1) * size
+    end = start + size
+    shown = _positive_int(request.GET.get(shown_param), 0)
+    if page == 1 and shown > size:
+        end = -(-shown // size) * size
+    next_page = end // size + 1 if end < len(entries) else None
+    return entries[start:end], next_page
 
 
 # The web page asks every 3 s while totals build; after about two minutes it
@@ -900,17 +943,43 @@ def person_detail(request, source, person_id, name):
     combined_years = sorted(watched_years | set(all_filmography_years), reverse=True)
     filter_data["years"] = [{"value": str(y), "label": str(y)} for y in combined_years]
 
-    attach_card_media(request.user, [*watched_filmography, *filmography], source)
+    # A "more" request (next page of one grid) shapes only that grid. A whole
+    # web page always starts at the top: card links return to the URL a card
+    # was loaded from, which for a later page is the "more" URL.
+    paged = request.GET.get("format") == "json" or bool(
+        request.headers.get("HX-Request")
+    )
+    section = request.GET.get("section", "") if paged else ""
+    if section not in PERSON_CREDIT_SECTIONS:
+        section = ""
+    watched_total = len(watched_filmography)
+    filmography_total = len(filmography)
+    watched_page, watched_next_page = _credit_window(
+        request, watched_filmography, "watched", paged=paged
+    )
+    filmography_page, filmography_next_page = _credit_window(
+        request, filmography, "filmography", paged=paged
+    )
+    if section == "watched":
+        filmography_page = []
+    elif section == "filmography":
+        watched_page = []
+    attach_card_media(request.user, [*watched_page, *filmography_page], source)
 
     context = {
         "user": request.user,
         "person": person_data,
         "is_author": is_author,
-        "watched_filmography": watched_filmography,
+        "watched_filmography": watched_page,
+        "watched_total": watched_total,
+        "watched_next_page": watched_next_page,
         "watched_movie_count": watched_movie_count,
         "watched_show_count": watched_show_count,
         "watched_book_count": watched_book_count,
-        "filmography": filmography,
+        "filmography": filmography_page,
+        "filmography_total": filmography_total,
+        "filmography_next_page": filmography_next_page,
+        "section": section,
         "history_filter_url": history_filter_url,
         "tracked_plays_count": tracked_plays_count,
         "tracked_hours_count": tracked_hours_count,
@@ -937,6 +1006,8 @@ def person_detail(request, source, person_id, name):
         return JsonResponse(_people_person_contract(context))
     if talent_poll is not None:
         return render(request, "app/components/person_talent_ready.html", context)
+    if section and request.headers.get("HX-Request"):
+        return render(request, "app/components/person_credit_cards.html", context)
     if request.headers.get("HX-Request"):
         return render(
             request, "app/components/person_filmography_fragment.html", context

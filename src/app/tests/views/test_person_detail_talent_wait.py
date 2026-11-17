@@ -195,7 +195,7 @@ class PersonPageTalentWaitTests(TestCase):
         build.assert_not_called()
         self.provider.assert_not_called()
         self.assertTemplateUsed(response, "app/components/person_talent_poller.html")
-        self.assertContains(response, '"attempt": "5"')
+        self.assertContains(response, 'attempt: "5"')
 
     def test_poll_stops_at_the_limit(self):
         from app.people_views import PERSON_TALENT_POLL_LIMIT

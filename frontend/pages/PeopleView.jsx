@@ -36,6 +36,7 @@ export const peopleLabels = {
   noCast: 'No cast available.',
   noCrew: 'No crew available.',
   noTitles: 'No titles available.',
+  showMore: 'Show more',
 };
 
 function countLabel(count, singular, plural) {
@@ -47,7 +48,7 @@ function countLabel(count, singular, plural) {
 const CREDIT_MIN_WIDTH = 150;
 const CREDIT_GAP = 16;
 
-function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid, palette, sectionStyle }) {
+function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid, palette, sectionStyle, moreLabel, loadingMore = false, onLoadMore }) {
   const [width, setWidth] = useState(0);
   const columns = Math.max(1, Math.floor((width + CREDIT_GAP) / (CREDIT_MIN_WIDTH + CREDIT_GAP)));
   const cardWidth = width ? (width - CREDIT_GAP * (columns - 1)) / columns : 0;
@@ -63,6 +64,10 @@ function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid,
     </View> : <View style={[styles.creditEmpty, { backgroundColor: palette.surface || '#27272a' }]}>
       <Text style={[styles.creditEmptyText, { color: palette.textMuted || '#a1a1aa' }]}>{emptyLabel}</Text>
     </View>}
+    {items.length && onLoadMore ? <View style={styles.creditMore}>
+      <Button label={moreLabel} tone="surface" palette={palette} busy={loadingMore}
+        disabled={loadingMore} onPress={onLoadMore} />
+    </View> : null}
   </View>;
 }
 
@@ -83,6 +88,13 @@ export function PeopleView({
   watchedTitle,
   creditsTitle,
   creditsSummary,
+  // Credits arrive a page at a time: the full counts for the headings, and
+  // onLoadMore* (absent at the end of a list) to ask for the next page.
+  watchedTotal,
+  filmographyTotal,
+  onLoadMoreWatched,
+  onLoadMoreFilmography,
+  loadingMore = '',
   gameLengths,
   youtubeWatch,
   reading,
@@ -172,7 +184,10 @@ export function PeopleView({
       renderGrid={renderCreditGrid}
       renderItem={entry => <CreditCard entry={entry} labels={labels} palette={colors} onOpen={onOpenCredit} />}
       title={watchedHeading}
-      summary={countLabel(watched.length, 'title', 'titles')}
+      summary={countLabel(watchedTotal ?? watched.length, 'title', 'titles')}
+      moreLabel={copy.showMore}
+      loadingMore={loadingMore === 'watched'}
+      onLoadMore={onLoadMoreWatched}
       emptyLabel={isAuthor ? copy.noRead : copy.noWatched}
       palette={colors} /> : null}
     {!loading && showCredits ? <CreditGrid items={filmography}
@@ -180,7 +195,10 @@ export function PeopleView({
       renderGrid={renderCreditGrid}
       renderItem={entry => <CreditCard entry={entry} labels={labels} palette={colors} onOpen={onOpenCredit} />}
       title={creditsHeading}
-      summary={creditsSummary || countLabel(filmography.length, 'title', 'titles')}
+      summary={creditsSummary || countLabel(filmographyTotal ?? filmography.length, 'title', 'titles')}
+      moreLabel={copy.showMore}
+      loadingMore={loadingMore === 'filmography'}
+      onLoadMore={onLoadMoreFilmography}
       emptyLabel={kind === 'studio' ? copy.noTitles : isAuthor ? copy.noBibliography : copy.noFilmography}
       palette={colors} /> : null}
     {!loading && showCredits && cast.length ? <Rail items={cast}
@@ -231,6 +249,7 @@ const styles = StyleSheet.create({
   creditHeading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
   creditCount: { fontSize: 12, lineHeight: 16 },
   creditGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: CREDIT_GAP, rowGap: CREDIT_GAP },
+  creditMore: { flexDirection: 'row', justifyContent: 'center' },
   creditEmpty: { padding: 24, borderRadius: 8, alignItems: 'center' },
   creditEmptyText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   sectionTitle: { fontSize: 20, lineHeight: 26, fontWeight: '700' },
