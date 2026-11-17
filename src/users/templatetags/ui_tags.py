@@ -999,16 +999,19 @@ def _person_hero_props(context):
                     "%(value_1)s show", "%(value_1)s shows", count,
                 ) % {"value_1": count},
             })
-        counts.append({
-            "label": ngettext(
-                "%(count)s tracked read" if is_author else "%(count)s tracked play",
-                "%(count)s tracked reads" if is_author else "%(count)s tracked plays",
-                tracked_plays_count,
-            ) % {"count": tracked_plays_count},
-        })
-        tracked_hours_count = context.get("tracked_hours_count")
-        if tracked_hours_count:
-            counts.append({"label": str(tracked_hours_count)})
+        if context.get("talent_pending"):
+            counts.append({"label": _("Counting plays")})
+        else:
+            counts.append({
+                "label": ngettext(
+                    "%(count)s tracked read" if is_author else "%(count)s tracked play",
+                    "%(count)s tracked reads" if is_author else "%(count)s tracked plays",
+                    tracked_plays_count,
+                ) % {"count": tracked_plays_count},
+            })
+            tracked_hours_count = context.get("tracked_hours_count")
+            if tracked_hours_count:
+                counts.append({"label": str(tracked_hours_count)})
 
     return {
         "kind": "person",
@@ -1172,12 +1175,15 @@ class PeopleCastNode(template.Node):
             str(self.options["collapse_key"].resolve(context))
             if "collapse_key" in self.options else ""
         )
-        return _people_island(
-            context,
-            "cast",
-            _people_cast_props(context, row, source, collapse_key),
-            self.body.render(context),
-        )
+        props = _people_cast_props(context, row, source, collapse_key)
+        # The server cards shown before React mounts read the same props, so a
+        # person link is built in one place for both (#1953).
+        with context.push(people_cast_cards=[
+            {"person": person, "card": card}
+            for person, card in zip(row.get("items") or [], props["items"], strict=True)
+        ]):
+            body = self.body.render(context)
+        return _people_island(context, "cast", props, body)
 
 
 @register.tag

@@ -165,7 +165,7 @@ Shared `Badge` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS
 - `frontend/ui/mountBadge.jsx`
 - `src/templates/users/components/badge.html`
 - `src/users/templatetags/ui_tags.py` (`{% badge %}`)
-- Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
+- Consumers: `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
 
 ## BUTTON
 
@@ -401,6 +401,8 @@ Status: `Partial / coexisting`
 `native-proof/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `native-proof/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `native-proof/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` supplies MediaCardSlot to each shared shelf card for in-place actions; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Native shelf actions use the MediaCardSlot host; unsupported media retain their existing detail flow.
 
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
+
+Suggestion requests (2026-11-16): `GlobalSearch` cancels the superseded request with an `AbortController` and passes `signal` to the platform loader; web loads through `frontend/ui/webRequest.web.js`, Expo through `searchTransportCore` and `authTransportCore` `send`. Both send a per-box `sid` (made in `GlobalSearch.web.jsx`, and per transport by `searchBoxId` in `searchTransportCore`) that `search_views.suggestion_superseded_check` uses to stop older All-media requests early.
 
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
 
@@ -707,7 +709,6 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/detail_music_track_history_line.html`
 - `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
-- `src/templates/app/podcast_show_detail.html`
 - `frontend/pages/MusicView.jsx`
 - `frontend/ui/MusicAlbumCard.jsx`
 - `frontend/ui/MusicParts.jsx`
@@ -730,11 +731,14 @@ Status: `Legacy`
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
 - `src/templates/app/components/detail_carousel_fragment.html`
-- `src/templates/app/components/detail_cast_grid.html`
+- `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
-- `src/templates/app/components/person_card_inline.html`
+- `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
+- `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
+- `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
@@ -828,7 +832,7 @@ Shared CalendarLinks accepts a session-required state from CalendarScreen. Calen
 Status: `Partial / coexisting`
 
 - `src/templates/events/calendar.html`
-- `src/templates/events/components/calendar_grid.html`
+- `src/templates/events/components/calendar_grid.html` (pre-paint agenda: selected day's panel only, SURFACE-16)
 - `src/templates/events/components/calendar_list.html`
 - `frontend/ui/mountCalendarLinks.jsx`
 
