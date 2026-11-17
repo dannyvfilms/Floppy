@@ -171,6 +171,49 @@ class TvSeasonBuildsOnceTests(TestCase):
         self.assertEqual(counts["Episode"], self._watches())
         self.assertContains(response, "Season 3")
 
+    def _queries(self, path):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as queries:
+            self.client.get(path)
+        return len(queries)
+
+    def test_app_show_detail_reads_each_watch_once(self):
+        path = f"{self.api}/detail/"
+        response, counts = self._get(path)
+
+        self.assertEqual(counts["Episode"], self._watches())
+        payload = response.json()
+        self.assertTrue(payload["tracking_entries"])
+        # Not one catalogue query per watched episode (watch time used to
+        # fetch each one); a fixed number whatever the show's length.
+        self.assertLess(self._queries(path), 40)
+
+    def test_app_season_detail_reads_each_watch_once(self):
+        path = f"{self.api}/detail/?detail_type=season&season_number=1"
+        response, counts = self._get(path)
+
+        self.assertIn("Progress:", response.json()["activity_subtitle"]["primary_text"])
+        # The page shows one season row (the first stored season Item's);
+        # each of its watches is built once.
+        season_item = (
+            Item.objects.filter(
+                media_id=self.show.media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+            )
+            .exclude(library_media_type=MediaTypes.ANIME.value)
+            .first()
+        )
+        shown = Episode.objects.filter(
+            related_season__item=season_item, related_season__user=self.user
+        ).count()
+        self.assertGreater(shown, 0)
+        self.assertEqual(counts["Episode"], shown)
+        self.assertLess(self._queries(path), 30)
+
 
 class PreloadedSeasonCardsTests(TestCase):
     """The season cards use the page's rows only when they are the same rows."""
