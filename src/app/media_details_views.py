@@ -2270,6 +2270,7 @@ def media_details(
             identity_provider,
             display_provider,
             item=detail_item,
+            viewer=None if public_view else request.user,
         ),
         "detail_tag_sections": _build_detail_tag_sections(
             media_metadata,

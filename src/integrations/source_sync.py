@@ -1,10 +1,11 @@
 """Helpers for reconciling collection metadata across multiple sources."""
 
+from django.db import transaction
 from django.utils import timezone
 
 from app.models import CollectionEntry
 from integrations.imports.helpers import retry_on_lock
-from integrations.models import CollectionSourceState
+from integrations.models import CollectionSourceState, SourcePage
 
 QUALITY_RANKS = {
     "480p": 1,
@@ -234,3 +235,66 @@ def remove_collection_source_state(
         return _reconcile_collection_entry(user=user, item=item)
 
     return retry_on_lock(_remove_state)
+
+
+def replace_source_pages(*, user, source, source_instance_id, pages):
+    """Make one server's saved pages match ``pages``; return rows written.
+
+    ``pages`` maps ``(provider, media_type, media_id)`` to a path and must be
+    the server's complete list: anything not in it is deleted. Unchanged rows
+    are left alone, so a scheduled sync of an unchanged library writes nothing.
+    """
+    scope = SourcePage.objects.filter(
+        user=user, source=source, source_instance_id=source_instance_id
+    )
+    existing = {
+        (row.provider, row.media_type, row.media_id): row
+        for row in scope.only("id", "provider", "media_type", "media_id", "path")
+    }
+    stale = [row.pk for key, row in existing.items() if key not in pages]
+    changed = [
+        row
+        for key, row in existing.items()
+        if key in pages and row.path != pages[key]
+    ]
+    now = timezone.now()
+    for row in changed:
+        row.path = pages[(row.provider, row.media_type, row.media_id)]
+        row.updated_at = now
+    new = [
+        SourcePage(
+            user=user,
+            source=source,
+            source_instance_id=source_instance_id,
+            provider=provider,
+            media_type=media_type,
+            media_id=media_id,
+            path=path,
+        )
+        for (provider, media_type, media_id), path in pages.items()
+        if (provider, media_type, media_id) not in existing
+    ]
+    with transaction.atomic():
+        if stale:
+            scope.filter(pk__in=stale).delete()
+        if changed:
+            SourcePage.objects.bulk_update(changed, ["path", "updated_at"])
+        if new:
+            SourcePage.objects.bulk_create(new, ignore_conflicts=True)
+    return len(stale) + len(changed) + len(new)
+
+
+def set_source_page(*, user, source, provider, media_type, media_id, path):
+    """Save (or with an empty ``path``, drop) one page of a single-account source."""
+    key = {
+        "user": user,
+        "source": source,
+        "source_instance_id": 0,
+        "provider": provider,
+        "media_type": media_type,
+        "media_id": str(media_id),
+    }
+    if not path:
+        SourcePage.objects.filter(**key).delete()
+        return
+    SourcePage.objects.update_or_create(**key, defaults={"path": path})

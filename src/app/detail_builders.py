@@ -930,6 +930,34 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "YT",
     },
+    "radarr": {
+        "logo_src": static("img/radarr-logo.svg"),
+        "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",
+        "badge_classes": "border-amber-400/28 bg-amber-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "RAD",
+    },
+    "sonarr": {
+        "logo_src": static("img/sonarr-logo.svg"),
+        "chip_classes": "border-sky-400/18 bg-sky-500/[0.07]",
+        "badge_classes": "border-sky-400/28 bg-sky-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SON",
+    },
+    "seerr": {
+        "logo_src": static("img/seerr-logo.svg"),
+        "chip_classes": "border-violet-400/18 bg-violet-500/[0.07]",
+        "badge_classes": "border-violet-400/28 bg-violet-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SRR",
+    },
+    "jellyfin": {
+        "logo_src": static("img/jellyfin-logo.svg"),
+        "chip_classes": "border-indigo-400/18 bg-indigo-500/[0.07]",
+        "badge_classes": "border-indigo-400/28 bg-indigo-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "JF",
+    },
     "howlongtobeat": {
         "logo_src": static("img/hltb-logo.png"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",
@@ -979,7 +1007,12 @@ def _build_detail_link_entry(label, url, brand_key):
 
 
 def _build_detail_link_sections(
-    media_metadata, media_type, identity_provider, display_provider, item=None
+    media_metadata,
+    media_type,
+    identity_provider,
+    display_provider,
+    item=None,
+    viewer=None,
 ):
     """Return grouped source and external link chips for the media detail action row."""
     if not isinstance(media_metadata, dict):
@@ -1099,6 +1132,17 @@ def _build_detail_link_sections(
         )
     if external_entries:
         sections.append({"title": "External links", "entries": external_entries})
+    if viewer is not None:
+        from integrations.arr_library import server_link_groups
+
+        for title, links in server_link_groups(
+            viewer, identity_provider, media_type, media_metadata.get("media_id")
+        ):
+            entries = []
+            for label, url, brand in links:
+                append_entry(entries, label, url, brand)
+            if entries:
+                sections.append({"title": title, "entries": entries})
     return sections
 
 

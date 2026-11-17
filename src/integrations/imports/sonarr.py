@@ -23,6 +23,7 @@ from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import (
     prune_collection_source_states,
     remove_collection_source_state,
+    replace_source_pages,
     sync_collection_source_state,
 )
 
@@ -148,6 +149,26 @@ class SonarrImporter:
                 auth=isinstance(error, ConnectionAuthError),
             )
             raise
+
+        # Every series Sonarr manages links from its detail page, by TMDB and
+        # TVDB id, downloaded or not.
+        pages = {}
+        for row in series_rows:
+            if not row.get("titleSlug"):
+                continue
+            for provider, field in (
+                (Sources.TMDB.value, "tmdbId"),
+                (Sources.TVDB.value, "tvdbId"),
+            ):
+                if row.get(field):
+                    key = (provider, MediaTypes.TV.value, str(row[field]))
+                    pages[key] = f"series/{row['titleSlug']}"
+        replace_source_pages(
+            user=self.user,
+            source="sonarr",
+            source_instance_id=self.instance.pk,
+            pages=pages,
+        )
 
         total = len(series_rows)
         for i, row in enumerate(series_rows, start=1):

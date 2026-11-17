@@ -333,3 +333,115 @@ def start_search(user, app, instance_id, kind, arr_id, season=None):
         logger.warning("%s search failed: %s", app, type(error).__name__)
         return f"Couldn't start the search in {app}."
     return ""
+
+
+PLEX_WEB = "https://app.plex.tv/desktop/#!/server/{machine}/details?key=%2Flibrary%2Fmetadata%2F{key}"
+
+
+def _plex_link(user, source, item_type, media_id):
+    """Return the Plex web page for the viewer's copy, from the cached rating key."""
+    from app.models import CollectionEntry
+
+    account = getattr(user, "plex_account", None)
+    if account is None:
+        return None
+    entry = (
+        CollectionEntry.objects.filter(
+            user=user,
+            item__source=source,
+            item__media_type=item_type,
+            item__media_id=str(media_id),
+            plex_rating_key__isnull=False,
+        )
+        .exclude(plex_rating_key="")
+        .values("plex_rating_key", "plex_uri")
+        .first()
+    )
+    if entry is None:
+        return None
+    # A copy is on the server whose connection URI cached it.
+    machine = next(
+        (
+            section.get("machine_identifier")
+            for section in account.sections or []
+            if isinstance(section, dict)
+            and entry["plex_uri"]
+            and section.get("uri") == entry["plex_uri"]
+        ),
+        None,
+    ) or account.machine_identifier
+    if not machine:
+        return None
+    return ("Plex", PLEX_WEB.format(machine=machine, key=entry["plex_rating_key"]), "plex")
+
+
+def server_link_groups(user, source, media_type, media_id):
+    """Return ``(title, [(label, url, brand)])`` groups for the detail links menu.
+
+    Built from saved data only, so a detail page makes no call to any server:
+    the Seerr address, the pages Radarr/Sonarr imports and the Jellyfin webhook
+    record (``SourcePage``), and the rating key Plex caches on a copy.
+    """
+    if not getattr(user, "is_authenticated", False) or source not in (
+        Sources.TMDB.value,
+        Sources.TVDB.value,
+    ):
+        return []
+    if media_type == MediaTypes.MOVIE.value:
+        arr, item_type = "radarr", MediaTypes.MOVIE.value
+    elif media_type in (
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.EPISODE.value,
+    ):
+        arr, item_type = "sonarr", MediaTypes.TV.value
+    else:
+        return []
+
+    from integrations.models import SourcePage
+
+    pages = list(
+        SourcePage.objects.filter(
+            user=user,
+            source__in=(arr, "jellyfin"),
+            provider=source,
+            media_type=item_type,
+            media_id=str(media_id),
+        ).values_list("source", "source_instance_id", "path")
+    )
+    groups = []
+
+    players = []
+    plex = _plex_link(user, source, item_type, media_id)
+    if plex:
+        players.append(plex)
+    # Emby is left out: it reports playback only, so it cannot say what is
+    # on the server.
+    jellyfin = getattr(user, "jellyfin_account", None)
+    for app, _instance_id, path in pages:
+        if app == "jellyfin" and jellyfin is not None:
+            url = _web_url(jellyfin, path)
+            if jellyfin.server_id:
+                url += f"&serverId={jellyfin.server_id}"
+            players.append(("Jellyfin", url, "jellyfin"))
+    if players:
+        groups.append(("Players", players))
+
+    if user.seerr_url and source == Sources.TMDB.value:
+        seerr_type = "movie" if arr == "radarr" else "tv"
+        url = f"{user.seerr_url.rstrip('/')}/{seerr_type}/{media_id}"
+        groups.append(("Requests", [("Seerr", url, "seerr")]))
+
+    instances = {
+        instance.pk: instance for instance in getattr(user, f"{arr}_instances").all()
+    }
+    label = "Radarr" if arr == "radarr" else "Sonarr"
+    downloads = []
+    for app, instance_id, path in pages:
+        instance = instances.get(instance_id) if app == arr else None
+        if instance is not None:
+            name = f"{label} ({instance.name})" if instance.name else label
+            downloads.append((name, _web_url(instance, path), arr))
+    if downloads:
+        groups.append(("Downloads", downloads))
+    return groups

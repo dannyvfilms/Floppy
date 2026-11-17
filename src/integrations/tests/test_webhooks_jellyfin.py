@@ -29,7 +29,7 @@ from app.models import (
 )
 from app.services.grouped_anime import GroupedAnimeMatch
 from integrations import tasks
-from integrations.models import CollectionSourceState
+from integrations.models import CollectionSourceState, SourcePage
 from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
 
 
@@ -2263,12 +2263,17 @@ class JellyfinWebhookTests(TestCase):
             "Item": {
                 "Type": "Movie",
                 "Name": "The Matrix",
+                "Id": "abc123",
                 "ProviderIds": {"Tmdb": "603", "Imdb": "tt0133093"},
             },
         }
         processor = JellyfinWebhookProcessor()
 
         processor.process_payload(payload, self.user)
+        self.assertEqual(
+            SourcePage.objects.get(user=self.user, source="jellyfin").path,
+            "web/#/details?id=abc123",
+        )
 
         item = Item.objects.get(
             media_id="603",
@@ -2291,6 +2296,7 @@ class JellyfinWebhookTests(TestCase):
             {**payload, "Event": "ItemDeleted"},
             self.user,
         )
+        self.assertFalse(SourcePage.objects.filter(user=self.user).exists())
 
         self.assertFalse(
             CollectionSourceState.objects.filter(
