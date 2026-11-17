@@ -1294,7 +1294,7 @@ def _in_library_bucket(item, library_media_type):
 
 
 def _show_seasons(shows, media_id, source, library_media_type):
-    """The viewer's seasons of a show, from the show rows' prefetched seasons.
+    """Return the viewer's seasons of a show, from its prefetched seasons.
 
     Matches ``get_serie_seasons`` (this user's season rows for the show, in
     the requested library bucket) without loading every season and its
@@ -1312,7 +1312,7 @@ def _show_seasons(shows, media_id, source, library_media_type):
 
 
 def _season_watches(seasons, media_id, source, season_number, library_media_type):
-    """The viewer's episode watches of one season, from prefetched seasons.
+    """Return the viewer's episode watches of one season, from prefetched seasons.
 
     Matches ``get_season_episodes`` without loading each watch again.
     """

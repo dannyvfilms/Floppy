@@ -113,7 +113,9 @@ class TvSeasonBuildsOnceTests(TestCase):
         response, counts = self._get(f"{self.api}/1/episodes/?limit=5")
 
         page = response.json()["results"]
-        self.assertEqual([row["item"]["episode_number"] for row in page], [1, 2, 3, 4, 5])
+        self.assertEqual(
+            [row["item"]["episode_number"] for row in page], [1, 2, 3, 4, 5]
+        )
         # The watches of these five episodes, not every watch of the season.
         page_watches = Episode.objects.filter(
             related_season__user=self.user,
@@ -159,9 +161,7 @@ class TvSeasonBuildsOnceTests(TestCase):
 
         self.assertEqual(counts["Episode"], self._watches())
         seasons = response.json()["related"]["seasons"]
-        self.assertEqual(
-            [row["item"]["season_number"] for row in seasons], [1, 2, 3]
-        )
+        self.assertEqual([row["item"]["season_number"] for row in seasons], [1, 2, 3])
         self.assertTrue(all(row["consumption_id"] for row in seasons))
 
     def test_show_page_cards_reuse_the_show_seasons(self):
@@ -233,7 +233,10 @@ class PreloadedSeasonCardsTests(TestCase):
             [entry["media"] for entry in enriched],
             [self.seasons[1], self.seasons[2]],
         )
-        self.assertIs(enriched[0]["media"], next(s for s in preloaded if s.pk == self.seasons[1].pk))
+        self.assertIs(
+            enriched[0]["media"],
+            next(s for s in preloaded if s.pk == self.seasons[1].pk),
+        )
 
     def test_falls_back_when_a_row_is_missing(self):
         # Only season 1 came from the page; season 2 must still be found.
