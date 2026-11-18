@@ -1909,6 +1909,7 @@ class MediaDetailsViewTests(TestCase):
         _mock_is_incomplete_album,
         mock_get_release,
     ):
+        cache.clear()  # no repair cool-down left by an earlier test
         artist = Artist.objects.create(
             name="Brian Eno",
             musicbrainz_id="ff95eb47-41c4-4f7f-a104-cdc30f02e872",
@@ -1948,6 +1949,11 @@ class MediaDetailsViewTests(TestCase):
                 },
             ),
         )
+        # The page queued the repair (run inline by the test settings) and
+        # drew the credits it had; the next view shows the repaired ones.
+        self.assertEqual(response.status_code, 200)
+        mock_get_release.assert_called_once()
+        response = self.client.get(response.request["PATH_INFO"])
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Brian Eno</a> \u2014 ", html=False)
@@ -8101,6 +8107,67 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(last.status_code, 200)
         self.assertEqual(last.context["prev_episode_number"], 2)
         self.assertIsNone(last.context["next_episode_number"])
+
+    @patch("app.views.tmdb.episode")
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_links_credits_to_the_person_page(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        mock_episode,
+    ):
+        """Episode credits render without a `media` context and link by source (#1953)."""
+        mock_get_metadata.return_value = {
+            "title": "Angel",
+            "media_id": "2426",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "season/4": {"episodes": [{"episode_number": 9}]},
+        }
+        mock_process_episodes.return_value = [
+            {
+                "media_id": "2426",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": 4,
+                "episode_number": 9,
+                "title": "Long Day's Journey",
+                "watched": False,
+            },
+        ]
+        mock_episode.return_value = {
+            "cast": [
+                {"person_id": "159320", "name": "Andy Hallett", "role": "Lorne"},
+            ],
+            "crew": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "2426",
+                    "title": "angel",
+                    "season_number": 4,
+                    "episode_number": 9,
+                },
+            ),
+        )
+
+        person_url = reverse(
+            "person_detail",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "person_id": "159320",
+                "name": "andy-hallett",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        # The server cards shown before React mounts link from the same props
+        # the island receives; the props JSON alone would not match href="...".
+        self.assertContains(response, f'href="{person_url}"')
 
     @patch("app.views.tmdb.episode")
     @patch("app.providers.services.get_media_metadata")

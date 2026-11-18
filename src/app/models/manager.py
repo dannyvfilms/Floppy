@@ -1106,17 +1106,25 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         *,
         compact_episodes=False,
         light_rows=False,
+        defer_item_fields=(),
     ):
         """Apply appropriate prefetch_related based on media type.
 
         list_mode=True narrows the episode queryset to only the fields required
         for list-view progress/date calculations, avoiding the cost of
         materializing full Item objects for every episode.
+
+        defer_item_fields names Item columns to leave out of the season and
+        episode items this prefetches (Statistics caches these rows).
         """
         TV = apps.get_model("app", "TV")
         Season = apps.get_model("app", "Season")
         Episode = apps.get_model("app", "Episode")
         episode_qs = Episode.objects.select_related("item")
+        if defer_item_fields:
+            episode_qs = episode_qs.defer(
+                *(f"item__{field}" for field in defer_item_fields)
+            )
         if compact_episodes and (queryset.model == TV or media_type == MediaTypes.SEASON.value):
             # Window sorting runs over every watch. Joining the catalogue here
             # copies its wide JSON/text columns into every intermediate row.
@@ -1130,7 +1138,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             partition = [F("related_season_id"), F("item_id")]
             aggregates = {
                 "_card_total_count": Count("pk"),
-                "_card_completed_count": Count("pk", filter=Q(status=Status.COMPLETED.value)),
+                "_card_completed_count": Count("pk", filter=Episode.watch_q()),
                 "_card_dropped_count": Count("pk", filter=Q(status=Status.DROPPED.value)),
                 "_card_first_end": Min("end_date"),
                 "_card_last_end": Max("end_date"),
@@ -1161,6 +1169,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "id",
                     "end_date",
                     "status",
+                    "dropped",
                     "created_at",
                     "related_season_id",
                     "item_id",
@@ -1193,6 +1202,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                         "id",
                         "end_date",
                         "status",
+                        "dropped",
                         "created_at",
                         "related_season_id",
                         "item__id",
@@ -1212,6 +1222,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "seasons",
                     queryset=Season.objects.select_related("item").defer(
                         *(("item__watch_providers",) if list_mode else ()),
+                        *(f"item__{field}" for field in defer_item_fields),
                     ),
                 ),
                 Prefetch(
@@ -3193,6 +3204,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
+        # No max_progress: nothing reads it on an episode, and annotating
+        # evaluates the queryset, which loaded every watch of the season even
+        # when the caller then narrowed it to one page of episode numbers.
         queryset = self.filter_media_prefetch(
             user,
             media_id,
@@ -3200,6 +3214,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             source,
             season_number=season_number,
             library_media_type=library_media_type,
+            annotate_progress=False,
         )
 
         if episode_numbers is not None:

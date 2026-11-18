@@ -310,7 +310,12 @@ def build_provider_ids(item):
 
 
 def enrich_items_with_user_data(
-    request, items, section_name=None, user=None, library_media_type=None
+    request,
+    items,
+    section_name=None,
+    user=None,
+    library_media_type=None,
+    preloaded_seasons=None,
 ):
     """Enrich a list of items with user tracking data.
 
@@ -318,6 +323,10 @@ def enrich_items_with_user_data(
         library_media_type: When provided and media_type is SEASON, only return
             Season tracking objects whose Item has this library_media_type. Used
             to isolate anime season tracking from TV season tracking.
+        preloaded_seasons: For SEASON items, the target user's season rows the
+            caller already loaded with their episodes (a show page's seasons).
+            They are used instead of loading every season and its episodes
+            again, when they are exactly the rows the lookup would find.
     """
     if not items:
         return []
@@ -358,13 +367,26 @@ def enrich_items_with_user_data(
     if media_type == MediaTypes.SEASON.value and library_media_type is not None:
         q_objects &= Q(item__library_media_type=library_media_type)
 
-    # Bulk fetch all media with prefetch
     model = apps.get_model(app_label="app", model_name=media_type)
-    media_queryset = model.objects.filter(q_objects).select_related("item")
-    media_queryset = BasicMedia.objects._apply_prefetch_related(
-        media_queryset,
-        media_type,
-    )
+    media_queryset = None
+    if media_type == MediaTypes.SEASON.value and preloaded_seasons is not None:
+        # Reuse the caller's rows only when they are exactly the rows the
+        # query below would find (one id-only query checks), so a season
+        # tracked under another show row or library still comes through.
+        preloaded_by_id = {season.pk: season for season in preloaded_seasons}
+        # In the query's own order, so duplicates resolve as they did.
+        matching_ids = list(
+            model.objects.filter(q_objects).values_list("pk", flat=True),
+        )
+        if all(pk in preloaded_by_id for pk in matching_ids):
+            media_queryset = [preloaded_by_id[pk] for pk in matching_ids]
+    if media_queryset is None:
+        # Bulk fetch all media with prefetch
+        media_queryset = model.objects.filter(q_objects).select_related("item")
+        media_queryset = BasicMedia.objects._apply_prefetch_related(
+            media_queryset,
+            media_type,
+        )
     BasicMedia.objects.annotate_max_progress(media_queryset, media_type)
 
     # For podcasts, order by created_at descending to get most recent entry when multiple exist
@@ -670,57 +692,46 @@ def get_artist_collection_stats(user, artist):
     """
     from app.models import Album, Music
 
-    # Get all albums for this artist
     albums = Album.objects.filter(artist=artist)
     total_albums = albums.count()
-
-    # Get all music entries (tracks) for these albums
-    music_entries = Music.objects.filter(
-        user=user,
-        album__in=albums,
-    ).select_related("item", "album")
-
-    # Count total tracks (all tracks from all albums for this artist)
+    # Every query below is the same size however many albums and plays the
+    # artist has: counts and ids in SQL, never a model per play.
+    music_entries = Music.objects.filter(user=user, album__in=albums)
     total_tracks = music_entries.count()
+    no_collection = {
+        "collected_albums": 0,
+        "total_albums": total_albums,
+        "collected_tracks": 0,
+        "total_tracks": total_tracks,
+    }
+    if not total_tracks:
+        return no_collection
 
-    # Get collection entries for all items from this artist
-    item_ids = [m.item_id for m in music_entries if m.item_id]
-    if not item_ids:
-        return {
-            "collected_albums": 0,
-            "total_albums": total_albums,
-            "collected_tracks": 0,
-            "total_tracks": total_tracks,
-        }
+    # One id per collection entry: a track collected twice counts twice.
+    collected_item_ids = list(
+        CollectionEntry.objects.filter(
+            user=user,
+            item_id__in=music_entries.filter(item__isnull=False).values("item_id"),
+        ).values_list("item_id", flat=True),
+    )
+    if not collected_item_ids:
+        return no_collection
 
-    collection_entries = CollectionEntry.objects.filter(
-        user=user,
-        item_id__in=item_ids,
-    ).select_related("item")
-
-    if not collection_entries.exists():
-        return {
-            "collected_albums": 0,
-            "total_albums": total_albums,
-            "collected_tracks": 0,
-            "total_tracks": total_tracks,
-        }
-
-    # Count distinct albums that have at least one collected track
-    collected_album_ids = set()
-    collected_track_count = 0
-
-    for entry in collection_entries:
-        # Find which album this track belongs to
-        music_entry = music_entries.filter(item_id=entry.item_id).first()
-        if music_entry and music_entry.album_id:
-            collected_album_ids.add(music_entry.album_id)
-        collected_track_count += 1
+    # A collected track belongs to the album of its first entry, in the
+    # model's default order (what ``.first()`` per track used to return).
+    album_by_item_id = {}
+    for item_id, album_id in music_entries.filter(
+        item_id__in=set(collected_item_ids),
+    ).values_list("item_id", "album_id"):
+        album_by_item_id.setdefault(item_id, album_id)
+    collected_album_ids = {
+        album_by_item_id.get(item_id) for item_id in collected_item_ids
+    } - {None}
 
     return {
         "collected_albums": len(collected_album_ids),
         "total_albums": total_albums,
-        "collected_tracks": collected_track_count,
+        "collected_tracks": len(collected_item_ids),
         "total_tracks": total_tracks,
     }
 
