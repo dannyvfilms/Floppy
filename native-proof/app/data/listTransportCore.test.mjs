@@ -19,6 +19,7 @@ import {
   searchPaginationFromPayload,
   searchResultsFromPayload,
 } from './listTransportCore.js';
+import { assertFields, recorded } from './recordedAnswers.mjs';
 
 // Payload shapes mirror the Django serializers: ListSerializer
 // (src/api/serializers.py), the media-shaped item entries of
@@ -591,4 +592,35 @@ test('local actions never throw and carry the signed-out reason', async () => {
     assert.equal(result.local, true, name);
     assert.equal(result.reason, transport.reason);
   }
+});
+
+test('recorded list answer carries every field the list page reads', () => {
+  const payload = recorded('list-detail');
+  assertFields(payload, {
+    id: 'number', name: 'string', description: 'string', owner: 'object', collaborators: 'array',
+    viewers: 'array', visibility: 'string', is_smart: 'boolean', items_count: 'number', items: 'object',
+  }, 'list');
+  assertFields(payload.owner, { id: 'number', username: 'string' }, 'list.owner');
+  assertFields(payload.items, { results: 'array', pagination: 'object' }, 'list.items');
+  payload.items.results.forEach((entry, index) => {
+    const where = `list.items.results[${index}]`;
+    assertFields(entry, {
+      id: 'number', item_id: 'string', status: ['number', 'null'], score: ['number', 'null'],
+      progress: ['number', 'null'], progress_unit: ['string', 'null'], list_date_added: 'string',
+      start_date: ['string', 'null'], end_date: ['string', 'null'], item: 'object',
+    }, where);
+    assertFields(entry.item, {
+      title: 'string', media_type: 'string', source: 'string', media_id: 'string',
+      image: ['string', 'null'], release_datetime: ['string', 'null'],
+    }, `${where}.item`);
+  });
+
+  const summary = listSummaryFromPayload(payload, payload.owner.username);
+  assert.equal(summary.isOwner, true);
+  assert.equal(summary.itemsCount, payload.items_count);
+  const items = listItemsFromPayload(payload);
+  assert.equal(items.length, payload.items.results.length);
+  assert.ok(items.some(item => item.status), 'tracked items show their status');
+  assert.ok(items.some(item => item.score != null), 'rated items show their score');
+  items.forEach(item => assert.ok(item.title && item.mediaType && item.source && item.mediaId));
 });

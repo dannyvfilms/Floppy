@@ -6,6 +6,7 @@ import {
   historySavedViewQuery,
   sessionQuery,
 } from './historyTransportCore.js';
+import { assertFields, recorded } from './recordedAnswers.mjs';
 
 const movie = {
   entry_key: '7',
@@ -129,4 +130,33 @@ test('release days are requested one page at a time', async () => {
   await actions.loadRelease({ mediaTypes: ['movie'], limit: 31, offset: 62 });
   assert.equal(calls[0][0], '/api/v1/history/release/');
   assert.deepEqual(calls[0][1].query, { media_type: 'movie', limit: 31, offset: 62 });
+});
+
+test('recorded history answers carry every field a history day reads', () => {
+  const payload = recorded('history');
+  assertFields(payload, { results: 'array', pagination: 'object' }, 'history');
+  assert.ok(payload.results.length > 0);
+  payload.results.forEach((day, dayIndex) => {
+    const where = `history.results[${dayIndex}]`;
+    assertFields(day, {
+      date: 'string', date_display: 'string', weekday: 'string', entry_count: 'number',
+      total_runtime_display: 'string', entries: 'array',
+    }, where);
+    day.entries.forEach((entry, index) => assertFields(entry, {
+      entry_key: 'string', instance_id: ['number', 'null'], media_type: 'string', display_title: 'string',
+      played_at_local: 'string', score: ['number', 'null'],
+      runtime_minutes: 'number', poster: ['string', 'null'], genres: 'array',
+    }, `${where}.entries[${index}]`));
+  });
+
+  const days = historyDaysFromPayload(payload);
+  assert.equal(days.length, payload.results.length);
+  days.forEach((day, index) => {
+    assert.ok(day.date && day.dateLabel && day.weekday);
+    assert.equal(day.entryCount, payload.results[index].entry_count);
+    day.entries.forEach(entry => assert.ok(entry.title && entry.mediaType && entry.when));
+  });
+  assert.ok(days.flatMap(day => day.entries).some(entry => entry.canEdit), 'tracked plays can be edited');
+
+  assert.deepEqual(historyDaysFromPayload(recorded('history-empty')), []);
 });
