@@ -600,6 +600,11 @@ def _build_combined_hours_charts(day_minutes_by_type, hour_minutes):
         MediaTypes.MUSIC.value,
         MediaTypes.PODCAST.value,
         MediaTypes.VIDEO.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.MANGA.value,
     )
 
     merged_day_minutes: defaultdict = defaultdict(float)
@@ -701,6 +706,7 @@ def _aggregate_statistics_from_days(
     weekday_hour_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     day_play_counts = defaultdict(dict)
     day_minutes_by_type = defaultdict(dict)
+    day_reading_units = defaultdict(dict)
     listening_minutes_total = 0
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
@@ -934,6 +940,8 @@ def _aggregate_statistics_from_days(
                 "daily_minutes_by_type", {}
             ).items():
                 day_minutes_by_type[media_type][day.isoformat()] = minutes
+            for media_type, units in day_stats.get("daily_reading_units", {}).items():
+                day_reading_units[media_type][day.isoformat()] = units
 
             for genre, payload in day_stats.get("genres", {}).get("movie", {}).items():
                 movie_genres[genre]["minutes"] += payload.get("minutes", 0)
@@ -1080,6 +1088,7 @@ def _aggregate_statistics_from_days(
                         existing["media_id"] = payload.get("media_id")
 
             daily_minutes = day_stats.get("daily_minutes_by_type", {}) or {}
+            reading_units = day_stats.get("daily_reading_units", {}) or {}
             plays_total = sum(
                 day_stats.get("totals", {}).get("plays_by_type", {}).values()
             )
@@ -1094,7 +1103,7 @@ def _aggregate_statistics_from_days(
                 if plays
             }
             for media_type in non_play_activity_types:
-                if daily_minutes.get(media_type, 0):
+                if (daily_minutes.get(media_type, 0) or reading_units.get(media_type, 0)) and not by_type.get(media_type):
                     activity_total += 1
                     by_type[media_type] = by_type.get(media_type, 0) + 1
             if activity_total == 0 and sum(daily_minutes.values()) > 0:
@@ -1499,8 +1508,10 @@ def _aggregate_statistics_from_days(
     hours_per_media_type = {}
     for media_type, total_minutes in minutes_by_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
+            plays = int(plays_by_type.get(media_type, 0))
             hours_per_media_type[media_type] = (
-                f"{int(total_minutes)} play{'s' if int(total_minutes) != 1 else ''}"
+                f"{plays} play{'s' if plays != 1 else ''} · "
+                f"{stats._format_hours_minutes(total_minutes, user.duration_format)}"
             )
         else:
             hours_per_media_type[media_type] = stats._format_hours_minutes(
@@ -1986,7 +1997,7 @@ def _aggregate_statistics_from_days(
         }
         release_label = release_label_map.get(media_type, "Items Released")
         color = config.get_stats_color(media_type)
-        units_by_day = day_minutes_by_type.get(media_type, {})
+        units_by_day = day_reading_units.get(media_type, {})
         unit_total = sum(units_by_day.values()) if units_by_day else 0
 
         # One finished title per item, dated by its latest completed entry
