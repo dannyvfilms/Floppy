@@ -164,7 +164,21 @@ test('readAll pages with the offset from the next link and merges viewer statuse
   assert.equal(payload.results[1].viewer_status, 'Completed');
   assert.equal(payload.results[0].viewer_status, undefined);
   assert.deepEqual(payload.pagination, { total: 2 });
-  assert.equal(calls[1].options.query.offset, 200);
-  assert.equal(calls[2].path, '/api/v1/calendar/statuses/');
-  assert.deepEqual(calls[2].options.query, { month: 3, year: 2026 });
+  assert.equal(calls[2].options.query.offset, 200);
+  assert.equal(calls[0].path, '/api/v1/calendar/statuses/');
+  assert.deepEqual(calls[0].options.query, { month: 3, year: 2026 });
+});
+
+test('starts status and event requests without waiting for either response', async () => {
+  const started = [];
+  const pending = [];
+  const transport = createRemoteCalendarActions(path => {
+    started.push(path);
+    return new Promise(resolve => pending.push({ path, resolve }));
+  });
+  const result = transport.readAll({ month: 3, year: 2026 });
+  assert.deepEqual(started, ['/api/v1/calendar/statuses/', '/api/v1/calendar/']);
+  pending.find(entry => entry.path.endsWith('/statuses/')).resolve({ statuses: {} });
+  pending.find(entry => entry.path === '/api/v1/calendar/').resolve({ results: [], pagination: { total: 0 } });
+  assert.deepEqual((await result).results, []);
 });

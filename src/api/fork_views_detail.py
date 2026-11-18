@@ -89,6 +89,13 @@ def _owned_media(user, item):
     queryset = model.objects.filter(item=item)
     if item.media_type == app_models.MediaTypes.EPISODE.value:
         return queryset.filter(related_season__user=user).first()
+    if item.media_type in {app_models.MediaTypes.TV.value, app_models.MediaTypes.SEASON.value}:
+        # Progress, dates, watch time, the episode list and the season cards
+        # all read the watched episodes; load them once, with their catalogue
+        # rows, instead of once per reader and one row per episode.
+        queryset = app_models.BasicMedia.objects._apply_prefetch_related(
+            queryset.select_related("item"), item.media_type,
+        )
     return queryset.filter(user=user).first()
 
 
@@ -98,8 +105,12 @@ def _nonempty_list(value):
     return [value] if value not in (None, "", [], {}) else []
 
 
-def _tracking_entries(viewer, item, *, public_view, can_write, media_type):
-    """Return bounded actual consumptions, separate from the audit change log."""
+def _tracking_entries(viewer, item, *, public_view, can_write, media_type, tracked=None):
+    """Return bounded actual consumptions, separate from the audit change log.
+
+    ``tracked`` is the row the page already loaded; it is reused rather than
+    built again with every season and episode of a show.
+    """
     if public_view or viewer is None or item is None:
         return [], 0
     queryset = app_models.BasicMedia.objects.filter_media_prefetch(
@@ -123,10 +134,15 @@ def _tracking_entries(viewer, item, *, public_view, can_write, media_type):
         ))
         start_field, end_field = "detail_entry_start", "detail_entry_end"
     # Match helpers.entry_activity_key while limiting rows before materialization.
-    entries = list(queryset.annotate(
+    ordered_ids = list(queryset.annotate(
         detail_activity=Greatest(Coalesce(end_field, start_field, "created_at"), Coalesce(start_field, end_field, "created_at")),
         detail_start=Coalesce(start_field, "created_at"),
-    ).order_by("-detail_activity", "-detail_start", "-created_at", "-pk")[:50])
+    ).order_by("-detail_activity", "-detail_start", "-created_at", "-pk").values_list("pk", flat=True)[:50])
+    known = {tracked.pk: tracked} if tracked is not None and type(tracked) is queryset.model else {}
+    missing = [pk for pk in ordered_ids if pk not in known]
+    if missing:
+        known.update({entry.pk: entry for entry in queryset.filter(pk__in=missing)})
+    entries = [known[pk] for pk in ordered_ids if pk in known]
     app_models.BasicMedia.objects.annotate_max_progress(entries, item.media_type)
     return [{
         "id": entry.pk,
@@ -580,7 +596,12 @@ class DetailPageView(drf_views.APIView):
                         season_items = (season_items.filter(library_media_type="anime") if media_type == "anime"
                                         else season_items.exclude(library_media_type="anime"))
                         season_item = item if detail_type == "season" else season_items.first()
-                        season = None if public_view else _owned_media(viewer, season_item)
+                        # On a season page the season is the row already loaded.
+                        season = (
+                            tracked
+                            if tracked is not None and season_item is item
+                            else None if public_view else _owned_media(viewer, season_item)
+                        )
                         if metadata.get("episodes"):
                             processor = manual.process_episodes if source == "manual" else tmdb.process_episodes
                             metadata["episodes"] = processor(
@@ -641,6 +662,12 @@ class DetailPageView(drf_views.APIView):
                     metadata,
                     media_type=media_type,
                     tracking_user=viewer,
+                    # A show's season cards reuse the seasons loaded with it.
+                    preloaded_seasons=(
+                        list(tracked.seasons.all())
+                        if "seasons" in getattr(tracked, "_prefetched_objects_cache", {})
+                        else None
+                    ),
                 )
             except Exception:
                 logger.exception("Unable to enrich detail cards for %s/%s", source, media_id)
@@ -849,6 +876,7 @@ class DetailPageView(drf_views.APIView):
             ]
         tracking_entries, tracking_entries_count = _tracking_entries(
             viewer, item, public_view=public_view, can_write=can_write, media_type=media_type,
+            tracked=tracked,
         )
         is_authenticated = bool(viewer)
         layout_family = {
