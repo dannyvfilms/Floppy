@@ -375,7 +375,21 @@ class TimeLeftOrderIdentityTests(TestCase):
         ascending = self._from_facts("asc")
         self.assertEqual(ascending, self._from_hydrated_trackers("asc"))
         self.assertEqual(self._from_facts("desc"), self._from_hydrated_trackers("desc"))
-        self.assertEqual(self._from_facts("desc"), ascending[::-1])
+        # Descending reverses the ranked groups; the tail (nothing released,
+        # unknown, untracked: shown "-" and not dropped) stays last either way.
+        records = sort_time_left_records(
+            build_time_left_records(self.user, self._entries(prefetch_graph=False)),
+            "asc",
+        )
+        tail = sum(
+            record.time_left_display == "-" and record.status != Status.DROPPED.value
+            for record in records
+        )
+        self.assertGreater(tail, 0)
+        self.assertEqual(
+            self._from_facts("desc"),
+            ascending[:-tail][::-1] + ascending[-tail:],
+        )
         self.assertEqual(len(ascending), SHOWS + 1)
 
     def test_library_reaches_every_group(self):
