@@ -67,6 +67,13 @@ Surfaces whose unit is not one item keep their own pipeline:
 - **`ids()`, `contains()` and `matches()` serve smart-list membership.**
   `matches()` returns a `pk` subquery when every filter is SQL, so a scope can
   be passed on without loading it.
+  Membership is stored as `CustomListItem` rows, and every reader of a smart
+  list (list page, Home shelf, lists API, CSV export, RSS and arr feeds)
+  calls `lists.tasks.schedule_smart_list_sync` before answering from them.
+  That queues one debounced full sync per list per minute on the default
+  queue, so readers other than the app's own pages converge too, including
+  date-relative rules that change with no write. A list nobody reads is not
+  refreshed; there is no periodic job.
 - **One ordering everywhere.** The sort value comes first, with nulls last.
   Ties then go to the lower-cased title, season, episode and id, all in the
   requested direction (`executor.tie_breakers`). Equal values cannot move

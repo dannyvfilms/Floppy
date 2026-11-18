@@ -307,6 +307,7 @@ class ListExportCsvView(drf_views.APIView):
         custom_list = CustomList.objects.filter(id=list_id).first()
         if custom_list is None or not custom_list.user_can_view(request.user):
             return Response({"detail": "List not found."}, status=HTTP.NOT_FOUND)
+        list_tasks.schedule_smart_list_sync(custom_list)
         return Response(
             {
                 "filename": f"{slugify(custom_list.name) or 'list'}.csv",
