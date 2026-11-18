@@ -22,7 +22,9 @@ Surfaces whose unit is not one item keep their own pipeline:
 - TV's "time left" order, which is grouped and caches its own order. It ranks
   the filtered library from grouped rows (`app.tv_show_facts`,
   `app.tv_sort.build_time_left_records`), not from hydrated seasons and plays,
-  and hydrates one page;
+  and hydrates one page. Its groups put a caught-up show after the shows
+  still in progress, where the API and Home (episodes left) put it first.
+  Shows with nothing known stay last in both directions;
 - the podcast show view;
 - the music artist and album views;
 - Home's "recently unrated" shelf, which is bounded by its time window.
@@ -213,6 +215,14 @@ ranges are part of their cache keys.
 `app.tests.test_library_query` checks that every SQL sort orders the same way
 on the scan path. A new sort is covered automatically.
 
+`app.tests.test_list_semantics` checks what each sort and filter means, on a
+library larger than one page: the web list, the media API the Expo library
+reads and a Home shelf must show the same order, and the list, the API and
+"select all" on both must keep the same titles. State the order in the table
+(`ORDERS`, or a `FilterCase` for a filter); the test fails until a new key has
+a row. A surface that differs on purpose goes in its `EXEMPT` table with the
+reason.
+
 ## Semantics that surfaces choose
 
 | Option | Meaning | Used by |
@@ -249,7 +259,8 @@ switched over. They are intentional:
   platform. Items listing several platforms sort last. The API previously
   sorted by the first listed platform.
 - **Runtime, time watched and time to beat sort a zero value last,** as
-  unmeasured. Nulls sort last in both directions everywhere. A list page's
+  unmeasured, and a title with no author sorts last by author. Nulls sort
+  last in both directions everywhere. A list page's
   rating sort used to put unrated items first when ascending.
 - **Filters the media list ignored on types whose UI does not show them now
   apply to every type,** for example author on the movie API.
