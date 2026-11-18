@@ -42,6 +42,7 @@ from app.models import (
     PodcastPlay,
     VideoPlay,
 )
+from app.play_duration import elapsed_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +498,7 @@ def build_history_index(
             else Game.objects.none()
         )
         for game in _spans_overlapping(games, bounds).iterator():
-            total_minutes = game.progress or 0
+            total_minutes = game.progress or elapsed_minutes(game.start_date, game.end_date)
             if total_minutes <= 0:
                 continue
             start_dt = game.start_date or game.end_date or game.created_at
@@ -531,7 +532,7 @@ def build_history_index(
         )
         for boardgame in _spans_overlapping(boardgames, bounds).iterator():
             total_plays = boardgame.progress or 0
-            if total_plays <= 0:
+            if total_plays <= 0 and not elapsed_minutes(boardgame.start_date, boardgame.end_date):
                 continue
             start_dt = (
                 boardgame.start_date or boardgame.end_date or boardgame.created_at

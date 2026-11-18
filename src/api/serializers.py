@@ -31,6 +31,7 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Status,
+    Video,  # FORK: fork-only media type
 )
 from app.templatetags.app_tags import media_url
 from events.models import Event
@@ -412,18 +413,24 @@ class CompleteMediaSerializer(serializers.Serializer):
         # FORK: look up already-synced episode Items (e.g. IMDb ratings) for
         # untracked episodes instead of always building an ephemeral in-memory
         # Item, one batched query for the whole season rather than per-episode.
+        # A watched episode brings its own Item, so only the others are read.
+        existing_items = filter_item_bucket(
+            Item.objects.filter(
+                media_id=str(media_metadata.get("media_id") or ""),
+                source=media_metadata.get("source"),
+                media_type=MediaTypes.EPISODE.value,
+                season_number=media_metadata.get("season_number"),
+            ),
+            MediaTypes.EPISODE.value,
+            library_media_type=library_media_type,
+        )
+        if episodes_by_number:
+            existing_items = existing_items.exclude(
+                episode_number__in=list(episodes_by_number),
+            )
         existing_items_by_episode = {
             existing_item.episode_number: existing_item
-            for existing_item in filter_item_bucket(
-                Item.objects.filter(
-                    media_id=str(media_metadata.get("media_id") or ""),
-                    source=media_metadata.get("source"),
-                    media_type=MediaTypes.EPISODE.value,
-                    season_number=media_metadata.get("season_number"),
-                ),
-                MediaTypes.EPISODE.value,
-                library_media_type=library_media_type,
-            )
+            for existing_item in existing_items
         }
         serializer = EpisodeSerializer(
             context={
@@ -1214,6 +1221,8 @@ serializer_map = {
     AlbumTracker: MediaSerializer,
     Season: MediaSerializer,
     TV: MediaSerializer,
+    # A list can hold a YouTube video; without this its list JSON answered 500.
+    Video: MediaSerializer,
 }
 
 

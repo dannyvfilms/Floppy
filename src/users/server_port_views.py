@@ -12,6 +12,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
+from app.helpers import wants_json as _wants_json
 from config.server_port import (
     DEFAULT_SERVER_PORT,
     SERVER_PORT_ENV,
@@ -39,15 +40,6 @@ def _runtime_port() -> int | None:
 def _environment_override_active() -> bool:
     """Return whether the environment owns the server-port value."""
     return SERVER_PORT_ENV in os.environ
-
-
-def _wants_json(request) -> bool:
-    """Return whether the browser adapter asked for an in-place result."""
-    accept = request.headers.get("Accept", "")
-    return (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or "application/json" in accept
-    )
 
 
 def _json_port_result(request, message: str, *, ok: bool = True):

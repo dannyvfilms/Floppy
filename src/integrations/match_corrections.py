@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.providers import services
 from app.public_errors import PublicMessageError
+from app.services.tracker_fold import USER_SCALAR_FIELDS
 from integrations.external_references import save_correction
 from lists.models import CustomListItem, ListRecommendation
 
@@ -47,14 +48,8 @@ class MissingEpisodeMappingError(PublicMessageError, ValueError):
 
 TRACKABLE_TYPES = {MediaTypes.MOVIE.value, MediaTypes.TV.value}
 PAIR_SIZE = 2
-SCALAR_FIELDS = (
-    "status",
-    "score",
-    "progress",
-    "start_date",
-    "end_date",
-    "notes",
-)
+# The user-owned tracking fields, shared with the unattended merge's fold.
+SCALAR_FIELDS = USER_SCALAR_FIELDS
 
 
 def _json_value(value):
@@ -517,6 +512,29 @@ def _move_movie(user, source_item, destination_item, decisions):
         source.delete()
     else:
         Movie.objects.filter(pk=source.pk).update(item=destination_item)
+    _announce_movie_move(user, destination_item)
+
+
+def _announce_movie_move(user, destination_item):
+    """Refresh the readers for the moved film; its queryset writes fire no signals."""
+    from app import history_cache, signals
+
+    kept = Movie.objects.filter(user=user, item=destination_item).first()
+    if kept is None:
+        return
+    dates = [kept.start_date, kept.end_date]
+    dates.extend(kept.plays.values_list("end_date", flat=True))
+    day_keys = sorted(
+        {key for value in dates if value and (key := history_cache.history_day_key(value))}
+    )
+    signals._handle_media_cache_change(
+        user.id,
+        MediaTypes.MOVIE.value,
+        reason="match_correction",
+        history_specs=signals._history_specs(day_keys),
+        statistics_day_values=day_keys,
+        force_history_days=True,
+    )
 
 
 def _destination_season_item(destination_item, season_number, template):

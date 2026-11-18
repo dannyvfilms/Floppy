@@ -21,13 +21,18 @@ indicator.
 
 | Layer | Unit | Where | Rebuilt when |
 | --- | --- | --- | --- |
-| Day payload | one user, one local day | cache (`stats:day:v7:{uid}:{day}`) | the day is dirty, missing, or today/yesterday |
+| Day payload | one user, one local day | versioned `stats:day` cache key | the day is dirty, missing, or today/yesterday |
 | Range snapshot | one user, one predefined range | database (`StatisticsSnapshot`) + cache copy | its generation trails the user's, or it was built on an earlier local day |
 
 Day payloads are derived and rebuildable, so they stay in the cache. A range
 payload also reads live database state (undated items, current status and
 score, reading completions, talent), which is why *any* change makes every
 range stale while only the days it touched need rebuilding.
+
+Daily reading units remain separate from minutes. When an entry lacks a
+recorded duration, its elapsed start-to-end interval supplies minutes, split
+at local day boundaries; it does not replace pages or play counts. Recorded
+durations take precedence, and audiobook listening sessions remain separate.
 
 ## Durable state (`app/models/statistics.py`)
 
@@ -177,6 +182,24 @@ about a quarter of a second of CPU per heavy pass, against several seconds for
 the rest; sharing them would mean freezing about thirty accumulators at every
 range boundary, and the calendar ranges (This Week, This Month, This Year) do
 not nest with the rolling ones.
+
+A save does not share its day rebuild with History either. One dated save
+queues one History refresh (the user's own style: the index, then the saved
+day) and one sync (the saved day, today and yesterday in one prefetched slice,
+then the hot ranges); both run on the `celery` worker. The two builders read
+the same media tables for that day, but not the same rows: History hydrates
+narrow model rows for what ended that day (or started that day with no end),
+while the sync reads `.values()` rows overlapping the slice's span and buckets
+them per day. Feeding both from one fetch would mean rewriting one builder
+onto the other's row shape and putting a History build inside the sync's
+lease, budget and interactive yields. Measured per save on 1k and 10k movie
+libraries (`DATA-06A`, SQLite and PostgreSQL): the sync is about 200 queries
+and History about 34, of which the saved day is 14 History queries against the
+slice's 14 family queries. Even sharing all of that would save at most
+about 9% of the combined wall time on either database. The highlights already reuse History's
+published index (no query on a warm index). Outputs of both pipelines match a
+fresh build of the saved day, apart from the volatile `history_version` and
+`backfill.scheduled_credits`.
 
 The highlights ("on this day") read the History day cache and keep any day they
 had to build, so a History cache that keeps losing days (see the coverage repair
@@ -376,7 +399,9 @@ Add an importer only after checking that every write it makes takes one of the
 paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
-`queryset.update`) on anything Statistics reads, mark it.
+`queryset.update`) on anything Statistics reads, mark it, and add its row to
+`src/app/bulk_write_refresh.py` (`app.tests.test_bulk_write_refresh` fails
+until you do).
 
 ## Retired
 

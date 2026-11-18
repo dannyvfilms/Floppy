@@ -633,8 +633,10 @@ test('calendar transport pages a full month through the offset envelope', async 
   });
   const transport = createCalendarTransport({ auth: session });
   const page = await transport.readAll({ month: 11, year: 2026 });
-  assert.equal(calls[0].options.query.limit, 200);
-  assert.equal(calls[1].options.query.offset, 2);
+  // The statuses request starts alongside the first events page.
+  const pages = calls.filter(call => call.path === '/api/v1/calendar/');
+  assert.equal(pages[0].options.query.limit, 200);
+  assert.equal(pages[1].options.query.offset, 2);
   assert.equal(page.results.length, 3);
   assert.equal(page.pagination.total, 3);
 });

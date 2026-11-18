@@ -375,7 +375,7 @@ def _parse_choice(params: _Params, name: str, allowed: set[str], default: str) -
     return value
 
 
-def _parse_date(params: _Params, name: str) -> str:
+def _date_param(params: _Params, name: str) -> str:
     raw = params.text(name)
     if raw and not normalize_completed_date_filter(raw):
         return params.invalid(name, f"{name} must be a YYYY-MM-DD date", "")
@@ -408,8 +408,8 @@ def _parse_date_ranges(params: _Params) -> dict[str, str]:
 
     ranges = {}
     for field in RELATIVE_DATE_FIELDS:
-        ranges[f"{field}_from"] = _parse_date(params, f"{field}_from")
-        ranges[f"{field}_to"] = _parse_date(params, f"{field}_to")
+        ranges[f"{field}_from"] = _date_param(params, f"{field}_from")
+        ranges[f"{field}_to"] = _date_param(params, f"{field}_to")
         amount = params.text(f"{field}_within")
         ranges[f"{field}_within"] = _normalize_relative_amount(amount)
         if amount and not ranges[f"{field}_within"]:

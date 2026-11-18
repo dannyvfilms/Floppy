@@ -6,6 +6,7 @@ from django.core.paginator import EmptyPage, Paginator
 from app import helpers
 from app import statistics as stats
 from app.models import BasicMedia, MediaTypes, Sources, Status
+from app.play_duration import boardgame_recorded_minutes, play_minutes
 from app.services import game_lengths as game_length_services
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,9 @@ def _build_detail_activity_subtitle(
             else getattr(current_instance, "formatted_progress", None)
         )
         primary_text = build_progress_text(progress_value)
+        duration_text = _format_detail_activity_duration(
+            play_stats.get("total_minutes"), "played"
+        )
     elif media_type in (MediaTypes.BOARDGAME.value, MediaTypes.MUSIC.value):
         progress_value = (
             getattr(current_instance, "formatted_aggregated_progress", None)
@@ -118,6 +122,10 @@ def _build_detail_activity_subtitle(
             duration_text = _format_detail_activity_duration(
                 play_stats.get("total_minutes"),
                 "listened",
+            )
+        else:
+            duration_text = _format_detail_activity_duration(
+                play_stats.get("total_minutes"), "played"
             )
     elif media_type == MediaTypes.PODCAST.value:
         total_plays = play_stats.get("total_plays")
@@ -266,7 +274,10 @@ def _build_detail_activity_state(
             }
 
             if media_type == MediaTypes.GAME.value:
-                total_minutes = int(aggregated_progress or 0)
+                total_minutes = int(sum(
+                    play_minutes(entry.start_date, entry.end_date, entry.progress)
+                    for entry in user_medias
+                ))
                 play_stats.update(
                     {
                         "total_minutes": total_minutes,
@@ -277,7 +288,9 @@ def _build_detail_activity_state(
                 days_played = set()
                 total_minutes_for_avg = 0
                 for entry in user_medias:
-                    entry_minutes = entry.progress or 0
+                    entry_minutes = play_minutes(
+                        entry.start_date, entry.end_date, entry.progress
+                    )
                     if entry_minutes <= 0:
                         continue
                     total_minutes_for_avg += entry_minutes
@@ -358,6 +371,14 @@ def _build_detail_activity_state(
                 )
             else:
                 play_stats["total_plays"] = int(aggregated_progress or 0)
+                if media_type == MediaTypes.BOARDGAME.value:
+                    play_stats["total_minutes"] = sum(
+                        play_minutes(
+                            entry.start_date, entry.end_date,
+                            boardgame_recorded_minutes(entry.item.runtime_minutes, entry.progress),
+                        )
+                        for entry in user_medias
+                    )
                 if media_type in (
                     MediaTypes.BOOK.value,
                     MediaTypes.COMIC.value,
@@ -365,7 +386,13 @@ def _build_detail_activity_state(
                 ):
                     # Time spent reading, over every read of this title.
                     play_stats["total_minutes"] = sum(
-                        getattr(entry, "reading_time", 0) or 0 for entry in user_medias
+                        play_minutes(
+                            entry.start_date, entry.end_date,
+                            getattr(entry, "reading_time", 0),
+                        )
+                        for entry in user_medias
+                        if not (media_type == MediaTypes.BOOK.value
+                                and entry.item.format == "audiobook")
                     )
 
         activity_subtitle = _build_detail_activity_subtitle(

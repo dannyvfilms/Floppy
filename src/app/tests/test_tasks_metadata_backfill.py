@@ -6,7 +6,7 @@ from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from app import tasks
+from app import metadata_utils, tasks
 from app import tasks_genre as genre_tasks
 from app.interactive_requests import (
     INTERACTIVE_REQUEST_CACHE_KEY,
@@ -41,6 +41,17 @@ User = get_user_model()
 
 
 class MetadataBackfillTaskTests(TestCase):
+    def test_progress_total_only_updates_reading_items_page_field(self):
+        for media_type in (MediaTypes.ANIME, MediaTypes.TV, MediaTypes.SEASON):
+            item = Item(media_type=media_type.value, number_of_pages=7)
+            changed = metadata_utils.apply_item_metadata(item, {"max_progress": 24})
+            self.assertEqual(item.number_of_pages, 7)
+            self.assertNotIn("number_of_pages", changed)
+        for media_type in (MediaTypes.BOOK, MediaTypes.MANGA, MediaTypes.COMIC):
+            item = Item(media_type=media_type.value)
+            metadata_utils.apply_item_metadata(item, {"max_progress": 24})
+            self.assertEqual(item.number_of_pages, 24)
+
     def setUp(self):
         cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         super().setUp()

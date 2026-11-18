@@ -476,6 +476,10 @@ class CalendarViewTests(TestCase):
             response = self.client.get(reverse("calendar"))
 
         links = response.context["calendar_links_props"]
+        for entry in links["statuses"] + links["releaseTypes"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
+        for entry in links["releaseMediaTypes"] + links["historyMediaTypes"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
         self.assertContains(response, "data-calendar-links-root")
         self.assertContains(response, links["releaseBaseUrl"])
         self.assertContains(response, links["historyBaseUrl"])
@@ -1100,7 +1104,8 @@ class CalendarFeedCacheTests(TestCase):
         url = reverse("download_calendar", kwargs={"token": self.user.token})
         self.assertEqual(self.client.get(url).status_code, 200)
 
-        with self.assertNumQueries(1):  # the token lookup only
+        # The token lookup and the user's change marker (the validator).
+        with self.assertNumQueries(2):
             response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)

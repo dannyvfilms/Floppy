@@ -38,3 +38,17 @@ def file_icon(name):
 def type_icon(name):
     """Return the spec for a media-type icon from the ``icon`` tag."""
     return icon_spec(str(app_tags.icon(name, False, "")))
+
+
+def status_icon(status):
+    """Return the spec for a tracking status's ``states/`` icon."""
+    return file_icon(f"states/{str(status).lower().replace(' ', '-')}")
+
+
+# Digital releases stream or download; physical ones are discs and cases.
+_RELEASE_TYPE_ICONS = {"digital": "globe", "physical": "cube"}
+
+
+def release_type_icon(value):
+    """Return the spec for a release-date type."""
+    return file_icon(_RELEASE_TYPE_ICONS[value])
