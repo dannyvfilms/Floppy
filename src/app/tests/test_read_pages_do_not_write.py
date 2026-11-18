@@ -344,6 +344,27 @@ class ReadPagesDoNotWriteTests(TestCase):
         self._check("no_writes", "/settings/account", states=("warm",))
         self._check("no_writes", "/api/v1/user/account/")
 
+    def test_smart_list_readers(self):
+        # Tools poll these; each queues a background refresh and writes nothing.
+        from lists.models import CustomList
+
+        smart_list = CustomList.objects.create(
+            name="Guard smart list",
+            owner=self.user,
+            is_smart=True,
+            visibility="public",
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        for path in (
+            f"/api/v1/lists/{smart_list.id}/",
+            f"/api/v1/lists/{smart_list.id}/items/",
+            f"/api/v1/lists/{smart_list.id}/export/",
+            f"/list/{smart_list.id}/rss",
+            f"/list/{smart_list.id}/json?arr=radarr",
+        ):
+            with self.subTest(path=path):
+                self._check("no_writes", path)
+
     def test_api_read_endpoints(self):
         for path in API_READ_PATHS:
             with self.subTest(path=path):

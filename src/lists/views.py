@@ -562,6 +562,7 @@ def list_export_csv(request, list_reference):
     if not custom_list.user_can_view(request.user):
         raise Http404(msg)
 
+    list_tasks.schedule_smart_list_sync(custom_list)
     filename = slugify(custom_list.name) or "list"
     return StreamingHttpResponse(
         exports.generate_list_csv(custom_list),
