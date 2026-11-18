@@ -144,7 +144,7 @@ def _parse_number(text):
         return None
 
 
-def _parse_date(text):
+def _parse_year_first_date(text):
     """Return an ISO date string for an unambiguous date, or None.
 
     Only year-first formats are accepted. ``03/04/2020`` could be March or
@@ -179,7 +179,7 @@ def infer_field_type(values):
             saw_alphabetic = True
             boolean = boolean and _parse_bool(text) is not None
         number = number and _parse_number(text) is not None
-        date = date and _parse_date(text) is not None
+        date = date and _parse_year_first_date(text) is not None
         if select:
             distinct.add(text)
             if (
@@ -445,7 +445,7 @@ class ImportedFieldResolver:
                 return None, False
             return parsed, True
         if field.field_type == CollectionFieldType.DATE:
-            parsed = _parse_date(text)
+            parsed = _parse_year_first_date(text)
             if parsed is None:
                 return None, False
             return parsed, True

@@ -29,6 +29,17 @@ from integrations.import_scope import ImportScopedManager
 
 logger = logging.getLogger(__name__)
 
+
+def _announce_status_write(user_id, media_type, reason):
+    """Tell the library pages and Statistics about a status bulk_update wrote.
+
+    ``bulk_update_with_history`` sends no save signal, so these helpers run
+    the same refresh a save would (docs/architecture/view-caches.md).
+    """
+    from app import signals
+
+    signals._handle_media_cache_change(user_id, media_type, reason=reason)
+
 # Sentinel distinguishing "no explicit end_date supplied" (fall back to the
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
@@ -376,6 +387,7 @@ class TV(Media):
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
 
+        _announce_status_write(self.user_id, MediaTypes.TV.value, "rewatch_started")
         return skipped
 
     def stop_rewatch(self, max_progress=None):
@@ -408,6 +420,7 @@ class TV(Media):
         if self.status != Status.IN_PROGRESS.value:
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
+            _announce_status_write(self.user_id, MediaTypes.TV.value, "rewatch_stopped")
 
     @property
     def progress_percentage(self):
@@ -1509,6 +1522,7 @@ class Season(Media):
             self._invalidate_episode_stats()
             update_fields.append("rewatch_started_at")
         bulk_update_with_history([self], Season, fields=update_fields)
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "season_completed")
         self.related_tv._handle_completed_season(self.item.season_number)
         return True
 
@@ -1613,6 +1627,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_started")
 
     def stop_rewatch(self, max_progress=None):
         """Abandon the current pass; the full history decides the status again.
@@ -1638,6 +1653,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_stopped")
 
     def finish_rewatch_if_complete(self, max_progress=None):
         """Close the pass and complete the season once every episode is replayed.
@@ -1663,6 +1679,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_finished")
         return True
 
     def _get_episode_stats(self):

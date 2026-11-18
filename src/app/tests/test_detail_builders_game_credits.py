@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase, TestCase
 
-from app.detail_builders import _build_detail_link_sections, _build_detail_person_rows
+from app.detail_builders import _build_detail_person_rows, build_detail_link_sections
 from app.models import (
     CreditRoleType,
     Item,
@@ -108,7 +108,7 @@ class GameImdbLinkChipTests(TestCase):
             image="http://example.com/game.jpg",
             provider_external_ids={"imdb_id": "tt34996965"},
         )
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {"media_id": "igdb-2"},
             MediaTypes.GAME.value,
             Sources.IGDB.value,
@@ -129,7 +129,7 @@ class GameImdbLinkChipTests(TestCase):
             title="Some Unmatched Game",
             image="http://example.com/game.jpg",
         )
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {"media_id": "igdb-3"},
             MediaTypes.GAME.value,
             Sources.IGDB.value,
