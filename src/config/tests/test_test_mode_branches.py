@@ -77,7 +77,10 @@ EXPECTED = {
         ".test_item_save_requeues_tmdb_tv_genre_backfill_on_identity_change",
     ),
     # Prompt 35 narrowed the Statistics eager path and tested it.
-    ("app/statistics_cache.py", 'getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)'): (
+    (
+        "app/statistics_cache.py",
+        'getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)',
+    ): (
         1,
         "app.tests.test_statistics_cache.RequestPathDayBuildTests"
         ".test_minutes_by_type_schedules_background_build",
@@ -87,7 +90,10 @@ EXPECTED = {
         "app.tests.test_statistics_cache.StatisticsRefreshSchedulingTests"
         ".test_background_sync_runs_on_the_bulk_lane_but_keeps_its_priority",
     ),
-    ("app/statistics_sync.py", 'getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)'): (
+    (
+        "app/statistics_sync.py",
+        'getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)',
+    ): (
         1,
         "app.tests.test_statistics_sync.MarkingTests"
         ".test_inline_refresh_defers_to_active_sync",
@@ -258,7 +264,10 @@ class TestModeBranchRatchetTests(SimpleTestCase):
             with self.subTest(site=key):
                 self.assertTrue(covered_by, "name the covering test or the reason")
                 if covered_by.startswith(DOUBLE):
-                    named = re.findall(r"\b(?:app|config|integrations|lists|users)\.tests\.\S+", covered_by)
+                    named = re.findall(
+                        r"\b(?:app|config|integrations|lists|users)\.tests\.\S+",
+                        covered_by,
+                    )
                 else:
                     named = [covered_by]
                 for dotted in named:
@@ -267,5 +276,7 @@ class TestModeBranchRatchetTests(SimpleTestCase):
     def test_the_scan_finds_a_new_branch(self):
         """A throwaway ``if settings.TESTING: return`` is caught by the pattern."""
         self.assertTrue(TEST_MODE.search("if settings.TESTING: return"))
-        self.assertTrue(TEST_MODE.search('if getattr(settings, "CELERY_TASK_ALWAYS_EAGER")'))
+        self.assertTrue(
+            TEST_MODE.search('if getattr(settings, "CELERY_TASK_ALWAYS_EAGER")')
+        )
         self.assertFalse(TEST_MODE.search("TESTING_NOTES = 1"))
