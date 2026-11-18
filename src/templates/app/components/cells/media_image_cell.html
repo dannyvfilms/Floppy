@@ -12,6 +12,7 @@
             @click="trackOpen = true">{% include "app/icons/edit.svg" with classes="w-4 h-4" %}</button>
 
     {# Track Modal #}
+    <template x-teleport="body">
     <div x-show="trackOpen"
          @mousedown.self="trackOpen = false"
          x-cloak
@@ -22,5 +23,6 @@
         <div id="{% component_id 'track' media.item track_id %}"></div>
       </div>
     </div>
+    </template>
   {% endif %}
 {% endwith %}
