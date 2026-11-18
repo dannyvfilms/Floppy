@@ -310,7 +310,12 @@ def build_provider_ids(item):
 
 
 def enrich_items_with_user_data(
-    request, items, section_name=None, user=None, library_media_type=None
+    request,
+    items,
+    section_name=None,
+    user=None,
+    library_media_type=None,
+    preloaded_seasons=None,
 ):
     """Enrich a list of items with user tracking data.
 
@@ -318,6 +323,10 @@ def enrich_items_with_user_data(
         library_media_type: When provided and media_type is SEASON, only return
             Season tracking objects whose Item has this library_media_type. Used
             to isolate anime season tracking from TV season tracking.
+        preloaded_seasons: For SEASON items, the target user's season rows the
+            caller already loaded with their episodes (a show page's seasons).
+            They are used instead of loading every season and its episodes
+            again, when they are exactly the rows the lookup would find.
     """
     if not items:
         return []
@@ -358,13 +367,26 @@ def enrich_items_with_user_data(
     if media_type == MediaTypes.SEASON.value and library_media_type is not None:
         q_objects &= Q(item__library_media_type=library_media_type)
 
-    # Bulk fetch all media with prefetch
     model = apps.get_model(app_label="app", model_name=media_type)
-    media_queryset = model.objects.filter(q_objects).select_related("item")
-    media_queryset = BasicMedia.objects._apply_prefetch_related(
-        media_queryset,
-        media_type,
-    )
+    media_queryset = None
+    if media_type == MediaTypes.SEASON.value and preloaded_seasons is not None:
+        # Reuse the caller's rows only when they are exactly the rows the
+        # query below would find (one id-only query checks), so a season
+        # tracked under another show row or library still comes through.
+        preloaded_by_id = {season.pk: season for season in preloaded_seasons}
+        # In the query's own order, so duplicates resolve as they did.
+        matching_ids = list(
+            model.objects.filter(q_objects).values_list("pk", flat=True),
+        )
+        if all(pk in preloaded_by_id for pk in matching_ids):
+            media_queryset = [preloaded_by_id[pk] for pk in matching_ids]
+    if media_queryset is None:
+        # Bulk fetch all media with prefetch
+        media_queryset = model.objects.filter(q_objects).select_related("item")
+        media_queryset = BasicMedia.objects._apply_prefetch_related(
+            media_queryset,
+            media_type,
+        )
     BasicMedia.objects.annotate_max_progress(media_queryset, media_type)
 
     # For podcasts, order by created_at descending to get most recent entry when multiple exist

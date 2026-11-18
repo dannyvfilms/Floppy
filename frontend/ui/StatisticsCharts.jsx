@@ -715,6 +715,7 @@ export function StatisticsCharts({
   const loading = Boolean(model.loading);
   const error = Boolean(model.error);
   const empty = Boolean(model.empty);
+  const { width } = useWindowDimensions();
   if (error || loading || empty) {
     return <StatisticsState kind={error ? 'error' : loading ? 'loading' : 'empty'}
       labels={{
@@ -729,7 +730,6 @@ export function StatisticsCharts({
       palette={colors} />;
   }
   const visible = new Set(groups || []);
-  const { width } = useWindowDimensions();
   const wide = width >= 1024;
   const halfStyle = [styles.cardHalf, !wide && styles.cardFull];
   const thirdStyle = [styles.cardThird, !wide && styles.cardFull];

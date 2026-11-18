@@ -32,6 +32,9 @@ test('podcast and item-provided identities resolve', () => {
     mediaType: 'game', source: 'igdb', mediaId: '99', publicView: false,
   });
   assert.equal(identityFromDetailItem({ href: '/library/movie/' }), null);
+  assert.deepEqual(identityFromDetailItem({
+    mediaType: 'game', item: { media_type: 'game', source: 'manual', media_id: 'example' },
+  }), { mediaType: 'game', source: 'manual', mediaId: 'example', publicView: false });
 });
 
 test('season and episode links retain their provider parent and coordinates', () => {

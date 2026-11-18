@@ -3204,6 +3204,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
+        # No max_progress: nothing reads it on an episode, and annotating
+        # evaluates the queryset, which loaded every watch of the season even
+        # when the caller then narrowed it to one page of episode numbers.
         queryset = self.filter_media_prefetch(
             user,
             media_id,
@@ -3211,6 +3214,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             source,
             season_number=season_number,
             library_media_type=library_media_type,
+            annotate_progress=False,
         )
 
         if episode_numbers is not None:
