@@ -39,6 +39,18 @@ def oauth_token_digest(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
+def no_store(response):
+    """Mark an OAuth endpoint response as never cacheable, and return it.
+
+    Sets ``Cache-Control: no-store`` and ``Pragma: no-cache`` (RFC 6749
+    section 5.1), replacing any value already there. Shared by the device,
+    metadata, revocation and token endpoints.
+    """
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"
+    return response
+
+
 def default_oauth_grant_types() -> list[str]:
     """Return the supported public-client grant types."""
     return list(OAUTH_SUPPORTED_GRANT_TYPES)
