@@ -38,8 +38,12 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             with context.expect_page() as opened:
                 logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
             confirmation = opened.value
+            # A new tab starts on about:blank, which already counts as loaded,
+            # so wait for the logout page's own address before reading it.
+            expect(confirmation).to_have_url(
+                self.live_server_url + reverse("account_logout"), timeout=15000
+            )
             confirmation.wait_for_load_state()
-            self.assertEqual(confirmation.url, self.live_server_url + reverse("account_logout"))
             self.assertEqual(context.request.get(self.live_server_url + reverse("account")).status, 200)
             confirmation.close()
             page.bring_to_front()
