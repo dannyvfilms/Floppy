@@ -334,38 +334,40 @@ def _item_scopes(item_ids) -> list[QuerySet]:
         return []
     return [
         Item.objects.filter(id__in=id_batch)
-        for id_batch in batched(sorted(ids), _id_batch_size(len(ids)))
+        # Leave room for the menu query's own parameters (paths, keys, tags).
+        for id_batch in batched(sorted(ids), max(1, _id_batch_size(len(ids)) - 32))
     ]
 
 
-def _distinct_json_elements(
-    scope: QuerySet,
-    field_name: str,
-    *,
-    path: tuple[str, ...] = (),
-    key: str | None = None,
-) -> list[tuple[str, str]]:
-    """Return the distinct ``(json_type, text)`` elements of a JSON column.
+@dataclasses.dataclass(frozen=True)
+class _JsonOption:
+    """One JSON source of filter-menu values: a column, a path inside it, a key."""
+
+    field_name: str
+    path: tuple[str, ...] = ()
+    key: str | None = None
+
+
+def _json_option_branch(option: _JsonOption) -> tuple[str, list]:
+    """Return one UNION branch selecting ``(json_type, text)`` for ``option``.
 
     The column (or the value at ``path`` inside it) is read as an array; a
     single non-array value counts as a one-element array. With ``key``, each
-    element's ``key`` member is returned instead of the element. Only the
-    distinct values cross into Python, never the items.
+    element's ``key`` member is returned instead of the element.
     """
-    column = connection.ops.quote_name(Item._meta.get_field(field_name).column)
+    column = connection.ops.quote_name(Item._meta.get_field(option.field_name).column)
     table = connection.ops.quote_name(Item._meta.db_table)
-    scope_sql, scope_params = scope.order_by().values("id").query.sql_with_params()
     if connection.vendor == "postgresql":
         target = f"i.{column}"
         target_params: list = []
-        for step in path:
+        for step in option.path:
             target = f"({target} -> %s)"
             target_params.append(step)
-        element = "_el"
-        if key is not None:
-            element = "(_el -> %s)"
+        element = "_el" if option.key is None else "(_el -> %s)"
+        key_params = [] if option.key is None else [option.key, option.key]
         sql = f"""
-            SELECT DISTINCT jsonb_typeof({element}), {element} #>> '{{}}'
+            SELECT CAST(%s AS text) AS tag, jsonb_typeof({element}) AS json_type,
+                {element} #>> '{{}}' AS value
             FROM {table} i
             CROSS JOIN LATERAL (SELECT {target} AS _v) AS _t
             CROSS JOIN LATERAL jsonb_array_elements(
@@ -375,52 +377,79 @@ def _distinct_json_elements(
                     ELSE jsonb_build_array(_t._v)
                 END
             ) AS _el
-            WHERE i.id IN ({scope_sql})
+            WHERE i.id IN (SELECT id FROM _scope)
         """  # noqa: S608 - quoted names only; values are parameters
-        key_params = [key, key] if key is not None else []
-        params = [*key_params, *target_params, *scope_params]
-    else:
-        json_path = "$" + "".join('."' + step.replace('"', "") + '"' for step in path)
-        if key is not None:
-            sql = f"""
-                SELECT DISTINCT
-                    json_type(_el.value, %s), json_extract(_el.value, %s)
-                FROM {table} i, json_each(i.{column}, %s) AS _el
-                WHERE i.id IN ({scope_sql}) AND _el.type = 'object'
-            """  # noqa: S608 - quoted names only; values are parameters
-            key_path = '$."' + key.replace('"', "") + '"'
-            params = [key_path, key_path, json_path, *scope_params]
-        else:
-            sql = f"""
-                SELECT DISTINCT _el.type, _el.value
-                FROM {table} i, json_each(i.{column}, %s) AS _el
-                WHERE i.id IN ({scope_sql})
-            """  # noqa: S608 - quoted names only; values are parameters
-            params = [json_path, *scope_params]
+        return sql, [option, *key_params, *target_params]
+    json_path = "$" + "".join(
+        '."' + step.replace('"', "") + '"' for step in option.path
+    )
+    if option.key is not None:
+        key_path = '$."' + option.key.replace('"', "") + '"'
+        sql = f"""
+            SELECT %s AS tag, json_type(_el.value, %s) AS json_type,
+                json_extract(_el.value, %s) AS value
+            FROM {table} i, json_each(i.{column}, %s) AS _el
+            WHERE i.id IN (SELECT id FROM _scope) AND _el.type = 'object'
+        """  # noqa: S608 - quoted names only; values are parameters
+        return sql, [option, key_path, key_path, json_path]
+    sql = f"""
+        SELECT %s AS tag, _el.type AS json_type, _el.value AS value
+        FROM {table} i, json_each(i.{column}, %s) AS _el
+        WHERE i.id IN (SELECT id FROM _scope)
+    """  # noqa: S608 - quoted names only; values are parameters
+    return sql, [option, json_path]
+
+
+def _distinct_json_elements(
+    scope: QuerySet,
+    options: list[_JsonOption],
+) -> dict[_JsonOption, list[tuple[str, str]]]:
+    """Return each option's distinct ``(json_type, text)`` elements, in one query.
+
+    Only the distinct values cross into Python, never the items.
+    """
+    found: dict[_JsonOption, list[tuple[str, str]]] = {option: [] for option in options}
+    if not options:
+        return found
+    tags = {str(index): option for index, option in enumerate(options)}
+    branches = []
+    params: list = []
+    scope_sql, scope_params = scope.order_by().values("id").query.sql_with_params()
+    params.extend(scope_params)
+    for tag, option in tags.items():
+        branch_sql, branch_params = _json_option_branch(option)
+        branches.append(branch_sql)
+        params.extend([tag, *branch_params[1:]])
+    sql = (
+        f"WITH _scope AS ({scope_sql}) "  # noqa: S608 - compiled ORM subquery
+        "SELECT DISTINCT tag, json_type, value FROM ("
+        + " UNION ALL ".join(branches)
+        + ") AS _options"
+    )
     with connection.cursor() as cursor:
         cursor.execute(sql, params)
         rows = cursor.fetchall()
-    return [
-        (str(json_type), value)
-        for json_type, value in rows
-        if json_type is not None and json_type != "null" and value is not None
-    ]
+    for tag, json_type, value in rows:
+        if json_type is None or json_type == "null" or value is None:
+            continue
+        found[tags[str(tag)]].append((str(json_type), value))
+    return found
 
 
-def _distinct_json_texts(scope: QuerySet, field_name: str, **kwargs) -> set[str]:
-    """Return the distinct, trimmed, non-empty text elements of a JSON column."""
+def _json_texts(elements: list[tuple[str, str]]) -> set[str]:
+    """Return the trimmed, non-empty text of JSON elements."""
     values = set()
-    for _json_type, value in _distinct_json_elements(scope, field_name, **kwargs):
+    for _json_type, value in elements:
         text = str(value).strip()
         if text:
             values.add(text)
     return values
 
 
-def _distinct_json_authors(scope: QuerySet) -> set[str]:
+def _json_authors(elements: list[tuple[str, str]]) -> set[str]:
     """Return author names the way ``_extract_authors`` reads them."""
     names = set()
-    for json_type, value in _distinct_json_elements(scope, "authors"):
+    for json_type, value in elements:
         if json_type == "object":
             try:
                 raw_author = json.loads(value)
@@ -1201,12 +1230,36 @@ def build_filter_data_for_items(
     # Each option is a DISTINCT read in SQL, so the menu costs a few small
     # queries however long the list is, instead of loading every item (and,
     # for providers, every region's availability JSON).
+    genres_option = _JsonOption("genres")
+    implied_option = _JsonOption("implied_genres")
+    languages_option = _JsonOption("languages")
+    platforms_option = _JsonOption("platforms")
+    authors_option = _JsonOption("authors")
+    provider_options = (
+        [
+            _JsonOption("watch_providers", path=(region, kind), key="provider_name")
+            for kind in ("flatrate", "free")
+        ]
+        if show_providers_pane
+        else []
+    )
+    json_options = [
+        genres_option,
+        implied_option,
+        languages_option,
+        platforms_option,
+        authors_option,
+        *provider_options,
+    ]
     for scope in _item_scopes(item_ids):
-        genres_set.update(_distinct_json_texts(scope, "genres"))
-        implied_genres_set.update(_distinct_json_texts(scope, "implied_genres"))
-        languages_set.update(_distinct_json_texts(scope, "languages"))
-        platforms_set.update(_distinct_json_texts(scope, "platforms"))
-        authors_set.update(_distinct_json_authors(scope))
+        json_values = _distinct_json_elements(scope, json_options)
+        genres_set.update(_json_texts(json_values[genres_option]))
+        implied_genres_set.update(_json_texts(json_values[implied_option]))
+        languages_set.update(_json_texts(json_values[languages_option]))
+        platforms_set.update(_json_texts(json_values[platforms_option]))
+        authors_set.update(_json_authors(json_values[authors_option]))
+        for option in provider_options:
+            providers_set.update(_json_texts(json_values[option]))
 
         # A missing date reads as a NULL year, which is the "Unknown" option.
         for year in (
@@ -1234,17 +1287,6 @@ def build_filter_data_for_items(
             format_value = str(raw_format or "").strip()
             if format_value:
                 formats_set.add(format_value)
-
-        if show_providers_pane:
-            for kind in ("flatrate", "free"):
-                providers_set.update(
-                    _distinct_json_texts(
-                        scope,
-                        "watch_providers",
-                        path=(region, kind),
-                        key="provider_name",
-                    ),
-                )
 
     source_labels = dict(Sources.choices)
     filter_data = {
