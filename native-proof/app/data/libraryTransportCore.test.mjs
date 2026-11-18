@@ -74,6 +74,26 @@ test('native library writes use scoped bulk endpoints and preserve item identity
   ]);
 });
 
+test('"Last watched" asks the media API for the same order as the web', async () => {
+  // app.tests.test_list_semantics reads the API with last_watched for this
+  // reason; end_date there is the literal completion date.
+  const calls = [];
+  const transport = createRemoteLibraryActions(async (path, options) => {
+    calls.push({ path, query: options.query });
+    return {};
+  });
+  await transport.load({ mediaType: 'movie', sort: 'end_date', direction: 'desc' });
+  await transport.load({ mediaType: 'all', sort: 'end_date' });
+  await transport.load({ mediaType: 'music', subview: 'albums', sort: 'end_date' });
+  await transport.load({ mediaType: 'movie', sort: 'start_date' });
+  assert.deepEqual(calls.map(call => [call.path, call.query.sort]), [
+    ['/api/v1/media/movie/', 'last_watched'],
+    ['/api/v1/media/', 'last_watched'],
+    ['/api/v1/music/albums/', 'end_date'],
+    ['/api/v1/media/movie/', 'start_date'],
+  ]);
+});
+
 test('filter sections follow the server option lists and leave out empty ones', async () => {
   const { libraryFilterSections } = await import('./libraryTransportCore.js');
   const sections = libraryFilterSections({
