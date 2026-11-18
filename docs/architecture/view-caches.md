@@ -57,6 +57,13 @@ yourself only after writes that skip signals: `QuerySet.update`, `bulk_create`,
 `bulk_update`, and blocks inside `suppress_media_change_side_effects()` that do
 not end in `flush_media_change_side_effects`.
 
+Every such write is listed in `src/app/bulk_write_refresh.py` with how the
+library pages, Statistics, History and the watch-state projection learn about
+it. A write that changes a status like a save would (auto-pause, a reopened
+show, a rewatch ending) runs `signals._handle_media_cache_change`, the same
+refresh a save runs, rather than a call of its own. A new bulk write on a
+tracking model fails `app.tests.test_bulk_write_refresh` until it has a row.
+
 ## Adding a cache or a change
 
 - A new per-user view cache gets a registry and a column in `_VIEWS_BY_CHANGE`.
@@ -69,6 +76,13 @@ not end in `flush_media_change_side_effects`.
 `app.tests.test_view_cache_invalidation` pins what each change and each family
 of write paths clears. It also fails if any module outside `cache_utils.py`
 calls the per-view clear functions directly.
+
+`app.tests.test_bulk_write_refresh` scans the source tree (`ast`, about two
+seconds) for `update`, `bulk_create`, `bulk_update`, raw SQL and suppressed
+blocks on tracking models, and fails when one is not in
+`app/bulk_write_refresh.py`. Its behaviour tests warm a user's library page,
+Home and Statistics, make a bulk change through its view or service, and check
+that nothing cached from before the change can still be served.
 
 ## Token feeds
 

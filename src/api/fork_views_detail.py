@@ -27,7 +27,6 @@ from app.activity_builders import (
 from app.artwork_sizes import card_image_url
 from app.detail_builders import (
     _apply_cached_hltb_link,
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_game_lengths_context,
     _build_imdb_rating_context,
@@ -35,13 +34,14 @@ from app.detail_builders import (
     _build_opencritic_context,
     _build_trakt_popularity_context,
     build_book_formats,
+    build_detail_link_sections,
 )
 from app.detail_related import enrich_detail_related_cards, enrich_detail_seasons
 from app.models import CollectionEntry, Episode, Item, MediaTypes
 from app.providers import manual, services, tmdb
 from app.services import metadata_resolution, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
-from app.tag_views import _build_detail_tag_sections
+from app.tag_views import build_detail_tag_sections
 from app.templatetags.app_tags import (
     country_code,
     detail_promoted_facts,
@@ -487,6 +487,11 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
     }
 
 
+def _gallery_slide(gallery, name):
+    """One slide of a detail carousel, or an empty dict when it has none."""
+    return (gallery or {}).get(name) or {}
+
+
 class DetailPageView(drf_views.APIView):
     """Project provider detail metadata and the caller's own tracking state."""
 
@@ -784,13 +789,13 @@ class DetailPageView(drf_views.APIView):
             "next_label": episode_load_more.get("label") if episode_load_more else None,
         }
 
-        tag_sections = _build_detail_tag_sections(
+        tag_sections = build_detail_tag_sections(
             metadata,
             item,
             None if public_view else viewer,
             genre_list_media_type=media_type,
         )
-        links = _build_detail_link_sections(
+        links = build_detail_link_sections(
             metadata,
             media_type,
             source,
@@ -908,8 +913,11 @@ class DetailPageView(drf_views.APIView):
             "artwork": {
                 "src": metadata.get("image") or "",
                 "aspect": "poster",
-                "backdrop": (gallery or {}).get("hero", {}).get("url") or (gallery or {}).get("overview", {}).get("url") or "",
-                "logo": (gallery or {}).get("overview", {}).get("logo_url") or (gallery or {}).get("hero", {}).get("logo_url") or "",
+                # A gallery with no artwork stores None for these slides.
+                "backdrop": _gallery_slide(gallery, "hero").get("url")
+                or _gallery_slide(gallery, "overview").get("url") or "",
+                "logo": _gallery_slide(gallery, "overview").get("logo_url")
+                or _gallery_slide(gallery, "hero").get("logo_url") or "",
                 "gallery": _primitive(gallery or {"photos": [], "video": None}),
                 "gallery_supported": carousel.carousel_supported(media_type, source),
             },

@@ -15,6 +15,7 @@ from django.utils.translation import gettext, gettext_noop
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app import music_page_repair
+from app.detail_builders import build_detail_link_sections
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import BulkEpisodeTrackForm, MusicTrackNotesForm
 from app.log_safety import exception_summary
@@ -31,8 +32,17 @@ from app.models import (
 )
 from app.services import bulk_music_tracking
 from app.services import music as sync_services
-from app.tag_views import _build_detail_tag_sections
+from app.tag_views import build_detail_tag_sections
 from app.templatetags import app_tags
+from app.track_modal_views import (
+    bulk_episode_form_initial_data,
+    episode_domain_template_payload,
+    track_form_presentation,
+    track_modal_date_suggestion,
+    track_modal_field_groups,
+    track_tab_labels,
+    track_tabs_presentation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -451,14 +461,12 @@ def _render_music_tracker_modal(
     initial_active_tab="general",
 ):
     """Render a non-item music tracker modal through the shared shell."""
-    from app import views as view_barrel
-
     return_url = request.GET.get("return_url") or request.POST.get("return_url", "")
     home_row_id = (
         request.GET.get("home_row_id") or request.POST.get("home_row_id") or ""
     )
     track_form_id = f"track-form-{uuid4().hex}"
-    field_groups = view_barrel._track_modal_field_groups(
+    field_groups = track_modal_field_groups(
         form,
         hidden_field_names={
             field_name for field_name in form.fields if field_name.endswith("_id")
@@ -470,7 +478,7 @@ def _render_music_tracker_modal(
         if bulk_form_override is not None:
             episode_plays_form = bulk_form_override
         else:
-            bulk_initial = view_barrel._bulk_episode_form_initial_data(
+            bulk_initial = bulk_episode_form_initial_data(
                 return_url,
                 bulk_domain,
             )
@@ -507,7 +515,7 @@ def _render_music_tracker_modal(
             ),
         }
 
-    date_suggestion = view_barrel._track_modal_date_suggestion(
+    date_suggestion = track_modal_date_suggestion(
         "Release Date",
         release_date_shortcut,
     )
@@ -542,7 +550,7 @@ def _render_music_tracker_modal(
         "episode_plays_formaction": reverse("music_bulk_save"),
         "episode_plays_tab_label": episode_plays_tab_label,
         "episode_plays_submit_label": episode_plays_submit_label,
-        "episode_plays_domain": view_barrel._episode_domain_template_payload(
+        "episode_plays_domain": episode_domain_template_payload(
             bulk_domain,
         ),
         "episode_plays_mode_notice": (
@@ -551,7 +559,7 @@ def _render_music_tracker_modal(
         "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
     }
     context["track_form_props_id"] = f"{track_form_id}-shared-form"
-    presentation = view_barrel._track_form_presentation(
+    presentation = track_form_presentation(
         request,
         form,
         track_form_id=track_form_id,
@@ -568,9 +576,9 @@ def _render_music_tracker_modal(
         save_as_new=False,
         date_suggestion=date_suggestion,
     )
-    presentation["tabs"] = view_barrel._track_tabs_presentation(context)
+    presentation["tabs"] = track_tabs_presentation(context)
     presentation["model"]["labels"].update(
-        view_barrel._track_tab_labels(context),
+        track_tab_labels(context),
     )
     context["track_form_presentation"] = presentation
     response = render(
@@ -680,7 +688,6 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
 
 def _render_music_artist_details(request, artist):
     """Render a music artist through the shared media details template."""
-    from app import views as view_barrel
     from app.helpers import get_artist_collection_stats
     from app.models import AlbumTracker, ArtistTracker
     from app.providers import musicbrainz
@@ -806,7 +813,7 @@ def _render_music_artist_details(request, artist):
 
     collection_stats = get_artist_collection_stats(request.user, artist)
     notes_entry = artist_tracker if artist_tracker and artist_tracker.notes else None
-    detail_link_sections = view_barrel._build_detail_link_sections(
+    detail_link_sections = build_detail_link_sections(
         {
             "source_url": (
                 f"https://musicbrainz.org/artist/{artist.musicbrainz_id}"
@@ -980,7 +987,6 @@ def album_track_rows(user, album, *, offset=0, limit=None):
 
 def _render_music_album_details(request, artist, album):
     """Render a music album through the shared media details template."""
-    from app import views as view_barrel
     from app.helpers import get_album_collection_metadata
     from app.models import AlbumTracker
     from app.services.music import album_has_musicbrainz_id
@@ -1063,7 +1069,7 @@ def _render_music_album_details(request, artist, album):
 
     collection_metadata = get_album_collection_metadata(request.user, album)
     notes_entry = album_tracker if album_tracker and album_tracker.notes else None
-    detail_link_sections = view_barrel._build_detail_link_sections(
+    detail_link_sections = build_detail_link_sections(
         {
             "source_url": album_details.get("musicbrainz_url", ""),
             "external_links": _external_play_links(tracks_with_data),
@@ -1091,7 +1097,7 @@ def _render_music_album_details(request, artist, album):
         ),
     ).first()
     album_genres = _album_display_genres(album)
-    detail_tag_sections = _build_detail_tag_sections(
+    detail_tag_sections = build_detail_tag_sections(
         {},
         detail_item,
         request.user,
