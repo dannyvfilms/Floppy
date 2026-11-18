@@ -12,7 +12,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db.models import Q
 
-from app.models import TV, Episode, Item, Season
+from app.models import TV, Episode, Item, MediaTypes, Season
 from app.models.episode_order import EpisodeOrder, EpisodeOrderChange
 
 WATCH_FIELDS = ("start_date", "end_date", "score", "notes", "dropped", "status")
@@ -271,15 +271,33 @@ def apply_change(tv, order, *, token, resolutions):
         str(row.pk): _watch_values(row) for row in _watches(tv)
     }}
     journal.save(update_fields=["before_state"])
-    # Queryset updates and bulk creates fire no signals: mark the watched days
-    # before and after the remap so Statistics rebuild them.
-    from app import statistics_sync
-
     moved_days = [row.end_date for row in rows] + [
         resolution.get("fields", {}).get("end_date") for resolution in resolutions
     ]
-    statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
+    _announce_order_change(tv, moved_days)
     return journal
+
+
+def _announce_order_change(tv, moved_days):
+    """Refresh what a remap changes; its queryset writes fire no signals.
+
+    The plays move between episodes and seasons, so the library pages (progress,
+    time left), History (episode numbers and titles) and Statistics all read
+    something new for the days before and after the remap.
+    """
+    from app import history_cache, signals
+
+    day_keys = sorted(
+        {key for day in moved_days if day and (key := history_cache.history_day_key(day))}
+    )
+    signals._handle_media_cache_change(
+        tv.user_id,
+        MediaTypes.EPISODE.value,
+        reason="episode_order_change",
+        history_specs=signals._history_specs(day_keys),
+        statistics_day_values=day_keys,
+        force_history_days=True,
+    )
 
 
 def _watch_values(row):
@@ -328,7 +346,6 @@ def revert_change(tv):
     """Undo the latest order change, refusing once newer viewings depend on it."""
     from django.utils.dateparse import parse_datetime
 
-    from app import statistics_sync
     from app.services.watch_state import project_watch_state
 
     tv = TV.objects.select_for_update().get(pk=tv.pk, user_id=tv.user_id)
@@ -369,5 +386,5 @@ def revert_change(tv):
     change.save(update_fields=["before_state"])
     for item in Item.objects.filter(pk__in=touched):
         project_watch_state(tv.user, item, record_changes=False)
-    statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
+    _announce_order_change(tv, moved_days)
     return change
