@@ -109,6 +109,7 @@ export function PeopleView({
   onViewHistory,
   onOpenCredit,
   renderCreditGrid,
+  renderPersonCard,
   onOpenPerson,
   onPlayGallery,
   onOpenLightbox,
@@ -197,7 +198,7 @@ export function PeopleView({
       emptyLabel={copy.noCrew}
       palette={railPalette} /> : null}
     {!loading && showCast && !showCredits ? <Rail items={items}
-      renderItem={entry => <PersonCard person={entry} web={web} labels={labels} palette={colors}
+      renderItem={entry => renderPersonCard ? renderPersonCard(entry) : <PersonCard person={entry} web={web} labels={labels} palette={colors}
         onOpen={onOpenPerson} />}
       title={title || copy.cast}
       itemWidth={castWidth}

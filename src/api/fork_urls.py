@@ -44,6 +44,11 @@ priority_urlpatterns = [
         name="api_search_sources",
     ),
     re_path(
+        r"^search/type/?$",
+        fork_views_search.SearchTypeView.as_view(),
+        name="api_search_type",
+    ),
+    re_path(
         r"^search/suggestions/?$",
         fork_views_search.SearchSuggestionsView.as_view(),
         name="api_search_suggestions",
@@ -402,6 +407,11 @@ urlpatterns = [
         r"^collection/fields/?$",
         fork_views_collection.CollectionFieldsView.as_view(),
         name="api_collection_fields",
+    ),
+    re_path(
+        r"^collection/seasons/(?P<season_id>\d+)/?$",
+        fork_views_detail.CollectionSeasonAuditView.as_view(),
+        name="api_collection_season_audit",
     ),
     re_path(
         r"^collection/(?P<entry_id>\d+)/?$",

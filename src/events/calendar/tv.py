@@ -27,30 +27,6 @@ TVMAZE_MAP_CACHE_VERSION = 4
 MIN_VALID_RELEASE_YEAR = 1900
 
 
-def _clear_tv_time_left_cache(media_id, source, user_ids=None):
-    """Invalidate cached time-left values for users tracking a TV show."""
-    if not media_id or not source:
-        return
-
-    if user_ids is None:
-        tv_user_ids = TV.objects.filter(
-            item__media_id=media_id,
-            item__source=source,
-            item__media_type=MediaTypes.TV.value,
-        ).values_list("user_id", flat=True)
-        season_user_ids = Season.objects.filter(
-            item__media_id=media_id,
-            item__source=source,
-            item__media_type=MediaTypes.SEASON.value,
-        ).values_list("user_id", flat=True)
-        user_ids = sorted(set(tv_user_ids).union(season_user_ids))
-    else:
-        user_ids = sorted(set(user_ids))
-
-    for user_id in user_ids:
-        cache_utils.clear_time_left_cache_for_user(user_id)
-
-
 def _evict_cached_metadata(tv_item, season_numbers=(), *, show=True):
     """Drop cached provider payloads so this check reads current air dates.
 
@@ -265,7 +241,11 @@ def process_tv_seasons(tv_item, seasons_to_process, events_bulk):
             item_changes = True
 
     if item_changes:
-        _clear_tv_time_left_cache(tv_item.media_id, tv_item.source)
+        cache_utils.clear_show_view_caches(
+            tv_item.media_id,
+            tv_item.source,
+            cache_utils.EPISODE_DETAILS,
+        )
 
     reopen_completed_tv_with_new_seasons(tv_item, processed_season_items, events_bulk)
 

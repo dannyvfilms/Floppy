@@ -1,10 +1,20 @@
 import datetime
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from app.models import Anime, Item, MediaTypes, Movie, Sources, Status
+from app.models import (
+    Album,
+    AlbumTracker,
+    Anime,
+    Item,
+    MediaTypes,
+    Movie,
+    Sources,
+    Status,
+)
 from app.statistics_cache import get_statistics_data
 
 
@@ -12,6 +22,9 @@ class UndatedEntriesRangeTests(TestCase):
     """Entries with no dates belong to All Time only, never to a date range (#1521)."""
 
     def setUp(self):
+        # Day and range statistics live in the shared cache, keyed by user id;
+        # SQLite reuses ids after rollback, so start every test empty.
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="viewer", password="password123"
         )
@@ -72,4 +85,35 @@ class UndatedEntriesRangeTests(TestCase):
 
         data = self._stats(last_week.replace(hour=0), last_week.replace(hour=23))
 
+        self.assertEqual(data["media_count"]["total"], 0)
+
+    def test_album_trackers_count_without_creating_listening_activity(self):
+        album = Album.objects.create(title="Album")
+        tracker = AlbumTracker.objects.create(
+            user=self.user, album=album, status=Status.COMPLETED.value,
+            score=8, start_date=self.today, end_date=self.today,
+        )
+        data = self._stats(self.today.replace(hour=0), self.today.replace(hour=23))
+        self.assertEqual(data["media_count"][MediaTypes.MUSIC.value], 1)
+        self.assertEqual(data["status_distribution"]["total_completed"], 1)
+        self.assertEqual(data["score_distribution"]["total_scored"], 1)
+        self.assertFalse(data["music_consumption"]["has_data"])
+        self.assertEqual(data["minutes_per_media_type"].get(MediaTypes.MUSIC.value, 0), 0)
+        self.assertEqual(data["media_type_distribution"]["datasets"][0]["data"], [])
+        tracker.start_date = tracker.end_date = None
+        tracker.save()
+        self.assertEqual(self._stats(None, None)["media_count"][MediaTypes.MUSIC.value], 1)
+        self.assertEqual(self._stats(self.today.replace(hour=0), self.today.replace(hour=23))["media_count"]["total"], 0)
+
+    def test_album_changes_refresh_predefined_statistics(self):
+        album = Album.objects.create(title="Album")
+        tracker = AlbumTracker.objects.create(user=self.user, album=album, score=5)
+        data = get_statistics_data(self.user, None, None, range_name="All Time")
+        self.assertEqual(data["score_distribution"]["average_score"], 5)
+        tracker.score = 9
+        tracker.save()
+        data = get_statistics_data(self.user, None, None, range_name="All Time")
+        self.assertEqual(data["score_distribution"]["average_score"], 9)
+        tracker.delete()
+        data = get_statistics_data(self.user, None, None, range_name="All Time")
         self.assertEqual(data["media_count"]["total"], 0)

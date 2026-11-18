@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from django.core.cache import cache
 from django.utils import timezone
 
-from app import live_playback
+from app import cache_utils, live_playback
 from app.models import (
     TV,
     Episode,
@@ -520,12 +520,17 @@ def finish(user, media_type, media_id):
     _complete(user, record, timezone.now().replace(second=0, microsecond=0))
 
 
-def _restore_parents(parents):
+def _restore_parents(user_id, parents):
     """Put back the season and show status the created episode play changed."""
     if not parents:
         return
     Season.objects.filter(id=parents["season_id"]).update(status=parents["season"])
     TV.objects.filter(id=parents["tv_id"]).update(status=parents["tv"])
+    # QuerySet.update skips the save signals that would clear these views.
+    cache_utils.clear_library_view_caches(
+        user_id,
+        media_types=(MediaTypes.TV.value, MediaTypes.SEASON.value),
+    )
 
 
 def cancel(user, media_type, media_id):
@@ -535,7 +540,7 @@ def cancel(user, media_type, media_id):
     if row is not None and row.status == Status.IN_PROGRESS.value:
         if record["created"]:
             row.delete()
-            _restore_parents(record.get("parents"))
+            _restore_parents(user.id, record.get("parents"))
         elif record["previous"] and record["previous"]["status"] != row.status:
             row.status = record["previous"]["status"]
             row.start_date = record["previous"]["start_date"]

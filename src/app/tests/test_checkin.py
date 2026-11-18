@@ -695,6 +695,31 @@ class CheckInShowTests(TestCase):
         self.assertEqual(self.season.status, Status.PAUSED.value)
         self.assertEqual(self.show.status, Status.PAUSED.value)
 
+    @patch("app.models.Episode._local_season_max_progress", return_value=3)
+    def test_cancel_clears_views_after_putting_the_show_back(self, _max_progress):
+        """The status restore skips signals, so it clears the views itself."""
+        from app.tests.test_view_cache_invalidation import ALL, cleared, seed
+
+        self.watched(1)
+        self.start()
+        original_restore = checkin._restore_parents
+
+        def restore_after_a_reader_cached(*args, **kwargs):
+            # A page read between the play's delete and the status restore.
+            seed(self.user.id)
+            return original_restore(*args, **kwargs)
+
+        with (
+            patch(
+                "app.checkin._restore_parents",
+                side_effect=restore_after_a_reader_cached,
+            ),
+            self.captureOnCommitCallbacks(execute=False),
+        ):
+            checkin.cancel(self.user, "tv", "1668")
+
+        self.assertEqual(cleared(self.user.id), ALL)
+
     def test_cancel_keeps_a_play_that_was_already_open(self):
         Episode.objects.create(
             item=self.episodes[1],

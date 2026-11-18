@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { DateTimePicker } from './DateTimePicker';
 import {
@@ -8,6 +8,7 @@ import {
   parseDateValue,
   valueFromDate,
 } from './dateTime';
+import { rootStyle } from './rootStyle.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -26,7 +27,7 @@ function resolveColor(value, fallback) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => resolveColor(css.getPropertyValue(name).trim(), fallback);
   return {
     text: token('--color-text', '#fafafa'),
@@ -395,5 +396,36 @@ function Adapter({ host, props }) {
 }
 
 export function mountDateTimePicker(host, props) {
-  return mountRoot(host, <Adapter host={host} props={props} />);
+  return mountRoot(host, props.activityCalendar
+    ? <ActivityCalendarAdapter host={host} props={props} />
+    : <Adapter host={host} props={props} />);
+}
+
+function ActivityCalendarAdapter({ host, props }) {
+  const dialog = host.closest('[aria-labelledby="session-history-title"]');
+  const [value, setValue] = useState(() => {
+    return (dialog && window.Alpine?.$data(dialog)?.selectedDate) || '';
+  });
+  const [palette, setPalette] = useState(readPalette);
+  const onViewMonthChange = useCallback(detail => {
+    const state = dialog && window.Alpine?.$data(dialog);
+    if (state) { state.viewYear = detail.year; state.viewMonth = detail.month; }
+  }, [dialog]);
+  useEffect(() => {
+    const sync = event => setValue(event.detail);
+    const theme = () => setPalette(readPalette());
+    host.addEventListener('activity-calendar-sync', sync);
+    const observer = new MutationObserver(theme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    return () => { host.removeEventListener('activity-calendar-sync', sync); observer.disconnect(); };
+  }, [host]);
+  return <DateTimePicker inline value={value} initialViewDate={`${props.initialMonth}-01`}
+    markerDays={Object.keys(props.activityIntensity || {})} activityIntensity={props.activityIntensity}
+    selectableDays={props.selectableDays} weekStart={props.weekStart} labels={props.labels} palette={{ ...palette, accentContrast: '#ffffff' }}
+    onViewMonthChange={onViewMonthChange}
+    onChange={next => {
+      setValue(next);
+      const state = dialog && window.Alpine?.$data(dialog);
+      if (state) { state.selectedDate = next; state.scrollToDay(next); }
+    }} />;
 }

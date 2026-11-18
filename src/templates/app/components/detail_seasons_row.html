@@ -1,0 +1,6 @@
+{% load app_tags %}
+{% for result in row.items %}
+  <div class="home-row-card {{ row.card_width_class }} shrink-0">
+    {% media_card "home" item=result.item title=result.item.season_header_title|default:result.item.title season_card_title_override=result.card_title media=result.media %}
+  </div>
+{% endfor %}

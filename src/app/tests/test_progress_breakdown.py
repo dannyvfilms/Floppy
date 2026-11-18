@@ -16,7 +16,6 @@ from app.services.progress_breakdown import (
     UPCOMING,
     WATCHED,
     build_progress_breakdown,
-    format_minutes,
 )
 
 PAST = "2020-01-01"
@@ -419,12 +418,6 @@ class BuildProgressBreakdownTests(BreakdownTestCase):
         """Passing both or neither is a programming error."""
         with self.assertRaises(ValueError):
             build_progress_breakdown()
-
-    def test_format_minutes(self):
-        """Minutes read as hours and minutes."""
-        self.assertEqual(format_minutes(40), "40m")
-        self.assertEqual(format_minutes(60), "1h 0m")
-        self.assertEqual(format_minutes(125), "2h 5m")
 
 
 class CaughtUpTests(BreakdownTestCase):

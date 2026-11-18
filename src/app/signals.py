@@ -124,6 +124,10 @@ _IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
     "importer_replacing_rows",
     default=False,
 )
+_MERGING_ITEMS: ContextVar[bool] = ContextVar(
+    "merging_items",
+    default=False,
+)
 _ACCOUNT_BEING_DELETED: ContextVar[bool] = ContextVar(
     "account_being_deleted",
     default=False,
@@ -168,6 +172,24 @@ def importer_replacing_rows():
         yield
     finally:
         _IMPORTER_REPLACING_ROWS.reset(token)
+
+
+@contextmanager
+def merging_items():
+    """Mark deletes inside the block as two items being merged into one.
+
+    A merge folds a duplicate tracking row into the surviving one and deletes
+    the duplicate. The user still tracks the title (under the surviving
+    identity), so the delete must not leave a deletion tombstone for the old
+    identity. The library change feed (`DeletedEntry`) still records the old
+    identity as gone: a mirroring client drops it and sees the surviving row
+    as changed.
+    """
+    token = _MERGING_ITEMS.set(True)
+    try:
+        yield
+    finally:
+        _MERGING_ITEMS.reset(token)
 
 
 @contextmanager
@@ -399,13 +421,9 @@ def clear_media_list_cache_on_collection_change(sender, instance, **kwargs):
     ):
         return
 
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-    )
+    from app.cache_utils import clear_library_view_caches
 
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
+    clear_library_view_caches(user_id)
 
 
 @receiver([post_save, post_delete], sender=ArtistTracker)
@@ -424,13 +442,18 @@ def clear_home_row_cache_on_music_podcast_tracker_change(sender, instance, **kwa
     ):
         return
 
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-    )
+    from app.cache_utils import clear_library_view_caches
 
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
+    clear_library_view_caches(user_id)
+
+
+@receiver([post_save, post_delete], sender=AlbumTracker)
+def refresh_statistics_on_album_tracker_change(sender, instance, **kwargs):
+    """Rebuild range aggregates when an album's tracking changes."""
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if instance.user_id:
+        statistics_cache.invalidate_statistics_cache(instance.user_id)
 
 
 @receiver([post_save, post_delete], sender=ItemTag)
@@ -561,21 +584,37 @@ def _invalidate_history_for_media_change(
         )
 
 
-def _clear_media_runtime_caches(user_id: int, changed_media_type: str) -> None:
-    from app.cache_utils import (
-        clear_home_row_cache_for_user,
-        clear_media_list_cache_for_user,
-        clear_time_left_cache_for_user,
-    )
+def invalidate_bulk_episode_history(user_id, episodes, *, reason):
+    """Invalidate History for episodes written in bulk, after the commit.
 
-    clear_media_list_cache_for_user(user_id)
-    clear_home_row_cache_for_user(user_id)
-    if changed_media_type in (
-        MediaTypes.EPISODE.value,
-        MediaTypes.SEASON.value,
-        MediaTypes.TV.value,
+    ``bulk_create`` sends no save signals, so completing a show or season left
+    its days showing the old entries until the cache expired.
+    """
+    if (
+        not user_id
+        or media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
     ):
-        clear_time_left_cache_for_user(user_id)
+        return
+    day_keys = sorted(
+        {
+            day_key
+            for episode in episodes
+            if (day_key := _episode_history_day_key(episode.end_date, episode.start_date))
+        },
+    )
+    if not day_keys:
+        return
+    transaction.on_commit(
+        lambda: _invalidate_history_for_media_change(
+            user_id,
+            day_keys=day_keys,
+            logging_styles=HISTORY_LOGGING_STYLES,
+            reason=reason,
+            prioritized=False,
+            force=True,
+        ),
+    )
 
 
 def _history_specs(day_keys):
@@ -604,12 +643,10 @@ def _handle_media_cache_change(
         return
 
     if clear_runtime_caches:
-        _clear_media_runtime_caches(user_id, changed_media_type)
-        # A concurrent reader can re-cache pre-write state before the save
-        # commits, so clear again once it does.
-        transaction.on_commit(
-            lambda: _clear_media_runtime_caches(user_id, changed_media_type),
-        )
+        from app.cache_utils import clear_library_view_caches
+
+        # Clears now and, inside a transaction, again once it commits.
+        clear_library_view_caches(user_id, media_types=(changed_media_type,))
 
     active_context = discover_tab_cache.get_active_context(user_id)
     targets = discover_tab_cache.invalidate_for_media_change(
@@ -745,6 +782,7 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     if (
         kwargs.get("raw")
         or _IMPORTER_REPLACING_ROWS.get()
+        or _MERGING_ITEMS.get()
         or _ACCOUNT_BEING_DELETED.get()
     ):
         return
@@ -939,8 +977,10 @@ def invalidate_discover_for_credit_item(item):
 
 def _invalidate_episode_history_changes(changes, runtime_user_ids=()):
     """Invalidate committed Episode history and runtime caches by owner."""
+    from app.cache_utils import clear_library_view_caches
+
     for user_id in runtime_user_ids:
-        _clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.EPISODE.value,))
 
     for user_id, day_keys in changes.items():
         _handle_media_cache_change(
@@ -1033,6 +1073,30 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
     day_key = _episode_history_day_key(instance.end_date, instance.start_date)
+    origin = kwargs.get("origin")
+    if isinstance(origin, (Season, TV)):
+        # Deleting a season or show cascades here once per episode. Gather the
+        # days on the row being deleted and invalidate them together after the
+        # commit, instead of one full cache round per episode for the same day.
+        pending = getattr(origin, "_episode_history_days", None)
+        if pending is None:
+            pending = origin._episode_history_days = {}
+            transaction.on_commit(
+                lambda: _invalidate_episode_history_changes(
+                    {
+                        owner: sorted(days)
+                        for owner, days in pending.items()
+                        if days
+                    },
+                    list(pending),
+                ),
+                using=kwargs.get("using"),
+            )
+        if user_id:
+            days = pending.setdefault(user_id, set())
+            if day_key:
+                days.add(day_key)
+        return
     changes = {user_id: [day_key]} if user_id and day_key else {}
     runtime_user_ids = [user_id] if user_id else []
     transaction.on_commit(
@@ -1417,15 +1481,9 @@ def clear_time_left_cache_on_tv_delete(sender, instance, **kwargs):
     """Clear time_left cache when TV show is deleted."""
     user_id = getattr(instance, "user_id", None)
     if user_id:
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-            clear_time_left_cache_for_user,
-        )
+        from app.cache_utils import clear_library_view_caches
 
-        clear_time_left_cache_for_user(user_id)
-        clear_media_list_cache_for_user(user_id)
-        clear_home_row_cache_for_user(user_id)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.TV.value,))
         logger.debug(
             "Cleared time_left cache for user %s after deleting TV show: %s",
             user_id,
@@ -1454,15 +1512,9 @@ def clear_time_left_cache_on_season_delete(sender, instance, **kwargs):
     """Clear time_left cache when Season is deleted."""
     user_id = getattr(instance, "user_id", None)
     if user_id:
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-            clear_time_left_cache_for_user,
-        )
+        from app.cache_utils import clear_library_view_caches
 
-        clear_time_left_cache_for_user(user_id)
-        clear_media_list_cache_for_user(user_id)
-        clear_home_row_cache_for_user(user_id)
+        clear_library_view_caches(user_id, media_types=(MediaTypes.SEASON.value,))
         logger.debug(
             "Cleared time_left cache for user %s after deleting Season: %s",
             user_id,
@@ -1703,42 +1755,23 @@ def schedule_runtime_backfill_on_item_save(
 
     # Check if runtime_minutes was actually updated (not just saving the same value)
     runtime_updated = (
-        update_fields is None or "runtime_minutes" in update_fields
-    ) and instance.media_type == MediaTypes.EPISODE.value
+        not created
+        and (update_fields is None or "runtime_minutes" in update_fields)
+        and instance.media_type == MediaTypes.EPISODE.value
+    )
 
-    # Invalidate time_left cache for all users tracking this show/season when runtime changes
+    # Every user tracking this show or one of its seasons sees the new runtime.
     if runtime_updated:
-        from app.cache_utils import clear_time_left_cache_for_user
-        from app.models import BasicMedia
+        from app.cache_utils import EPISODE_DETAILS, clear_show_view_caches
 
-        # Get all users who track this show or season
-        tracking_users = (
-            BasicMedia.objects.filter(
-                item__media_id=instance.media_id,
-                item__source=instance.source,
-                item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
-            )
-            .values_list("user_id", flat=True)
-            .distinct()
-        )
+        clear_show_view_caches(instance.media_id, instance.source, EPISODE_DETAILS)
 
-        from app.cache_utils import (
-            clear_home_row_cache_for_user,
-            clear_media_list_cache_for_user,
-        )
-
-        for user_id in tracking_users:
-            clear_time_left_cache_for_user(user_id)
-            clear_media_list_cache_for_user(user_id)
-            clear_home_row_cache_for_user(user_id)
-            logger.debug(
-                "Cleared time_left cache for user %s due to runtime update on %s",
-                user_id,
-                instance,
-            )
-
+    # A row created just now has no backfill state yet, so there is nothing to
+    # clear. Skipping the lookups matters when a show is completed for the
+    # first time and hundreds of episode items are created in one request.
     if (
-        instance.runtime_minutes is not None
+        not created
+        and instance.runtime_minutes is not None
         and instance.runtime_minutes != RUNTIME_UNKNOWN_FAILED
     ):
         MetadataBackfillState.objects.filter(
@@ -1749,7 +1782,7 @@ def schedule_runtime_backfill_on_item_save(
     genre_identity_changed = created or bool(
         genre_identity_fields.intersection(update_fields or set()),
     )
-    if genre_identity_changed:
+    if genre_identity_changed and not created:
         MetadataBackfillState.objects.filter(
             item=instance,
             field=MetadataBackfillField.GENRES,

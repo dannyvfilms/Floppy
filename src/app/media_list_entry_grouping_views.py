@@ -72,7 +72,7 @@ def update_entry_grouping(request, media_type: str):
     enabled = _BOOLEAN_VALUES[raw_value]
     if getattr(request.user, field_name) != enabled:
         request.user.update_preference(field_name, enabled)
-        cache_utils.clear_media_list_cache_for_user(request.user.id)
+        cache_utils.clear_library_view_caches(request.user.id, cache_utils.LIST_SETTING)
 
     message = (
         "Matching entries are now shown separately."

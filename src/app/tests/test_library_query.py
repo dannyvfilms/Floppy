@@ -5,12 +5,13 @@ pages tile the full ordering without gaps or repeats, and the cost of a page
 does not grow with the library - independent of any surface that uses it.
 """
 
+from collections import Counter
 from datetime import timedelta
 from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.db import connection
+from django.db import connection, models
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -23,6 +24,7 @@ from app.models import (
     TV,
     CollectionEntry,
     Episode,
+    Game,
     Item,
     ItemTag,
     MediaTypes,
@@ -296,6 +298,102 @@ class DateAddedSortTests(LibraryQueryTestCase):
         self.assertEqual(ids, [new_item.pk, old_item.pk])
 
 
+class UpdatedSortTests(LibraryQueryTestCase):
+    """Updated reads progressed_at off the newest row, in SQL and on a scan."""
+
+    def _item(self, key):
+        return Item.objects.create(
+            media_id=f"updated-{key}",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title=f"Updated {key}",
+            image="https://example.com/i.jpg",
+        )
+
+    def _row(self, item, *, created, progressed):
+        row = self.track(item, status=Status.COMPLETED.value)
+        Movie.objects.filter(pk=row.pk).update(
+            created_at=self.now - timedelta(days=created),
+            progressed_at=self.now - timedelta(days=progressed),
+        )
+        return row
+
+    def _orders(self, direction):
+        executor = LibraryQueryExecutor(
+            self.user, _query(sort=SortSpec("updated", direction)),
+        )
+        page = executor.page(0, 100)
+        return page, [item.pk for item in page.items], [row[-1] for row in executor._scan_ranked]
+
+    def test_newest_row_wins_over_the_latest_progress(self):
+        """Repeat rows: the newest row's value counts, not the maximum."""
+        # The older row has the most recent progress; the newest row does not.
+        repeated = self._item("repeated")
+        self._row(repeated, created=30, progressed=1)
+        self._row(repeated, created=2, progressed=20)
+        self._row(repeated, created=10, progressed=5)
+        middle = self._item("middle")
+        self._row(middle, created=3, progressed=10)
+        # Two rows created together: the higher id is the newest.
+        tied = self._item("tied")
+        first = self._row(tied, created=4, progressed=2)
+        second = self._row(tied, created=4, progressed=15)
+        self.assertGreater(second.pk, first.pk)
+        self.library(6)
+
+        for direction in ("desc", "asc"):
+            with self.subTest(direction=direction):
+                page, sql_ids, scan_ids = self._orders(direction)
+                self.assertTrue(page.used_sql)
+                self.assertEqual(sql_ids, scan_ids)
+                ours = [pk for pk in sql_ids if pk in {repeated.pk, middle.pk, tied.pk}]
+                expected = [middle.pk, tied.pk, repeated.pk]
+                self.assertEqual(ours, expected if direction == "desc" else expected[::-1])
+
+    def test_tracked_podcast_show_has_no_value(self):
+        """A show tracker replaces the podcast row, and it has no progressed_at."""
+        from app.models import Podcast, PodcastShow, PodcastShowTracker
+
+        podcast = MediaTypes.PODCAST.value
+        for index in range(4):
+            item = Item.objects.create(
+                media_id=f"pod-{index}",
+                source=Sources.POCKETCASTS.value,
+                media_type=podcast,
+                title=f"Podcast {index}",
+                image="https://example.com/i.jpg",
+            )
+            row = self.track(item, model=Podcast, status=Status.IN_PROGRESS.value)
+            Podcast.objects.filter(pk=row.pk).update(progressed_at=self.now - timedelta(days=index))
+        show = PodcastShow.objects.create(
+            podcast_uuid="pod-1", source=Sources.POCKETCASTS.value, title="Show", image="/c.jpg",
+        )
+        PodcastShowTracker.objects.create(user=self.user, show=show)
+        for include_shows in (False, True):
+            for direction in ("desc", "asc"):
+                with self.subTest(include_shows=include_shows, direction=direction):
+                    query = LibraryQuery(
+                        media_types=(podcast,),
+                        sort=SortSpec("updated", direction),
+                        include_podcast_shows=include_shows,
+                    )
+                    executor = LibraryQueryExecutor(self.user, query)
+                    page = executor.page(0, 100)
+                    self.assertTrue(page.used_sql)
+                    sql_ids = [item.pk for item in page.items]
+                    self.assertEqual(sql_ids, [row[-1] for row in executor._scan_ranked])
+                    self.assertEqual(
+                        Item.objects.get(pk=sql_ids[-1]).media_id, "pod-1",
+                    )
+
+    def test_shows_scan_and_agree(self):
+        """TV derives progressed_at from episodes, so it stays on the scan path."""
+        query = LibraryQuery(
+            media_types=(MediaTypes.TV.value,), sort=SortSpec("updated", "desc"),
+        )
+        self.assertFalse(LibraryQueryExecutor(self.user, query).uses_sql)
+
+
 class StatusSemanticsTests(LibraryQueryTestCase):
     """``latest`` follows the newest row; ``any`` accepts any row."""
 
@@ -521,11 +619,11 @@ class PageCostTests(LibraryQueryTestCase):
         seen_batch_sizes = []
         original = executor_module._attach_media
 
-        def spy(user, batch, needs):
+        def spy(user, batch, needs, **kwargs):
             seen_batch_sizes.append(len(batch))
-            return original(user, batch, needs)
+            return original(user, batch, needs, **kwargs)
 
-        query = _query(sort=SortSpec("time_to_beat", "asc"))
+        query = _query(sort=SortSpec("runtime", "asc"))
         with mock.patch.object(executor_module, "_attach_media", spy):
             page = LibraryQueryExecutor(self.user, query, batch_size=16).page(0, 10)
         self.assertFalse(page.used_sql)
@@ -533,6 +631,124 @@ class PageCostTests(LibraryQueryTestCase):
         self.assertEqual(len(page.items), 10)
         self.assertTrue(seen_batch_sizes)
         self.assertLessEqual(max(seen_batch_sizes), 16)
+
+    def test_a_sort_that_reads_only_the_item_loads_no_tracker(self):
+        """Time to beat and author scan the candidate items alone."""
+        self.library(60)
+        for key in ("time_to_beat", "author"):
+            with self.subTest(sort=key), mock.patch.object(
+                executor_module, "_attach_media", side_effect=AssertionError(key),
+            ):
+                page = LibraryQueryExecutor(
+                    self.user, _query(sort=SortSpec(key, "asc")), batch_size=16,
+                ).page(0, 10)
+                self.assertFalse(page.used_sql)
+                self.assertEqual(page.total, 60)
+
+
+class ItemOnlySortPageTests(TestCase):
+    """Ordering games by time to beat hydrates one page of trackers."""
+
+    def test_time_to_beat_builds_trackers_for_the_page_only(self):
+        """The scan reads game items; Game rows are built for the cards."""
+        user = get_user_model().objects.create_user(username="ttb", password="x")
+        items = Item.objects.bulk_create(
+            Item(
+                media_id=str(5000 + index),
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+                title=f"Game {index}",
+                image="https://example.com/i.jpg",
+                provider_game_lengths={"igdb": {"summary": {"normally_seconds": index * 600}}} if index % 3 else {},
+            )
+            for index in range(90)
+        )
+        Game.objects.bulk_create(
+            Game(item=item, user=user, status=Status.COMPLETED.value) for item in items
+        )
+        self.client.force_login(user)
+        built = Counter()
+        original = models.Model.from_db.__func__
+
+        def from_db(cls, db, field_names, values):
+            built[cls.__name__] += 1
+            return original(cls, db, field_names, values)
+
+        with mock.patch.object(models.Model, "from_db", classmethod(from_db)):
+            response = self.client.get("/medialist/game?sort=time_to_beat&direction=asc&status=All")
+        page = response.context["media_list"]
+        self.assertEqual(page.paginator.count, 90)
+        self.assertLessEqual(built["Game"], len(page.object_list))
+
+
+class MovieRowOrderTests(LibraryQueryTestCase):
+    """Runtime and time watched rank movies from their columns, as from models."""
+
+    def setUp(self):
+        """Movies with every kind of runtime and repeat viewing."""
+        super().setUp()
+        runtimes = [(95, ""), (None, "1h 30m"), (999998, "2h"), (999999, ""), (None, ""), (0, "45min"), (120, "")]
+        for index in range(42):
+            item, _movie = self.make_movie(index)
+            minutes, text = runtimes[index % len(runtimes)]
+            Item.objects.filter(pk=item.pk).update(runtime_minutes=minutes, runtime=text)
+            Movie.objects.filter(item=item).update(progress=index % 3)
+            for repeat in range(index % 4):
+                self.track(
+                    item,
+                    status=Status.COMPLETED.value if repeat % 2 else Status.IN_PROGRESS.value,
+                    progress=repeat,
+                    end_date=self.now - timedelta(days=repeat) if repeat % 3 else None,
+                )
+
+    def test_light_rows_order_like_hydrated_movies(self):
+        """Both directions agree, and the light path builds no Movie model."""
+        attach = executor_module._attach_media
+
+        def hydrated(user, batch, needs, **kwargs):
+            kwargs.pop("light_movies", None)
+            return attach(user, batch, needs, **kwargs)
+
+        orders = set()
+        for key in ("runtime", "time_watched"):
+            query = _query(sort=SortSpec(key, "asc"))
+            built = Counter()
+            original = models.Model.from_db.__func__
+
+            def from_db(cls, db, field_names, values, built=built, original=original):
+                built[cls.__name__] += 1
+                return original(cls, db, field_names, values)
+
+            with self.subTest(sort=key):
+                with mock.patch.object(models.Model, "from_db", classmethod(from_db)):
+                    light = LibraryQueryExecutor(self.user, query).ranked_ids_both_directions()
+                with mock.patch.object(executor_module, "_attach_media", hydrated):
+                    reference = LibraryQueryExecutor(self.user, query).ranked_ids_both_directions()
+                self.assertEqual(light, reference)
+                self.assertEqual(set(built), {"Item"})
+                orders.add(tuple(light["asc"]))
+        # The two sorts differ, so the fixture exercises the play count.
+        self.assertEqual(len(orders), 2)
+
+    def test_list_page_builds_movies_for_its_cards_only(self):
+        """The media list ordered by runtime hydrates one page of trackers."""
+        self.library(200, start=42)
+        self.client.force_login(self.user)
+        for key in ("runtime", "time_watched"):
+            built = Counter()
+            original = models.Model.from_db.__func__
+
+            def from_db(cls, db, field_names, values, built=built, original=original):
+                built[cls.__name__] += 1
+                return original(cls, db, field_names, values)
+
+            with mock.patch.object(models.Model, "from_db", classmethod(from_db)):
+                response = self.client.get(f"/medialist/movie?sort={key}&direction=asc&status=All")
+            page = response.context["media_list"]
+            with self.subTest(sort=key):
+                self.assertEqual(page.paginator.count, 242)
+                # The cards' rows and repeat viewings, not the library's.
+                self.assertLess(built["Movie"], Movie.objects.count() // 2)
 
 
 class LargeTvBatchTests(LibraryQueryTestCase):
@@ -582,3 +798,68 @@ class LargeTvBatchTests(LibraryQueryTestCase):
         self.assertEqual(len(episodes), len(with_items) + 1)
         with self.assertNumQueries(0):
             self.assertTrue(all(episode.item.episode_number == 1 for episode in with_items))
+
+
+class SeasonScanShowBlobTests(LibraryQueryTestCase):
+    """A season scan leaves each show's provider blob in the database."""
+
+    def test_season_rows_do_not_decode_their_shows_provider_blob(self):
+        """Every season row joins its show; the show's watch providers stay unread."""
+        from django.db import models
+
+        from app.library_query import filters as filter_registry
+
+        blob = {
+            f"R{region:03d}": {"flatrate": [{"provider_name": f"P{region}-{k}"} for k in range(16)]}
+            for region in range(96)
+        }
+        show = Item.objects.create(
+            media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.TV.value,
+            title="Wide Show", image="x", watch_providers=blob,
+        )
+        tv = TV.objects.create(item=show, user=self.user, status=Status.COMPLETED.value)
+        season_items = [
+            Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.SEASON.value,
+                season_number=number, title="Wide Show", image="x",
+            )
+            for number in (1, 2, 3)
+        ]
+        seasons = Season.objects.bulk_create(
+            Season(item=item, related_tv=tv, user=self.user, status=Status.COMPLETED.value)
+            for item in season_items
+        )
+        for season in seasons:
+            episode = Item.objects.create(
+                media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.EPISODE.value,
+                season_number=season.item.season_number, episode_number=1, title="Wide Show", image="x",
+                # The provider is unreachable in tests, so the season's episode
+                # count comes from its released episodes.
+                release_datetime=self.now - timedelta(days=30),
+            )
+            Episode.objects.create(item=episode, related_season=season, status=Status.COMPLETED.value, end_date=self.now)
+
+        decoded = []
+        original = models.JSONField.from_db_value
+
+        def counting(field, value, expression, conn):
+            if isinstance(value, (str, bytes)):
+                decoded.append(len(value))
+            return original(field, value, expression, conn)
+
+        batch = [executor_module.Candidate(item) for item in season_items]
+        with mock.patch.object(models.JSONField, "from_db_value", counting):
+            executor_module._attach_media(
+                self.user, batch, {filter_registry.NEEDS_MEDIA, filter_registry.NEEDS_MAX_PROGRESS},
+            )
+
+        self.assertGreater(len(str(blob)), 40_000)
+        self.assertLess(sum(decoded), 10_000)
+        for candidate in batch:
+            show_item = candidate.media.related_tv.item
+            self.assertIn("watch_providers", show_item.get_deferred_fields())
+            self.assertEqual(show_item.title, "Wide Show")
+            self.assertEqual(candidate.media.max_progress, 1)
+            self.assertEqual(
+                filter_registry.season_effective_status(candidate.media), Status.COMPLETED.value,
+            )

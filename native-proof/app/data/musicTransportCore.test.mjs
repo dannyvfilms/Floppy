@@ -7,6 +7,7 @@ import {
   flattenAlbums,
   formatDurationMs,
   groupAlbums,
+  loadArtistWithRelations,
   mapAlbumPayload,
   mapArtistPayload,
   mapBrowseList,
@@ -89,6 +90,26 @@ const trackRows = {
     },
   ],
 };
+
+test('artist and relations load together regardless of response order', async () => {
+  for (const first of ['artist', 'relations']) {
+    const pending = {};
+    const transport = {
+      loadArtist: () => new Promise(resolve => { pending.artist = resolve; }),
+      loadArtistRelations: () => new Promise(resolve => { pending.relations = resolve; }),
+    };
+    const result = loadArtistWithRelations(transport, 7);
+    const values = { artist: artistPayload, relations: { members: [{ id: 1 }] } };
+    pending[first](values[first]);
+    pending[first === 'artist' ? 'relations' : 'artist'](values[first === 'artist' ? 'relations' : 'artist']);
+    assert.deepEqual(await result, values);
+  }
+  const result = await loadArtistWithRelations({
+    loadArtist: async () => artistPayload,
+    loadArtistRelations: async () => { throw new Error('unavailable'); },
+  }, 7);
+  assert.deepEqual(result, { artist: artistPayload, relations: null });
+});
 
 test('artist payload maps without demo fields and never exposes a musicbrainz crash', () => {
   const artist = mapArtistPayload(artistPayload);
@@ -388,4 +409,13 @@ test('new music and podcast actions address the documented endpoints', async () 
   assert.deepEqual(calls[4].options, { query: { q: 'deluxe' } });
   assert.deepEqual(calls[5].options.json, { release_id: 'r1' });
   assert.deepEqual(calls[10].options.json, { score: 8 });
+});
+
+test('repairPending follows the server flag and stops at the attempt cap', async () => {
+  const { repairPending, REPAIR_POLL_MAX_ATTEMPTS } = await import('./musicTransportCore.js');
+  assert.equal(repairPending({ repair_pending: true }), true);
+  assert.equal(repairPending({ results: [], pending: true }), true);
+  assert.equal(repairPending({ results: [], pending: false }), false);
+  assert.equal(repairPending(null), false);
+  assert.equal(repairPending({ pending: true }, REPAIR_POLL_MAX_ATTEMPTS), false);
 });

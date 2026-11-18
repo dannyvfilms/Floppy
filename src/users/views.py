@@ -52,6 +52,7 @@ from app import (
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
+from app.helpers import wants_json as _wants_json
 from app.log_safety import exception_summary
 from app.models import (
     Album,
@@ -1124,7 +1125,7 @@ def sidebar(request):
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             # Mixed Home rows depend on which media types are enabled.
-            cache_utils.clear_home_row_cache_for_user(request.user.id)
+            cache_utils.clear_library_view_caches(request.user.id, cache_utils.HOME_SETTING)
             messages.success(request, "Settings updated successfully.")
         else:
             messages.info(request, "No changes to save.")
@@ -3328,15 +3329,6 @@ def delete_managed_user(request, user_id):
         member_id,
     )
     return JsonResponse({"deleted": member_id})
-
-
-def _wants_json(request):
-    """Return whether the browser adapter asked for an in-place result."""
-    accept = request.headers.get("Accept", "")
-    return (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or "application/json" in accept
-    )
 
 
 @require_GET

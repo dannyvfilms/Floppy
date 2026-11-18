@@ -19,6 +19,7 @@ from django.db.models import Prefetch, prefetch_related_objects
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
+from app.helpers import minutes_to_hm
 from app.models import Episode, Season, Status
 from app.providers import services
 from app.services.bulk_episode_tracking import coerce_episode_datetime
@@ -257,7 +258,7 @@ class ProgressBreakdown:
     def minutes_left_label(self):
         """Return the unwatched runtime as text, or "" when it is not known."""
         minutes = self.minutes_left
-        return format_minutes(minutes) if minutes else ""
+        return minutes_to_hm(minutes) if minutes else ""
 
     @property
     def open_state_json(self):
@@ -277,12 +278,6 @@ class ProgressBreakdown:
             if season.counts_toward_overall and season.watched < season.total:
                 return season.number
         return None
-
-
-def format_minutes(minutes):
-    """Return minutes as "1h 25m" (or "40m")."""
-    hours, rest = divmod(minutes, 60)
-    return f"{hours}h {rest}m" if hours else f"{rest}m"
 
 
 def _runtime_minutes(value):
@@ -385,7 +380,7 @@ def build_progress_breakdown(*, tv=None, season=None):
     prefetch_related_objects(
         [row for row in tracked if row.is_rewatching],
         Prefetch("episodes", queryset=Episode.objects.select_related("item").only(
-            "id", "related_season_id", "status", "end_date", "created_at",
+            "id", "related_season_id", "status", "dropped", "end_date", "created_at",
             "item__id", "item__episode_number",
         )),
     )
@@ -461,7 +456,7 @@ def build_progress_breakdown(*, tv=None, season=None):
         )
 
     run = resolve_rewatch(tv, seasons)
-    if run is not None and not run.explicit:
+    if run is not None:
         for row in seasons:
             row.rewatching = any(key[0] == row.number for key in run.keys)
             for episode in row.episodes:

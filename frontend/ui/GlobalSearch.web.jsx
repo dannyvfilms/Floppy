@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { GlobalSearch as SharedGlobalSearch } from './GlobalSearch.jsx';
 import { useKeyboardOverlap } from './keyboardOverlap.web';
 import { requestBarcode } from './barcodeEntry.web';
+import { createWebRequest } from './webRequest.web';
+import { rootStyle } from './rootStyle.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -20,7 +22,7 @@ function resolveColor(value, fallback) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   return {
@@ -86,18 +88,17 @@ export function GlobalSearch({ host, props }) {
     };
   }, [host]);
 
-  const onLoadSuggestions = useCallback(async ({ query, mediaType }) => {
-    const url = new URL(props.suggestionsUrl, window.location.origin);
-    url.searchParams.set('q', query);
-    url.searchParams.set('media_type', mediaType);
-    url.searchParams.set('format', 'json');
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      credentials: 'same-origin',
+  // The shared request helper: cancellable, so a newer keystroke stops the older request.
+  const request = useMemo(() => createWebRequest(), []);
+  // Names this search box, so the server can stop work on a request it replaced.
+  const boxId = useMemo(() => window.crypto?.randomUUID?.() || `box-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`, []);
+  const onLoadSuggestions = useCallback(async ({ query, mediaType, signal }) => {
+    const path = new URL(props.suggestionsUrl, window.location.origin).pathname;
+    const data = await request(path, {
+      query: { q: query, media_type: mediaType, format: 'json', sid: boxId },
+      signal,
     });
-    if (!response.ok) throw new Error(`Suggestions request failed: ${response.status}`);
-    const data = await response.json();
-    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+    const suggestions = Array.isArray(data?.suggestions) ? data.suggestions : [];
     return {
       suggestions: suggestions.map((suggestion, index) => ({
         id: String(suggestion.id ?? index),
@@ -107,7 +108,7 @@ export function GlobalSearch({ host, props }) {
         url: suggestion.url,
       })),
     };
-  }, [props.suggestionsUrl]);
+  }, [props.suggestionsUrl, request, boxId]);
 
   const onSubmit = useCallback(({ query, mediaType }) => {
     const url = new URL(props.action, window.location.origin);
@@ -115,6 +116,17 @@ export function GlobalSearch({ host, props }) {
     url.searchParams.set('media_type', mediaType);
     window.location.assign(url.toString());
   }, [props.action]);
+
+  // Remember the picked type on the server so the next page opens with it.
+  const onTypeChange = useCallback((mediaType) => {
+    const csrf = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+    fetch(new URL(props.typeUrl, window.location.origin), {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+      body: JSON.stringify({ media_type: mediaType }),
+    }).catch(() => {});
+  }, [props.typeUrl]);
 
   const onSelectSuggestion = useCallback((suggestion) => {
     if (!suggestion?.url) return;
@@ -138,6 +150,7 @@ export function GlobalSearch({ host, props }) {
     dismissSignal={dismissSignal}
     onLoadSuggestions={onLoadSuggestions}
     onSubmit={onSubmit}
+    onTypeChange={props.typeUrl ? onTypeChange : undefined}
     onSelectSuggestion={onSelectSuggestion}
     onBarcodeRequest={onBarcodeRequest}
   />;

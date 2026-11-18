@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ProgressChanger as SharedProgressChanger } from './ProgressChanger';
+import { rootStyle } from './rootStyle.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -19,7 +20,7 @@ function resolveColor(value, fallback) {
 
 // Resolve the existing document theme and responsive card rules to native values.
 function readAppearance(host, unit) {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   const rem = Number.parseFloat(css.fontSize) || 16;
@@ -54,6 +55,13 @@ function readAppearance(host, unit) {
     showButtons: !mobile || quick === 'true',
     unit: mobile && mobileGrid === 'compact' ? '' : unit,
   };
+}
+
+// The height this control takes under a card, so Home's waiting rows can
+// reserve it before their cards arrive.
+export function progressControlHeight(host = document.body) {
+  const appearance = readAppearance(host, '');
+  return appearance.showButtons ? appearance.buttonSize : Math.ceil(appearance.fontSize * 1.25);
 }
 
 export function ProgressChanger({ host, props }) {

@@ -2,11 +2,24 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, floating }) {
-  const body = scroll
-    ? <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-    : <View style={[styles.content, contentStyle]}>{children}</View>;
-  return <View style={styles.screen}>
+// `onScroll` and `onContentSizeChange` pass through to the scrolling body (Home
+// uses them to load shelves near the screen).
+// `renderScroll(scrollProps)`: a page whose list scrolls itself (the native
+// Library's windowed grid) draws the body with the props this ScrollView would
+// have had, so its padding, safe-area and side-rail handling are the same.
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, scrollStyle, floating, artworkBleed = false, onScroll, onContentSizeChange, renderScroll }) {
+  const scrollProps = {
+    style: [artworkBleed ? styles.bleed : null, scrollStyle],
+    contentContainerStyle: [styles.content, contentStyle],
+    keyboardShouldPersistTaps: 'handled',
+  };
+  const body = renderScroll
+    ? renderScroll(scrollProps)
+    : scroll
+      ? <ScrollView {...scrollProps} onScroll={onScroll} scrollEventThrottle={onScroll ? 100 : undefined}
+        onContentSizeChange={onContentSizeChange}>{children}</ScrollView>
+      : <View style={[styles.content, contentStyle]}>{children}</View>;
+  return <View style={[styles.screen, artworkBleed && styles.bleed]}>
     {chrome && (title || subtitle || onBack) ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>
         <Text style={[styles.backText, { color: palette.accent }]}>Back</Text>
@@ -23,6 +36,7 @@ export function Screen({ title, subtitle, children, scroll = true, onBack, chrom
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0 },
+  bleed: { overflow: 'visible' },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm },
   heading: { gap: 2 },
   title: { color: palette.text, fontSize: 28, fontWeight: '700' },

@@ -8,7 +8,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app import cache_utils, media_list_entry_grouping
-from app.media_list_entry_grouping import entry_grouping_mode
+from app.media_list_entry_grouping import (
+    active_entry_grouping_mode,
+    entry_grouping_mode,
+)
+from app.media_list_filters import MediaListFilters
 from app.models import (
     TV,
     BasicMedia,
@@ -79,24 +83,25 @@ class MediaListEntryGroupingTests(TestCase):
         )
 
     def test_entry_modes_have_distinct_processed_list_cache_keys(self):
-        key_args = {
-            "user_id": self.user.id,
-            "media_type": MediaTypes.MOVIE.value,
-            "sort_filter": "title",
-            "direction": "asc",
-            "status_filter": "",
-            "search_query": "",
-            "rating_filter": "all",
-        }
+        filters = MediaListFilters(media_type=MediaTypes.MOVIE.value)
+
+        def key(mode):
+            return cache_utils.build_media_list_cache_key(
+                self.user.id,
+                filters,
+                sort="title",
+                entry_grouping=mode,
+            )
 
         with entry_grouping_mode(False):
-            grouped_key = cache_utils.build_media_list_cache_key(**key_args)
+            grouped_key = key(active_entry_grouping_mode())
         with entry_grouping_mode(True):
-            separate_key = cache_utils.build_media_list_cache_key(**key_args)
+            separate_key = key(active_entry_grouping_mode())
 
         self.assertNotEqual(grouped_key, separate_key)
-        self.assertTrue(grouped_key.endswith("_entry_grouping_grouped"))
-        self.assertTrue(separate_key.endswith("_entry_grouping_separate"))
+        self.assertNotEqual(key(None), grouped_key)
+        self.assertTrue(grouped_key.endswith("_grouped"))
+        self.assertTrue(separate_key.endswith("_separate"))
 
     def test_get_query_cannot_change_the_saved_preference(self):
         response = self.client.get(f"{self.movie_url}?separate_plays=1")
@@ -236,12 +241,12 @@ class MediaListEntryGroupingTests(TestCase):
         self.assertIn(MediaTypes.ANIME.value, called_media_types)
         self.assertIn(MediaTypes.TV.value, called_media_types)
 
-    def test_control_exposes_clear_state_and_keyboard_support(self):
+    def test_control_hands_the_settings_menu_its_entry_grouping_state(self):
+        """The gear is a React island; the server supplies its labels and the grouping form."""
         response = self.client.get(self.movie_url)
 
-        self.assertContains(response, 'aria-label="View settings"')
-        self.assertContains(response, ':aria-expanded="open.toString()"')
-        self.assertContains(response, 'aria-pressed="false"')
+        self.assertContains(response, "data-settings-menu-root")
+        self.assertContains(response, "View settings")
         self.assertContains(response, "Show matching entries separately")
-        self.assertContains(response, "Off")
-        self.assertContains(response, "@keydown.escape.window")
+        self.assertContains(response, '"stateLabel": "Off"')
+        self.assertContains(response, '"nextValue": "true"')

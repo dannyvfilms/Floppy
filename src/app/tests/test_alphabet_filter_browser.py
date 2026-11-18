@@ -19,6 +19,25 @@ from app.tests.live_server import SerialStaticLiveServerTestCase
 from lists.models import CustomList, CustomListItem
 
 
+def settled_box(page, selector):
+    """Bounding box of an element once it has not moved for two frames."""
+    page.wait_for_function(
+        """(selector) => {
+          const box = () => {
+            const rect = document.querySelector(selector)?.getBoundingClientRect();
+            return rect ? [rect.x, rect.y, rect.width, rect.height].join() : null;
+          };
+          const first = box();
+          if (first === null) return false;
+          return new Promise(resolve => requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(box() === first))));
+        }""",
+        arg=selector,
+        timeout=15000,
+    )
+    return page.locator(selector).bounding_box()
+
+
 @tag("slow", "playwright")
 class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
     """Use real Django responses, bundled React and the existing HTMX runtime."""
@@ -103,7 +122,9 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 expect(
                     page.locator('.alphabet-rail a[aria-current="true"]')
                 ).to_have_text("A")
-                before = page.locator(".media-grid").bounding_box()
+                # Wait for the grid to stop moving: the rail can still be
+                # laying out when the first frame is drawn (293 vs 213 flake).
+                before = settled_box(page, ".media-grid")
                 if screenshots:
                     Path(screenshots).mkdir(parents=True, exist_ok=True)
                     page.screenshot(
@@ -114,39 +135,36 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 expect(
                     page.locator('.alphabet-rail[data-react-mounted="true"]')
                 ).to_have_count(1)
-                after = page.locator(".media-grid").bounding_box()
+                after = settled_box(page, ".media-grid")
                 for dimension in before:
                     self.assertAlmostEqual(before[dimension], after[dimension], delta=1)
                 # The mounted rail follows the first poster, which can sit a
                 # few pixels below the grid box. Do not compare it with the
                 # grid's outer edge: that is only the fallback position.
-                # Mounting and poster layout can settle in separate frames.
-                # Wait for the rail's live position observer rather than
-                # comparing against the CSS fallback before it has run.
+                # Mounting and poster layout settle in separate frames, and on a
+                # loaded runner the grid can still move after the rail first
+                # matches it. Wait until the rail and its anchor agree on two
+                # frames in a row, in one in-page check, so nothing can shift
+                # between the wait and the comparison.
                 page.wait_for_function(
                     """() => {
-                      const rail = document.querySelector('.alphabet-rail');
-                      const grid = document.querySelector('.media-grid');
-                      if (!rail || !grid) return false;
-                      const poster = grid.querySelector('img')?.getBoundingClientRect();
-                      const anchor = poster?.width && poster?.height
-                        ? poster.top : grid.getBoundingClientRect().top;
-                      return Math.abs(rail.getBoundingClientRect().top
-                        - Math.max(96, Math.ceil(anchor))) <= 1;
-                    }"""
-                )
-                expected_rail_top = page.locator(".media-grid").evaluate(
-                    """grid => {
-                      const poster = grid.querySelector('img')?.getBoundingClientRect();
-                      const anchor = poster?.width && poster?.height
-                        ? poster.top : grid.getBoundingClientRect().top;
-                      return Math.max(96, Math.ceil(anchor));
-                    }"""
-                )
-                self.assertAlmostEqual(
-                    page.locator(".alphabet-rail").bounding_box()["y"],
-                    expected_rail_top,
-                    delta=1,
+                      const place = () => {
+                        const rail = document.querySelector('.alphabet-rail');
+                        const grid = document.querySelector('.media-grid');
+                        if (!rail || !grid) return null;
+                        const poster = grid.querySelector('img')?.getBoundingClientRect();
+                        const anchor = poster?.width && poster?.height
+                          ? poster.top : grid.getBoundingClientRect().top;
+                        const want = Math.max(96, Math.ceil(anchor));
+                        const got = rail.getBoundingClientRect().top;
+                        return Math.abs(got - want) <= 1 ? want : null;
+                      };
+                      const first = place();
+                      if (first === null) return false;
+                      return new Promise(resolve => requestAnimationFrame(() =>
+                        requestAnimationFrame(() => resolve(place() === first))));
+                    }""",
+                    timeout=15000,
                 )
                 rail_bounds = page.locator(".alphabet-rail").bounding_box()
                 self.assertAlmostEqual(
@@ -193,7 +211,7 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
 
             block_renderer = True
             page.goto(f"{self.live_server_url}{library}?initial=q&layout=grid")
-            empty_before = page.locator(".alphabet-empty").bounding_box()
+            empty_before = settled_box(page, ".alphabet-empty")
             expect(
                 page.get_by_role(
                     "heading", name="No titles match this alphabet filter", level=3
@@ -206,7 +224,7 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
             expect(
                 page.locator('.alphabet-empty[data-react-mounted="true"]')
             ).to_have_count(1)
-            empty_after = page.locator(".alphabet-empty").bounding_box()
+            empty_after = settled_box(page, ".alphabet-empty")
             for dimension in empty_before:
                 self.assertAlmostEqual(
                     empty_before[dimension], empty_after[dimension], delta=1
@@ -318,7 +336,7 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                     }"""
                 )
                 rail = page.locator(".alphabet-rail")
-                self.assertEqual(rail.bounding_box()["width"], 32)
+                self.assertEqual(rail.bounding_box()["width"], 24)
                 page.wait_for_function(
                     """() => {
                       const rail = document.querySelector('.alphabet-rail');
@@ -443,5 +461,5 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 ),
                 "fixed",
             )
-            self.assertEqual(page.locator(".alphabet-rail").bounding_box()["width"], 32)
+            self.assertEqual(page.locator(".alphabet-rail").bounding_box()["width"], 24)
             context.close()

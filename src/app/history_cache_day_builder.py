@@ -64,6 +64,7 @@ from app.models import (
     Track,
     VideoPlay,
 )
+from app.play_duration import boardgame_recorded_minutes, elapsed_minutes, play_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,10 @@ def _span_may_touch_day(queryset, day_start, day_end):
     last = Coalesce("end_date", "start_date", "created_at")
     margin = timedelta(days=1)
     return (
-        queryset.filter(progress__gt=0)
+        queryset.filter(
+            models.Q(progress__gt=0)
+            | models.Q(start_date__isnull=False, end_date__isnull=False)
+        )
         .alias(span_lo=Least(first, last), span_hi=Greatest(first, last))
         .filter(span_lo__lt=day_end + margin, span_hi__gte=day_start - margin)
     )
@@ -425,6 +429,11 @@ def build_history_day(
             item = getattr(record, "item", None)
             if not item:
                 continue
+            runtime_minutes = 0
+            if model is not Anime and not (model is Book and item.format == "audiobook"):
+                runtime_minutes = play_minutes(
+                    record.start_date, record.end_date, record.reading_time
+                )
             watches = [
                 (number, watched_at)
                 for number, watched_at in episode_watches.get(record.id, [])
@@ -449,8 +458,9 @@ def build_history_day(
                 "episode_code": None,
                 "played_at_local": played_at_local,
                 **_entry_dates(record),
-                "runtime_minutes": 0,
-                "runtime_display": None,
+                "runtime_minutes": runtime_minutes,
+                "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
+                if runtime_minutes else None,
                 "instance_id": record.id,
                 "entry_key": f"{media_type_value}-{record.id}",
             }
@@ -851,7 +861,7 @@ def build_history_day(
             played_at_local = _localize_datetime(activity_dt)
             if not played_at_local:
                 continue
-            runtime_minutes = game.progress or 0
+            runtime_minutes = play_minutes(game.start_date, game.end_date, game.progress)
             start_local = (
                 _localize_datetime(game.start_date).date() if game.start_date else None
             )
@@ -870,7 +880,7 @@ def build_history_day(
                 "poster": game.item.image or settings.IMG_NONE,
                 "title": game.item.title,
                 "display_title": game.item.title,
-                "progress_display": _format_game_hours(runtime_minutes),
+                "progress_display": _format_game_hours(int(runtime_minutes)),
                 "date_range_display": date_range_display,
                 "episode_label": None,
                 "episode_code": None,
@@ -921,6 +931,10 @@ def build_history_day(
             if not played_at_local:
                 continue
             plays = boardgame.progress or 0
+            runtime_minutes = play_minutes(
+                boardgame.start_date, boardgame.end_date,
+                boardgame_recorded_minutes(boardgame.item.runtime_minutes, plays),
+            )
             start_local = (
                 _localize_datetime(boardgame.start_date).date()
                 if boardgame.start_date
@@ -948,8 +962,11 @@ def build_history_day(
                 "episode_code": None,
                 "played_at_local": played_at_local,
                 **_entry_dates(boardgame),
-                "runtime_minutes": 0,
-                "runtime_display": progress_display,
+                "runtime_minutes": runtime_minutes,
+                "runtime_display": (
+                    f"{progress_display} · {helpers.minutes_to_hhmm(runtime_minutes)}"
+                    if runtime_minutes else progress_display
+                ),
                 "instance_id": boardgame.id,
                 "entry_key": str(boardgame.id),
             }
@@ -970,7 +987,7 @@ def build_history_day(
         else:
             games = games.iterator(chunk_size=500)
         for game in games:
-            total_minutes = game.progress or 0
+            total_minutes = play_minutes(game.start_date, game.end_date, game.progress)
             if total_minutes <= 0:
                 continue
             start_dt = game.start_date or game.end_date or game.created_at
@@ -988,12 +1005,18 @@ def build_history_day(
             if day_date < start_date or day_date > end_date:
                 continue
             day_count = (end_date - start_date).days + 1
-            base = total_minutes // day_count
-            remainder = total_minutes % day_count
-            offset = (day_date - start_date).days
-            minutes_for_day = base + (1 if offset < remainder else 0)
+            if game.progress:
+                base = total_minutes // day_count
+                remainder = total_minutes % day_count
+                offset = (day_date - start_date).days
+                minutes_for_day = base + (1 if offset < remainder else 0)
+            else:
+                minutes_for_day = elapsed_minutes(
+                    game.start_date, game.end_date,
+                    range_start=day_start, range_end=day_end,
+                )
             date_range_display = f"{formats.date_format(start_date, 'M j')} - {formats.date_format(end_date, 'M j')}"
-            total_progress_display = _format_game_hours(total_minutes)
+            total_progress_display = _format_game_hours(int(total_minutes))
             genres = _resolve_genres(game.item)
             day_dt = timezone.make_aware(
                 datetime.combine(day_date, datetime.min.time()),
@@ -1038,7 +1061,10 @@ def build_history_day(
             boardgames = boardgames.iterator(chunk_size=500)
         for boardgame in boardgames:
             total_plays = boardgame.progress or 0
-            if total_plays <= 0:
+            recorded_minutes = boardgame_recorded_minutes(
+                boardgame.item.runtime_minutes, total_plays
+            )
+            if total_plays <= 0 and not elapsed_minutes(boardgame.start_date, boardgame.end_date):
                 continue
             start_dt = (
                 boardgame.start_date or boardgame.end_date or boardgame.created_at
@@ -1061,6 +1087,9 @@ def build_history_day(
             remainder = total_plays % day_count
             offset = (day_date - start_date).days
             plays_for_day = base + (1 if offset < remainder else 0)
+            minutes_for_day = (recorded_minutes / day_count if recorded_minutes else
+                elapsed_minutes(boardgame.start_date, boardgame.end_date,
+                                range_start=day_start, range_end=day_end))
             date_range_display = f"{formats.date_format(start_date, 'M j')} - {formats.date_format(end_date, 'M j')}"
             total_progress_display = _format_boardgame_plays(total_plays)
             genres = _resolve_genres(boardgame.item)
@@ -1080,10 +1109,11 @@ def build_history_day(
                 "episode_code": None,
                 "played_at_local": day_dt,
                 **_entry_dates(boardgame),
-                "runtime_minutes": 0,
-                "runtime_display": _format_boardgame_plays(plays_for_day)
-                if plays_for_day
-                else None,
+                "runtime_minutes": minutes_for_day,
+                "runtime_display": " · ".join(filter(None, (
+                    _format_boardgame_plays(plays_for_day) if plays_for_day else None,
+                    helpers.minutes_to_hhmm(minutes_for_day) if minutes_for_day else None,
+                ))) or None,
                 "instance_id": boardgame.id,
                 "entry_key": f"{boardgame.id}-{day_key}",
             }

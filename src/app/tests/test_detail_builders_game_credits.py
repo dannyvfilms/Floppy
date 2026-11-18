@@ -1,6 +1,6 @@
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
-from app.detail_builders import _build_detail_link_sections, _build_detail_person_rows
+from app.detail_builders import _build_detail_person_rows, build_detail_link_sections
 from app.models import (
     CreditRoleType,
     Item,
@@ -9,6 +9,18 @@ from app.models import (
     Person,
     Sources,
 )
+
+
+class DetailSeasonRowTests(SimpleTestCase):
+    def test_season_row_preserves_enriched_cards_and_order(self):
+        seasons = [
+            {"item": {"title": "First"}, "media": None, "card_title": "Season 1"},
+            {"item": {"title": "Second"}, "media": None, "card_title": "Season 2"},
+        ]
+        row = _build_detail_person_rows({"related": {"seasons": seasons}})["seasons_row"]
+        self.assertEqual(row["items"], seasons)
+        self.assertEqual(row["total"], 2)
+        self.assertEqual(row["card_width_class"], "w-44")
 
 
 class GameCastRowFromCreditsTests(TestCase):
@@ -96,7 +108,7 @@ class GameImdbLinkChipTests(TestCase):
             image="http://example.com/game.jpg",
             provider_external_ids={"imdb_id": "tt34996965"},
         )
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {"media_id": "igdb-2"},
             MediaTypes.GAME.value,
             Sources.IGDB.value,
@@ -117,7 +129,7 @@ class GameImdbLinkChipTests(TestCase):
             title="Some Unmatched Game",
             image="http://example.com/game.jpg",
         )
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {"media_id": "igdb-3"},
             MediaTypes.GAME.value,
             Sources.IGDB.value,

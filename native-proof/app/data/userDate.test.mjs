@@ -61,3 +61,32 @@ test('times print like the web season subtitle', async () => {
   assert.equal(formatUserTime('2026-11-05T00:00:00Z', zone), 'midnight');
   assert.equal(formatUserDateTime('2026-11-05T02:52:11Z', zone), 'Nov. 5, 2026 2:52 a.m.');
 });
+
+
+test('saved nested preferences drive detail dates and successful reads are cached', async () => {
+  const dates = await import('./userDate.js?preferences-contract');
+  const calls = [];
+  const request = async path => {
+    calls.push(path);
+    return path === '/api/v1/info/' ? { timezone: 'America/New_York' }
+      : { preferences: { date_format: 'month_d_yyyy' }, choices: {} };
+  };
+  await dates.loadDatePreferences(request);
+  assert.equal(dates.formatUserDate('2019-03-11'), 'Mar 11, 2019');
+  assert.equal(dates.formatUserDate('2026-11-11'), 'Nov 11, 2026');
+  assert.equal(dates.formatUserDate('2026-11-11T01:00:00Z'), 'Nov 10, 2026');
+  await dates.loadDatePreferences(request);
+  assert.equal(calls.length, 2);
+});
+
+test('a partial preference fetch failure retries instead of caching the default forever', async () => {
+  const dates = await import('./userDate.js?preferences-retry');
+  await dates.loadDatePreferences(async path => {
+    if (path === '/api/v1/user/preferences/') throw new Error('Temporary failure');
+    return { timezone: 'UTC' };
+  });
+  assert.equal(dates.getDatePreferences().dateFormat, 'system_default');
+  await dates.loadDatePreferences(async path => path === '/api/v1/info/' ? { timezone: 'UTC' }
+    : { preferences: { date_format: 'iso_8601' } });
+  assert.equal(dates.formatUserDate('2026-11-11'), '2026-11-11');
+});
