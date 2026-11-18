@@ -24,6 +24,17 @@ Every relation that FKs `Item` falls into one of two buckets:
 cascade into `Episode`, so a naive repoint can collide and, on delete,
 destroy watch history. They get the same "fold the loser's children onto
 the matching survivor row" treatment `0148` uses.
+
+Before a duplicate tracking row (`TV`, `Season`, or any other `Media` row
+that collides on a unique constraint, such as `Video`) is deleted, its
+score, notes, dates and status are folded into the surviving row by
+`app.services.tracker_fold`, which never lowers what the user recorded.
+Tracking models without a unique constraint (Movie, Game, Book, Music,
+Podcast and the rest) store a repeat as another row, so a repointed row
+that meets one already on the keeper is kept as a repeat, not deleted.
+
+The merge's deletes leave no deletion tombstone (`app.signals.merging_items`):
+the user still tracks the title under the keeper's identity.
 """
 
 from __future__ import annotations
@@ -33,9 +44,11 @@ import logging
 from django.db import transaction
 from django.db.utils import IntegrityError
 
-from app.models import TV, Episode, Item, MediaTypes, Season, Sources
+from app.models import TV, Episode, Item, Media, MediaTypes, Season, Sources
 from app.providers import tmdb
 from app.services.sync_lock import invalidate_item_contexts
+from app.services.tracker_fold import fold_tracker_into
+from app.signals import merging_items
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +74,7 @@ def _absorb_tv_rows(loser: Item, keeper: Item) -> None:
 
         for season in Season._base_manager.filter(related_tv=loser_tv):
             _rehome_season(season, surviving_tv)
+        fold_tracker_into(loser_tv, surviving_tv)
         loser_tv.delete()
 
 
@@ -83,6 +97,7 @@ def _absorb_season_rows(loser: Item, keeper: Item) -> None:
         Episode._base_manager.filter(related_season=loser_season).update(
             related_season=surviving_season,
         )
+        fold_tracker_into(loser_season, surviving_season)
         loser_season.delete()
 
 
@@ -102,6 +117,7 @@ def _rehome_season(season: Season, surviving_tv: TV) -> None:
         return
 
     Episode._base_manager.filter(related_season=season).update(related_season=rival)
+    fold_tracker_into(season, rival)
     season.delete()
 
 
@@ -123,6 +139,44 @@ def _keeper_has_equivalent(related, field_name: str) -> bool:
         if model._base_manager.filter(**lookup).exclude(pk=related.pk).exists():
             return True
     return False
+
+
+def _fold_media_twin(related, field_name: str, keeper: Item) -> None:
+    """Keep a colliding tracking row's user fields on the keeper's twin."""
+    if not isinstance(related, Media) or field_name != "item":
+        return
+    twin = (
+        type(related)
+        ._base_manager.filter(user_id=related.user_id, item=keeper)
+        .exclude(pk=related.pk)
+        .order_by("id")
+        .first()
+    )
+    if twin is None:
+        return
+    fold_tracker_into(related, twin)
+    _move_children(related, twin)
+
+
+def _move_children(row, twin) -> None:
+    """Move rows that cascade from `row` (plays, links) onto `twin`.
+
+    Without this, deleting the duplicate tracking row would delete its
+    plays with it. A child the twin already holds (the same play id) is a
+    true duplicate and is dropped.
+    """
+    for relation in type(row)._meta.related_objects:
+        if relation.many_to_many or relation.one_to_one:
+            continue
+        field = relation.field
+        manager = relation.related_model._base_manager
+        for child in list(manager.filter(**{field.name: row})):
+            setattr(child, field.name, twin)
+            try:
+                with transaction.atomic():
+                    child.save(update_fields=[field.attname])
+            except IntegrityError:
+                child.delete()
 
 
 def _repoint(loser: Item, keeper: Item) -> None:
@@ -151,6 +205,7 @@ def _repoint(loser: Item, keeper: Item) -> None:
         for related in list(related_manager.filter(**{field.name: loser})):
             setattr(related, field.name, keeper)
             if _keeper_has_equivalent(related, field.name):
+                _fold_media_twin(related, field.name, keeper)
                 related.delete()
                 continue
             try:
@@ -161,7 +216,8 @@ def _repoint(loser: Item, keeper: Item) -> None:
                     related.save(update_fields=[field.attname])
             except IntegrityError:
                 # The keeper already has the equivalent row; the loser's
-                # copy is redundant.
+                # copy is redundant once what the user wrote on it is kept.
+                _fold_media_twin(related, field.name, keeper)
                 related.delete()
 
 
@@ -175,7 +231,7 @@ def merge_item(loser: Item, keeper: Item) -> None:
         msg = "cannot merge an item into itself"
         raise ValueError(msg)
 
-    with transaction.atomic():
+    with transaction.atomic(), merging_items():
         invalidate_item_contexts([loser.pk, keeper.pk])
         _repoint(loser, keeper)
         loser.delete()
