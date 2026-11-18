@@ -24,8 +24,32 @@ SYNC_IDENTITY_FIELDS = frozenset({
 })
 
 
+def fill_library_media_type(items):
+    """Give every item without a library bucket its media type, as ``save()`` does.
+
+    The bucket is part of an item's identity, and the database refuses an
+    empty one. Bulk writes skip ``save()``, so they call this instead.
+    """
+    for item in items:
+        if not item.library_media_type:
+            item.library_media_type = item.media_type
+
+
 class ItemQuerySet(models.QuerySet):
     """Invalidate strict snapshots when an item's actionable identity changes."""
+
+    def bulk_create(self, objs, *args, **kwargs):
+        """Fill each new item's library bucket, which ``save()`` would have done."""
+        objs = list(objs)
+        fill_library_media_type(objs)
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        """Fill the library bucket when it is one of the written fields."""
+        objs = list(objs)
+        if "library_media_type" in fields:
+            fill_library_media_type(objs)
+        return super().bulk_update(objs, fields, *args, **kwargs)
 
     def update(self, **kwargs):
         """Cover identity rewrites that bypass model-save signals."""
@@ -457,10 +481,12 @@ class Item(CalendarTriggerMixin, models.Model):
                 condition=Q(media_type__in=MediaTypes.values),
                 name="%(app_label)s_%(class)s_media_type_valid",
             ),
+            # The library bucket is part of the identity above, so it must
+            # always be set: an empty bucket would let one title be stored
+            # twice (once empty, once filled). See docs/agents/media_type_integration.md.
             CheckConstraint(
-                condition=Q(library_media_type="")
-                | Q(library_media_type__in=MediaTypes.values),
-                name="%(app_label)s_%(class)s_library_media_type_valid",
+                condition=Q(library_media_type__in=MediaTypes.values),
+                name="%(app_label)s_%(class)s_library_media_type_set",
             ),
         ]
         indexes = [

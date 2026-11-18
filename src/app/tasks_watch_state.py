@@ -32,8 +32,10 @@ BACKFILL_BATCH_SIZE = 500
 # 2026-10-18 left stale ones behind (an overwrite deleted rows, which projected
 # "unwatched", then wrote them back without projecting). Bump the version to
 # re-check every library after another such write path is found.
+# Version 2: migration 0230 folded empty-bucket item twins with frozen models,
+# so no signal re-projected the surviving item (prompt 63).
 REPAIR_KEY = "watch_state_repair"
-REPAIR_VERSION = 1
+REPAIR_VERSION = 2
 # Leaves room under the soft time limit; an unfinished sweep resumes next run.
 REPAIR_TIME_BUDGET_SECONDS = 5 * 60
 
