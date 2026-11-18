@@ -125,6 +125,16 @@ goes in that subject's module.
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
+**Recorded server answers for the Expo app.** `native-proof/app/data/__recorded__/`
+holds the real JSON of the endpoints the native detail, library, list, History and
+Home readers use, recorded from the sample library by
+`src/api/tests/test_native_recordings.py`. That test fails when a committed file no
+longer matches what the server returns, and the `*TransportCore.test.mjs` files read
+each file through the real reader (`native-proof/app/data/recordedAnswers.mjs`).
+Changing the shape of one of these endpoints means refreshing the files
+(`FLOPPY_RECORD_NATIVE=1 scripts/test.sh api.tests.test_native_recordings`) and
+reading the native diff: a changed field is one a native screen may read.
+
 ## Four rules the code holds to
 
 Each rule has tests that fail when it breaks.

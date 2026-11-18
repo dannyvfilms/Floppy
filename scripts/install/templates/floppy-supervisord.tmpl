@@ -35,13 +35,5 @@ export FLOPPY_CELERY_QUEUES="${FLOPPY_CELERY_QUEUES:-celery}"
 export FLOPPY_CELERY_ROLE="${FLOPPY_CELERY_ROLE:-background}"
 export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}"
 export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
-# Celery heartbeat events have no reader in Floppy and were a third of an idle
-# instance's Redis traffic. FLOPPY_CELERY_HEARTBEAT=on restores them for an
-# external monitor such as Flower.
-if [ "${FLOPPY_CELERY_HEARTBEAT:-off}" = on ]; then
-    export FLOPPY_CELERY_HEARTBEAT_ARG=""
-else
-    export FLOPPY_CELERY_HEARTBEAT_ARG="--without-heartbeat"
-fi
 
 exec supervisord -c "@@RUN_DIR@@/supervisord.conf"
