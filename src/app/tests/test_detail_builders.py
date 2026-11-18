@@ -1,10 +1,10 @@
 from django.test import TestCase
 
 from app.detail_builders import (
-    _build_detail_link_sections,
     _build_imdb_rating_context,
     _build_mal_rating_context,
     _build_series_graph_data,
+    build_detail_link_sections,
 )
 from app.models import Item, ItemProviderLink, MediaTypes, Sources
 
@@ -210,7 +210,7 @@ class DetailLinkSectionsMalTests(TestCase):
             title="Frieren",
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {
                 "source_url": "https://www.themoviedb.org/tv/52991",
                 "media_id": "52991",
@@ -243,7 +243,7 @@ class DetailLinkSectionsMalTests(TestCase):
             provider_media_id="4",
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {"source_url": "https://www.thetvdb.com/series/tv-1"},
             MediaTypes.ANIME.value,
             Sources.TVDB.value,

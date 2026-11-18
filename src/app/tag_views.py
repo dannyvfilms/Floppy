@@ -75,7 +75,7 @@ def _resolve_detail_tag_implied_genres(
     return implied_genres
 
 
-def _build_detail_tag_sections(
+def build_detail_tag_sections(
     media_metadata,
     item,
     user,
@@ -83,7 +83,10 @@ def _build_detail_tag_sections(
     fallback_implied_genres=None,
     genre_list_media_type=None,
 ):
-    """Return grouped genre and tag preview sections for the media detail action row."""
+    """Return grouped genre and tag preview sections for the media detail action row.
+
+    Shared by the media, season and music detail pages and the detail API.
+    """
     sections = []
 
     genres = _resolve_detail_tag_genres(
@@ -279,7 +282,7 @@ def _render_tag_modal_response(
         "app/components/detail_tag_preview.html",
         {
             "preview_id": app_tags.component_id("tag-preview", item),
-            "detail_tag_sections": _build_detail_tag_sections(
+            "detail_tag_sections": build_detail_tag_sections(
                 {},
                 item,
                 request.user,
@@ -532,7 +535,7 @@ def tag_item_toggle(request):
     preview_implied_genres = _parse_detail_tag_preview_genres(
         request.POST.get("preview_implied_genres_json"),
     )
-    preview_sections = _build_detail_tag_sections(
+    preview_sections = build_detail_tag_sections(
         {},
         item,
         request.user,
