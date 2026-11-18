@@ -13,8 +13,8 @@ from django.utils import timezone
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from app.providers import tmdb
 from app.track_modal_views import (
-    _track_modal_date_suggestion,
     _track_modal_other_release_dates,
+    track_modal_date_suggestion,
 )
 from events.calendar.helpers import date_parser
 from events.calendar.main import cleanup_invalid_events, save_events
@@ -362,7 +362,7 @@ class TrackModalReleaseDatesTests(ReleaseTypeEventsMixin, TestCase):
             self.item,
             self.user,
         )
-        suggestion = _track_modal_date_suggestion(
+        suggestion = track_modal_date_suggestion(
             "Theatrical release",
             "2026-12-12",
             extras=extras,
