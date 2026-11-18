@@ -11,6 +11,7 @@ from defusedxml import ElementTree
 from django.conf import settings
 from requests import RequestException
 
+from app.helpers import coerce_int as _coerce_int
 from app.log_safety import exception_summary
 from integrations.safe_fetch import send_to_self_hosted
 
@@ -779,14 +780,6 @@ def _extract_users_payload(payload: Any) -> list[dict[str, Any]]:
             return [users]
 
     return []
-
-
-def _coerce_int(value: Any, default: int) -> int:
-    """Best-effort int conversion with fallback."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def extract_external_ids_from_guids(

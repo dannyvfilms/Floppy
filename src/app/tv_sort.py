@@ -379,14 +379,6 @@ class _RuntimeTotals:
         return episodes_left * runtime
 
 
-def _minutes_display(total):
-    hours = int(total // 60)
-    minutes = int(total % 60)
-    if hours > 0:
-        return f"{hours}h {minutes}m"
-    return f"{minutes}m"
-
-
 def _newest_first_key(record):
     return (
         -(record.end_date.timestamp() if record.end_date else float("-inf")),
@@ -456,7 +448,7 @@ def sort_time_left_records(records, direction="asc"):
         total = runtime_totals.minutes_left(record, episodes_left, breakdown, progress)
         record.episodes_left_display = episodes_left
         record.time_left_display = (
-            _minutes_display(total) if total > 0 else f"{episodes_left} ep"
+            helpers.minutes_to_hm(total) if total > 0 else f"{episodes_left} ep"
         )
         active_keys[id(record)] = (total, record.title.lower())
     group_active_sorted = sorted(
@@ -485,7 +477,7 @@ def sort_time_left_records(records, direction="asc"):
                     record.breakdown,
                     record.progress,
                 )
-                record.time_left_display = _minutes_display(total)
+                record.time_left_display = helpers.minutes_to_hm(total)
             else:
                 record.time_left_display = "0m"
         else:
