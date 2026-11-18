@@ -541,6 +541,7 @@ Notes:
   running instance. Add `--json` for a machine-readable report. This is the fastest way to tell
   a broken environment from a broken change, and it is what a bug report should carry when
   Floppy will not start.
+- Data confidence: `uv run --no-sync python src/manage.py check_data_invariants` — counts items, plays and trackers that break a data invariant (empty buckets, duplicate copies, tombstoned but tracked, broken structure, stalled work), each marked "always a fault" or "review". Reads only; `--verbose` adds example ids, `--user ID` scopes it, `--json`, `--strict` exits 1 on a fault. Checks live in `src/app/data_invariants.py`.
 - Migration sync confidence: `uv run --no-sync python src/manage.py check_migration_hygiene --strict`
 - Migration upgrade replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
 - Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast
