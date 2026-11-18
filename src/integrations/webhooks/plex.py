@@ -1,8 +1,6 @@
 import logging
 import re
 
-from django.utils import timezone
-
 import app
 from app import live_playback
 from app.log_safety import exception_summary, mapping_keys, presence_map, safe_url
@@ -947,8 +945,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         )
 
         # Update rating (Plex is master, overwrites existing)
-        movie_instance.score = rating
-        movie_instance.save(update_fields=["score"])
+        # Skip an unchanged score: a redelivered event must not
+        # add a history row (webhook-delivery.md, "Redelivery").
+        if movie_instance.score != rating:
+            movie_instance.score = rating
+            movie_instance.save(update_fields=["score"])
 
         action = "Created" if created else "Updated"
         logger.info(
@@ -1049,8 +1050,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         )
 
         # Update rating (Plex is master, overwrites existing)
-        tv_instance.score = rating
-        tv_instance.save(update_fields=["score"])
+        if tv_instance.score != rating:
+            tv_instance.score = rating
+            tv_instance.save(update_fields=["score"])
         logger.info("Updated TV rating from Plex webhook")
 
     def _get_or_create_tv_rating_target(self, user, ids, tmdb_id, tv_metadata):
@@ -1150,8 +1152,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             )
 
         # Update rating (Plex is master, overwrites existing)
-        season_instance.score = rating
-        season_instance.save(update_fields=["score"])
+        if season_instance.score != rating:
+            season_instance.score = rating
+            season_instance.save(update_fields=["score"])
         logger.info("Updated season rating from Plex webhook")
 
     def _season_library_media_type(self, tv_item, user):
@@ -1213,8 +1216,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             ).first()
 
             if movie_instance:
-                movie_instance.score = None
-                movie_instance.save(update_fields=["score"])
+                if movie_instance.score is not None:
+                    movie_instance.score = None
+                    movie_instance.save(update_fields=["score"])
                 logger.info("Removed movie rating from Plex webhook")
             else:
                 logger.debug("No movie instance found for Plex rating removal")
@@ -1261,8 +1265,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             ).first()
 
             if tv_instance:
-                tv_instance.score = None
-                tv_instance.save(update_fields=["score"])
+                if tv_instance.score is not None:
+                    tv_instance.score = None
+                    tv_instance.save(update_fields=["score"])
                 logger.info("Removed TV rating from Plex webhook")
             else:
                 logger.debug("No TV instance found for Plex rating removal")
@@ -1284,8 +1289,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 season_number,
             )
             if season_instance:
-                season_instance.score = None
-                season_instance.save(update_fields=["score"])
+                if season_instance.score is not None:
+                    season_instance.score = None
+                    season_instance.save(update_fields=["score"])
                 logger.info("Removed season rating from Plex webhook")
             else:
                 logger.debug("No season instance found for Plex rating removal")
@@ -2070,10 +2076,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
     def _build_music_event(self, payload, user):
         """Build a normalized music playback event from Plex payload."""
         metadata = payload.get("Metadata", {}) or {}
-        played_at = self._get_played_at(payload) or timezone.now().replace(
-            second=0,
-            microsecond=0,
-        )
+        played_at = self._get_played_at(payload) or self._event_now()
         duration_ms = metadata.get("duration")
         try:
             duration_ms = int(duration_ms) if duration_ms is not None else None
