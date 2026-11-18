@@ -63,6 +63,7 @@ from events import tasks
 from events.models import Event
 from integrations.oauth_scope_info import has_full_account_access
 from integrations.state.ratings import rating_edit
+from lists import tasks as list_tasks
 from lists.forms import CustomListForm, validate_public_slug
 from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
@@ -656,6 +657,8 @@ class ListDetailView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
         media_user = user if user_list.user_can_edit(user) else user_list.owner
         paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:
@@ -861,6 +864,8 @@ class ListItemsView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
         media_user = user if user_list.user_can_edit(user) else user_list.owner
         paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:
