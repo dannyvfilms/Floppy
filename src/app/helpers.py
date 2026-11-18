@@ -96,6 +96,72 @@ def seconds_to_hm(total_seconds):
     return f"{hours}h {minutes}m" if hours else f"{minutes}m"
 
 
+def minutes_to_hm(total_minutes):
+    """Return a duration in minutes as "1h 9m", or as "46m" under an hour.
+
+    Whole hours keep the minutes ("1h 0m"); 0 is "0m". A float is cut to
+    whole minutes (90.5 -> "1h 30m"). The caller decides what a missing
+    duration shows; ``None`` raises ``TypeError``.
+    """
+    hours = int(total_minutes // 60)
+    minutes = int(total_minutes % 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def seconds_to_clock(total_seconds):
+    """Return a duration in seconds as clock text: "4:05", or "1:02:03" from an hour.
+
+    0 is "0:00". The value is cut to whole seconds with ``int()``. The caller
+    decides what a missing duration shows; ``None`` raises ``TypeError``.
+    """
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def coerce_int(value, default=None):
+    """Return ``int(value)``, or ``default`` when it cannot be converted.
+
+    ``None``, "" and blank or non-numeric text give ``default``. Numeric text
+    may have spaces around it (" 7 " -> 7) but "7.5" gives ``default``.
+    Floats are cut toward zero (3.9 -> 3, -3.9 -> -3); ``True`` is 1. An
+    infinite float raises ``OverflowError``, as every copy this replaced did.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def coerce_list(value):
+    """Return a provider value that may be one item or a list, as a list.
+
+    A list comes back as the same object; ``None`` and "" give ``[]``; any
+    other value, falsy ones such as 0 or ``{}`` included, is wrapped in a
+    one-item list. Tuples are wrapped, not converted.
+    """
+    if isinstance(value, list):
+        return value
+    if value in (None, ""):
+        return []
+    return [value]
+
+
+def wants_json(request):
+    """Return whether the browser adapter asked for an in-place JSON result.
+
+    True for ``X-Requested-With: XMLHttpRequest`` or an ``Accept`` header that
+    mentions ``application/json``. A ``?format=json`` parameter does not count.
+    """
+    accept = request.headers.get("Accept", "")
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in accept
+    )
+
+
 def has_real_image(image):
     """Return whether the value is a usable artwork URL."""
     return bool(image and image != settings.IMG_NONE)
