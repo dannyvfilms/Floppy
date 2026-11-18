@@ -400,6 +400,17 @@ BULK_WRITE_SITES = {
         "played rows go through set_episode_score.",
         watch_state="Not needed: rating-only rows are not watches.",
     ),
+    ("app/services/tracker_fold.py", "fold_tracker_into", UNKNOWN): Refresh(
+        changes="Folds a duplicate tracker's score, notes and status into the "
+        "one kept when two catalogue records merge (item, album, artist).",
+        view_caches="Every caller deletes the duplicate row right after the "
+        "fold; that delete's signal clears for the same user.",
+        statistics="The same delete signal marks the user's change, and every "
+        "range re-reads status and score.",
+        history="The same delete signal invalidates the duplicate's days; the "
+        "kept row's plays and dates do not move.",
+        watch_state=_WS_SCOPED,
+    ),
     ("app/services/item_merge.py", "_absorb_season_rows", EPISODE): CATALOGUE_RELINK,
     ("app/services/item_merge.py", "_rehome_season", EPISODE): CATALOGUE_RELINK,
     # --- Migrations ---------------------------------------------------------
