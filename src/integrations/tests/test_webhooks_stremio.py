@@ -822,7 +822,7 @@ class StremioAddonViewTests(TestCase):
                 media_id=str(index),
             )
 
-        with self.assertLogs("integrations.views", level="INFO") as logs:
+        with self.assertLogs("integrations.stremio_views", level="INFO") as logs:
             response = self.client.get(self._catalog_url())
 
         self.assertEqual(response.status_code, 200)
@@ -838,8 +838,8 @@ class StremioAddonViewTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_subtitles_enqueues_scrobble(self, mock_delay, _mock_reserve):
         """A subtitles request records one scrobble per throttle window."""
         response = self.client.get(self._subtitles_url("movie", "tt0133093"))
@@ -861,8 +861,8 @@ class StremioAddonViewTests(TestCase):
         self.client.get(self._subtitles_url("series", "tt0108778:1:1"))
         self.assertEqual(mock_delay.call_count, 2)
 
-    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_subtitles_with_extra_path(self, mock_delay, _mock_reserve):
         """Stremio extra segments like videoHash are accepted and ignored."""
         response = self.client.get(
@@ -877,8 +877,8 @@ class StremioAddonViewTests(TestCase):
             "series:tt0108778:1:1",
         )
 
-    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_subtitles_with_slash_in_extra_path(self, mock_delay, _mock_reserve):
         """A release filename containing a slash still resolves and scrobbles."""
         response = self.client.get(
@@ -893,8 +893,8 @@ class StremioAddonViewTests(TestCase):
             "movie:tt1872181",
         )
 
-    @patch("integrations.views.stremio_queue.reserve_pending", return_value="limited")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending", return_value="limited")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_subtitles_limit_returns_empty_response_without_dispatch(
         self,
         mock_delay,
@@ -907,8 +907,8 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(json.loads(response.content), {"subtitles": []})
         mock_delay.assert_not_called()
 
-    @patch("integrations.views.stremio_queue.reserve_pending", return_value="unavailable")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending", return_value="unavailable")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_subtitles_redis_failure_fails_closed(
         self,
         mock_delay,
@@ -920,8 +920,8 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_delay.assert_not_called()
 
-    @patch("integrations.views.stremio_queue.reserve_pending")
-    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    @patch("integrations.stremio_views.stremio_queue.reserve_pending")
+    @patch("integrations.stremio_views.tasks.process_stremio_webhook.delay")
     def test_invalid_video_id_is_ignored(
         self,
         mock_delay,
