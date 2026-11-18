@@ -125,7 +125,7 @@ class DiscoverViewTests(TestCase):
             image="https://example.com/show.jpg",
         )
 
-    @patch("app.views._invalidate_discover_after_action")
+    @patch("app.discover_views.invalidate_discover_after_action")
     def test_discover_toggle_hidden_hides_item_and_renders_save_control(
         self,
         mock_invalidate_discover_after_action,
