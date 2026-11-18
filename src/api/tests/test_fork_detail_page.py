@@ -322,6 +322,23 @@ class DetailPageTests(FloppyApiTestCase):
         self.assertEqual(body["related_sections"][0]["items"][0]["model"]["title"], "Related Movie")
 
     @patch(
+        "api.fork_views_detail.carousel.resolve_carousel_media",
+        return_value={"hero": None, "overview": None, "photos": [], "video": None},
+    )
+    @patch("api.fork_views_detail.services.get_media_metadata", return_value={"title": "Movie One"})
+    def test_gallery_without_artwork_still_projects(self, _metadata, _gallery):
+        """A cached gallery with no backdrop or logo answered 500 (assignment 73)."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.client.get(
+            f"/api/v1/media/{item.media_type}/{item.source}/{item.media_id}/detail/",
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["artwork"]["backdrop"], "")
+        self.assertEqual(response.json()["artwork"]["logo"], "")
+
+    @patch(
         "api.fork_views_detail.enrich_detail_seasons",
         return_value=(None, []),
     )
