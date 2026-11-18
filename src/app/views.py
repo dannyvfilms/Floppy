@@ -312,6 +312,7 @@ from app.providers import (
     mangaupdates,
     manual,
     openlibrary,
+    rottentomatoes,
     services,
     tmdb,
 )
@@ -800,6 +801,70 @@ def trakt_series_graph_fragment(request, source, media_id):
     )
 
 
+@login_not_required
+@require_GET
+def rt_extras(
+    request,
+    source,
+    media_type,
+    media_id,
+    season_number=None,
+    episode_number=None,
+):
+    """HTMX fragment: the deferred Rotten Tomatoes extras for a detail page.
+
+    Loaded after the page renders because a cold match searches and scrapes
+    rottentomatoes.com; results cache for a week. Returns an out-of-band
+    external-links chip for movie/TV/anime/season pages (which warms the
+    match cache `_build_detail_link_sections` reads on later renders), or the
+    episode Tomatometer pill for episode pages.
+    """
+    rt_link = None
+    rt_episode = None
+
+    try:
+        if episode_number is not None:
+            # media_type is the episode's parent (tv/anime); the fragment
+            # renders the episode's Tomatometer pill
+            tv_metadata = services.get_media_metadata(media_type, media_id, source)
+            rt_episode = rottentomatoes.episode_scores(
+                tv_metadata, season_number, episode_number
+            )
+        elif media_type == MediaTypes.SEASON.value:
+            tv_metadata = services.get_media_metadata(
+                "tv_with_seasons",
+                media_id,
+                source,
+                [season_number],
+            )
+            season_data = rottentomatoes.season_scores(tv_metadata, season_number)
+            rt_link = (season_data or {}).get("url")
+        elif media_type in rottentomatoes.LINKED_MEDIA_TYPES:
+            media_metadata = services.get_media_metadata(
+                media_type, media_id, source
+            )
+            rt_link = (rottentomatoes.media_scores(media_metadata) or {}).get("url")
+    except services.ProviderAPIError:
+        # the page already showed any provider error; just leave the extras out
+        logger.warning(
+            "Rotten Tomatoes extras unavailable for %s %s", media_type, media_id
+        )
+
+    rt_link_entry = (
+        _build_detail_link_entry("Rotten Tomatoes", rt_link, "rottentomatoes")
+        if rt_link
+        else None
+    )
+    return render(
+        request,
+        "app/components/rt_extras.html",
+        {
+            "rt_link": rt_link_entry,
+            "rt_episode": rt_episode,
+        },
+    )
+
+
 def active_playback_fragment(request):
     """HTMX fragment: return the active playback cards or empty response."""
     cards = live_playback.build_home_playback_cards(request.user)
@@ -1009,6 +1074,23 @@ def episode_details(
 
     imdb_score = _build_imdb_rating_context(episode_item, MediaTypes.EPISODE.value)
 
+    # The Rotten Tomatoes episode pill loads after render: a cold match
+    # searches and scrapes rottentomatoes.com (see rt_extras).
+    rt_extras_url = (
+        reverse(
+            "rt_extras",
+            kwargs={
+                "source": source,
+                "media_type": parent_media_type or MediaTypes.TV.value,
+                "media_id": media_id,
+                "season_number": season_number,
+                "episode_number": episode_number,
+            },
+        )
+        if season_number is not None and episode_number is not None
+        else None
+    )
+
     season_url = reverse(
         "anime_season_details"
         if parent_media_type == MediaTypes.ANIME.value
@@ -1073,6 +1155,7 @@ def episode_details(
         "next_episode_number": next_episode_number,
         "episode_metadata": episode_metadata,
         "imdb_score": imdb_score,
+        "rt_extras_url": rt_extras_url,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,

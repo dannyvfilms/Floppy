@@ -231,6 +231,10 @@
               <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=imdb_score.rating_count|intcomma count count=imdb_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
             </div>
           {% endif %}
+          {# Rotten Tomatoes episode pill — loaded after render because it costs requests to rottentomatoes.com #}
+          {% if rt_extras_url %}
+            <div hx-get="{{ rt_extras_url }}" hx-trigger="load" hx-swap="outerHTML" class="contents"></div>
+          {% endif %}
           {# User episode rating chip — always-present slot so it can be OOB-swapped into place on first watch without a page refresh. #}
           {% if not public_view and episode %}
             {% include "app/components/detail_episode_rating_chip.html" with episode=episode current_instance=current_instance episode_number=episode_number user=user csrf_token=csrf_token source=source media_id=media_id season_number=season_number public_view=public_view %}

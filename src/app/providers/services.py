@@ -494,6 +494,10 @@ session.mount(
     "https://api.tvmaze.com",
     _build_host_limiter_adapter(per_second=2),
 )
+session.mount(
+    "https://www.rottentomatoes.com",
+    _build_host_limiter_adapter(per_second=1),
+)
 
 
 @request_timing.timed_provider_call
@@ -794,10 +798,11 @@ def api_request(
         params: Query params for GET, JSON body for POST
         data: Raw data for POST/PUT/PATCH (e.g. form-encoded body)
         headers: Request headers
-        response_format: "json" (default) or "xml" for XML parsing
+        response_format: "json" (default), "xml" for XML parsing or "text" for
+            raw HTML
 
     Returns:
-        Parsed JSON dict or ElementTree for XML
+        Parsed JSON dict, ElementTree for XML or str for text
     """
     if cache.get(_rate_limit_cooldown_key(provider, headers)):
         logger.warning("%s request skipped: provider is in rate-limit cooldown", provider)
@@ -848,6 +853,8 @@ def api_request(
 
         if response_format == "xml":
             return ElementTree.fromstring(response.text)
+        if response_format == "text":
+            return response.text
         return response.json()
 
     except requests.exceptions.HTTPError as error:

@@ -9,6 +9,7 @@ from django.db.models import Case, DateTimeField, Value, When
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -1059,6 +1060,15 @@ def season_details(
             MediaTypes.SEASON.value,
             source,
             source,
+        ),
+        "rt_extras_url": reverse(
+            "rt_extras",
+            kwargs={
+                "source": source,
+                "media_type": MediaTypes.SEASON.value,
+                "media_id": media_id,
+                "season_number": season_number,
+            },
         ),
         "detail_tag_sections": _build_detail_tag_sections(
             season_metadata,

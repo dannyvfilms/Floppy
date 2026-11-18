@@ -1,0 +1,49 @@
+{% load i18n %}
+{% load app_tags %}
+{# Deferred Rotten Tomatoes extras, swapped in after the detail page renders. #}
+{# The link chip replaces the empty #detail-link-rt span inside the popup's #}
+{# "External links" section out-of-band so it lands next to the other chips. #}
+{% if rt_link %}
+  <div id="detail-link-rt" hx-swap-oob="true">
+    <a href="{{ rt_link.url }}"
+       target="_blank"
+       rel="noreferrer"
+       class="inline-flex h-8 items-center gap-2 rounded-full border {{ rt_link.chip_classes }} pl-0 pr-3 text-sm text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:brightness-110">
+      <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border {{ rt_link.badge_classes }}">
+        {% if rt_link.logo_src %}
+          <img src="{{ rt_link.logo_src|image_url }}"
+               alt=""
+               aria-hidden="true"
+               class="h-4 w-4 object-contain">
+        {% else %}
+          <span class="text-[9px] font-black tracking-[0.12em] {{ rt_link.accent_classes }}">{{ rt_link.fallback_text|slice:":4" }}</span>
+        {% endif %}
+      </span>
+      <span class="text-sm font-medium text-[var(--color-text)]">{{ rt_link.label }}</span>
+    </a>
+  </div>
+{% endif %}
+
+{# The episode pill is the whole fragment target: it replaces itself, so an #}
+{# empty result leaves an empty div. Episodes carry a Tomatometer only. #}
+{% if rt_episode %}
+  <a href="{{ rt_episode.url }}"
+     target="_blank"
+     rel="noopener noreferrer"
+     aria-label="{% translate 'Open Rotten Tomatoes episode page' %}"
+     class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-red-400/18 bg-red-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+    <span class="sr-only">{% translate "Rotten Tomatoes Tomatometer" %}</span>
+    <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-red-400/28 bg-red-500/14 sm:h-8 sm:w-8">
+      <span class="text-[9px] font-black tracking-[0.08em] text-red-200">RT</span>
+    </span>
+    {% if rt_episode.tomatometer %}
+      <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ rt_episode.tomatometer.value }}{{ rt_episode.tomatometer.suffix }}</span>
+      <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+      <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ rt_episode.tomatometer.count }}</span>
+    {% else %}
+      <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
+      <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+      <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% translate "Rotten Tomatoes" %}</span>
+    {% endif %}
+  </a>
+{% endif %}

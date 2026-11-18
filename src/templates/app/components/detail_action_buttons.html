@@ -105,6 +105,15 @@
                             <span class="text-sm font-medium text-[var(--color-text)]">{{ detail_link.label }}</span>
                           </a>
                         {% endfor %}
+                        {# Rotten Tomatoes chip: resolved lazily (site search) by the #}
+                        {# rt_extras fragment, which swaps this empty span out-of-band. #}
+                        {# Skipped once the link is already cached server-side. #}
+                        {% if detail_link_section.title == "External links" and rt_extras_url and not detail_link_sections|detail_link_url:"rottentomatoes" %}
+                          <span id="detail-link-rt"
+                                hx-get="{{ rt_extras_url }}"
+                                hx-trigger="load"
+                                hx-swap="none"></span>
+                        {% endif %}
                       </div>
                     </div>
                   {% endfor %}

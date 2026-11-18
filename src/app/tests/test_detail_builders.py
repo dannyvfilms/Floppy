@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.test import TestCase
 
 from app.detail_builders import (
@@ -253,6 +254,81 @@ class DetailLinkSectionsMalTests(TestCase):
 
         self.assertEqual(len(sections), 1)
         self.assertEqual(sections[0]["title"], "Source")
+
+
+class DetailLinkSectionsRottenTomatoesTests(TestCase):
+    """The Rotten Tomatoes chip rides the lazily-warmed match cache only."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_adds_rt_link_from_cached_match(self):
+        cache.set(
+            "rt_match_movie_dune_2021",
+            {"title": "Dune", "url": "https://www.rottentomatoes.com/m/dune_2021", "exact": True},
+        )
+
+        sections = _build_detail_link_sections(
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Dune",
+                "details": {"release_date": "2021-10-22"},
+            },
+            MediaTypes.MOVIE.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+        )
+
+        external_entries = sections[-1]["entries"]
+        self.assertIn(
+            ("Rotten Tomatoes", "https://www.rottentomatoes.com/m/dune_2021"),
+            [(entry["label"], entry["url"]) for entry in external_entries],
+        )
+        self.assertEqual(
+            sections[-1]["entries"][-1]["fallback_text"],
+            "RT",
+        )
+
+    def test_no_rt_link_without_cached_match(self):
+        sections = _build_detail_link_sections(
+            {
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Dune",
+                "details": {"release_date": "2021-10-22"},
+            },
+            MediaTypes.MOVIE.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+        )
+
+        labels = [
+            entry["label"] for section in sections for entry in section["entries"]
+        ]
+        self.assertNotIn("Rotten Tomatoes", labels)
+
+    def test_season_rt_link_appends_season_to_show_url(self):
+        cache.set(
+            "rt_match_tvSeries_dune prophecy_2024",
+            {"title": "Dune: Prophecy", "url": "https://www.rottentomatoes.com/tv/dune_prophecy", "exact": True},
+        )
+
+        sections = _build_detail_link_sections(
+            {
+                "media_type": MediaTypes.SEASON.value,
+                "title": "Dune: Prophecy",
+                "season_number": 2,
+                "details": {"first_air_date": "2024-11-17"},
+            },
+            MediaTypes.SEASON.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+        )
+
+        external_entries = sections[-1]["entries"]
+        self.assertIn(
+            ("Rotten Tomatoes", "https://www.rottentomatoes.com/tv/dune_prophecy/s02"),
+            [(entry["label"], entry["url"]) for entry in external_entries],
+        )
 
 
 class OtherBookFormatsTests(TestCase):

@@ -10,6 +10,7 @@ from django.core.cache import cache
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 from django.views.decorators.clickjacking import xframe_options_sameorigin
@@ -73,7 +74,7 @@ from app.models import (
     Sources,
 )
 from app.models.episode_runtimes import build_season_runtime_index
-from app.providers import services, tmdb
+from app.providers import rottentomatoes, services, tmdb
 from app.services import metadata_resolution, opencritic_scores, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
@@ -2185,6 +2186,18 @@ def media_details(
             identity_provider,
             display_provider,
             item=detail_item,
+        ),
+        "rt_extras_url": (
+            reverse(
+                "rt_extras",
+                kwargs={
+                    "source": source,
+                    "media_type": media_type,
+                    "media_id": media_id,
+                },
+            )
+            if media_type in rottentomatoes.LINKED_MEDIA_TYPES
+            else None
         ),
         "detail_tag_sections": _build_detail_tag_sections(
             media_metadata,
