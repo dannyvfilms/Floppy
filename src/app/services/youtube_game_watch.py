@@ -10,6 +10,7 @@ import unicodedata
 
 from django.db.models import Q
 
+from app.helpers import minutes_to_hm
 from app.models import MediaTypes, Video, VideoGameTag
 
 
@@ -66,8 +67,7 @@ def watched_for_game(user, game_item):
     videos = len(rows)
     # Position can pass the runtime after a rewatch or a seek past the end.
     seconds = sum(min(p, n) if n else p for p, n in rows)
-    hours, minutes = divmod(seconds // 60, 60)
-    label = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+    label = minutes_to_hm(seconds // 60)
     return {
         "videos": videos,
         "seconds": seconds,

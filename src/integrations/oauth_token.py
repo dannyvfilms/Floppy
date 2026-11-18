@@ -22,18 +22,13 @@ from integrations.oauth_models import (
     OAuthRefreshToken,
     oauth_token_digest,
 )
+from integrations.oauth_models import no_store as _no_store
 from integrations.oauth_revocation import revoke_refresh_token_family
 from integrations.oauth_scope_info import (
     FULL_ACCOUNT_SCOPE,
     normalise_scopes,
     serialise_scopes,
 )
-
-
-def _no_store(response: JsonResponse) -> JsonResponse:
-    response["Cache-Control"] = "no-store"
-    response["Pragma"] = "no-cache"
-    return response
 
 
 def _oauth_error(error: str, description: str) -> JsonResponse:
