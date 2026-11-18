@@ -217,10 +217,10 @@ BULK_WRITE_SITES = {
     ("integrations/mal_sync.py", "reconcile_stale_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
     ("integrations/oauth_models.py", "OAuthClient.revoke", UNKNOWN): _not_tracking(

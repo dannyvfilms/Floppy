@@ -200,7 +200,7 @@ does exactly two things:
 
 1. Deletes every `PeriodicTask` named `Import from Xbox (Recurring)` whose
    `kwargs` carry this user's `user_id` — matched on the exact id, tolerant of
-   JSON quoting/spacing (`_plex_watchlist_task_filter` in `src/integrations/views.py:137`).
+   JSON quoting/spacing (`_plex_watchlist_task_filter` in `src/integrations/view_helpers.py`).
    Other users' Xbox schedules are untouched.
 2. Deletes the user's `XboxAccount` row, and with it the encrypted key, XUID,
    gamertag, and sync state.
