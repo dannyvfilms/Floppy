@@ -10,6 +10,10 @@ from django.test import TestCase
 
 from app.models import (
     TV,
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
     DeletedEntry,
     DeletedMedia,
     Episode,
@@ -24,6 +28,8 @@ from app.models import (
     VideoPlay,
 )
 from app.services import item_merge
+from app.services.music import merge_album_records, merge_artist_records
+from app.services.music_scrobble import dedupe_artist_albums
 from app.services.tracker_fold import (
     MERGE_CHANGE_REASON,
     USER_SCALAR_FIELDS,
@@ -413,3 +419,75 @@ class FoldRuleTests(TestCase):
         survivor = Movie(progress=2)
         fold_tracker_fields(Movie(entry_source="plex", progress=5), survivor)
         self.assertEqual((survivor.entry_source, survivor.progress), ("plex", 5))
+
+
+class MusicTrackerFoldTests(TestCase):
+    """Album and artist merges keep both trackers' fields the same way."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="fold-music")
+        self.artist = Artist.objects.create(name="Fold Artist")
+
+    def test_scrobble_album_dedupe_keeps_the_duplicate_trackers_fields(self):
+        rich = Album.objects.create(
+            title="Blues Walk",
+            artist=self.artist,
+            musicbrainz_release_id="rel-1",
+            image="http://img/rich.jpg",
+            tracks_populated=True,
+        )
+        rich.tracklist.create(title="Track A", track_number=1)
+        poor = Album.objects.create(title="Blues Walk", artist=self.artist)
+        AlbumTracker.objects.create(
+            user=self.user,
+            album=rich,
+            status=Status.PLANNING.value,
+        )
+        AlbumTracker.objects.create(
+            user=self.user,
+            album=poor,
+            status=Status.COMPLETED.value,
+            score=8,
+            notes="on vinyl",
+            end_date=_dt(9),
+        )
+
+        dedupe_artist_albums(self.artist)
+
+        tracker = AlbumTracker.objects.get(user=self.user)
+        self.assertEqual(tracker.album_id, rich.pk)
+        self.assertEqual(tracker.status, Status.COMPLETED.value)
+        self.assertEqual(tracker.score, Decimal(8))
+        self.assertEqual(tracker.notes, "on vinyl")
+        self.assertEqual(tracker.end_date, _dt(9))
+
+    def test_album_record_merge_keeps_notes(self):
+        source = Album.objects.create(title="One", artist=self.artist)
+        target = Album.objects.create(title="One (Deluxe)", artist=self.artist)
+        AlbumTracker.objects.create(user=self.user, album=source, notes="favourite")
+        AlbumTracker.objects.create(user=self.user, album=target, score=6)
+
+        merge_album_records(source, target)
+
+        tracker = AlbumTracker.objects.get(user=self.user)
+        self.assertEqual((tracker.notes, tracker.score), ("favourite", Decimal(6)))
+
+    def test_artist_merge_never_changes_a_dropped_status(self):
+        target = Artist.objects.create(name="Fold Artist Canonical")
+        ArtistTracker.objects.create(
+            user=self.user,
+            artist=self.artist,
+            status=Status.COMPLETED.value,
+        )
+        ArtistTracker.objects.create(
+            user=self.user,
+            artist=target,
+            status=Status.DROPPED.value,
+        )
+
+        merge_artist_records(self.artist, target)
+
+        self.assertEqual(
+            ArtistTracker.objects.get(user=self.user).status,
+            Status.DROPPED.value,
+        )

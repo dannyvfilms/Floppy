@@ -34,6 +34,7 @@ from app.services.music import (
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
+from app.services.tracker_fold import fold_tracker_into
 from integrations import import_progress
 
 logger = logging.getLogger(__name__)
@@ -972,11 +973,7 @@ def _dedupe_albums(
                 user=tracker.user, album=primary
             ).first()
             if existing:
-                if tracker.start_date and (
-                    not existing.start_date or tracker.start_date < existing.start_date
-                ):
-                    existing.start_date = tracker.start_date
-                    existing.save(update_fields=["start_date"])
+                fold_tracker_into(tracker, existing)
                 tracker.delete()
             else:
                 tracker.album = primary

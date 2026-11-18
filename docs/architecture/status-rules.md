@@ -91,7 +91,8 @@ there to choose, so the merge only adds information (`app.services.tracker_fold`
 Anything set aside (the other score, the other status) is written in the
 entry's edit history as "Merged duplicate entry (...)". The merge leaves no
 deletion marker, so later syncs keep updating the title. Seasons follow the
-same rule. Movies, games, books and the other types store a repeat as a
+same rule, and so do album and artist entries when duplicate albums or
+artists are merged. Movies, games, books and the other types store a repeat as a
 second entry, so a merge keeps both entries rather than guessing. Merges
 that ran before this rule existed cannot be repaired: the lost values were
 not kept anywhere.

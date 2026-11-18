@@ -20,6 +20,9 @@ Whatever was not taken (the other score, the other status) is written into
 the history change reason, so the result can be explained later. The write
 goes through `bulk_update_with_history` so no save-time side effects run.
 
+Music album and artist merges (`app.services.music`,
+`app.services.music_scrobble`) use the same rule for their trackers.
+
 The user-driven match correction (`integrations.match_corrections`) shares
 `USER_SCALAR_FIELDS` but asks the user to choose instead of folding.
 """
@@ -27,7 +30,11 @@ The user-driven match correction (`integrations.match_corrections`) shares
 from __future__ import annotations
 
 from django.utils import timezone
-from simple_history.utils import bulk_update_with_history
+from simple_history.exceptions import NotHistoricalModelError
+from simple_history.utils import (
+    bulk_update_with_history,
+    get_history_manager_for_model,
+)
 
 from app.models import USER_HELD_STATUSES, Status
 
@@ -148,16 +155,26 @@ def merge_change_reason(set_aside: list[str]) -> str:
 
 
 def fold_tracker_into(other, survivor) -> list[str]:
-    """Fold `other` into `survivor` and write the survivor through history.
+    """Fold `other` into `survivor` and write the survivor.
 
-    Always writes, even when no field changed: the survivor absorbed the
-    other row's children, so its `updated_at` must move for API clients that
-    mirror the library, and the history row records that a merge happened.
-    Returns the changed field names.
+    A model with edit history (`TV`, `Season`, every `Media` row) is written
+    through `bulk_update_with_history`, so no save-time side effects run and
+    the history row says a merge happened. It always writes, even when no
+    field changed: the survivor absorbed the other row's children, so its
+    `updated_at` must move for API clients that mirror the library.
+
+    A model without history (album and artist trackers) is saved normally,
+    and only when something changed. Returns the changed field names.
     """
     changed, set_aside = fold_tracker_fields(other, survivor)
     model = type(survivor)
     fields = list(dict.fromkeys(changed))
+    try:
+        get_history_manager_for_model(model)
+    except NotHistoricalModelError:
+        if fields:
+            survivor.save(update_fields=fields)
+        return changed
     if "updated_at" in {field.name for field in model._meta.concrete_fields}:
         survivor.updated_at = timezone.now()
         fields.append("updated_at")
