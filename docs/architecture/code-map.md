@@ -34,6 +34,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
 | React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `native-proof/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 
 ### Names that do not explain themselves
