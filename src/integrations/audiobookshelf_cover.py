@@ -3,7 +3,7 @@
 Audiobookshelf's ``/api/items/:id/cover`` endpoint requires a bearer token,
 so the raw URL can never be embedded directly in an ``<img src>`` - the
 browser has no way to attach the header. Floppy instead serves these covers
-through its own authenticated proxy (see ``integrations.views.audiobookshelf_cover``),
+through its own authenticated proxy (see ``integrations.cover_proxy_views.audiobookshelf_cover``),
 identified by a signed token so the view never has to trust client input for
 which account/item to fetch. This mirrors ``app.image_cache``'s provider
 image proxy, but is scoped to a user's own Audiobookshelf account rather

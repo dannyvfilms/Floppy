@@ -10,7 +10,7 @@ from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
 from app import image_cache
-from integrations import audiobookshelf_cover, views
+from integrations import audiobookshelf_cover, cover_proxy_views, views
 from integrations.imports import helpers
 from integrations.models import AudiobookshelfAccount
 
@@ -186,14 +186,14 @@ class AudiobookshelfCoverProxyTests(TestCase):
         which is what made #861 look like corruption rather than an offline
         server. The short TTL lets the real cover reappear once ABS recovers.
         """
-        placeholder_body, placeholder_type = views._placeholder_image_bytes()
+        placeholder_body, placeholder_type = cover_proxy_views._placeholder_image_bytes()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, placeholder_body)
         self.assertEqual(response["Content-Type"], placeholder_type)
         self.assertEqual(response["Cache-Control"], "private, max-age=300")
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_streams_cover_with_valid_token(self, mock_get):
         """A valid signed token fetches the upstream cover with the stored token."""
         mock_get.return_value = self._mock_upstream(
@@ -228,13 +228,13 @@ class AudiobookshelfCoverProxyTests(TestCase):
         """A signed token for a deleted account degrades to the placeholder."""
         url = audiobookshelf_cover.build_cover_proxy_url(999_999, "item-1")
 
-        with self.assertLogs("integrations.views", level="WARNING") as logs:
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING") as logs:
             response = self.client.get(url)
 
         self.assertPlaceholder(response)
         self.assertIn("item-1", "\n".join(logs.output))
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_serves_placeholder_on_upstream_error_status(self, mock_get):
         """An ABS-side auth failure degrades to the placeholder, and is logged.
 
@@ -243,24 +243,24 @@ class AudiobookshelfCoverProxyTests(TestCase):
         """
         mock_get.return_value = self._mock_upstream(status_code=401)
 
-        with self.assertLogs("integrations.views", level="WARNING") as logs:
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING") as logs:
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
         self.assertIn("status=401", "\n".join(logs.output))
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_serves_placeholder_on_request_exception(self, mock_get):
         """A network failure talking to ABS degrades to the placeholder."""
         mock_get.side_effect = requests.ConnectionError("boom")
 
-        with self.assertLogs("integrations.views", level="WARNING") as logs:
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING") as logs:
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
         self.assertIn("request failed", "\n".join(logs.output))
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_unreachable_server_backs_off_the_remaining_covers(self, mock_get):
         """After one timeout, the next covers skip ABS instead of each waiting.
 
@@ -269,7 +269,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         """
         mock_get.side_effect = requests.ReadTimeout("Read timed out.")
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             first = self.client.get(self._cover_url("item-1"))
         second = self.client.get(self._cover_url("item-2"))
 
@@ -277,7 +277,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertPlaceholder(second)
         mock_get.assert_called_once()
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_body_stalling_mid_stream_serves_placeholder_and_backs_off(
         self,
         mock_get,
@@ -292,7 +292,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         upstream.iter_content = stalled
         mock_get.return_value = upstream
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             first = self.client.get(self._cover_url("item-1"))
         second = self.client.get(self._cover_url("item-2"))
 
@@ -301,11 +301,11 @@ class AudiobookshelfCoverProxyTests(TestCase):
         mock_get.assert_called_once()
         upstream.close.assert_called_once()
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_backoff_lapses_and_covers_load_again(self, mock_get):
         """Once the backoff expires the real cover is fetched again."""
         mock_get.side_effect = requests.ReadTimeout("Read timed out.")
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             self.client.get(self._cover_url("item-1"))
 
         cache.delete(f"abs_cover_backoff:{self.account.id}")
@@ -319,7 +319,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
         self.assertEqual(response.content, b"fake-image-bytes")
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_fresh_stored_cover_is_served_without_calling_abs(self, mock_get):
         """Once a cover has loaded, the next request does not reach ABS."""
         mock_get.return_value = self._mock_upstream(
@@ -335,7 +335,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
         mock_get.assert_called_once()
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_stored_cover_is_served_while_abs_is_down(self, mock_get):
         """An old stored copy beats the placeholder when ABS times out (#1307)."""
         mock_get.return_value = self._mock_upstream(
@@ -348,7 +348,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         mock_get.side_effect = requests.ReadTimeout("Read timed out.")
 
         with patch.object(image_cache, "STORED_COVER_FRESH_SECONDS", 0):
-            with self.assertLogs("integrations.views", level="WARNING"):
+            with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
                 response = self.client.get(self._cover_url("item-1"))
             during_backoff = self.client.get(self._cover_url("item-1"))
 
@@ -356,7 +356,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertEqual(response.content, b"fake-image-bytes")
         self.assertEqual(during_backoff.content, b"fake-image-bytes")
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_stale_stored_cover_is_replaced_by_a_new_one(self, mock_get):
         """After the fresh window, ABS is asked again and a changed cover wins."""
         mock_get.return_value = self._mock_upstream(
@@ -378,23 +378,23 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertEqual(again["Content-Type"], "image/jpeg")
         self.assertEqual(mock_get.call_count, 2)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_refused_cover_is_never_stored(self, mock_get):
         """Only validated images are kept; a refused type still gets the placeholder."""
         mock_get.return_value = self._mock_upstream(
             content=b"<svg/>",
             headers={"Content-Type": "image/svg+xml"},
         )
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             self.client.get(self._cover_url("item-1"))
         mock_get.side_effect = requests.ReadTimeout("Read timed out.")
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url("item-1"))
 
         self.assertPlaceholder(response)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_deleted_account_does_not_serve_its_stored_cover(self, mock_get):
         """Disconnecting the account stops its covers, stored or not."""
         mock_get.return_value = self._mock_upstream(
@@ -405,24 +405,24 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.client.get(url)
         self.account.delete()
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(url)
 
         self.assertPlaceholder(response)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_cover_is_not_fetched_from_a_forbidden_server_address(self, mock_get):
         """The cover proxy goes through the self-hosted policy like the importer."""
         self.account.base_url = "http://169.254.169.254"
         self.account.save(update_fields=["base_url"])
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
         mock_get.assert_not_called()
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_rejects_non_image_content_type(self, mock_get):
         """An HTML (or otherwise non-image) upstream response is never served.
 
@@ -435,13 +435,13 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Content-Type": "text/html"},
         )
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
         self.assertNotIn(b"<script>", response.content)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_rejects_svg_content_type(self, mock_get):
         """SVG is an active format and must not be proxied as a plain image."""
         mock_get.return_value = self._mock_upstream(
@@ -449,13 +449,13 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Content-Type": "image/svg+xml"},
         )
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
         self.assertNotIn(b"onload", response.content)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_rejects_untyped_body_that_is_not_an_image(self, mock_get):
         """An unlabelled body still has to prove it is a raster image.
 
@@ -468,12 +468,12 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Content-Type": "application/octet-stream"},
         )
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_sniffs_untyped_jpeg_body(self, mock_get):
         """A JPEG behind a generic content type is served as image/jpeg."""
         jpeg = b"\xff\xd8\xff\xe0" + b"0" * 32
@@ -488,7 +488,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertEqual(response.content, jpeg)
         self.assertEqual(response["Content-Type"], "image/jpeg")
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_accepts_non_standard_jpeg_content_type(self, mock_get):
         """Real ABS deployments emit image/jpg; rejecting it lost the poster."""
         mock_get.return_value = self._mock_upstream(
@@ -501,7 +501,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"fake-image-bytes")
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_rejects_oversized_content_length(self, mock_get):
         """A declared Content-Length above the cap is rejected before reading."""
         mock_get.return_value = self._mock_upstream(
@@ -512,12 +512,12 @@ class AudiobookshelfCoverProxyTests(TestCase):
             },
         )
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
 
-    @patch("integrations.views.requests.get")
+    @patch("integrations.cover_proxy_views.requests.get")
     def test_rejects_stream_exceeding_max_bytes(self, mock_get):
         """A body that grows past the cap while streaming is rejected mid-read.
 
@@ -530,7 +530,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Content-Type": "image/jpeg"},
         )
 
-        with self.assertLogs("integrations.views", level="WARNING"):
+        with self.assertLogs("integrations.cover_proxy_views", level="WARNING"):
             response = self.client.get(self._cover_url())
 
         self.assertPlaceholder(response)
@@ -542,7 +542,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
         anyone flood the log and bury the real Audiobookshelf failures these
         warnings exist to surface (#1069 review).
         """
-        with self.assertLogs("integrations.views", level="DEBUG") as logs:
+        with self.assertLogs("integrations.cover_proxy_views", level="DEBUG") as logs:
             self.client.get(
                 reverse(
                     "audiobookshelf_cover",
