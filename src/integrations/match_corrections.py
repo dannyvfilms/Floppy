@@ -29,6 +29,7 @@ from app.models import (
 )
 from app.providers import services
 from app.public_errors import PublicMessageError
+from app.services.tracker_fold import USER_SCALAR_FIELDS
 from integrations.external_references import save_correction
 from lists.models import CustomListItem, ListRecommendation
 
@@ -47,14 +48,8 @@ class MissingEpisodeMappingError(PublicMessageError, ValueError):
 
 TRACKABLE_TYPES = {MediaTypes.MOVIE.value, MediaTypes.TV.value}
 PAIR_SIZE = 2
-SCALAR_FIELDS = (
-    "status",
-    "score",
-    "progress",
-    "start_date",
-    "end_date",
-    "notes",
-)
+# The user-owned tracking fields, shared with the unattended merge's fold.
+SCALAR_FIELDS = USER_SCALAR_FIELDS
 
 
 def _json_value(value):
