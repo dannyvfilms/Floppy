@@ -89,7 +89,7 @@ function cardLines(item) {
     lines.push(String(release.getUTCFullYear()));
   }
   if (item.runtime_minutes) lines.push(`${item.runtime_minutes} min`);
-  if (item.number_of_pages) lines.push(`${item.number_of_pages} pages`);
+  if (mediaTypeFor(item) === 'book' && item.number_of_pages) lines.push(`${item.number_of_pages} pages`);
   return lines;
 }
 
@@ -234,6 +234,8 @@ export function createRemoteCalendarActions(request) {
       const query = { ...calendarQuery(params), limit: 200, offset: 0 };
       const results = [];
       let total = null;
+      // Statuses and event pages are independent; fetch both while the grid loads.
+      const statusesRequest = this.readStatuses(params).catch(() => ({}));
       for (;;) {
         const page = await request('/api/v1/calendar/', { query });
         results.push(...(page?.results || []));
@@ -248,7 +250,7 @@ export function createRemoteCalendarActions(request) {
         query.offset = Number(offset);
       }
       // Events do not carry the viewer's status; the status filter needs it.
-      const statuses = await this.readStatuses(params).catch(() => ({}));
+      const statuses = await statusesRequest;
       const withStatus = results.map(event => (statuses[event.id]
         ? { ...event, viewer_status: statuses[event.id] }
         : event));

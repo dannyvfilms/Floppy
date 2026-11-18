@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
+from app import history_cache
 from app.history_cache_day_builder import _span_may_touch_day, build_history_day
 from app.models import BoardGame, Game, Item, MediaTypes, Sources, Status
 
@@ -23,7 +24,9 @@ def _utc(day, hour=12, minute=0):
 
 def _expected_on_day(row, day):
     """The exact per-day rule the builder applies after the prefilter."""
-    if (row.progress or 0) <= 0:
+    if (row.progress or 0) <= 0 and not (
+        row.start_date and row.end_date and row.end_date > row.start_date
+    ):
         return False
     start = row.start_date or row.end_date or row.created_at
     end = row.end_date or row.start_date or row.created_at
@@ -114,6 +117,84 @@ class RepeatsGameSpanTests(TestCase):
             for game in candidates.select_related("item")
         }
         self.assertNotIn("far_away", names)
-        self.assertNotIn("no_progress", names)
+        self.assertIn("no_progress", names)
         self.assertIn("swapped", names)
         self.assertIn("created_fallback", names)
+
+    def test_inferred_game_time_is_split_at_local_midnight(self):
+        game = Game.objects.get(user=self.user, item__media_id="game-no_progress")
+        Game.objects.filter(pk=game.pk).update(
+            start_date=_utc(10, 23), end_date=_utc(11, 2)
+        )
+        with timezone.override("UTC"):
+            amounts = []
+            for day in (date(2026, 3, 10), date(2026, 3, 11)):
+                payload = build_history_day(
+                    self.user, day, logging_style_override="repeats",
+                    media_types=[MediaTypes.GAME.value],
+                )
+                amounts.append(next(
+                    entry["runtime_minutes"] for entry in payload["entries"]
+                    if entry["instance_id"] == game.pk
+                ))
+        self.assertEqual(amounts, [60, 120])
+
+    def test_inferred_only_entry_is_indexed_and_filtered_history_matches(self):
+        game = Game.objects.get(user=self.user, item__media_id="game-no_progress")
+        Game.objects.filter(pk=game.pk).update(
+            start_date=datetime(2027, 1, 3, 23, tzinfo=UTC),
+            end_date=datetime(2027, 1, 4, 2, tzinfo=UTC),
+        )
+        with timezone.override("UTC"):
+            keys = history_cache.build_history_index(
+                self.user, "repeats", media_types=[MediaTypes.GAME.value]
+            )
+            self.assertIn("20270103", keys)
+            self.assertIn("20270104", keys)
+            days = history_cache.build_history_days(
+                self.user, filters={"media_type": "game"},
+                date_filters={"start_date": "2027-01-03", "end_date": "2027-01-04"},
+                logging_style_override="repeats",
+            )
+            amounts = {day["date"]: sum(entry["runtime_minutes"] for entry in day["entries"])
+                       for day in days}
+            self.assertEqual(amounts[date(2027, 1, 3)], 60)
+            self.assertEqual(amounts[date(2027, 1, 4)], 120)
+            first_day = history_cache.build_history_days(
+                self.user, filters={"media_type": "game"},
+                date_filters={"start_date": "2027-01-03", "end_date": "2027-01-03"},
+                logging_style_override="repeats",
+            )
+            self.assertEqual([day["date"] for day in first_day], [date(2027, 1, 3)])
+            self.assertEqual(first_day[0]["total_minutes"], 60)
+
+    def test_inferred_boardgame_is_indexed_without_a_play_count(self):
+        boardgame = BoardGame.objects.get(user=self.user, item__media_id="boardgame-no_progress")
+        BoardGame.objects.filter(pk=boardgame.pk).update(
+            start_date=datetime(2027, 2, 3, 10, tzinfo=UTC),
+            end_date=datetime(2027, 2, 3, 12, tzinfo=UTC),
+        )
+        with timezone.override("UTC"):
+            keys = history_cache.build_history_index(
+                self.user, "repeats", media_types=[MediaTypes.BOARDGAME.value]
+            )
+            self.assertIn("20270203", keys)
+            days = history_cache.build_history_days(
+                self.user, filters={"media_type": "boardgame"},
+                date_filters={"start_date": "2027-02-03", "end_date": "2027-02-03"},
+                logging_style_override="repeats",
+            )
+            self.assertEqual(days[0]["total_minutes"], 120)
+
+    def test_session_preserves_fractional_inferred_minutes(self):
+        game = Game.objects.get(user=self.user, item__media_id="game-no_progress")
+        Game.objects.filter(pk=game.pk).update(
+            start_date=datetime(2027, 2, 4, 10, tzinfo=UTC),
+            end_date=datetime(2027, 2, 4, 10, 0, 30, tzinfo=UTC),
+        )
+        with timezone.override("UTC"):
+            payload = build_history_day(
+                self.user, date(2027, 2, 4), logging_style_override="sessions",
+                media_types=[MediaTypes.GAME.value],
+            )
+        self.assertEqual(payload["entries"][0]["runtime_minutes"], 0.5)

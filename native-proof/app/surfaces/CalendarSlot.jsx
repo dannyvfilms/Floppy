@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ReleaseCalendar } from '../../../frontend/ui/ReleaseCalendar';
 import { palette, spacing } from '../theme';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import CalendarRailControls, { useCalendarRail } from './CalendarRailControls';
 
 export const surface = {
   id: 'RELEASE-CALENDAR',
@@ -19,6 +21,7 @@ const calendarPalette = () => ({
   surfaceMutedSoft: palette.surfaceMutedSoft,
   surfaceHover: palette.surfaceStrong,
   border: palette.border,
+  surfaceBorder: palette.surfaceBorder,
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
@@ -61,12 +64,19 @@ export default function CalendarSlot({
   onFiltersChange,
   initialFilters,
   weekStart,
+  monthLoading = false,
+  initialLoading = false,
 }) {
+  const hasRail = useCalendarRail();
   if (!model || !options) {
     return null;
   }
   return <View style={styles.wrapper}>
+    {/* Expo uses the mobile toolbar on wide and hinged devices as well as phones. */}
     <ReleaseCalendar
+      mobile
+      monthLoading={monthLoading}
+      initialLoading={initialLoading}
       month={model.month}
       year={model.year}
       monthName={model.monthName}
@@ -91,7 +101,12 @@ export default function CalendarSlot({
       onNavigate={onNavigate}
       onOpenRelease={onOpenRelease}
       onFiltersChange={onFiltersChange}
-      onMenuAction={onMenuAction} />
+      onMenuAction={onMenuAction}
+      hideToolbarControls={hasRail}
+      renderRailControls={hasRail ? props => <CalendarRailControls {...props} /> : undefined}
+      renderSettingsSheet={({ open, onClose, title, children }) => <AdaptivePresentationSheet
+        isPresented={open} onDismiss={onClose} onClose={onClose} title={title}
+        titleColor={palette.text} containerColor={palette.surface}>{children}</AdaptivePresentationSheet>} />
   </View>;
 }
 

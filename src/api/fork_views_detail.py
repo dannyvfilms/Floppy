@@ -27,7 +27,6 @@ from app.activity_builders import (
 from app.artwork_sizes import card_image_url
 from app.detail_builders import (
     _apply_cached_hltb_link,
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_game_lengths_context,
     _build_imdb_rating_context,
@@ -35,13 +34,14 @@ from app.detail_builders import (
     _build_opencritic_context,
     _build_trakt_popularity_context,
     build_book_formats,
+    build_detail_link_sections,
 )
 from app.detail_related import enrich_detail_related_cards, enrich_detail_seasons
 from app.models import CollectionEntry, Episode, Item, MediaTypes
 from app.providers import manual, services, tmdb
 from app.services import metadata_resolution, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
-from app.tag_views import _build_detail_tag_sections
+from app.tag_views import build_detail_tag_sections
 from app.templatetags.app_tags import (
     country_code,
     detail_promoted_facts,
@@ -89,6 +89,13 @@ def _owned_media(user, item):
     queryset = model.objects.filter(item=item)
     if item.media_type == app_models.MediaTypes.EPISODE.value:
         return queryset.filter(related_season__user=user).first()
+    if item.media_type in {app_models.MediaTypes.TV.value, app_models.MediaTypes.SEASON.value}:
+        # Progress, dates, watch time, the episode list and the season cards
+        # all read the watched episodes; load them once, with their catalogue
+        # rows, instead of once per reader and one row per episode.
+        queryset = app_models.BasicMedia.objects._apply_prefetch_related(
+            queryset.select_related("item"), item.media_type,
+        )
     return queryset.filter(user=user).first()
 
 
@@ -98,8 +105,12 @@ def _nonempty_list(value):
     return [value] if value not in (None, "", [], {}) else []
 
 
-def _tracking_entries(viewer, item, *, public_view, can_write, media_type):
-    """Return bounded actual consumptions, separate from the audit change log."""
+def _tracking_entries(viewer, item, *, public_view, can_write, media_type, tracked=None):
+    """Return bounded actual consumptions, separate from the audit change log.
+
+    ``tracked`` is the row the page already loaded; it is reused rather than
+    built again with every season and episode of a show.
+    """
     if public_view or viewer is None or item is None:
         return [], 0
     queryset = app_models.BasicMedia.objects.filter_media_prefetch(
@@ -123,10 +134,15 @@ def _tracking_entries(viewer, item, *, public_view, can_write, media_type):
         ))
         start_field, end_field = "detail_entry_start", "detail_entry_end"
     # Match helpers.entry_activity_key while limiting rows before materialization.
-    entries = list(queryset.annotate(
+    ordered_ids = list(queryset.annotate(
         detail_activity=Greatest(Coalesce(end_field, start_field, "created_at"), Coalesce(start_field, end_field, "created_at")),
         detail_start=Coalesce(start_field, "created_at"),
-    ).order_by("-detail_activity", "-detail_start", "-created_at", "-pk")[:50])
+    ).order_by("-detail_activity", "-detail_start", "-created_at", "-pk").values_list("pk", flat=True)[:50])
+    known = {tracked.pk: tracked} if tracked is not None and type(tracked) is queryset.model else {}
+    missing = [pk for pk in ordered_ids if pk not in known]
+    if missing:
+        known.update({entry.pk: entry for entry in queryset.filter(pk__in=missing)})
+    entries = [known[pk] for pk in ordered_ids if pk in known]
     app_models.BasicMedia.objects.annotate_max_progress(entries, item.media_type)
     return [{
         "id": entry.pk,
@@ -471,6 +487,11 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
     }
 
 
+def _gallery_slide(gallery, name):
+    """One slide of a detail carousel, or an empty dict when it has none."""
+    return (gallery or {}).get(name) or {}
+
+
 class DetailPageView(drf_views.APIView):
     """Project provider detail metadata and the caller's own tracking state."""
 
@@ -580,7 +601,12 @@ class DetailPageView(drf_views.APIView):
                         season_items = (season_items.filter(library_media_type="anime") if media_type == "anime"
                                         else season_items.exclude(library_media_type="anime"))
                         season_item = item if detail_type == "season" else season_items.first()
-                        season = None if public_view else _owned_media(viewer, season_item)
+                        # On a season page the season is the row already loaded.
+                        season = (
+                            tracked
+                            if tracked is not None and season_item is item
+                            else None if public_view else _owned_media(viewer, season_item)
+                        )
                         if metadata.get("episodes"):
                             processor = manual.process_episodes if source == "manual" else tmdb.process_episodes
                             metadata["episodes"] = processor(
@@ -641,6 +667,12 @@ class DetailPageView(drf_views.APIView):
                     metadata,
                     media_type=media_type,
                     tracking_user=viewer,
+                    # A show's season cards reuse the seasons loaded with it.
+                    preloaded_seasons=(
+                        list(tracked.seasons.all())
+                        if "seasons" in getattr(tracked, "_prefetched_objects_cache", {})
+                        else None
+                    ),
                 )
             except Exception:
                 logger.exception("Unable to enrich detail cards for %s/%s", source, media_id)
@@ -757,13 +789,13 @@ class DetailPageView(drf_views.APIView):
             "next_label": episode_load_more.get("label") if episode_load_more else None,
         }
 
-        tag_sections = _build_detail_tag_sections(
+        tag_sections = build_detail_tag_sections(
             metadata,
             item,
             None if public_view else viewer,
             genre_list_media_type=media_type,
         )
-        links = _build_detail_link_sections(
+        links = build_detail_link_sections(
             metadata,
             media_type,
             source,
@@ -849,6 +881,7 @@ class DetailPageView(drf_views.APIView):
             ]
         tracking_entries, tracking_entries_count = _tracking_entries(
             viewer, item, public_view=public_view, can_write=can_write, media_type=media_type,
+            tracked=tracked,
         )
         is_authenticated = bool(viewer)
         layout_family = {
@@ -880,8 +913,11 @@ class DetailPageView(drf_views.APIView):
             "artwork": {
                 "src": metadata.get("image") or "",
                 "aspect": "poster",
-                "backdrop": (gallery or {}).get("hero", {}).get("url") or (gallery or {}).get("overview", {}).get("url") or "",
-                "logo": (gallery or {}).get("overview", {}).get("logo_url") or (gallery or {}).get("hero", {}).get("logo_url") or "",
+                # A gallery with no artwork stores None for these slides.
+                "backdrop": _gallery_slide(gallery, "hero").get("url")
+                or _gallery_slide(gallery, "overview").get("url") or "",
+                "logo": _gallery_slide(gallery, "overview").get("logo_url")
+                or _gallery_slide(gallery, "hero").get("logo_url") or "",
                 "gallery": _primitive(gallery or {"photos": [], "video": None}),
                 "gallery_supported": carousel.carousel_supported(media_type, source),
             },

@@ -55,21 +55,21 @@ def _store(kind: str, data: dict) -> None:
                 Path(tmp_name).unlink()
 
 
-def _now() -> str:
+def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
 def record_success(kind: str, name: str) -> None:
     """Record a published backup; keeps the previous failure for context."""
     data = _load(kind)
-    data.update(last_success_at=_now(), last_success_name=name)
+    data.update(last_success_at=_now_iso(), last_success_name=name)
     _store(kind, data)
 
 
 def record_failure(kind: str, error: object) -> None:
     """Record a failed run without erasing the last success."""
     data = _load(kind)
-    data.update(last_failure_at=_now(), last_failure=str(error)[:_ERROR_MAX_CHARS])
+    data.update(last_failure_at=_now_iso(), last_failure=str(error)[:_ERROR_MAX_CHARS])
     _store(kind, data)
 
 

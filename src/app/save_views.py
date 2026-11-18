@@ -402,9 +402,12 @@ def media_save(request):
             # raised again anyway.
             response = render(
                 request,
-                "app/components/detail_track_action.html",
+                "app/components/detail_track_split.html"
+                if media_type == MediaTypes.BOARDGAME.value
+                else "app/components/detail_track_action.html",
                 {
                     "media": media.item,
+                    "media_type": media_type,
                     "current_instance": media,
                     "return_url": return_url,
                     "track_action_update": True,
@@ -615,9 +618,12 @@ def media_save(request):
                 )
             response = render(
                 request,
-                "app/components/detail_track_action.html",
+                "app/components/detail_track_split.html"
+                if media_type == MediaTypes.BOARDGAME.value and shown_instance.pk
+                else "app/components/detail_track_action.html",
                 {
                     "media": media.item,
+                    "media_type": media_type,
                     "current_instance": shown_instance,
                     "return_url": return_url,
                     "track_open": "edit" if instance_id else "create",

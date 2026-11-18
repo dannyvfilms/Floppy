@@ -42,6 +42,11 @@ export function identityFromDetailItem(item) {
   };
   const match = path.match(/^\/details\/([^/]+)\/([^/]+)\/([^/]+)/);
   if (match) return { source: match[1], mediaType: match[2], mediaId: match[3], href, publicView };
+  // Native History can receive a structured item without the web detail URL.
+  const nested = item?.item;
+  if (nested?.media_type && nested?.source && nested?.media_id) {
+    return { mediaType: nested.media_type, source: nested.source, mediaId: nested.media_id, publicView };
+  }
   return null;
 }
 

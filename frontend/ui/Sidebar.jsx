@@ -506,7 +506,9 @@ export function Sidebar({
         </Pressable>
         <BottomLink item={model.bottom.settings} palette={palette}
           renderIcon={renderIcon} onNavigate={onNavigate} />
-        <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
+        <Pressable {...(model.bottom.logoutPlatformProps || {})}
+          accessibilityRole={model.bottom.logoutPlatformProps?.href ? 'link' : 'button'}
+          accessibilityLabel={labels.logout} onPress={onLogout}
           style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
           borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
             (pressed || hovered) && { backgroundColor: palette.hoverDim },

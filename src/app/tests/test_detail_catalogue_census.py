@@ -228,6 +228,8 @@ class DetailCatalogueCensus(TestCase):
                         f"/details/tmdb/tv/{show.media_id}/census?fragment=secondary",
                     ),
                     ("api detail", f"{api}/"),
+                    # The Expo app's own detail page payload.
+                    ("api app detail", f"{api}/detail/"),
                     # The app pages each season's episodes on demand; the
                     # first season stands for one tap.
                     ("api season 1 episodes", f"{api}/1/episodes/"),
@@ -256,6 +258,11 @@ class DetailCatalogueCensus(TestCase):
                         "?fragment=secondary",
                     ),
                     ("api detail", f"{api}/"),
+                    (
+                        "api app detail",
+                        f"/api/v1/media/tv/tmdb/{show.media_id}/detail/"
+                        "?detail_type=season&season_number=1",
+                    ),
                     ("api episodes", f"{api}/episodes/"),
                 ],
             )

@@ -21,13 +21,18 @@ indicator.
 
 | Layer | Unit | Where | Rebuilt when |
 | --- | --- | --- | --- |
-| Day payload | one user, one local day | cache (`stats:day:v7:{uid}:{day}`) | the day is dirty, missing, or today/yesterday |
+| Day payload | one user, one local day | versioned `stats:day` cache key | the day is dirty, missing, or today/yesterday |
 | Range snapshot | one user, one predefined range | database (`StatisticsSnapshot`) + cache copy | its generation trails the user's, or it was built on an earlier local day |
 
 Day payloads are derived and rebuildable, so they stay in the cache. A range
 payload also reads live database state (undated items, current status and
 score, reading completions, talent), which is why *any* change makes every
 range stale while only the days it touched need rebuilding.
+
+Daily reading units remain separate from minutes. When an entry lacks a
+recorded duration, its elapsed start-to-end interval supplies minutes, split
+at local day boundaries; it does not replace pages or play counts. Recorded
+durations take precedence, and audiobook listening sessions remain separate.
 
 ## Durable state (`app/models/statistics.py`)
 
@@ -394,7 +399,9 @@ Add an importer only after checking that every write it makes takes one of the
 paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
-`queryset.update`) on anything Statistics reads, mark it.
+`queryset.update`) on anything Statistics reads, mark it, and add its row to
+`src/app/bulk_write_refresh.py` (`app.tests.test_bulk_write_refresh` fails
+until you do).
 
 ## Retired
 
