@@ -385,7 +385,7 @@ class DetailLinkSectionsTraktTests(TestCase):
             },
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {},
             MediaTypes.TV.value,
             Sources.TMDB.value,
@@ -409,7 +409,7 @@ class DetailLinkSectionsTraktTests(TestCase):
             provider_external_ids={"trakt_slug": "the-gilded-age"},
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {},
             MediaTypes.SEASON.value,
             Sources.TMDB.value,
@@ -431,7 +431,7 @@ class DetailLinkSectionsTraktTests(TestCase):
             title="The Godfather",
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {},
             MediaTypes.MOVIE.value,
             Sources.TMDB.value,
