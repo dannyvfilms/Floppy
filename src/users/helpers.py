@@ -245,6 +245,78 @@ def get_next_run_info(periodic_task):
     }
 
 
+# Frequencies a user may assign to an existing periodic import. Sub-daily
+# values are minutes applied as an IntervalSchedule; the remaining values map
+# to a CrontabSchedule day_of_week plus a daily time.
+SCHEDULE_FREQUENCY_OPTIONS = (
+    ("15m", "Every 15 minutes", 15),
+    ("30m", "Every 30 minutes", 30),
+    ("1h", "Every hour", 60),
+    ("2h", "Every 2 hours", 120),
+    ("4h", "Every 4 hours", 240),
+    ("6h", "Every 6 hours", 360),
+    ("12h", "Every 12 hours", 720),
+    ("daily", "Every Day", None),
+    ("2days", "Every 2 days", None),
+    ("weekly", "Weekly", None),
+)
+SCHEDULE_DAY_OF_WEEK = {
+    "daily": "*",
+    "2days": "*/2",
+    "weekly": "0",
+}
+
+
+def schedule_frequency_minutes(value):
+    """Return the interval minutes for a frequency value, or None."""
+    for option, _label, minutes in SCHEDULE_FREQUENCY_OPTIONS:
+        if option == value:
+            return minutes
+    return None
+
+
+def schedule_edit_state(periodic_task):
+    """Return (frequency_value, "HH:MM") describing a task's current cadence.
+
+    An empty frequency means the current schedule does not match an editable
+    option (custom crontab or unusual interval); the form still offers editing
+    but leaves the current value preselected as "Custom schedule".
+    """
+    if getattr(periodic_task, "interval", None):
+        delta = _interval_to_timedelta(periodic_task.interval)
+        minutes = int(delta.total_seconds() // 60) if delta else None
+        value = next(
+            (option for option, _label, m in SCHEDULE_FREQUENCY_OPTIONS if m == minutes),
+            "",
+        )
+        return value, ""
+    cron = getattr(periodic_task, "crontab", None)
+    if cron is None:
+        return "", ""
+    time = ""
+    minute, hour = str(cron.minute), str(cron.hour)
+    if minute.isdigit() and hour.isdigit():
+        time = f"{int(hour):02d}:{int(minute):02d}"
+    if cron.day_of_week == "*" and minute in ("0", "00") and hour.startswith("*/"):
+        try:
+            minutes = int(hour[2:]) * 60
+            value = next(
+                option for option, _label, m in SCHEDULE_FREQUENCY_OPTIONS
+                if m == minutes
+            )
+        except (ValueError, StopIteration):
+            value = ""
+        return value, ""
+    if not (minute.isdigit() and hour.isdigit()):
+        # Expressions like "*/15 * * * *" have no editable equivalent.
+        return "", ""
+    value = next(
+        (v for v, dow in SCHEDULE_DAY_OF_WEEK.items() if dow == cron.day_of_week),
+        "",
+    )
+    return value, time
+
+
 def _interval_to_timedelta(interval):
     """Convert a Celery beat interval schedule into a timedelta."""
     multipliers = {
@@ -261,15 +333,24 @@ def _interval_to_timedelta(interval):
 
 def _interval_frequency_display(interval):
     """Render a human-readable label for an interval schedule."""
+    every = interval.every
+    period = interval.period
+    if period == "minutes" and every % 60 == 0:
+        # Prefer the largest whole unit so an edited "6h" schedule reads
+        # "Every 6 hours", not "Every 360 minutes".
+        if every % 1440 == 0:
+            every, period = every // 1440, "days"
+        else:
+            every, period = every // 60, "hours"
     singular = {
         "days": "day",
         "hours": "hour",
         "minutes": "minute",
         "seconds": "second",
     }
-    unit = singular.get(interval.period, interval.period)
-    suffix = "" if interval.every == 1 else "s"
-    return f"Every {interval.every} {unit}{suffix}"
+    unit = singular.get(period, period)
+    suffix = "" if every == 1 else "s"
+    return f"Every {every} {unit}{suffix}"
 
 
 def get_export_next_run_info(periodic_task):

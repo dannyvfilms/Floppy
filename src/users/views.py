@@ -2628,7 +2628,9 @@ def import_data_activity(request):
     runs = ImportRun.objects.filter(user=user)
     if sources:
         import_tasks = {
-            key: [entry for entry in entries if entry["source"] in sources]
+            key: entries
+            if key == "schedule_frequencies"
+            else [entry for entry in entries if entry["source"] in sources]
             for key, entries in import_tasks.items()
         }
         runs = runs.filter(source__in=sources)
@@ -4156,6 +4158,77 @@ def delete_import_schedule(request):
             request, request.POST.get("next"), reverse("import_data")
         )
     )
+
+
+@require_POST
+def edit_import_schedule(request):
+    """Change the cadence of an existing periodic import schedule."""
+    import datetime as dt
+
+    from django_celery_beat.models import CrontabSchedule, IntervalSchedule
+
+    def back():
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
+
+    task_name = request.POST.get("task_name")
+    try:
+        task = PeriodicTask.objects.select_related("crontab", "interval").get(
+            name=task_name
+        )
+    except PeriodicTask.DoesNotExist:
+        messages.error(request, "Import schedule not found.")
+        return back()
+
+    # The shared Last.fm poll covers every connected user; one user cannot
+    # retime it for everyone else.
+    if task.task == "Poll Last.fm for all users" or not _task_belongs_to_user(
+        task, request.user
+    ):
+        messages.error(request, "Import schedule not found.")
+        return back()
+
+    frequency = request.POST.get("frequency", "")
+    minutes = helpers.schedule_frequency_minutes(frequency)
+    if minutes is None and frequency not in helpers.SCHEDULE_DAY_OF_WEEK:
+        messages.error(request, "Invalid import frequency.")
+        return back()
+
+    task.interval = None
+    task.crontab = None
+    task.clocked = None
+    task.solar = None
+    task.one_off = False
+    if minutes is not None:
+        task.interval, _ = IntervalSchedule.objects.get_or_create(
+            every=minutes,
+            period=IntervalSchedule.MINUTES,
+        )
+        # Reseed the interval anchor so the new cadence starts cleanly.
+        task.last_run_at = None
+        task.start_time = timezone.now()
+    else:
+        try:
+            parsed_time = dt.datetime.strptime(  # noqa: DTZ007  # date-only value; no timezone applies
+                request.POST.get("time") or "00:00", "%H:%M"
+            ).time()
+        except ValueError:
+            messages.error(request, "Invalid import time.")
+            return back()
+        task.crontab, _ = CrontabSchedule.objects.get_or_create(
+            hour=parsed_time.hour,
+            minute=parsed_time.minute,
+            day_of_week=helpers.SCHEDULE_DAY_OF_WEEK[frequency],
+            timezone=timezone.get_default_timezone(),
+        )
+    # The task name keeps its original cadence text; identity lookups and the
+    # displayed schedule read the task/schedule objects, not the name.
+    task.save()
+    messages.success(request, "Import schedule updated.")
+    return back()
 
 
 @require_POST
