@@ -1,5 +1,33 @@
 # Coding Agent Instructions
 
+## Mandatory completion gate
+
+An authorized implementation is not eligible for a final response until every
+applicable deliverable is complete, explicitly waived by the user, or prevented
+by a demonstrated external blocker. The request, accepted plan, architectural
+rules, documentation and registries, validation, and review artifacts are
+cumulative obligations. Completing the main fix or passing targeted tests does
+not narrow the assignment. Simplicity, efficiency, minimal changes, context
+preservation and risk-based validation govern how work is done, not which
+mandatory deliverables can be omitted.
+
+For non-trivial work, maintain a lightweight checklist of these obligations and
+their evidence. Preserve outstanding items through compaction and handoffs. Before
+the final response audit every item as complete with evidence, explicitly waived,
+or externally blocked with evidence. Continue working on any outstanding item;
+do not ask to continue work already authorized. A summary of remaining work is
+not completion. Finishing local work does not itself authorize a commit or push.
+
+Difficulty, unfamiliar architecture, migration, simulator startup, evidence
+collection, elapsed effort, token use, or the possibility of intermediate review
+are reasons to continue, not blockers. A blocker is an external condition that
+prevents a specific obligation despite sustained reasonable attempts. Record the
+failed approaches and evidence, alternatives tried, independent work completed,
+and the specific intervention needed. Continue all work unaffected by the blocker
+and deliver the strongest available evidence without overstating its level.
+Use the existing UI architecture/parity checks and screenshot workflows as
+evidence for the gate; their success alone does not establish task completion.
+
 ## Standing UI migration rule
 
 Whenever an agent creates, edits, or updates a UI component—including copy or
@@ -60,14 +88,18 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
 - Run `scripts/env_capabilities.sh` once per session (add `--bootstrap` on a fresh
   cloud checkout) to learn what can run here. Do not re-probe; do not install toolchains,
   boot paid hosted runtimes or change account settings without asking.
-- Capture before and after for every visible change with the strongest evidence the
+- Identify affected states and platforms before implementation. Capture before and
+  after for every visible change with the strongest evidence the
   environment offers (`docs/agents/pr_screenshots.md`, `scripts/review_screenshots.py`).
-  Extend those; do not build a second system. Open the images and look at them. On a
+  Extend those; do not build a second system. If the baseline was missed, recover it
+  in an isolated checkout or another safe supported workflow without overwriting work.
+  Open the images, fix regressions and recapture as needed. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
 - Provide the user a review artifact for every user-facing change: a clearly labeled
   before/after comparison that shows the affected state and is linked or displayed in
-  the completion message (and in the PR description when preparing a PR). Use the
+  the completion message (and in the PR description when preparing a PR). A script,
+  passing test, or uninspected or undelivered file is not an artifact. Use the
   existing screenshot workflow for visual changes; use an appropriate recording or
   concrete before/after output for behavior that still images cannot show. Keep task
   artifacts out of tracked documentation. If either side cannot be captured, provide
@@ -112,12 +144,9 @@ Correct the user when appropriate.
 
 ## Success Criteria
 
-Done means:
-
-- the requested behavior is implemented
-- the change is minimal and follows existing patterns (Unless a large task was assigned)
-- risky behavior was validated, or validation was intentionally skipped with a reason
-- remaining risks are stated plainly
+Done means the mandatory completion gate is satisfied for every applicable
+obligation, including behavior, accepted plan, migration, registries, validation
+and delivered review evidence. State residual risks accurately.
 
 ## Context Discipline
 
@@ -142,6 +171,7 @@ When context gets large, summarize the current task state and keep only:
 - relevant file paths
 - changed behavior
 - unresolved risks
+- the complete outstanding obligations checklist and evidence/blocker state
 
 ## Subagents
 
@@ -208,9 +238,12 @@ For complex tasks:
 
 ## Validation
 
-Match validation to risk.
+Match discretionary validation to risk. This guidance never overrides validation,
+platform runtime evidence, builds, or review artifacts required by the user,
+accepted plan, or standing rules; apply the mandatory completion gate first.
 
-Skip validation by default for low-risk changes and say so plainly.
+Skip discretionary validation by default for low-risk changes and say so plainly;
+never skip a required check or review artifact on this basis.
 
 Never skip validation when touching:
 
@@ -349,7 +382,9 @@ After work, summarize:
 - validation run, or why skipped
 - remaining risk
 
-Keep summaries short. Do not explain obvious edits.
+Only issue a final response after the mandatory completion audit. Link or display
+the actual required review artifacts and report platform evidence independently.
+Keep summaries short without omitting required evidence or genuine blockers.
 
 Oververbosity:low
 
@@ -490,6 +525,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 ## Testing
 
 Run tests through `scripts/test.sh`, in this priority order:
+These defaults do not waive any check required by the completion gate.
 
 1. **Targeted (default while iterating):** `scripts/test.sh <dotted.label> [...]` — run only the tests for what you touched, e.g. `scripts/test.sh app.tests.views.test_media_details` or a whole app label like `scripts/test.sh lists`.
 2. **Fast suite (default before finishing):** `scripts/test.sh` — the whole suite minus tests tagged `slow` (benchmarks and Playwright integration). Output is bounded (`--buffer` suppresses stdout of passing tests) and no `playwright install` is needed.

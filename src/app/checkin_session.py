@@ -6,7 +6,8 @@ shows elapsed time, and what Stop saves depends on the type:
 
 - A game saves a new In Progress entry at the start (each play session is its
   own entry); Stop adds the elapsed minutes and the end time.
-- A board game adds one play to its latest entry at Stop.
+- A board game records a session or increments its latest entry at Stop,
+  according to the user's game logging preference.
 - A book, comic or manga moves its latest entry to In Progress (a finished book
   or comic starts a new entry; manga reuses its entry) and Stop fills in the end
   time, and adds the elapsed minutes to its reading time (an audiobook's progress
@@ -178,6 +179,12 @@ def start(user, source, media_type, media_id):
     row = {"row_id": None, "created": False, "previous": None}
     if media_type == MediaTypes.GAME.value:
         row = _begin_game(user, item)
+    elif media_type == MediaTypes.BOARDGAME.value and user.game_logging_style == "sessions":
+        entry = BoardGame.objects.create(
+            item=item, user=user, status=Status.IN_PROGRESS.value,
+            start_date=_now(), entry_source=SOURCE_LABEL,
+        )
+        row = {"row_id": entry.id, "created": True, "previous": None}
     elif media_type in READING:
         row = _begin_reading(user, item, media_type)
 
@@ -203,6 +210,7 @@ def start(user, source, media_type, media_id):
         "started_at_ts": now_ts,
         "end_ts": end_ts,
         "length": length or 0,
+        "boardgame_logging_style": user.game_logging_style if media_type == MediaTypes.BOARDGAME.value else None,
         **row,
     }
     live_playback.apply_playback_event(
@@ -263,7 +271,15 @@ def stop(user, source, media_type, media_id):
     record = _active_record(user, source, media_type, media_id)
     _end(user.id, record)
     if media_type == MediaTypes.BOARDGAME.value:
-        log_play(user, source, media_id)
+        if record.get("boardgame_logging_style") == "sessions":
+            row = BoardGame.objects.filter(id=record["row_id"], user=user).first()
+            if row is not None:
+                row.progress = 1
+                row.status = Status.COMPLETED.value
+                row.end_date = _now()
+                row.save()
+        else:
+            _increment_boardgame(user, record["item_id"])
     else:
         _save(user, record, media_type)
 
@@ -287,9 +303,23 @@ def cancel(user, source, media_type, media_id):
 
 
 def log_play(user, source, media_id):
-    """Add one play to the board game's latest entry."""
+    """Record a board-game play in the user's chosen logging style."""
     item = _item(user, source, MediaTypes.BOARDGAME.value, media_id)
-    row = BoardGame.objects.filter(item=item, user=user).order_by("-created_at").first()
+    if user.game_logging_style == "sessions":
+        now = _now()
+        BoardGame.objects.create(
+            item=item, user=user, status=Status.COMPLETED.value, progress=1,
+            start_date=now, end_date=now, entry_source=SOURCE_LABEL,
+        )
+        return
+    _increment_boardgame(user, item.id)
+
+
+def _increment_boardgame(user, item_id):
+    row = BoardGame.objects.filter(item_id=item_id, user=user).order_by("-created_at").first()
+    if row is None:
+        msg = "Track this before checking in."
+        raise CheckInError(msg)
     row.increase_progress()
 
 

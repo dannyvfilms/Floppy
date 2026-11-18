@@ -646,13 +646,14 @@
     },
     "frontend/ui/DropdownMenu.jsx": {
       "components": [
-        "DropdownMenu"
+        "DropdownMenu",
+        "DropdownItem"
       ],
       "register": "FORM-CONTROLS",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared sidebar menu presentation builds; browser runtime regression remains pending."
+          "evidence": "The Calendar checkbox menu was inspected in mobile Chromium; broader sidebar regression remains pending."
         },
         "ios": {
           "status": "unverified",
@@ -1069,15 +1070,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean. Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
+          "evidence": "The additive Collection-style feed picker was checked at phone and desktop sizes in Chromium; existing tabs remain. Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean. Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no iOS simulator run was performed."
+          "status": "verified",
+          "evidence": "Duo runtime: Collection heading and card and the iOS system picker inspected; choosing Watch history updates the existing tabs and help text."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no Android emulator run was performed."
+          "status": "verified",
+          "evidence": "Expo Go on Android emulator: before and after shared CalendarLinks previews inspected. Selection synchronization is covered in Chromium; Android menu interaction not inspected."
         }
       }
     },
@@ -1089,15 +1090,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Native CalendarSlot now passes surfaceMutedSoft for blank days. Current blank-day browser comparison pending; prior browser evidence does not verify this change."
+          "evidence": "Mobile web toolbar and nested media/status filter inspected in Chromium; artwork-corner comparison remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Physical Duo calendar, native settings menu, Today control and shared Status submenu inspected; Media Types interaction remains unverified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Expo Go emulator toolbar and settings sheet inspected; artwork-corner comparison remains pending."
         }
       }
     },
@@ -3603,6 +3604,26 @@
         }
       }
     },
+    "frontend/ui/DetailTrackSplit.jsx": {
+      "components": [
+        "DetailTrackSplit"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium desktop and phone fallback comparison and edit/save flow."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go simulator component preview compared before and after; signed-in flow not exercised."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Expo Go emulator component preview compared before and after; signed-in flow not exercised."
+        }
+      }
+    },
     "frontend/ui/DetailEpisode.jsx": {
       "components": [
         "DetailEpisodeHeader"
@@ -3772,6 +3793,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native music screens; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/CardRow.jsx": {
+      "components": [
+        "CardRow"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared Collection and calendar row; runtime verification pending."
         }
       }
     }
@@ -3971,7 +4012,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
@@ -4018,6 +4059,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
+    "frontend/ui/calendarFilterState.js": {
+      "components": [
+        "normalizeCalendarStatuses",
+        "toggleCalendarStatus"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Status selection exercised in Chromium and shared-state unit tests pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Physical Duo Status submenu inspected; selection interaction remains unverified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared-state unit tests pass; Android filter interaction remains unverified."
         }
       }
     },
@@ -4186,6 +4248,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; not run on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/cardTypography.js": {
+      "components": [
+        "cardTypography"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared card typography; runtime verification pending."
         }
       }
     },
@@ -5591,6 +5673,10 @@
     "frontend/ui/mountRatingStars.jsx": {
       "register": "RATING",
       "purpose": "Django/browser integration for the shared star row."
+    },
+    "frontend/ui/mountDetailTrackSplit.jsx": {
+      "register": "DETAIL",
+      "purpose": "Mount shared detail tracking controls and bridge actions to the server fallback."
     },
     "frontend/ui/mountDetailActivitySubtitle.jsx": {
       "register": "DETAIL",
