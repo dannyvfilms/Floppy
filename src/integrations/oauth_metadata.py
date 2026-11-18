@@ -8,13 +8,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET
 
 from integrations.oauth_models import OAUTH_SUPPORTED_GRANT_TYPES
+from integrations.oauth_models import no_store as _no_store
 from integrations.oauth_scope_info import OAUTH_SCOPE_OPTIONS
-
-
-def _no_store(response: JsonResponse) -> JsonResponse:
-    response["Cache-Control"] = "no-store"
-    response["Pragma"] = "no-cache"
-    return response
 
 
 @login_not_required

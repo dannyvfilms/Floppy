@@ -1919,7 +1919,7 @@ def track_modal(
                     self.title = episode.title
                     self.track_number = episode.episode_number
                     self.duration_formatted = (
-                        self._format_duration(episode.duration)
+                        helpers.seconds_to_clock(episode.duration)
                         if episode.duration
                         else None
                     )
@@ -1932,15 +1932,6 @@ def track_modal(
                     self.episode_uuid = (
                         episode.episode_uuid
                     )  # For form submission when music is None
-
-                def _format_duration(self, seconds):
-                    """Format duration in seconds to MM:SS or H:MM:SS."""
-                    hours = seconds // 3600
-                    minutes = (seconds % 3600) // 60
-                    secs = seconds % 60
-                    if hours > 0:
-                        return f"{hours}:{minutes:02d}:{secs:02d}"
-                    return f"{minutes}:{secs:02d}"
 
             class PodcastShowAdapter:
                 """Adapter to make PodcastShow work like Album in template."""
