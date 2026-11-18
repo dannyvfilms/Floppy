@@ -81,7 +81,7 @@ This document explains how media types are defined and wired through the app so 
 5. Calendar/notifications: implement release fetch logic if not covered by default date_key path; confirm `unicode_icon` exists; update notification grouping label if special casing is needed.
 6. Imports/exports: add import handler; confirm `exports` iteration works (units/progress formatting if non-numeric).
 7. Webhooks/automation: extend webhook media_type mapping if applicable; add to auto-pause maps if desired.
-8. Testing: add coverage for list/search/detail/statistics/calendar release generation and notifications for the new type; verify sync and manual create flows.
+8. Testing: add a tracked item of the new type to `build_sample_library` (`src/app/tests/catalogue_fixtures.py`). `app.tests.test_every_page_opens` then opens its detail page, Track form, library list (every sort and layout), search, and the JSON the app reads, and fails naming any pair with neither a row nor an `EXEMPT` reason. Also add coverage for list/search/detail/statistics/calendar release generation and notifications for the new type; verify sync and manual create flows.
 
 ## Music-specific notes
 Music follows a hierarchical pattern (Artist → Album → Track) similar to TV (TV → Season → Episode). Key differences:
