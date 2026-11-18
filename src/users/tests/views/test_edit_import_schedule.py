@@ -135,6 +135,32 @@ class EditImportScheduleTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Import schedule not found", str(messages[0]))
 
+    def test_edit_redirects_to_referer_not_fragment(self):
+        """Forms rendered inside the htmx activity fragment must not redirect
+        the user back to the bare fragment URL.
+        """
+        response = self.client.post(
+            reverse("edit_import_schedule"),
+            {
+                "task_name": self.task.name,
+                "frequency": "6h",
+                "next": "/settings/import/activity",
+            },
+            HTTP_REFERER="/settings/activity",
+        )
+        self.assertEqual(response["Location"], "/settings/activity")
+
+    def test_delete_redirects_to_referer_not_fragment(self):
+        response = self.client.post(
+            reverse("delete_import_schedule"),
+            {
+                "task_name": self.task.name,
+                "next": "/settings/import/activity",
+            },
+            HTTP_REFERER="/settings/activity",
+        )
+        self.assertEqual(response["Location"], "/settings/activity")
+
     def test_edit_state_recognizes_current_cadence(self):
         """The card opens with the task's current cadence preselected."""
         from users import helpers

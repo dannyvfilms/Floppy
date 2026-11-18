@@ -4108,6 +4108,22 @@ def _task_belongs_to_user(task, user):
     return helpers.task_kwargs_belong_to_user(task.kwargs, user.pk)
 
 
+def _schedule_form_redirect(request):
+    """Return to the page that hosted the schedule form.
+
+    The activity cards render inside an htmx fragment, so the posted ``next``
+    or request path can point at the fragment itself. The Referer holds the
+    containing page; fall back to ``next`` and then the import settings page.
+    """
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.headers.get("referer") or request.POST.get("next"),
+            reverse("import_data"),
+        )
+    )
+
+
 @require_POST
 def delete_import_schedule(request):
     """Delete an import schedule."""
@@ -4116,11 +4132,7 @@ def delete_import_schedule(request):
         task = PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
-        return redirect(
-            app_helpers.safe_return_url(
-                request, request.POST.get("next"), reverse("import_data")
-            )
-        )
+        return _schedule_form_redirect(request)
 
     # Last.fm polling is a single shared task covering every connected
     # user (it has no per-user kwargs), so it can never match the
@@ -4129,19 +4141,11 @@ def delete_import_schedule(request):
     if task.task == "Poll Last.fm for all users":
         LastFMAccount.objects.filter(user=request.user).delete()
         messages.info(request, "Disconnected Last.fm.")
-        return redirect(
-            app_helpers.safe_return_url(
-                request, request.POST.get("next"), reverse("import_data")
-            )
-        )
+        return _schedule_form_redirect(request)
 
     if not _task_belongs_to_user(task, request.user):
         messages.error(request, "Import schedule not found.")
-        return redirect(
-            app_helpers.safe_return_url(
-                request, request.POST.get("next"), reverse("import_data")
-            )
-        )
+        return _schedule_form_redirect(request)
 
     if task.task == WATCHLIST_TASK_NAME:
         PlexAccount.objects.filter(user=request.user).update(
@@ -4153,11 +4157,7 @@ def delete_import_schedule(request):
         )
     task.delete()
     messages.success(request, "Import schedule deleted.")
-    return redirect(
-        app_helpers.safe_return_url(
-            request, request.POST.get("next"), reverse("import_data")
-        )
-    )
+    return _schedule_form_redirect(request)
 
 
 @require_POST
@@ -4167,13 +4167,6 @@ def edit_import_schedule(request):
 
     from django_celery_beat.models import CrontabSchedule, IntervalSchedule
 
-    def back():
-        return redirect(
-            app_helpers.safe_return_url(
-                request, request.POST.get("next"), reverse("import_data")
-            )
-        )
-
     task_name = request.POST.get("task_name")
     try:
         task = PeriodicTask.objects.select_related("crontab", "interval").get(
@@ -4181,7 +4174,7 @@ def edit_import_schedule(request):
         )
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
-        return back()
+        return _schedule_form_redirect(request)
 
     # The shared Last.fm poll covers every connected user; one user cannot
     # retime it for everyone else.
@@ -4189,13 +4182,13 @@ def edit_import_schedule(request):
         task, request.user
     ):
         messages.error(request, "Import schedule not found.")
-        return back()
+        return _schedule_form_redirect(request)
 
     frequency = request.POST.get("frequency", "")
     minutes = helpers.schedule_frequency_minutes(frequency)
     if minutes is None and frequency not in helpers.SCHEDULE_DAY_OF_WEEK:
         messages.error(request, "Invalid import frequency.")
-        return back()
+        return _schedule_form_redirect(request)
 
     task.interval = None
     task.crontab = None
@@ -4217,7 +4210,7 @@ def edit_import_schedule(request):
             ).time()
         except ValueError:
             messages.error(request, "Invalid import time.")
-            return back()
+            return _schedule_form_redirect(request)
         task.crontab, _ = CrontabSchedule.objects.get_or_create(
             hour=parsed_time.hour,
             minute=parsed_time.minute,
@@ -4228,7 +4221,7 @@ def edit_import_schedule(request):
     # displayed schedule read the task/schedule objects, not the name.
     task.save()
     messages.success(request, "Import schedule updated.")
-    return back()
+    return _schedule_form_redirect(request)
 
 
 @require_POST

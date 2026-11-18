@@ -36,9 +36,6 @@
             <form action="{% url 'delete_import_schedule' %}" method="post">
               {% csrf_token %}
               <input type="hidden"
-                     name="next"
-                     value="{{ request.path }}">
-              <input type="hidden"
                      name="task_name"
                      value="{{ periodic_import.task.name }}">
               <button class="text-red-400 hover:text-white p-2 rounded-md transition-all duration-200 hover:bg-red-500 cursor-pointer"
@@ -62,9 +59,6 @@
                 class="mt-3 space-y-3"
                 x-data="{ frequency: '{{ periodic_import.edit_frequency }}', days: ['daily', '2days', 'weekly'] }">
             {% csrf_token %}
-            <input type="hidden"
-                   name="next"
-                   value="{{ request.path }}">
             <input type="hidden"
                    name="task_name"
                    value="{{ periodic_import.task.name }}">
