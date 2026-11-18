@@ -382,6 +382,10 @@ class Media(models.Model):
 
     def process_status(self):
         """Update fields depending on the status of the media."""
+        tmdb_movie = (
+            self.item.media_type == MediaTypes.MOVIE.value
+            and self.item.source == Sources.TMDB.value
+        )
         if self.status == Status.COMPLETED.value:
             # Music and board game progress are play-count based; don't overwrite on status changes.
             if self.item.media_type in (
@@ -389,6 +393,9 @@ class Media(models.Model):
                 MediaTypes.BOARDGAME.value,
             ):
                 max_progress = None
+            # A TMDB movie's units are completed views, independent of metadata.
+            elif tmdb_movie:
+                max_progress = 1
             # Podcasts and videos already know their length. Don't ask a provider.
             elif self.item.media_type in (
                 MediaTypes.PODCAST.value,
@@ -423,7 +430,12 @@ class Media(models.Model):
             MediaTypes.PODCAST.value,
             MediaTypes.VIDEO.value,
         ):
-            self.item.fetch_releases(delay=True)
+            if tmdb_movie:
+                transaction.on_commit(
+                    lambda: self.item.fetch_releases(delay=True), robust=True
+                )
+            else:
+                self.item.fetch_releases(delay=True)
 
     @property
     def formatted_score(self):
@@ -1082,7 +1094,7 @@ class Movie(Media):
         if self.end_date is None or end_date > self.end_date:
             self.end_date = end_date
             self.status = Status.COMPLETED.value
-            update_fields += ["end_date", "status"]
+            update_fields += ["end_date", "status", "progress"]
 
         if entry_source and self.entry_source != entry_source:
             self.entry_source = entry_source

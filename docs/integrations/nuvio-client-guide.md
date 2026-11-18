@@ -311,6 +311,35 @@ second viewing recorded elsewhere is not lost. An episode is addressed with
 state in Floppy's sync ledger only. It adds no library entry, does not turn
 a Planning entry into Completed, and does not retract a play.
 
+### Retry-safe completion for a tracked TMDB movie
+
+A client that needs to retry an ambiguous movie completion can check
+`GET /api/v1/scrobble/completions/v1/?tmdb=603` with its `scrobble:write` token.
+A response of `{"version":1,"media_type":"movie"}` means PostgreSQL is in use
+and that account already tracks the title. Older servers, untracked movies,
+and SQLite receivers cannot qualify for this path. Use the existing scrobble
+request for those receivers and for episodes.
+
+Create one UUID for the viewing. Keep its timestamp and payload stable if
+you submit the event again.
+
+```http
+POST /api/v1/scrobble/completions/v1/
+Idempotency-Key: <viewing UUID>
+Content-Type: application/json
+
+{"tmdb":"603","played_at":"2026-01-01T20:30:00Z",
+ "position_seconds":7990,"duration_seconds":8160}
+```
+
+Position and duration are optional. A successful response includes `event_id`,
+`play_id`, and `played_at`. The play and its response receipt commit together.
+Within the receipt retention window, a retry with the same UUID and payload
+replays that response. Another valid payload under the same UUID returns
+`409 idempotency_conflict`. A real rewatch has its own UUID, even if close
+in time. After an ambiguous failure, send the original request to the same
+versioned endpoint. Falling back to the legacy endpoint can record another play.
+
 ## 4. Offline retries
 
 Send `client_event_id` (or the `Idempotency-Key` header) on every mutation.

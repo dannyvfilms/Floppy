@@ -4,20 +4,25 @@
 # than a web-UI parity mirror. URL wiring lives in fork_urls.py.
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
+from uuid import UUID
 
-from drf_spectacular.utils import extend_schema
+from django.db import connection, transaction
+from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import serializers
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 import app.providers.tmdb
 from app import live_playback
-from app.models import MediaTypes, PlaybackProgress, Sources
+from app.models import MediaTypes, Movie, PlaybackProgress, Sources
 from app.providers import services
 from app.providers.services import ProviderAPIError
+from app.services.completion import select_preferred_activity_entry
 from app.services.sync_lock import state_transaction
 from app.services.unwatch import retract_watch
 from app.stats_utils import parse_runtime_to_minutes
-from integrations.delivery import get_or_record_receipt
+from integrations.delivery import get_or_record_atomic_receipt, get_or_record_receipt
 from integrations.models import IntegrationToken
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor, is_played
 
@@ -38,6 +43,149 @@ _EVENT_TYPE_MAP = {
     "pause": "media.pause",
     "stop": "media.stop",
 }
+
+
+class MovieCompletionSerializer(serializers.Serializer):
+    """A dated viewing of a tracked movie."""
+
+    tmdb = serializers.RegexField(r"\A[1-9][0-9]{0,19}\Z")
+    played_at = serializers.DateTimeField()
+    position_seconds = serializers.IntegerField(
+        min_value=0, max_value=2_147_483_647, required=False
+    )
+    duration_seconds = serializers.IntegerField(
+        min_value=1, max_value=2_147_483_647, required=False
+    )
+
+
+class MovieCompletionCapabilitySerializer(serializers.Serializer):
+    """Capability of this receiver for the account and title."""
+
+    version = serializers.IntegerField()
+    media_type = serializers.CharField()
+
+
+class MovieCompletionReceiptSerializer(serializers.Serializer):
+    """The acknowledgement recorded together with a movie play."""
+
+    event_id = serializers.UUIDField()
+    play_id = serializers.IntegerField()
+    played_at = serializers.DateTimeField()
+
+
+class MovieCompletionView(drf_views.APIView):
+    """Record a replay-safe completion for an existing tracked TMDB movie."""
+
+    @staticmethod
+    def _tracked_movie(user, tmdb):
+        return select_preferred_activity_entry(
+            Movie.objects.filter(
+                user=user,
+                item__source=Sources.TMDB.value,
+                item__media_type=MediaTypes.MOVIE.value,
+                item__media_id=tmdb,
+            )
+        )
+
+    @staticmethod
+    def _unavailable():
+        return Response(
+            {"code": "ATOMIC_COMPLETION_UNAVAILABLE"},
+            status=HTTP.SERVICE_UNAVAILABLE,
+        )
+
+    @staticmethod
+    def _missing():
+        return Response({"code": "MOVIE_NOT_TRACKED"}, status=HTTP.NOT_FOUND)
+
+    @extend_schema(
+        parameters=[OpenApiParameter("tmdb", str, OpenApiParameter.QUERY, required=True)],
+        responses={200: MovieCompletionCapabilitySerializer},
+    )
+    def get(self, request):
+        """Confirm the same credential can record this movie on this route."""
+        if connection.vendor != "postgresql":
+            return self._unavailable()
+        if not self._tracked_movie(request.user, request.query_params.get("tmdb")):
+            return self._missing()
+        return Response({"version": 1, "media_type": "movie"}, status=HTTP.OK)
+
+    @extend_schema(
+        request=MovieCompletionSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key", UUID, OpenApiParameter.HEADER, required=True
+            ),
+        ],
+        responses={200: MovieCompletionReceiptSerializer},
+    )
+    def post(self, request):
+        """Append one dated watch. Replay only the same key and payload."""
+        if connection.vendor != "postgresql":
+            return self._unavailable()
+        try:
+            event_id = str(UUID(request.headers.get("Idempotency-Key", "")))
+        except ValueError:
+            return Response({"code": "INVALID_COMPLETION_KEY"}, status=HTTP.BAD_REQUEST)
+        receipt_key = f"scrobble-completion-v1:{event_id}"
+        serializer = MovieCompletionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tmdb = serializer.validated_data["tmdb"]
+        played_at = serializer.validated_data["played_at"]
+        position = serializer.validated_data.get("position_seconds")
+        duration = serializer.validated_data.get("duration_seconds")
+        token = request.auth if isinstance(request.auth, IntegrationToken) else None
+
+        def stop_live_playback():
+            state = live_playback.peek_user_playback_state(request.user.pk)
+            if not state or state.get("media_type") != MediaTypes.MOVIE.value:
+                return
+            if str(state.get("media_id")) != tmdb:
+                return
+            live_playback.apply_playback_event(
+                user_id=request.user.pk,
+                event_type="media.stop",
+                playback_media_type=MediaTypes.MOVIE.value,
+                media_id=tmdb,
+                source=Sources.TMDB.value,
+                view_offset_seconds=position,
+                duration_seconds=duration,
+                event_ts=min(played_at.timestamp(), timezone.now().timestamp()),
+            )
+
+        def record():
+            # Keep this path local. Generic scrobbling can resolve remote
+            # metadata and SQLite would hold its global writer lock here.
+            with state_transaction(request.user.pk):
+                movie = self._tracked_movie(request.user, tmdb)
+                if movie is None:
+                    return self._missing()
+                play, created = movie.watch(
+                    played_at, external_id=receipt_key, entry_source="scrobble"
+                )
+                if created and movie.end_date == played_at:
+                    if position is not None:
+                        fork_views_playback.upsert_playback_progress(
+                            request.user, movie.item, position, duration, completed=True
+                        )
+                    transaction.on_commit(stop_live_playback, robust=True)
+            return Response(
+                {
+                    "event_id": event_id,
+                    "play_id": play.pk,
+                    "played_at": play.end_date.isoformat(),
+                },
+                status=HTTP.OK,
+            )
+
+        response, _ = get_or_record_atomic_receipt(
+            request.user,
+            receipt_key,
+            request.data,
+            record,
+            token=token,
+        )
+        return response
 
 
 def _scrobble_request_error(data):
