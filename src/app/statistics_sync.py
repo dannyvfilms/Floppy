@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when the shape of a published payload changes; older snapshots are
 # served until the next sync replaces them.
-SNAPSHOT_SCHEMA_VERSION = 21
+SNAPSHOT_SCHEMA_VERSION = 22
 
 # Cheap ranges rebuilt on every sync, in this order.
 HOT_RANGES = (
@@ -204,7 +204,7 @@ def _pending_key(user_id: int) -> str:
 def _day_epoch_key(user_id: int) -> str:
     # Written without a TTL, so volatile-lru never evicts it: its absence means
     # the cache was flushed and every day payload has to be checked.
-    return f"stats:sync:day_epoch:{user_id}"
+    return f"stats:sync:day_epoch:v{SNAPSHOT_SCHEMA_VERSION}:{user_id}"
 
 
 def _eager_mode() -> bool:

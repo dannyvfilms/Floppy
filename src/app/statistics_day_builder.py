@@ -14,6 +14,12 @@ from django.utils import timezone
 
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import MediaTypes, Sources
+from app.play_duration import (
+    boardgame_recorded_minutes,
+    elapsed_minutes,
+    elapsed_minutes_by_hour,
+    play_minutes,
+)
 from app.statistics_day_cache import (
     STATISTICS_DAY_CACHE_TIMEOUT,
     _day_cache_key,
@@ -355,6 +361,7 @@ def _build_prefetch_for_range(user, day_list):
                 "status",
                 "score",
                 "progress",
+                "item__runtime_minutes",
             )
             .iterator(chunk_size=2000),
         )
@@ -490,6 +497,7 @@ def _build_prefetch_for_range(user, day_list):
                 "status",
                 "score",
                 "progress",
+                "reading_time",
                 "item__genres",
                 "item__format",
             )
@@ -529,14 +537,15 @@ def _add_boardgame_rows(
     day_end,
     *,
     minutes_by_type,
+    plays_by_type,
     daily_minutes_by_type,
+    hour_minutes,
     update_item_meta,
     update_top_played,
 ):
     """Add one day's board game rows to the day builder's accumulators.
 
-    A row's progress is minutes played. A play counts on the day it ended; the
-    minutes are spread evenly over the local days between start and end.
+    Progress is a play count; elapsed time is a separate quantity.
     """
     key = MediaTypes.BOARDGAME.value
     for row in rows:
@@ -552,35 +561,38 @@ def _add_boardgame_rows(
             activity_dt,
         )
 
-        total_minutes = row.get("progress") or 0
-        if total_minutes <= 0:
-            continue
-
+        plays = row.get("progress") or 0
         play_dt = row.get("end_date") or row.get("start_date")
         if play_dt and day_start <= play_dt < day_end:
-            minutes_by_type[key] += total_minutes
+            plays_by_type[key] += plays
             update_top_played(
                 key,
                 row.get("item_id"),
                 row.get("id"),
-                minutes=total_minutes,
-                plays=1,
+                minutes=plays,
+                plays=plays,
                 episode_count=0,
                 activity_dt=play_dt,
             )
 
-        start_dt = row.get("start_date")
-        end_dt = row.get("end_date")
-        start_local = _localize_datetime(start_dt).date() if start_dt else None
-        end_local = _localize_datetime(end_dt).date() if end_dt else None
-        if start_local and end_local and start_local <= day <= end_local:
-            total_days = (end_local - start_local).days + 1
-            per_day = total_minutes / total_days if total_days else total_minutes
-            daily_minutes_by_type[key] += per_day
+        recorded_minutes = boardgame_recorded_minutes(
+            row.get("item__runtime_minutes"), plays
+        )
+        start_dt, end_dt = row.get("start_date"), row.get("end_date")
+        if recorded_minutes and start_dt and end_dt and start_dt <= end_dt:
+            first_day = _localize_datetime(start_dt).date()
+            last_day = _localize_datetime(end_dt).date()
+            minutes = recorded_minutes / ((last_day - first_day).days + 1)
+        elif recorded_minutes:
+            minutes = recorded_minutes if play_dt and day_start <= play_dt < day_end else 0
         else:
-            activity_local = _localize_datetime(activity_dt)
-            if activity_local and activity_local.date() == day:
-                daily_minutes_by_type[key] += total_minutes
+            minutes = elapsed_minutes(start_dt, end_dt, range_start=day_start, range_end=day_end)
+            for hour, value in elapsed_minutes_by_hour(
+                start_dt, end_dt, day_start, day_end, timezone.get_current_timezone()
+            ).items():
+                hour_minutes[key][hour] += value
+        minutes_by_type[key] += minutes
+        daily_minutes_by_type[key] += minutes
 
 
 def _add_music_plays(
@@ -1007,6 +1019,7 @@ def build_stats_for_day(
     hour_counts: dict[str, dict[int, int]] = defaultdict(lambda: defaultdict(int))
     hour_minutes: dict[str, dict[int, float]] = defaultdict(lambda: defaultdict(float))
     daily_minutes_by_type: dict[str, float] = defaultdict(float)
+    daily_reading_units: dict[str, float] = defaultdict(float)
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0})
@@ -1558,12 +1571,27 @@ def build_stats_for_day(
                 activity_dt,
             )
 
-            total_minutes = row.get("progress") or 0
+            recorded_minutes = row.get("progress") or 0
+            total_minutes = play_minutes(
+                row.get("start_date"), row.get("end_date"), recorded_minutes
+            )
             if total_minutes <= 0:
                 continue
 
             end_dt = row.get("end_date")
-            if end_dt and day_start <= end_dt < day_end:
+            inferred_day_minutes = (
+                elapsed_minutes(row.get("start_date"), end_dt,
+                                range_start=day_start, range_end=day_end)
+                if not recorded_minutes else None
+            )
+            if inferred_day_minutes is not None:
+                minutes_by_type[MediaTypes.GAME.value] += inferred_day_minutes
+                for hour, value in elapsed_minutes_by_hour(
+                    row.get("start_date"), end_dt, day_start, day_end,
+                    timezone.get_current_timezone(),
+                ).items():
+                    hour_minutes[MediaTypes.GAME.value][hour] += value
+            elif end_dt and day_start <= end_dt < day_end:
                 minutes_by_type[MediaTypes.GAME.value] += total_minutes
 
             start_dt = row.get("start_date")
@@ -1592,7 +1620,8 @@ def build_stats_for_day(
                 game_rollup_days_counted.add(row.get("item_id"))
             if (start_local and end_local) and start_local <= day <= end_local:
                 total_days = (end_local - start_local).days + 1
-                per_day = total_minutes / total_days if total_days else total_minutes
+                per_day = (inferred_day_minutes if inferred_day_minutes is not None
+                           else total_minutes / total_days if total_days else total_minutes)
                 daily_minutes_by_type[MediaTypes.GAME.value] += per_day
                 _update_top_played(
                     MediaTypes.GAME.value,
@@ -1696,6 +1725,7 @@ def build_stats_for_day(
                 "status",
                 "score",
                 "progress",
+                "item__runtime_minutes",
             ),
             500,
             "boardgame",
@@ -1707,7 +1737,9 @@ def build_stats_for_day(
             day_start,
             day_end,
             minutes_by_type=minutes_by_type,
+            plays_by_type=plays_by_type,
             daily_minutes_by_type=daily_minutes_by_type,
+            hour_minutes=hour_minutes,
             update_item_meta=_update_item_meta,
             update_top_played=_update_top_played,
         )
@@ -1818,6 +1850,7 @@ def build_stats_for_day(
                     "status",
                     "score",
                     "progress",
+                    "reading_time",
                     "item__genres",
                     "item__format",
                 )
@@ -1838,7 +1871,6 @@ def build_stats_for_day(
 
             play_dt = row.get("end_date") or row.get("start_date")
             if play_dt and day_start <= play_dt < day_end:
-                minutes_by_type[media_type] += 60
                 _add_hour(media_type, play_dt)
 
             if media_type == MediaTypes.BOOK.value and (
@@ -1848,6 +1880,28 @@ def build_stats_for_day(
                 # time is counted from dated sessions below, so pages and
                 # minutes never share a total.
                 continue
+            reading_time = row.get("reading_time") or 0
+            if reading_time:
+                start_dt = row.get("start_date")
+                end_dt = row.get("end_date")
+                if start_dt and end_dt and start_dt <= end_dt:
+                    first_day = _localize_datetime(start_dt).date()
+                    last_day = _localize_datetime(end_dt).date()
+                    reading_minutes = reading_time / ((last_day - first_day).days + 1)
+                else:
+                    reading_minutes = reading_time if play_dt and day_start <= play_dt < day_end else 0
+            else:
+                reading_minutes = elapsed_minutes(
+                    row.get("start_date"), row.get("end_date"),
+                    range_start=day_start, range_end=day_end,
+                )
+                for hour, value in elapsed_minutes_by_hour(
+                    row.get("start_date"), row.get("end_date"), day_start, day_end,
+                    timezone.get_current_timezone(),
+                ).items():
+                    hour_minutes[media_type][hour] += value
+            minutes_by_type[media_type] += reading_minutes
+            daily_minutes_by_type[media_type] += reading_minutes
             total_minutes = row.get("progress") or 0
             if total_minutes <= 0:
                 continue
@@ -1864,7 +1918,7 @@ def build_stats_for_day(
             if start_local and end_local and start_local <= day <= end_local:
                 total_days = (end_local - start_local).days + 1
                 per_day = total_minutes / total_days if total_days else total_minutes
-                daily_minutes_by_type[media_type] += per_day
+                daily_reading_units[media_type] += per_day
                 _update_top_played(
                     media_type,
                     row.get("item_id"),
@@ -1884,7 +1938,7 @@ def build_stats_for_day(
             else:
                 activity_local = _localize_datetime(activity_dt)
                 if activity_local and activity_local.date() == day:
-                    daily_minutes_by_type[media_type] += total_minutes
+                    daily_reading_units[media_type] += total_minutes
                     _update_top_played(
                         media_type,
                         row.get("item_id"),
@@ -1920,7 +1974,7 @@ def build_stats_for_day(
             or 0
         )
 
-    activity_count = play_count
+    activity_count = play_count + plays_by_type.get(MediaTypes.BOARDGAME.value, 0)
     if listening_minutes > 0:
         activity_count += 1
     non_play_types = {
@@ -1932,7 +1986,11 @@ def build_stats_for_day(
         MediaTypes.COMIC.value,
     }
     for media_type, minutes in daily_minutes_by_type.items():
-        if media_type in non_play_types and minutes and minutes > 0:
+        if (media_type in non_play_types and minutes and minutes > 0
+                and not plays_by_type.get(media_type)):
+            activity_count += 1
+    for media_type, units in daily_reading_units.items():
+        if units and not daily_minutes_by_type.get(media_type):
             activity_count += 1
     if activity_count == 0 and sum(daily_minutes_by_type.values()) > 0:
         activity_count = 1
@@ -1971,6 +2029,7 @@ def build_stats_for_day(
         "podcast": {},
         "game": {},
         "daily_minutes_by_type": dict(daily_minutes_by_type),
+        "daily_reading_units": dict(daily_reading_units),
         "activity": {"count": activity_count},
     }
 

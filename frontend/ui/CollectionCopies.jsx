@@ -6,6 +6,8 @@ import { actionIcons } from './actionIcons';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { sectionSpacing } from './sectionSpacing';
+import { cardTypography } from './cardTypography';
+import { CardRow } from './CardRow';
 import { DateTimePicker } from './DateTimePicker';
 import { SelectField } from './SelectField';
 import { FormError, FormField, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';
@@ -146,8 +148,17 @@ export function CollectionEpisodeToggle({ expanded = false, onPress, palette: su
 function CopyRow({ copy, labels, palette, canMutate, onEdit, onRemove, separator, expanded, onToggle }) {
   const detail = qualityLine(copy);
   return <View style={separator ? { borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.border } : undefined}>
-    <View style={styles.copyRow}>
-    <View style={styles.copyBody}>
+    <CardRow first={!separator} trailing={(canMutate || copy.episodes?.length) ? <View style={styles.copyActions}>
+      {copy.episodes?.length ? <CollectionEpisodeToggle expanded={expanded} onPress={onToggle} palette={palette} label={`episodes for ${copy.label}`} /> : null}
+      {canMutate && onEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.edit} ${copy.label || labels.copyLabel}`}
+        onPress={() => onEdit(copy)} style={styles.iconButton}>
+        <Icon spec={actionIcons.edit} color={palette.accent} size={16} style={[styles.iconText, { color: palette.accent }]}>{'✎'}</Icon>
+      </Pressable> : null}
+      {canMutate && onRemove ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.remove} ${copy.label || labels.copyLabel}`}
+        onPress={() => onRemove(copy)} style={styles.iconButton}>
+        <Icon spec={actionIcons.trash} color={palette.danger} size={16} style={[styles.iconText, { color: palette.danger }]}>{'⌫'}</Icon>
+      </Pressable> : null}
+    </View> : null}>
       <View style={styles.copyTitleRow}>
         <Text style={[styles.copyTitle, { color: palette.text }]}>{copy.label || labels.copyLabel}</Text>
         {copy.completeness?.isPartial ? <Badge
@@ -165,19 +176,7 @@ function CopyRow({ copy, labels, palette, canMutate, onEdit, onRemove, separator
       {copy.collectedAt ? <Text style={[styles.copyMeta, { color: palette.textMuted }]}>
         {labels.collected}: {copy.collectedAtLabel || copy.collectedAt}
       </Text> : null}
-    </View>
-    {(canMutate || copy.episodes?.length) ? <View style={styles.copyActions}>
-      {copy.episodes?.length ? <CollectionEpisodeToggle expanded={expanded} onPress={onToggle} palette={palette} label={`episodes for ${copy.label}`} /> : null}
-      {canMutate && onEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.edit} ${copy.label || labels.copyLabel}`}
-        onPress={() => onEdit(copy)} style={styles.iconButton}>
-        <Icon spec={actionIcons.edit} color={palette.accent} size={16} style={[styles.iconText, { color: palette.accent }]}>{'✎'}</Icon>
-      </Pressable> : null}
-      {canMutate && onRemove ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.remove} ${copy.label || labels.copyLabel}`}
-        onPress={() => onRemove(copy)} style={styles.iconButton}>
-        <Icon spec={actionIcons.trash} color={palette.danger} size={16} style={[styles.iconText, { color: palette.danger }]}>{'⌫'}</Icon>
-      </Pressable> : null}
-    </View> : null}
-    </View>
+    </CardRow>
     {expanded ? <CollectionEpisodeList episodes={copy.episodes} palette={palette} /> : null}
   </View>;
 }
@@ -538,16 +537,16 @@ const styles = StyleSheet.create({
   collectionSurfacePadded: { padding: 16 },
   collectionSurfaceContent: { gap: 12 },
   contextHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  contextTitle: { fontSize: 17, flexShrink: 1 },
-  contextMeta: { fontSize: 13 },
+  contextTitle: { ...cardTypography.title, flexShrink: 1 },
+  contextMeta: { ...cardTypography.secondary },
   contextBar: { height: 8, borderRadius: 4, overflow: 'hidden', flexDirection: 'row' },
   contextBreakdown: { borderTopWidth: 1, paddingTop: 12, gap: 10 },
   contextRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   contextSwatch: { width: 8, height: 8, borderRadius: 2 },
-  contextRowLabel: { flex: 1, fontSize: 14 },
+  contextRowLabel: { flex: 1, ...cardTypography.item },
   contextItemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  contextItemLabel: { flex: 1, fontSize: 14 },
-  contextItemResolutions: { flexShrink: 1, textAlign: 'right', fontSize: 13 },
+  contextItemLabel: { flex: 1, ...cardTypography.item },
+  contextItemResolutions: { flexShrink: 1, textAlign: 'right', ...cardTypography.secondary },
   contextMore: { fontSize: 14 },
   contextItems: { gap: 10 },
   contextDivider: { height: 1, opacity: 0.4, marginBottom: 2 },
@@ -556,12 +555,10 @@ const styles = StyleSheet.create({
   copyEpisodesWeb: { marginHorizontal: 0, marginTop: 12 },
   copyList: { gap: 8 },
   entryGroupWebContent: { padding: 16 },
-  copyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 },
-  copyBody: { flex: 1, minWidth: 0, gap: 3 },
   copyTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  copyTitle: { fontSize: 16, fontWeight: '600' },
-  copyDetail: { fontSize: 12, lineHeight: 17 },
-  copyMeta: { fontSize: 11, lineHeight: 16 },
+  copyTitle: { ...cardTypography.rowTitle },
+  copyDetail: { ...cardTypography.rowDetail },
+  copyMeta: { ...cardTypography.rowMeta },
   copyActions: { flexDirection: 'row', gap: 2 },
   iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   iconText: { fontSize: 17 },
