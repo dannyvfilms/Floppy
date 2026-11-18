@@ -70,6 +70,36 @@ library's Caught Up filter (`helpers.is_caught_up_media`) is unchanged.
   completion. Only a season the provider explicitly dates in the future is ignored.
 - **The label is display only, and only on the details page.** No migration, no new status value, no API change, no new chip on library cards.
 
+## When two copies of a title are merged
+
+Floppy sometimes finds that two items are the same title (a show known under
+TMDB and TVDB, say) and merges them without asking (`app.services.item_merge`).
+When one user tracked both copies, their two entries become one. Nobody is
+there to choose, so the merge only adds information (`app.services.tracker_fold`):
+
+- An empty field takes the other entry's value: score (with when it was
+  scored), notes, start date, end date, entry source.
+- Notes on both are joined, the other entry's after a blank line, unless they
+  are the same.
+- Start date takes the earlier, end date the later, progress the larger.
+- Status takes the more advanced one: Planning, then In Progress, then
+  Completed. R1 holds: a Dropped or Paused status on the kept entry is never
+  changed. A Dropped or Paused status on the other entry is taken only when
+  the kept entry is Planning or has no status.
+- A score on both keeps the kept entry's.
+
+Anything set aside (the other score, the other status) is written in the
+entry's edit history as "Merged duplicate entry (...)". The merge leaves no
+deletion marker, so later syncs keep updating the title. Seasons follow the
+same rule, and so do album and artist entries when duplicate albums or
+artists are merged. Movies, games, books and the other types store a repeat as a
+second entry, so a merge keeps both entries rather than guessing. Merges
+that ran before this rule existed cannot be repaired: the lost values were
+not kept anywhere.
+
+User-driven match corrections (`integrations.match_corrections`) use the same
+field list but ask the user to choose when the two values differ.
+
 ## Related history
 
 #929 (duplicate plays kept seasons open), #925 (rewatch passes), #375 (shows

@@ -140,6 +140,7 @@ from app.models import (
     Sources,
     Track,
 )
+from app.play_duration import boardgame_recorded_minutes, elapsed_minutes, play_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +505,11 @@ def _build_reading_entries(
             item = getattr(reading_entry, "item", None)
             if not item:
                 continue
+            runtime_minutes = 0
+            if not is_anime and not (reading_media_type == MediaTypes.BOOK.value and item.format == "audiobook"):
+                runtime_minutes = play_minutes(
+                    reading_entry.start_date, reading_entry.end_date, reading_entry.reading_time
+                )
             if genre_filters:
                 item_genres = {str(g).lower() for g in _resolve_genres(item)}
                 if not item_genres & set(genre_filters):
@@ -542,8 +548,9 @@ def _build_reading_entries(
                 "episode_code": None,
                 "played_at_local": played_at_local,
                 **_entry_dates(reading_entry),
-                "runtime_minutes": 0,
-                "runtime_display": None,
+                "runtime_minutes": runtime_minutes,
+                "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
+                if runtime_minutes else None,
                 "instance_id": reading_entry.id,
                 "entry_key": f"{item.media_type}-{reading_entry.id}",
             }
@@ -805,7 +812,7 @@ def _build_game_entries(
                 played_at_local = _localize_datetime(activity_dt)
                 if not played_at_local:
                     continue
-                runtime_minutes = game.progress or 0
+                runtime_minutes = play_minutes(game.start_date, game.end_date, game.progress)
                 start_local = (
                     _localize_datetime(game.start_date).date()
                     if game.start_date
@@ -829,7 +836,7 @@ def _build_game_entries(
                     "poster": game.item.image or settings.IMG_NONE,
                     "title": game.item.title,
                     "display_title": game.item.title,
-                    "progress_display": _format_game_hours(runtime_minutes),
+                    "progress_display": _format_game_hours(int(runtime_minutes)),
                     "date_range_display": date_range_display,
                     "episode_label": None,
                     "episode_code": None,
@@ -862,6 +869,10 @@ def _build_game_entries(
                 if not played_at_local:
                     continue
                 plays = boardgame.progress or 0
+                runtime_minutes = play_minutes(
+                    boardgame.start_date, boardgame.end_date,
+                    boardgame_recorded_minutes(boardgame.item.runtime_minutes, plays),
+                )
                 start_local = (
                     _localize_datetime(boardgame.start_date).date()
                     if boardgame.start_date
@@ -892,8 +903,11 @@ def _build_game_entries(
                     "episode_code": None,
                     "played_at_local": played_at_local,
                     **_entry_dates(boardgame),
-                    "runtime_minutes": 0,
-                    "runtime_display": progress_display,
+                    "runtime_minutes": runtime_minutes,
+                    "runtime_display": (
+                        f"{progress_display} · {helpers.minutes_to_hhmm(runtime_minutes)}"
+                        if runtime_minutes else progress_display
+                    ),
                     "instance_id": boardgame.id,
                     "entry_key": str(boardgame.id),
                 }
@@ -912,7 +926,7 @@ def _build_game_entries(
                     str(g).lower() for g in _resolve_genres(game.item)
                 } & set(genre_filters):
                     continue
-                total_minutes = game.progress or 0
+                total_minutes = play_minutes(game.start_date, game.end_date, game.progress)
                 if total_minutes <= 0:
                     continue
                 start_dt = game.start_date or game.end_date or game.created_at
@@ -930,7 +944,7 @@ def _build_game_entries(
                     f"{formats.date_format(start_local, 'M j')} - "
                     f"{formats.date_format(end_local, 'M j')}"
                 )
-                total_progress_display = _format_game_hours(total_minutes)
+                total_progress_display = _format_game_hours(int(total_minutes))
                 genres = _resolve_genres(game.item)
                 for offset in range(day_count):
                     day = start_local + timedelta(days=offset)
@@ -939,6 +953,11 @@ def _build_game_entries(
                         datetime.combine(day, datetime.min.time()),
                         timezone.get_current_timezone(),
                     )
+                    if not game.progress:
+                        minutes_for_day = elapsed_minutes(
+                            game.start_date, game.end_date, range_start=day_dt,
+                            range_end=day_dt + timedelta(days=1),
+                        )
                     entry = {
                         "media_type": MediaTypes.GAME.value,
                         "item": _serialize_item(game.item),
@@ -972,7 +991,10 @@ def _build_game_entries(
                 } & set(genre_filters):
                     continue
                 total_plays = boardgame.progress or 0
-                if total_plays <= 0:
+                recorded_minutes = boardgame_recorded_minutes(
+                    boardgame.item.runtime_minutes, total_plays
+                )
+                if total_plays <= 0 and not elapsed_minutes(boardgame.start_date, boardgame.end_date):
                     continue
                 start_dt = (
                     boardgame.start_date or boardgame.end_date or boardgame.created_at
@@ -1002,6 +1024,9 @@ def _build_game_entries(
                         datetime.combine(day, datetime.min.time()),
                         timezone.get_current_timezone(),
                     )
+                    minutes_for_day = (recorded_minutes / day_count if recorded_minutes else
+                        elapsed_minutes(boardgame.start_date, boardgame.end_date,
+                                        range_start=day_dt, range_end=day_dt + timedelta(days=1)))
                     entry = {
                         "media_type": MediaTypes.BOARDGAME.value,
                         "item": _serialize_item(boardgame.item),
@@ -1014,10 +1039,11 @@ def _build_game_entries(
                         "episode_code": None,
                         "played_at_local": day_dt,
                         **_entry_dates(boardgame),
-                        "runtime_minutes": 0,
-                        "runtime_display": _format_boardgame_plays(plays_for_day)
-                        if plays_for_day
-                        else None,
+                        "runtime_minutes": minutes_for_day,
+                        "runtime_display": " · ".join(filter(None, (
+                            _format_boardgame_plays(plays_for_day) if plays_for_day else None,
+                            helpers.minutes_to_hhmm(minutes_for_day) if minutes_for_day else None,
+                        ))) or None,
                         "instance_id": boardgame.id,
                         "entry_key": f"{boardgame.id}-{day.strftime('%Y%m%d')}",
                     }
@@ -1260,23 +1286,23 @@ def build_history_days(
                 item__media_id=target_media_id, item__source=target_source
             )
     if start_date:
-        games = games.filter(
-            models.Q(end_date__gte=start_date)
-            | (models.Q(end_date__isnull=True) & models.Q(start_date__gte=start_date))
-        )
-        boardgames = boardgames.filter(
-            models.Q(end_date__gte=start_date)
-            | (models.Q(end_date__isnull=True) & models.Q(start_date__gte=start_date))
-        )
+        if game_logging_style == "repeats":
+            range_filter = models.Q(end_date__gte=start_date) | models.Q(start_date__gte=start_date)
+        else:
+            range_filter = models.Q(end_date__gte=start_date) | (
+                models.Q(end_date__isnull=True) & models.Q(start_date__gte=start_date)
+            )
+        games = games.filter(range_filter)
+        boardgames = boardgames.filter(range_filter)
     if end_date:
-        games = games.filter(
-            models.Q(end_date__lte=end_date)
-            | (models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date))
-        )
-        boardgames = boardgames.filter(
-            models.Q(end_date__lte=end_date)
-            | (models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date))
-        )
+        if game_logging_style == "repeats":
+            range_filter = models.Q(start_date__lte=end_date) | models.Q(end_date__lte=end_date)
+        else:
+            range_filter = models.Q(end_date__lte=end_date) | (
+                models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date)
+            )
+        games = games.filter(range_filter)
+        boardgames = boardgames.filter(range_filter)
 
     music_start = time.perf_counter()
     music_entries = Music.objects.none()
@@ -1631,6 +1657,11 @@ def build_history_days(
             process_boardgames,
             genre_filters,
         ):
+            if game_logging_style == "repeats" and (
+                (start_date and entry["played_at_local"].date() < start_date.date())
+                or (end_date and entry["played_at_local"].date() > end_date.date())
+            ):
+                continue
             entries.append(entry)
             if entry["media_type"] == MediaTypes.GAME.value:
                 entry_counts["games"] += 1

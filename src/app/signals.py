@@ -124,6 +124,10 @@ _IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
     "importer_replacing_rows",
     default=False,
 )
+_MERGING_ITEMS: ContextVar[bool] = ContextVar(
+    "merging_items",
+    default=False,
+)
 _ACCOUNT_BEING_DELETED: ContextVar[bool] = ContextVar(
     "account_being_deleted",
     default=False,
@@ -168,6 +172,24 @@ def importer_replacing_rows():
         yield
     finally:
         _IMPORTER_REPLACING_ROWS.reset(token)
+
+
+@contextmanager
+def merging_items():
+    """Mark deletes inside the block as two items being merged into one.
+
+    A merge folds a duplicate tracking row into the surviving one and deletes
+    the duplicate. The user still tracks the title (under the surviving
+    identity), so the delete must not leave a deletion tombstone for the old
+    identity. The library change feed (`DeletedEntry`) still records the old
+    identity as gone: a mirroring client drops it and sees the surviving row
+    as changed.
+    """
+    token = _MERGING_ITEMS.set(True)
+    try:
+        yield
+    finally:
+        _MERGING_ITEMS.reset(token)
 
 
 @contextmanager
@@ -760,6 +782,7 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     if (
         kwargs.get("raw")
         or _IMPORTER_REPLACING_ROWS.get()
+        or _MERGING_ITEMS.get()
         or _ACCOUNT_BEING_DELETED.get()
     ):
         return

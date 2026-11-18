@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from app.detail_builders import _build_detail_link_sections
+from app.detail_builders import build_detail_link_sections
 from app.models import CollectionEntry, Item
 from integrations import arr_library, seerr_api
 from integrations.imports import helpers
@@ -761,10 +761,10 @@ class ServerLinkGroupsTests(TestCase):
         )
         metadata = {"media_id": "69798"}
 
-        with_viewer = _build_detail_link_sections(
+        with_viewer = build_detail_link_sections(
             metadata, "movie", "tmdb", "tmdb", viewer=self.user
         )
-        public = _build_detail_link_sections(metadata, "movie", "tmdb", "tmdb")
+        public = build_detail_link_sections(metadata, "movie", "tmdb", "tmdb")
 
         self.assertEqual(
             [section["title"] for section in with_viewer][-2:],

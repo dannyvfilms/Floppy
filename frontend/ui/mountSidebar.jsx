@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
 import { Icon } from './Icon';
 import { Sidebar } from './Sidebar';
+import { rootStyle } from './rootStyle.web';
 
 // Browser integration for the shared sidebar: theme tokens, HTMX boost, the
 // localStorage pin/view keys, Sortable drag, navigation forms and the mobile
@@ -25,7 +26,7 @@ function resolveColor(value, fallback) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   const accent = color('--color-accent', '#6366f1');
@@ -241,6 +242,11 @@ function SidebarView({ host, props }) {
       ...props,
       primary: props.primary.map(decorate),
       secondary: props.secondary.map(decorate),
+      bottom: {
+        ...props.bottom,
+        settings: decorate(props.bottom.settings),
+        logoutPlatformProps: { href: props.bottom.logoutAction, 'data-hx-boost': 'false' },
+      },
     };
   }, [props, rawLists, pathname]);
 
@@ -258,7 +264,9 @@ function SidebarView({ host, props }) {
     reorderViews(props.reorderUrl, props.csrfToken, key, views.map(view => view.id));
   }, [props]);
 
-  const onLogout = useCallback(() => {
+  const onLogout = useCallback(event => {
+    if (event.button > 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
     submitForm(props.bottom.logoutAction, { csrfmiddlewaretoken: props.csrfToken });
   }, [props]);
 

@@ -5,8 +5,8 @@ Ordinary restarts do not warm the database, run `quick_check`, run
 schema, migration history, model table/column names and recovery sidecars.
 Each SQLite statement has a five-second progress deadline and a two-second busy
 timeout; the entrypoint bounds the whole command, including imports and I/O,
-to `FLOPPY_SQLITE_ADMISSION_TIMEOUT` seconds (default 30, then five seconds to
-kill it). This setting must be a positive whole number. GNU `timeout` returns
+to `FLOPPY_SQLITE_ADMISSION_TIMEOUT` seconds (default 120, then five seconds to
+kill it; Django start-up alone takes tens of seconds on slow hosts). This setting must be a positive whole number. GNU `timeout` returns
 124 when it reaches the deadline; BusyBox may return 143 after sending TERM.
 The entrypoint treats both as timeouts, retries admission once, then parks if
 the retry also times out. A kernel storage operation in uninterruptible sleep

@@ -5,6 +5,7 @@ import { Icon } from './Icon';
 import { ProviderLogo } from './ProviderLogo';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
+import { DetailTrackSplit } from './DetailTrackSplit';
 
 // Shared presentation for the detail page's own controls: the track action bar,
 // provider score chips and series graph, the collection and notes blocks, the
@@ -27,23 +28,7 @@ export function DetailActionBar({ primary, edit, quick = [], palette, inlineAt =
   const { width } = useWindowDimensions();
   const inline = width >= inlineAt;
   return <View style={[styles.actionBar, inline ? styles.actionBarInline : null]}>
-    {primary ? <View style={[styles.primaryRow, inline ? styles.primaryRowInline : null]}>
-      <Pressable accessibilityRole="button" onPress={primary.onPress} disabled={primary.disabled}
-        style={({ pressed }) => [styles.primary, inline ? { flex: 0 } : null, edit ? styles.primaryJoined : null, {
-          backgroundColor: pressed ? palette.accent : palette.accentStrong,
-          opacity: primary.disabled ? 0.6 : 1,
-        }]}>
-        {primary.icon ? <Icon spec={actionIcons[primary.icon]} size={20} color={palette.accentContrast} /> : null}
-        <Text style={[styles.primaryText, { color: palette.accentContrast }]}>{primary.label}</Text>
-      </Pressable>
-      {edit ? <Pressable accessibilityRole="button" accessibilityLabel={edit.label} onPress={edit.onPress}
-        style={({ pressed }) => [styles.edit, {
-          backgroundColor: pressed ? palette.accent : palette.accentStrong,
-          borderLeftColor: palette.accent,
-        }]}>
-        <Icon spec={actionIcons[edit.icon || 'edit']} size={20} color={palette.accentContrast} />
-      </Pressable> : null}
-    </View> : null}
+    <DetailTrackSplit primary={primary} edit={edit} palette={palette} inline={inline} />
     {quick.length ? <View style={styles.quickRow}>
       {quick.map(item => <QuickButton key={item.key} item={item} palette={palette} inline={inline} />)}
     </View> : null}
@@ -443,12 +428,6 @@ const styles = StyleSheet.create({
   activity: { fontSize: 13, lineHeight: 18 },
   actionBar: { gap: 12 },
   actionBarInline: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  primaryRowInline: { flexShrink: 0 },
-  primaryRow: { flexDirection: 'row' },
-  primary: { flex: 1, minHeight: 48, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingHorizontal: 16 },
-  primaryJoined: { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
-  primaryText: { fontSize: 16, fontWeight: '500' },
-  edit: { width: 48, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 12, borderBottomRightRadius: 12, borderLeftWidth: 1 },
   quickRow: { flexDirection: 'row', gap: 8 },
   quick: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   quickInline: { flex: 0, width: 44 },

@@ -20,11 +20,11 @@ from app.activity_builders import (
     attach_unwatched_ratings,
 )
 from app.detail_builders import (
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_series_graph_data,
     _build_series_graph_from_raw,
     _build_trakt_popularity_context,
+    build_detail_link_sections,
 )
 from app.detail_related import drop_recommendations_if_hidden
 from app.log_safety import exception_summary
@@ -48,9 +48,9 @@ from app.providers import manual, services, tmdb
 from app.services import metadata_resolution
 from app.services import trakt_popularity as trakt_popularity_service
 from app.tag_views import (
-    _build_detail_tag_sections,
     _detail_request_url,
     _resolve_detail_tag_genres,
+    build_detail_tag_sections,
 )
 from app.view_constants import (
     DETAIL_CAROUSEL_FRAGMENT,
@@ -1054,7 +1054,7 @@ def season_details(
             if request.user.is_authenticated
             else None
         ),
-        "detail_link_sections": _build_detail_link_sections(
+        "detail_link_sections": build_detail_link_sections(
             season_metadata,
             MediaTypes.SEASON.value,
             source,
@@ -1062,7 +1062,7 @@ def season_details(
             # The secondary fragment has no links menu, so it skips the lookups.
             viewer=None if public_view or render_secondary_only else request.user,
         ),
-        "detail_tag_sections": _build_detail_tag_sections(
+        "detail_tag_sections": build_detail_tag_sections(
             season_metadata,
             season_item,
             request.user,

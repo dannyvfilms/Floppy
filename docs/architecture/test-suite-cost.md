@@ -103,6 +103,23 @@ the cache in `setUp`. Regrouping also surfaced a real bug in
 the serving thread.
 
 
+## Test mode and eager Celery: the paths the suite skips
+
+`config.test_settings` sets `TESTING` and runs Celery eagerly so that a save
+does not run provider work inline. About thirty production lines check one of
+those flags and then do less, so the suite never ran what a server runs after a
+write: the calendar reload, the season's episode runtime backfill, importer
+enrichment. Two shipped faults lived there (#1827, and the 15,000-query
+Statistics path). `config.tests.test_test_mode_branches` lists every such line
+with the test that turns the flag off and checks the production path, or the
+reason the test path is a stand-in (fakeredis, the anime mapping fixture,
+start-up work). Those tests patch the task's `delay` or `apply_async` and
+assert the task, its arguments and its queue; they never run the provider call.
+A new check of `TESTING`, `CELERY_TASK_ALWAYS_EAGER` or `IS_PROD` fails the
+ratchet until it is listed with a covering test. The branches stay: removing
+them would make eager Celery run every backfill inside ordinary tests.
+
+
 ## November 12, 2026: publish-gate evidence
 
 [PR #1917](https://github.com/dannyvfilms/Floppy/pull/1917) moved
@@ -786,11 +803,25 @@ purpose, so nothing on `latest` ran them at all.
 `latest-health.yml` closes both gaps without gating anything:
 
 - On every push to `latest` it runs the browser tests pull requests must
-  pass: `scripts/test.sh app integrations --tag playwright --exclude-tag
-  flaky_alphabet_rail`, with real migrations. A newer push cancels the
-  older run.
+  pass (`CI_TEST_MODE=pr scripts/ci_tests.sh browser`, the same command as
+  the pull request browser shard), with real migrations. A newer push
+  cancels the older run.
 - When the publish gate finishes for a push to `latest`, it reads the
   gate's test shards.
+- Once a day (00:20 UTC, just after the date changes for the tests) and on
+  manual dispatch, it runs both again on `latest`'s newest commit: the
+  browser tests, and the gate's other tests through `app-tests.yml` with
+  `release_quality_gates`. No push is needed, because some breaks come from
+  the calendar, not a commit: on 15 November 2026 the Discover holiday
+  window opened and three tests failed on every branch with no commit to
+  blame. When a commit that passed before fails, the issue says no commit
+  caused it.
+  The daily run has its own concurrency group, so pushes never cancel it.
+- A publish gate that reused a pull request run (see the next section)
+  passes on that run's evidence, from up to 72 hours earlier. Such a pass
+  does not clear a failure unless the reused run started after the failure
+  was first seen; otherwise it is recorded as "could not tell", and the
+  next real run (a push that is not reused, or the daily run) decides.
 - `scripts/latest_health.py` keeps one issue, **Tests are failing on
   latest**: opened on the first failure with the failing tests, the first
   bad commit and the range since the last good one; edited while anything
@@ -805,10 +836,8 @@ purpose, so nothing on `latest` ran them at all.
   passed `latest`'s newest commit; otherwise, or if it cannot read the
   state, it says "unknown". It is not required and never fails.
 
-If the browser command in `app-tests.yml` changes (for example a separate
-browser shard), change the one in `latest-health.yml` with it.
-
-Rollback: delete `latest-health.yml` and the `baseline_note` job.
+Rollback: delete `latest-health.yml` and the `baseline_note` job. To stop
+only the daily run, delete its `schedule` trigger.
 
 ## Reusing a pull request's test result on the publish gate
 

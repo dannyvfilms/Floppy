@@ -62,7 +62,8 @@ export function DropdownItem({ label, icon, detail, chevron = false, checked = f
   numberOfLines, accessibilityRole = 'menuitem', testID }) {
   const color = danger ? palette.danger : palette.textSecondary;
   return <Pressable accessibilityRole={accessibilityRole} accessibilityLabel={label}
-    accessibilityState={{ disabled, selected }} disabled={disabled} onPress={onPress} testID={testID}
+    aria-checked={accessibilityRole === 'checkbox' ? checked : undefined}
+    accessibilityState={{ disabled, selected, ...(accessibilityRole === 'checkbox' ? { checked } : {}) }} disabled={disabled} onPress={onPress} testID={testID}
     style={({ hovered, pressed }) => [styles.item, (hovered || pressed || selected) && !disabled && { backgroundColor: palette.surfaceMuted },
       disabled && { opacity: 0.5 }]}>
     {icon || null}

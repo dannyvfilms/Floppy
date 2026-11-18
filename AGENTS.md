@@ -1,5 +1,33 @@
 # Coding Agent Instructions
 
+## Mandatory completion gate
+
+An authorized implementation is not eligible for a final response until every
+applicable deliverable is complete, explicitly waived by the user, or prevented
+by a demonstrated external blocker. The request, accepted plan, architectural
+rules, documentation and registries, validation, and review artifacts are
+cumulative obligations. Completing the main fix or passing targeted tests does
+not narrow the assignment. Simplicity, efficiency, minimal changes, context
+preservation and risk-based validation govern how work is done, not which
+mandatory deliverables can be omitted.
+
+For non-trivial work, maintain a lightweight checklist of these obligations and
+their evidence. Preserve outstanding items through compaction and handoffs. Before
+the final response audit every item as complete with evidence, explicitly waived,
+or externally blocked with evidence. Continue working on any outstanding item;
+do not ask to continue work already authorized. A summary of remaining work is
+not completion. Finishing local work does not itself authorize a commit or push.
+
+Difficulty, unfamiliar architecture, migration, simulator startup, evidence
+collection, elapsed effort, token use, or the possibility of intermediate review
+are reasons to continue, not blockers. A blocker is an external condition that
+prevents a specific obligation despite sustained reasonable attempts. Record the
+failed approaches and evidence, alternatives tried, independent work completed,
+and the specific intervention needed. Continue all work unaffected by the blocker
+and deliver the strongest available evidence without overstating its level.
+Use the existing UI architecture/parity checks and screenshot workflows as
+evidence for the gate; their success alone does not establish task completion.
+
 ## Standing UI migration rule
 
 Whenever an agent creates, edits, or updates a UI component—including copy or
@@ -60,14 +88,18 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
 - Run `scripts/env_capabilities.sh` once per session (add `--bootstrap` on a fresh
   cloud checkout) to learn what can run here. Do not re-probe; do not install toolchains,
   boot paid hosted runtimes or change account settings without asking.
-- Capture before and after for every visible change with the strongest evidence the
+- Identify affected states and platforms before implementation. Capture before and
+  after for every visible change with the strongest evidence the
   environment offers (`docs/agents/pr_screenshots.md`, `scripts/review_screenshots.py`).
-  Extend those; do not build a second system. Open the images and look at them. On a
+  Extend those; do not build a second system. If the baseline was missed, recover it
+  in an isolated checkout or another safe supported workflow without overwriting work.
+  Open the images, fix regressions and recapture as needed. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
 - Provide the user a review artifact for every user-facing change: a clearly labeled
   before/after comparison that shows the affected state and is linked or displayed in
-  the completion message (and in the PR description when preparing a PR). Use the
+  the completion message (and in the PR description when preparing a PR). A script,
+  passing test, or uninspected or undelivered file is not an artifact. Use the
   existing screenshot workflow for visual changes; use an appropriate recording or
   concrete before/after output for behavior that still images cannot show. Keep task
   artifacts out of tracked documentation. If either side cannot be captured, provide
@@ -112,12 +144,9 @@ Correct the user when appropriate.
 
 ## Success Criteria
 
-Done means:
-
-- the requested behavior is implemented
-- the change is minimal and follows existing patterns (Unless a large task was assigned)
-- risky behavior was validated, or validation was intentionally skipped with a reason
-- remaining risks are stated plainly
+Done means the mandatory completion gate is satisfied for every applicable
+obligation, including behavior, accepted plan, migration, registries, validation
+and delivered review evidence. State residual risks accurately.
 
 ## Context Discipline
 
@@ -142,6 +171,7 @@ When context gets large, summarize the current task state and keep only:
 - relevant file paths
 - changed behavior
 - unresolved risks
+- the complete outstanding obligations checklist and evidence/blocker state
 
 ## Subagents
 
@@ -184,6 +214,7 @@ Before adding helpers, maps, files, abstractions, or validation layers, ask:
 
 Do not create new abstractions, helper layers, provider interfaces, background tasks, docs, or config files unless the current task clearly needs them.
 Before adding a new function, class, setting, management command, or integration hook, check whether an existing pattern already solves the same problem.
+A change that adds a module or moves a responsibility updates `docs/architecture/code-map.md` in the same PR (`python3 scripts/check_code_map.py` checks its paths).
 
 For bugs, patch the narrow failing path first.
 For small behavior changes, make the direct edit first.
@@ -207,9 +238,12 @@ For complex tasks:
 
 ## Validation
 
-Match validation to risk.
+Match discretionary validation to risk. This guidance never overrides validation,
+platform runtime evidence, builds, or review artifacts required by the user,
+accepted plan, or standing rules; apply the mandatory completion gate first.
 
-Skip validation by default for low-risk changes and say so plainly.
+Skip discretionary validation by default for low-risk changes and say so plainly;
+never skip a required check or review artifact on this basis.
 
 Never skip validation when touching:
 
@@ -348,7 +382,9 @@ After work, summarize:
 - validation run, or why skipped
 - remaining risk
 
-Keep summaries short. Do not explain obvious edits.
+Only issue a final response after the mandatory completion audit. Link or display
+the actual required review artifacts and report platform evidence independently.
+Keep summaries short without omitting required evidence or genuine blockers.
 
 Oververbosity:low
 
@@ -378,6 +414,7 @@ For each new outcome in `last-reviewed..upstream/dev`:
 Models/migrations and divergent UI normally require manual adaptation. Provider modules and isolated importers may permit small ports. CI, Docker, and dependencies move as coherent platform packages. Branding, version bumps, merge commits, generated churn, and individual dependency-bot commits are normally discarded with the ledger's reason codes.
 
 ## Repository Map
+- Start at `docs/architecture/code-map.md`: which module owns a subject, where new code goes, and what to search before adding a helper.
 - `src/` Django project code (apps: `app`, `users`, `lists`, `integrations`, `events`; config in `config/`).
 - `src/templates/` and `src/static/` for UI templates and CSS assets.
 - `src/static/css/main.css` is the committed Tailwind output loaded by templates.
@@ -488,6 +525,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 ## Testing
 
 Run tests through `scripts/test.sh`, in this priority order:
+These defaults do not waive any check required by the completion gate.
 
 1. **Targeted (default while iterating):** `scripts/test.sh <dotted.label> [...]` — run only the tests for what you touched, e.g. `scripts/test.sh app.tests.views.test_media_details` or a whole app label like `scripts/test.sh lists`.
 2. **Fast suite (default before finishing):** `scripts/test.sh` — the whole suite minus tests tagged `slow` (benchmarks and Playwright integration). Output is bounded (`--buffer` suppresses stdout of passing tests) and no `playwright install` is needed.
@@ -497,12 +535,14 @@ Notes:
 - **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
 - **Saved test database:** a local real-migration run replays migrations once, then restores the saved result from `.floppy/` until any migration, the lockfile, settings or the runner changes. The run prints one `[test-db]` line saying which happened. `FLOPPY_TEST_DB_TEMPLATE=0` forces a replay. CI builds the file once per run and its shards restore it; the upgrade, PostgreSQL, image and coverage jobs still replay. See `docs/architecture/test-suite-cost.md`.
 - **Shards:** `scripts/test.sh --shards N [label ...]` runs N separate serial processes, each with `FLOPPY_TEST_SHARD=i/N`, split by test module (`src/config/test_sharding.py`). It waits for all of them, prints each exit status with a bounded summary, keeps full logs in `.floppy/shards/`, and fails if any shard failed. No labels means the fast suite. Never use Django's `--parallel` pool for this; it loses results (`docs/architecture/test-suite-cost.md`, "Cause 3"). CI runs a browser shard plus five unit shards and fails `test (3.12)` unless every required test ran exactly once; see "Balanced shards" in that document.
+- JavaScript logic tests: `npm run test:js`, seconds, run after any change under `frontend/` or `native-proof/`. It runs every `*.test.mjs` once (lint CI runs it too) and fails if a new test file is in none of its lists.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a
   running instance. Add `--json` for a machine-readable report. This is the fastest way to tell
   a broken environment from a broken change, and it is what a bug report should carry when
   Floppy will not start.
+- Data confidence: `uv run --no-sync python src/manage.py check_data_invariants` — counts items, plays and trackers that break a data invariant (empty buckets, duplicate copies, tombstoned but tracked, broken structure, stalled work), each marked "always a fault" or "review". Reads only; `--verbose` adds example ids, `--user ID` scopes it, `--json`, `--strict` exits 1 on a fault. Checks live in `src/app/data_invariants.py`.
 - Migration sync confidence: `uv run --no-sync python src/manage.py check_migration_hygiene --strict`
 - Migration upgrade replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
 - Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast

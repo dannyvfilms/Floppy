@@ -40,7 +40,6 @@ from app.activity_builders import (
 from app.db_retry import run_retryable_db_operation
 from app.detail_builders import (
     _apply_cached_hltb_link,
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_episode_graph_from_season_cache,
     _build_game_lengths_context,
@@ -52,6 +51,7 @@ from app.detail_builders import (
     _build_stored_season_scores_graph,
     _build_trakt_popularity_context,
     build_book_formats,
+    build_detail_link_sections,
 )
 from app.detail_related import (
     drop_recommendations_if_hidden,
@@ -77,9 +77,9 @@ from app.providers import services, tmdb
 from app.services import metadata_resolution, opencritic_scores, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
-    _build_detail_tag_sections,
     _detail_request_url,
     _resolve_detail_tag_genres,
+    build_detail_tag_sections,
 )
 from app.track_modal_views import _DummyPodcastWrapper
 from app.view_constants import (
@@ -935,7 +935,7 @@ def media_details(
                 "show_id": show.id,  # For API endpoint
                 # The show's website belongs in the same links popover every
                 # other detail page uses, rather than a podcast-only widget.
-                "detail_link_sections": _build_detail_link_sections(
+                "detail_link_sections": build_detail_link_sections(
                     media_metadata,
                     media_type,
                     source,
@@ -1774,11 +1774,22 @@ def media_details(
     # Enrich related items with user tracking data
     # For public views, use list owner's data if available
     if render_secondary_only and media_metadata.get("related"):
+        # The viewer's show rows already hold their seasons and episodes; the
+        # season cards reuse them instead of loading them all again.
+        preloaded_seasons = None
+        if list_owner is None and user_medias:
+            preloaded_seasons = [
+                season
+                for user_media in user_medias
+                if "seasons" in getattr(user_media, "_prefetched_objects_cache", {})
+                for season in user_media.seasons.all()
+            ]
         enrich_detail_related_cards(
             request,
             media_metadata,
             media_type=media_type,
             tracking_user=list_owner,
+            preloaded_seasons=preloaded_seasons,
         )
 
     # For music tracks, get linked artist and album for navigation
@@ -2179,7 +2190,7 @@ def media_details(
         "watch_provider_region": request.user.watch_provider_region
         if request.user.is_authenticated
         else None,
-        "detail_link_sections": _build_detail_link_sections(
+        "detail_link_sections": build_detail_link_sections(
             media_metadata,
             media_type,
             identity_provider,
@@ -2188,7 +2199,7 @@ def media_details(
             # The secondary fragment has no links menu, so it skips the lookups.
             viewer=None if public_view or render_secondary_only else request.user,
         ),
-        "detail_tag_sections": _build_detail_tag_sections(
+        "detail_tag_sections": build_detail_tag_sections(
             media_metadata,
             detail_item,
             request.user,

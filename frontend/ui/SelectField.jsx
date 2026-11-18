@@ -46,6 +46,7 @@ export function SelectField({
   name,
   options = [],
   value,
+  displayValue,
   onChange,
   disabled = false,
   help,
@@ -56,6 +57,7 @@ export function SelectField({
   filter = false,
   leadingIcon,
   iconChevron = false,
+  indicator,
   testID,
   triggerStyle,
   triggerTextStyle,
@@ -119,11 +121,11 @@ export function SelectField({
         triggerStyle,
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
-      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selectedLabel || placeholder}</Text>
-      {filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
+      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{displayValue ?? (selectedLabel || placeholder)}</Text>
+      {indicator || (filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
         : iconChevron
           ? <View style={styles.chevron}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
-          : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>}
+          : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>)}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     {popover ? <DropdownMenu open={open} anchor={anchor} palette={colors} closeLabel={defaultLabels.close}

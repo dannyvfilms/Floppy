@@ -1006,7 +1006,7 @@ def _build_detail_link_entry(label, url, brand_key):
     }
 
 
-def _build_detail_link_sections(
+def build_detail_link_sections(
     media_metadata,
     media_type,
     identity_provider,
@@ -1014,7 +1014,10 @@ def _build_detail_link_sections(
     item=None,
     viewer=None,
 ):
-    """Return grouped source and external link chips for the media detail action row."""
+    """Return grouped source and external link chips for the media detail action row.
+
+    Shared by the media, season and music detail pages and the detail API.
+    """
     if not isinstance(media_metadata, dict):
         return []
 
