@@ -342,9 +342,8 @@ def _plex_link(user, source, item_type, media_id):
     """Return the Plex web page for the viewer's copy, from the cached rating key."""
     from app.models import CollectionEntry
 
-    account = getattr(user, "plex_account", None)
-    if account is None:
-        return None
+    # The copy is looked up before the account: most titles have no Plex copy,
+    # and the missing account would cost its own query on every detail page.
     entry = (
         CollectionEntry.objects.filter(
             user=user,
@@ -358,6 +357,9 @@ def _plex_link(user, source, item_type, media_id):
         .first()
     )
     if entry is None:
+        return None
+    account = getattr(user, "plex_account", None)
+    if account is None:
         return None
     # A copy is on the server whose connection URI cached it.
     machine = next(
@@ -417,9 +419,10 @@ def server_link_groups(user, source, media_type, media_id):
         players.append(plex)
     # Emby is left out: it reports playback only, so it cannot say what is
     # on the server.
-    jellyfin = getattr(user, "jellyfin_account", None)
-    for app, _instance_id, path in pages:
-        if app == "jellyfin" and jellyfin is not None:
+    jellyfin_paths = [path for app, _instance_id, path in pages if app == "jellyfin"]
+    jellyfin = getattr(user, "jellyfin_account", None) if jellyfin_paths else None
+    for path in jellyfin_paths:
+        if jellyfin is not None:
             url = _web_url(jellyfin, path)
             if jellyfin.server_id:
                 url += f"&serverId={jellyfin.server_id}"
@@ -432,13 +435,16 @@ def server_link_groups(user, source, media_type, media_id):
         url = f"{user.seerr_url.rstrip('/')}/{seerr_type}/{media_id}"
         groups.append(("Requests", [("Seerr", url, "seerr")]))
 
-    instances = {
-        instance.pk: instance for instance in getattr(user, f"{arr}_instances").all()
-    }
+    arr_pages = [(instance_id, path) for app, instance_id, path in pages if app == arr]
+    instances = (
+        {instance.pk: instance for instance in getattr(user, f"{arr}_instances").all()}
+        if arr_pages
+        else {}
+    )
     label = "Radarr" if arr == "radarr" else "Sonarr"
     downloads = []
-    for app, instance_id, path in pages:
-        instance = instances.get(instance_id) if app == arr else None
+    for instance_id, path in arr_pages:
+        instance = instances.get(instance_id)
         if instance is not None:
             name = f"{label} ({instance.name})" if instance.name else label
             downloads.append((name, _web_url(instance, path), arr))

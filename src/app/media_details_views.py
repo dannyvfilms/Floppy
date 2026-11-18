@@ -2185,7 +2185,8 @@ def media_details(
             identity_provider,
             display_provider,
             item=detail_item,
-            viewer=None if public_view else request.user,
+            # The secondary fragment has no links menu, so it skips the lookups.
+            viewer=None if public_view or render_secondary_only else request.user,
         ),
         "detail_tag_sections": _build_detail_tag_sections(
             media_metadata,
