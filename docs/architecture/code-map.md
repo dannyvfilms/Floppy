@@ -98,6 +98,7 @@ names the module to import from.
 | An API endpoint | `src/api/fork_views_<subject>.py`, route in `src/api/fork_urls.py` | Declare its scope: `docs/architecture/api-scopes.md` |
 | A filter or sort for a list-shaped page | `src/app/library_query/filters.py` or `src/app/library_query/sorts.py` | "Adding a filter or sort" in `docs/architecture/library-query.md`, which also lists the tests and surfaces to update |
 | A cache for a page | Key builder and registration in `src/app/cache_utils.py` | Clear it through `clear_library_view_caches`: `docs/architecture/view-caches.md` |
+| A bulk write to tracking rows (`update`, `bulk_create`, `bulk_update`) | Where the write is; a row in `src/app/bulk_write_refresh.py` | Say how the library pages, Statistics and History learn about it: `app.tests.test_bulk_write_refresh` fails until you do |
 | A background task | `src/app/tasks_<subject>.py` (or the owning app's `tasks`) | Default `celery` queue unless a page waits on it: `AGENTS.md`, Local Commands |
 | A call to a metadata provider, including its image lookups | `src/app/providers/<provider>.py`. The one exception: game logos and backdrops from art-only services go in `src/app/game_artwork/` | Pages never wait on it (rule 2): fetch in a task or on save, render what is stored. Outbound rules: `docs/architecture/outbound-fetch.md`; credentials: `docs/architecture/provider-credential-consumers.md` |
 | An import or scheduled sync | `src/integrations/imports/<source>.py` | A run that finds no change writes nothing (see the rules below) |
@@ -118,7 +119,9 @@ Each rule has tests that fail when it breaks.
    `app.tests.test_read_pages_do_not_write`, `app.tests.test_statistics_cache`
    (serving makes no provider call), `app.tests.test_music_page_repair`.
 3. **One function clears view caches:** `clear_library_view_caches` in
-   `src/app/cache_utils.py`. `app.tests.test_view_cache_invalidation`.
+   `src/app/cache_utils.py`. `app.tests.test_view_cache_invalidation`. A write
+   that skips signals is listed with how it refreshes:
+   `app.tests.test_bulk_write_refresh`.
 4. **A recurring task with nothing to do costs milliseconds** and writes
    nothing. `integrations.tests.test_recurring_sync_unchanged`,
    `app.tests.test_backfill_day_keys`, `app.tests.test_runtime_backfill_requeue`.
