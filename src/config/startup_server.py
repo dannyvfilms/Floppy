@@ -10,12 +10,18 @@ nothing else is ready to run.
 
 from __future__ import annotations
 
+import base64
 import signal
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from config.server_port import validate_port
+
+# A small easter egg above the heading. Read from disk once and inlined, because
+# nothing else can serve a file while the database is being prepared.
+_ART = base64.b64encode((Path(__file__).parent / "startup_art.webp").read_bytes()).decode()
 
 RETRY_AFTER_SECONDS = 5
 _SOCKET_TIMEOUT_SECONDS = 10
@@ -26,8 +32,15 @@ _PAGE = (
     "<title>Floppy is starting</title>"
     "<style>body{font-family:system-ui,sans-serif;background:#111;color:#eee;"
     "display:grid;place-items:center;min-height:100vh;margin:0;text-align:center}"
-    "p{color:#aaa;max-width:22rem}</style></head><body><main>"
-    "<h1>Floppy is starting</h1>"
+    "p{color:#aaa;max-width:22rem}"
+    # The wrapper is as wide as the heading. The image takes no part in that
+    # width (width:0 + min-width) and fills 70% of it, so the art never outgrows
+    # the heading.
+    ".t{width:max-content;margin:0 auto}"
+    ".t img{display:block;width:0;min-width:70%;height:auto;margin:0 auto .25rem}"
+    "h1{margin:0 0 1rem}</style></head><body><main>"
+    f'<div class="t"><img alt="" src="data:image/webp;base64,{_ART}">'
+    "<h1>Floppy is starting</h1></div>"
     "<p>It is updating its database. This page refreshes on its own.</p>"
     "</main></body></html>"
 ).encode()

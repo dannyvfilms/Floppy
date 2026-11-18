@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   topRight: { top: 8, right: 8 },
   bottomRight: { bottom: 9, right: 6 },
   bottomLeft: { bottom: 9, left: 6 },
-  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, zIndex: 20 },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, zIndex: 20 },
   progressFill: { height: '100%' },
   selection: { position: 'absolute', top: 6, left: 6, zIndex: 20, width: 24, height: 24,
     borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },

@@ -6,6 +6,8 @@ content so the template and the React card read one answer. Hover actions,
 modals and the rating button are added by later slices.
 """
 
+import re
+
 from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
@@ -15,6 +17,8 @@ from app.icon_specs import file_icon
 from app.models import MediaTypes, Status
 from app.templatetags import app_tags
 from users.templatetags import user_tags
+
+_EPISODE_PATH = re.compile(r"/season/(\d+)/episode/(\d+)")
 
 SQUARE_TYPES = {MediaTypes.PODCAST.value, MediaTypes.MUSIC.value}
 
@@ -389,12 +393,19 @@ def _corner_chips(ctx, media_type):
     ):
         href = app_tags.next_episode_url(item, media)
         if href:
-            chips.append({
+            chip = {
                 "kind": "next-episode",
                 "text": _("Next ep"),
                 "compactText": _("Next"),
                 "href": href,
-            })
+            }
+            # Desktop hover widens the chip to name the episode, when it fits.
+            match = _EPISODE_PATH.search(href)
+            if match:
+                code = f"S{int(match[1]):02d}E{int(match[2]):02d}"
+                chip["expandedText"] = _("Next Episode: %(code)s") % {"code": code}
+                chip["expandedShortText"] = code
+            chips.append(chip)
     return chips
 
 

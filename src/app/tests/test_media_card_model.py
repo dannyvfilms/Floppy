@@ -95,6 +95,21 @@ class MediaCardModelTest(TestCase):
             "href": "/episode/next/",
         }])
 
+    def test_next_episode_chip_names_the_episode_for_hover(self):
+        """The episode code comes from the link, so hover can say which one is next."""
+        media = SimpleNamespace(next_episode_queue=False)
+        ctx = {
+            "item": self.item,
+            "media": media,
+            "user": SimpleNamespace(is_authenticated=True, quick_season_update_mobile="next_episode"),
+        }
+        href = "/details/tmdb/tv/1/show/season/3/episode/5"
+        with patch("app.media_card_model.app_tags.next_episode_url", return_value=href):
+            chip = _corner_chips(ctx, "tv")[0]
+
+        self.assertEqual(chip["expandedText"], "Next Episode: S03E05")
+        self.assertEqual(chip["expandedShortText"], "S03E05")
+
     def test_discover_actions(self):
         """Discover cards plan or hide a candidate with a POST that targets its row."""
         ctx = card_context(

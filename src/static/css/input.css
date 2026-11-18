@@ -663,11 +663,16 @@ main > .container:has(img[data-artwork-ready="true"]),
   animation: none;
 }
 
+.media-card-progress-bar {
+  height: 3px;
+}
+
 .media-card-hover-outline::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 2px solid transparent;
+  /* The progress bar is 3px; the outline reads as the same family. */
+  border: 3px solid transparent;
   border-radius: inherit;
   pointer-events: none;
   z-index: 30;
@@ -3381,8 +3386,19 @@ html.light .theme-toggle-icon-moon {
 }
 .media-quick-status-error { position: absolute; z-index: 32; top: 36px; left: 8px; right: 8px;
   padding: 4px; color: white; background: #991b1b; font-size: 12px; }
+/* The Next Episode chip widens on hover to name the episode, like the status badge. */
+.media-card-next-more { display: none; }
+@media (hover: hover) and (pointer: fine) and (min-width: 601px) {
+  .media-card-next-rest { display: block; max-width: 8rem; overflow: hidden; white-space: nowrap;
+    transition: max-width .2s ease, opacity .2s ease; }
+  .media-card-next-more { display: block; max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+    transition: max-width .2s ease, opacity .2s ease; }
+  [data-next-episode="true"]:hover .media-card-next-rest { max-width: 0; opacity: 0; }
+  [data-next-episode="true"]:hover .media-card-next-more { max-width: var(--next-more-width, 12rem); opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .media-quick-status-label, .media-card-visual [data-next-episode="true"] { transition: none; }
+  .media-quick-status-label, .media-card-visual [data-next-episode="true"],
+  .media-card-next-rest, .media-card-next-more { transition: none; }
 }
 
 .media-card-next-episode-compact {
@@ -3481,6 +3497,19 @@ html.light .theme-toggle-icon-moon {
   height: 100%;
 }
 
+/* Every wrapper between the card and its image fills the card, so artwork that
+   is not 2:3 still covers the card down to the bottom edge. */
+:is(.search-result-card, .search-result-card-square) .media-card-visual,
+:is(.search-result-card, .search-result-card-square) .media-card-visual>:is(a, div.cursor-pointer):first-child {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+:is(.search-result-card, .search-result-card-square) .media-card-visual {
+  position: relative;
+}
+
 .search-result-card .media-card-poster {
   width: 100%;
   height: 100%;
@@ -3539,6 +3568,11 @@ html.light .theme-toggle-icon-moon {
 
 .search-result-card:hover .media-card-title[title]::before {
   opacity: 0;
+}
+
+/* A title cut at a word boundary by the card (see useRestTitle). */
+.search-result-card .media-card-title[data-rest-title]::before {
+  content: attr(data-rest-title);
 }
 
 .search-result-card .media-card-body {
@@ -3659,6 +3693,11 @@ html.light .theme-toggle-icon-moon {
 
 .search-result-card-square:hover .media-card-title[title]::before {
   opacity: 0;
+}
+
+/* A title cut at a word boundary by the card (see useRestTitle). */
+.search-result-card-square .media-card-title[data-rest-title]::before {
+  content: attr(data-rest-title);
 }
 
 /*
@@ -4000,9 +4039,11 @@ html.light .theme-toggle-icon-moon {
   max-height: none;
   margin-top: 0.25rem;
   opacity: 1;
-  color: #fff;
-  font-weight: 600;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  /* Same type as the hover subtitle, so a line that is always visible and one
+     that appears on hover look alike. */
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 400;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
 .stat-scroll-safe.stat-tooltip-safe {
@@ -4210,7 +4251,9 @@ html.light .theme-toggle-icon-moon {
 
   .media-filter-toolbar {
     display: grid !important;
-    grid-template-columns: repeat(3, fit-content(9rem)) auto;
+    /* The shared filter bar is one child that lays out its own three dropdowns
+       on one row; give it the full width left of the settings button. */
+    grid-template-columns: minmax(0, 1fr) auto;
     column-gap: calc(var(--spacing) * 1);
     row-gap: 0;
     align-items: center;
@@ -4762,4 +4805,19 @@ button.tier-label:focus-visible .tier-label-edit {
     color: white;
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
+}
+
+/* The column button is the same square as the settings gear beside the title:
+   40px, 6px corners, icon centred. The filter toolbar's mobile rules size every
+   button in a .filter-control, so this repeats them at higher specificity. */
+.media-column-button,
+.filter-toolbar .filter-control>button.media-column-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 !important;
+  border-radius: 6px;
+  border-color: var(--color-border);
 }

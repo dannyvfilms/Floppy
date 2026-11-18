@@ -61,6 +61,58 @@ function ChevronRight() {
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>;
 }
 
+// Text width in CSS pixels, measured with the element's own font.
+let measureContext;
+function textWidth(element, text) {
+  measureContext = measureContext || document.createElement('canvas').getContext('2d');
+  const style = getComputedStyle(element);
+  measureContext.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  return measureContext.measureText(text).width;
+}
+
+// On a desktop hover the Next Episode chip widens to name the episode, the way the
+// status badge widens to its label. It picks the longest wording that fits in the
+// card beside the status badge, and stays as it is when none does. Touch screens
+// have no hover, so they keep the short chip (the CSS only widens on fine pointers).
+function useNextEpisodeMore(anchor, candidates) {
+  const [more, setMore] = useState(null);
+  const key = candidates.join('|');
+  useLayoutEffect(() => {
+    const element = anchor.current;
+    const visual = element?.closest('.media-card-visual');
+    if (!element || !visual || !candidates.length) { setMore(null); return undefined; }
+    const measure = () => {
+      // Room beside the left status badge (8px edges, badge ~28px) minus the chip's chevron and padding.
+      const room = visual.clientWidth - 16 - 36 - 30;
+      const text = candidates.find((candidate) => textWidth(element, candidate) <= room);
+      setMore(text ? { text, width: Math.ceil(textWidth(element, text)) + 2 } : null);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(visual);
+    document.fonts?.ready.then(measure);
+    return () => observer?.disconnect();
+  }, [anchor, key]);
+  return more;
+}
+
+function NextEpisodeChip({ chip, labels }) {
+  const anchor = useRef(null);
+  const more = useNextEpisodeMore(anchor, [chip.expandedText, chip.expandedShortText].filter(Boolean));
+  const rest = chip.compactText
+    ? <><span className="media-card-next-episode-full">{chip.text}</span>
+      <span className="media-card-next-episode-compact">{chip.compactText}</span></>
+    : <span>{chip.text}</span>;
+  return <a ref={anchor} href={chip.href} {...{ 'hx-disable': '' }}
+    className={`${chipBase} top-2 right-2 hover:bg-indigo-600 flex items-center gap-0.5 transition-colors`}
+    data-next-episode="true" title={labels.nextEpisode} aria-label={labels.nextEpisode}>
+    <ChevronRight />
+    <span className="media-card-next-rest">{rest}</span>
+    {more && <span className="media-card-next-more" aria-hidden="true"
+      style={{ '--next-more-width': `${more.width}px` }}>{more.text}</span>}
+  </a>;
+}
+
 function CornerChip({ chip, labels }) {
   if (chip.kind === 'runtime') {
     return <span className="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</span>;
@@ -74,6 +126,7 @@ function CornerChip({ chip, labels }) {
   if (chip.kind === 'collected') {
     return <div className="absolute bottom-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md" title={chip.title}>{chip.text}</div>;
   }
+  if (chip.kind === 'next-episode' && chip.href) return <NextEpisodeChip chip={chip} labels={labels} />;
   const inner = chip.kind === 'next-episode'
     ? <><ChevronRight />{chip.compactText
       ? <><span className="media-card-next-episode-full">{chip.text}</span>
@@ -311,6 +364,35 @@ function useTapToReveal(cardRef, host, enabled, selecting, clickable) {
   return revealed;
 }
 
+// At rest the grid card shows its title on one line. CSS can only cut that line
+// mid-word ("Secret Life of a V…"), so this finds the longest run of whole words
+// that fits and hands it to the stylesheet. Hover then opens the same words onto
+// more lines instead of jumping from a half word. Web-only: native cards have no
+// hover expansion, so there is no transition for a cut word to disturb.
+function useRestTitle(ref, title, enabled) {
+  const [rest, setRest] = useState(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!enabled || !element || !title) { setRest(null); return undefined; }
+    const measure = () => {
+      const room = element.clientWidth + 1;
+      if (!room || textWidth(element, title) <= room) { setRest(null); return; }
+      const words = title.split(/\s+/);
+      for (let count = words.length - 1; count > 0; count -= 1) {
+        const candidate = `${words.slice(0, count).join(' ').replace(/[\s,;:\-–]+$/, '')}…`;
+        if (textWidth(element, candidate) <= room) { setRest(candidate); return; }
+      }
+      setRest(null); // not even the first word fits: leave the plain ellipsis
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    document.fonts?.ready.then(measure);
+    return () => observer?.disconnect();
+  }, [ref, title, enabled]);
+  return rest;
+}
+
 // The save and score responses still swap server fragments out of band for pages
 // that render them. A card React owns ignores that swap and listens for the
 // floppyCardUpdate event the same responses send.
@@ -462,6 +544,8 @@ export const MediaCard = React.memo(function MediaCard({
   // hover. Surfaces that render their own shell leave it off.
   const grid = variant === 'grid' || variant === 'grid-square';
   const cardRef = useRef(null);
+  const titleRef = useRef(null);
+  const restTitle = useRestTitle(titleRef, model.title, grid);
   const revealed = useTapToReveal(cardRef, host, !!shownActions, !!selection?.active, !!shownActions?.clickable);
   const live = useLiveCard(model);
   const [quick, setQuick] = useState(model.quickStatus);
@@ -550,9 +634,9 @@ export const MediaCard = React.memo(function MediaCard({
             className={index === 0
               ? 'media-card-title block text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1'
               : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
-        </div> : model.recommend ? <h3 title={model.title}
+        </div> : model.recommend ? <h3 ref={titleRef} title={model.title} data-rest-title={restTitle || undefined}
           className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
-          : <a href={model.href} title={model.title} {...(model.boost ? { 'hx-boost': 'true' } : {})}
+          : <a ref={titleRef} href={model.href} title={model.title} data-rest-title={restTitle || undefined} {...(model.boost ? { 'hx-boost': 'true' } : {})}
           className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
         {model.altTitle && <AltTitle text={model.altTitle} label={copy.altTitle} />}
         {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">

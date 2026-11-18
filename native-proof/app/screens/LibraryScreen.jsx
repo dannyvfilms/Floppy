@@ -574,6 +574,8 @@ function LibraryPage({ params, navigate }) {
         : 'empty';
 
   const gridView = filters.view === 'grid';
+  // Mirrors LibraryGrid: only the plain card grid is a windowed list that reports its end.
+  const autoLoadsMore = gridView && groupBy === 'item' && !rows.some(row => row.identity?.entityType);
   const onRate = (row, score) => transport.update({ identity: row.identity, values: { score } })
     .then(() => setReloadToken(value => value + 1))
     .catch(cause => setError(cause?.message || 'Rating could not be saved.'));
@@ -681,8 +683,11 @@ function LibraryPage({ params, navigate }) {
             .then(() => setReloadToken(value => value + 1))} />}
       footer={<View style={styles.footer}>
         {error ? <Text accessibilityRole="alert" style={styles.inlineError}>{error}</Text> : null}
-        {hasMore ? <Button label="Load more" tone="surface" busy={loadingMore}
-          disabled={loadingMore} onPress={loadMore} palette={buttonPalette} /> : null}
+        {/* The card grid loads the next page itself (onEndReached, just before the end scrolls in).
+            The button stays for the table and the grouped grids, which have no windowed list, and as
+            "Try again" when a page failed, because a failed load does not scroll again. */}
+        {hasMore && (!autoLoadsMore || error) ? <Button label={autoLoadsMore ? 'Try again' : 'Load more'} tone="surface"
+          busy={loadingMore} disabled={loadingMore} onPress={loadMore} palette={buttonPalette} /> : null}
         {loadingMore ? <ActivityIndicator color={palette.accent} /> : null}
       </View>}
     />;
