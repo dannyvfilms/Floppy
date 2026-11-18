@@ -96,8 +96,11 @@ event. So `process_webhook` acknowledges its message only after it finishes
 - An attempt that passes the soft time limit is retried like a provider error.
   When retries run out, the task logs `webhook_failed`.
 
-Only this task acknowledges late. Imports and rebuilds run for minutes and are
-not all repeat-safe, so the global setting stays as it was.
+The three Stremio tasks work the same way: `Process Stremio playback webhook`
+(a playback start), `Process Stremio tracker event` (player and library events)
+and `Verify Stremio playback completion` (the poller that confirms a watch).
+Only these four tasks acknowledge late. Imports and rebuilds run for minutes
+and are not all repeat-safe, so the global setting stays as it was.
 
 A repeat must save nothing new, and the handlers are built for it:
 
@@ -112,6 +115,19 @@ A repeat must save nothing new, and the handlers are built for it:
   repeat of an old event cannot undo a newer one.
 - Each Plex webhook share is its own task and its own message, and each is
   repeat-safe on its own.
+- Stremio tracker events are dated by their receipt time and their plays carry
+  a session key, so a repeat finds the play it already saved.
+- A Stremio start queues its first verifier *before* it stores the playback
+  session. A worker lost in between still leaves a verifier waiting; a spare
+  verifier for a session that was never stored finds nothing and stops.
+- Each Stremio verifier carries the session revision it was queued for, and
+  queues the next one before storing the next revision. A redelivered verifier
+  for an older revision stops, so there is only ever one polling chain.
+- When a verifier confirms a watch it marks the session "completing" (with the
+  play to save) instead of deleting it, and closes it only after the play is
+  saved. A worker lost in between leaves the claim for the redelivery, which
+  saves the play once (its watched time comes from Stremio, so a repeat is a
+  duplicate). The claim lasts two hours, longer than the redelivery window.
 
 `integrations/tests/test_webhook_redelivery.py` runs every provider's task
 twice with the same arguments (an hour apart) for a completed play, a partial
@@ -120,9 +136,10 @@ history row, watch-state change or outbound delivery. It also stops a first
 attempt right after its first write and checks the retry leaves one play.
 
 A message that kills its worker every time it runs (for example, by using too
-much memory) would be handed back forever and hold the interactive queue. The
-task counts how often each event has started (in the cache, for six hours) and
-drops it after 8 starts with `webhook_failed ... error=TooManyDeliveries`. A
+much memory) would be handed back forever and hold the interactive queue. Each
+of these tasks counts how often its message has started (by Celery task id,
+which a redelivery and a retry keep, in the cache for six hours) and drops it
+after 8 starts with `webhook_failed ... error=TooManyDeliveries`. A
 normal event starts at most 4 times (one attempt and three retries). If the
 cache is down the count is skipped, never the webhook.
 

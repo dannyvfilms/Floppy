@@ -63,7 +63,7 @@ MOVIE_METADATA = {
 }
 
 
-def _tv_with_seasons(media_id, season_numbers):
+def _tv_with_seasons(media_id, season_numbers, *_args, **_kwargs):
     seasons = {
         f"season/{number}": {
             "image": "",
@@ -597,17 +597,16 @@ class WebhookStartCapTests(TestCase):
             token="cap-token",
         )
 
-    @patch("integrations.tasks._webhook._process_webhook")
-    def test_event_stops_after_too_many_starts(self, mock_process):
+    @patch("integrations.tasks._webhook._process_webhook", return_value=None)
+    def test_message_stops_after_too_many_starts(self, mock_process):
         from integrations.tasks._webhook import MAX_WEBHOOK_STARTS
 
-        def run(event_id="evt-cap", share_id=None):
-            return tasks.process_webhook(
-                "jellyfin",
-                {"Event": "Stop"},
-                self.user.id,
-                share_id=share_id,
-                event_id=event_id,
+        def run(task_id="task-cap"):
+            # A redelivery keeps the Celery task id, so the count follows it.
+            return tasks.process_webhook.apply(
+                args=("jellyfin", {"Event": "Stop"}, self.user.id),
+                kwargs={"event_id": "evt-cap"},
+                task_id=task_id,
             )
 
         for _ in range(MAX_WEBHOOK_STARTS):
@@ -618,10 +617,192 @@ class WebhookStartCapTests(TestCase):
             run()
         self.assertEqual(mock_process.call_count, MAX_WEBHOOK_STARTS)
         self.assertIn("webhook_failed event_id=evt-cap", logs.output[0])
+        self.assertIn("provider=jellyfin", logs.output[0])
         self.assertIn("error=TooManyDeliveries", logs.output[0])
 
-        # Another event, or the same event for a shared recipient, is counted
-        # on its own.
-        run(event_id="evt-other")
-        run(share_id=7)
-        self.assertEqual(mock_process.call_count, MAX_WEBHOOK_STARTS + 2)
+        # Another message is counted on its own.
+        run(task_id="task-other")
+        self.assertEqual(mock_process.call_count, MAX_WEBHOOK_STARTS + 1)
+
+
+class StremioRedeliveryTests(TestCase):
+    """Stremio's three queued tasks are repeat-safe and keep a claimed play."""
+
+    def setUp(self):
+        """Create a user with a tracked movie Stremio knows by its IMDb id."""
+        from app.mixins import disable_fetch_releases
+        from integrations.models import StremioAccount
+        from integrations.tests.test_stremio_playback import FakeRedis
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.user = get_user_model().objects.create_user(
+            username="stremio-redelivery",
+            password="x",
+        )
+        StremioAccount.objects.create(user=self.user, auth_key="encrypted")
+        with disable_fetch_releases():
+            self.item = Item.objects.create(
+                media_id="603",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                provider_external_ids={"imdb_id": "tt0133093"},
+                title="The Matrix",
+                image="",
+                runtime_minutes=30,
+            )
+        self.redis = FakeRedis()
+        self.library = []
+        self.queued = []
+        for target, kwargs in (
+            ("app.providers.tmdb.movie", {"return_value": MOVIE_METADATA}),
+            (
+                "app.providers.tmdb.find",
+                {
+                    "return_value": {
+                        "movie_results": [{"id": 603}],
+                        "tv_results": [],
+                        "tv_episode_results": [],
+                    },
+                },
+            ),
+            ("app.live_playback._attach_resolved_image", {}),
+            ("integrations.stremio_playback._client", {"return_value": self.redis}),
+            (
+                "integrations.stremio_playback.helpers.decrypt_or_raise",
+                {"return_value": "auth"},
+            ),
+            (
+                "integrations.stremio_playback.get_library_items",
+                {"side_effect": lambda _auth, ids=None: self.library},
+            ),
+            (
+                "integrations.tasks._webhook._schedule_verifier",
+                {"side_effect": lambda *args: self.queued.append(args)},
+            ),
+            ("integrations.stremio_queue.release_pending", {}),
+        ):
+            patcher = patch(target, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        """Clear the Now Playing card."""
+        live_playback.clear_user_playback_state(self.user.id)
+
+    def _plays(self):
+        return (
+            sum(
+                movie.plays.count()
+                for movie in Movie.objects.filter(user=self.user, item=self.item)
+            )
+            + Movie.objects.filter(
+                user=self.user, item=self.item, end_date__isnull=False
+            )
+            .exclude(plays__isnull=False)
+            .count()
+        )
+
+    def _snapshot(self):
+        return _snapshot(self.user) | {"plays": self._plays()}
+
+    def test_tracker_events_delivered_twice_write_once(self):
+        """Player and library events, repeated an hour later, change nothing."""
+        cases = (
+            ("player", "action=stop&currentTime=1750000&duration=1800000"),
+            ("library", "action=watched"),
+        )
+        for kind, extra in cases:
+            for session_cache in ("kept", "expired"):
+                with self.subTest(kind=kind, session_cache=session_cache):
+                    Movie.objects.create(item=self.item, user=self.user)
+                    received = (timezone.now() - timedelta(seconds=2)).isoformat()
+                    args = (kind, self.user.id, "movie", "tt0133093", extra, received)
+                    status = tasks.process_stremio_tracker_event(*args)
+                    self.assertEqual(status, "recorded")
+                    first = self._snapshot()
+                    self.assertGreater(first["plays"], 0)
+                    if session_cache == "expired":
+                        cache.clear()
+
+                    with patch(
+                        "django.utils.timezone.now",
+                        return_value=timezone.now() + REDELIVERY_DELAY,
+                    ):
+                        tasks.process_stremio_tracker_event(*args)
+
+                    self.assertEqual(self._snapshot(), first)
+                    Movie.objects.filter(user=self.user).delete()
+                    PlaybackProgress.objects.filter(user=self.user).delete()
+                    cache.clear()
+
+    def test_start_delivered_twice_keeps_one_session_and_a_verifier(self):
+        """A redelivered start finds its session and leaves one live verifier."""
+        payload = {"id": "tt0133093", "type": "movie"}
+        tasks.process_stremio_webhook(payload, self.user.id, "movie:tt0133093")
+        tasks.process_stremio_webhook(payload, self.user.id, "movie:tt0133093")
+
+        sessions = [v for v in self.redis.values.values() if v.startswith("{")]
+        self.assertEqual(len(sessions), 1)
+        stored_id = json.loads(sessions[0])["id"]
+        # The redelivery queued a spare verifier for a session it never stored;
+        # that one stops at once, and the stored session has its own.
+        self.assertIn((stored_id, 60, 0), self.queued)
+        spare = next(args for args in self.queued if args[0] != stored_id)
+        result = tasks.verify_stremio_playback(spare[0], revision=0)
+        self.assertEqual(result["reason"], "session_inactive")
+        self.assertEqual(self._plays(), 0)
+
+    def test_verifier_lost_after_claiming_completion_still_saves_one_play(self):
+        """The play survives a worker lost between claim and save."""
+        tasks.process_stremio_webhook(
+            {"id": "tt0133093", "type": "movie"}, self.user.id
+        )
+        session_id, _countdown, revision = self.queued[-1]
+        now = timezone.now()
+
+        def state(percent, flagged=0, watched_at=now):
+            duration = 30 * 60 * 1000
+            return [
+                {
+                    "_id": "tt0133093",
+                    "state": {
+                        "video_id": "tt0133093",
+                        "duration": duration,
+                        "timeWatched": duration * percent / 100,
+                        "timeOffset": 0,
+                        "flaggedWatched": flagged,
+                        "timesWatched": 0,
+                        "lastWatched": watched_at.isoformat(),
+                    },
+                }
+            ]
+
+        self.library = state(1)
+        tasks.verify_stremio_playback(session_id, revision=revision)
+        _sid, _countdown, revision = self.queued[-1]
+        self.library = state(95, flagged=1, watched_at=now + timedelta(minutes=25))
+
+        with (
+            patch(
+                "integrations.tasks._webhook._process_webhook",
+                side_effect=SystemExit("worker lost"),
+            ),
+            self.assertRaises(SystemExit),
+        ):
+            tasks.verify_stremio_playback(session_id, revision=revision)
+        self.assertEqual(self._plays(), 0)
+
+        # The broker delivers the same message again, an hour later.
+        with patch(
+            "django.utils.timezone.now",
+            return_value=timezone.now() + REDELIVERY_DELAY,
+        ):
+            result = tasks.verify_stremio_playback(session_id, revision=revision)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(self._plays(), 1)
+
+        # A second redelivery, now that the play is saved, does nothing.
+        result = tasks.verify_stremio_playback(session_id, revision=revision)
+        self.assertEqual(result["reason"], "session_inactive")
+        self.assertEqual(self._plays(), 1)
