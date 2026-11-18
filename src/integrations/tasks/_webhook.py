@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import requests
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.module_loading import import_string
@@ -15,6 +17,7 @@ from app import cache_safety, live_playback
 from app.log_safety import mapping_keys
 from app.providers import credentials
 from app.providers.services import ProviderAPIError
+from config.celery import FloppyTask
 from integrations import anime_mapping
 from integrations.models import PlexWebhookShare
 
@@ -325,13 +328,66 @@ def _queue_jellyfin_instant_push(user, payload):
     )
 
 
+# A message that kills its worker every time (too much memory, a crash in a
+# library) is handed back every time, because the task acknowledges late. Cap
+# how often one event may start so it cannot hold the interactive queue
+# forever. Four normal attempts (one plus three retries) fit well inside it.
+MAX_WEBHOOK_STARTS = 8
+WEBHOOK_STARTS_TTL_SECONDS = 6 * 60 * 60
+
+
+def _count_webhook_start(event_id, received_at, user_id, share_id):
+    """Return how many times this event's task has started, or None if unknown."""
+    if not event_id:
+        return None
+    key = f"webhook_starts:{event_id}:{received_at}:{user_id}:{share_id or 0}"
+    try:
+        cache.add(key, 0, timeout=WEBHOOK_STARTS_TTL_SECONDS)
+        return cache.incr(key)
+    except Exception:
+        return None
+
+
+class _WebhookTask(FloppyTask):
+    """Logs a webhook that will not be tried again, so the loss is visible."""
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Log one WARNING when the final attempt fails (no payload values)."""
+        provider, _payload, user_id, *_ = (*args, None, None, None)
+        provider = kwargs.get("provider", provider)
+        user_id = kwargs.get("user_id", user_id)
+        logger.warning(
+            "webhook_failed event_id=%s provider=%s user_id=%s outcome=error "
+            "retries=%s error=%s",
+            kwargs.get("event_id"),
+            provider,
+            user_id,
+            self.request.retries,
+            type(exc).__name__,
+        )
+        super().on_failure(exc, task_id, args, kwargs, einfo)
+
+
 @shared_task(
     name="Process media server webhook",
+    base=_WebhookTask,
+    # The broker message is the only copy of the event once the receiver has
+    # answered 200, so acknowledge it only after the task finishes. A worker
+    # stopped or killed mid-task (deploy, restart, out of memory) leaves the
+    # message unacknowledged and the broker delivers it again; the handlers are
+    # repeat-safe (test_webhook_redelivery). Task-level only: imports and
+    # rebuilds are long and not all repeat-safe. See webhook-delivery.md.
+    acks_late=True,
+    reject_on_worker_lost=True,
     # A provider blip used to discard the scrobble outright, since the task
-    # re-raised with no retry configured (#521). Only provider/network errors are
-    # retried: a malformed payload will fail identically every time, and
-    # retrying it would just burn the worker.
-    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    # re-raised with no retry configured (#521). Only provider/network errors
+    # and the soft time limit are retried: a malformed payload will fail
+    # identically every time, and retrying it would just burn the worker.
+    autoretry_for=(
+        ProviderAPIError,
+        requests.exceptions.RequestException,
+        SoftTimeLimitExceeded,
+    ),
     max_retries=3,
     retry_backoff=True,
     retry_jitter=True,
@@ -357,6 +413,17 @@ def process_webhook(
     telemetry and to keep a late event from overwriting newer state.
     ``event_id`` ties receipt, worker start and the saved result together.
     """
+    starts = _count_webhook_start(event_id, received_at, user_id, share_id)
+    if starts is not None and starts > MAX_WEBHOOK_STARTS:
+        logger.warning(
+            "webhook_failed event_id=%s provider=%s user_id=%s outcome=error "
+            "starts=%s error=TooManyDeliveries",
+            event_id,
+            provider,
+            user_id,
+            starts,
+        )
+        return None
     return _process_webhook(
         provider,
         payload,
