@@ -1376,7 +1376,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
-- `frontend/ui/IntegrationPanels.jsx`
 - `frontend/ui/ListCard.jsx`
 - `frontend/ui/ListFormView.jsx`
 - `frontend/ui/ListHeader.jsx`
@@ -1480,7 +1479,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountCollectionCopyFields.jsx`
 - `frontend/ui/mountCollectionFields.jsx`
 - `frontend/ui/mountCopyField.jsx`
-- `frontend/ui/mountIntegrationPanels.jsx`
 - `frontend/ui/mountDateTimePicker.jsx`
 - `frontend/ui/mountDetailChildren.jsx`
 - `frontend/ui/mountDetailComposition.jsx`
