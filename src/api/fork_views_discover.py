@@ -19,8 +19,8 @@ from app.discover_views import (
     _discover_media_options,
     _discover_response_rows,
     _get_or_create_discover_item,
-    _invalidate_discover_after_action,
     _resolve_discover_media_type_for_user,
+    invalidate_discover_after_action,
 )
 from app.helpers import build_provider_ids, is_item_collected
 from app.home_artwork import refresh_home_artwork
@@ -452,7 +452,7 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
                 feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
             ).delete()
 
-        _invalidate_discover_after_action(
+        invalidate_discover_after_action(
             request.user.id,
             item.library_media_type or item.media_type,
             discover_debug=False,
