@@ -421,7 +421,7 @@ jobs:
           version: "0.12.3"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test
-      - name: Run OAuth, reliable sync, custom field, Statistics custom range and data invariant tests on PostgreSQL
+      - name: Run OAuth, reliable sync, custom field, Statistics custom range, data invariant and list filter option tests on PostgreSQL
         run: >-
           scripts/test_postgres.sh integrations.tests.test_oauth_device_flow
           api.tests.test_reliable_sync api.tests.test_reliable_sync_postgres
@@ -429,6 +429,7 @@ jobs:
           app.tests.views.test_collection_custom_field_list
           app.tests.test_statistics_custom_range_cache
           app.tests.test_check_data_invariants
+          lists.tests.test_list_filter_options
 
   # The migration checks read more than the tree: hygiene compares against the
   # upstream baseline fetched at run time. They run on every commit, in their

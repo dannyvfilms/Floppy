@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import logging
 from collections.abc import Iterable
 from itertools import batched
+from types import SimpleNamespace
 
 from dateutil.relativedelta import relativedelta
 from django.apps import apps
 from django.db import connection
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q, QuerySet
+from django.db.models.functions import ExtractYear
 from django.utils import timezone
 
 from app.models import CollectionEntry, Item, MediaTypes, Sources, Status
@@ -317,6 +320,147 @@ def _extract_authors(item: Item) -> list[str]:
     return normalized
 
 
+def _item_scopes(item_ids) -> list[QuerySet]:
+    """Return ``Item`` querysets that together cover ``item_ids``.
+
+    A queryset (such as a list's ``items.values_list("id")``) stays one SQL
+    subquery. A plain collection of ids is split into batches the backend
+    accepts as ``IN`` parameters.
+    """
+    if isinstance(item_ids, QuerySet):
+        return [Item.objects.filter(id__in=item_ids)]
+    ids = {item_id for item_id in item_ids if item_id is not None}
+    if not ids:
+        return []
+    return [
+        Item.objects.filter(id__in=id_batch)
+        # Leave room for the menu query's own parameters (paths, keys, tags).
+        for id_batch in batched(sorted(ids), max(1, _id_batch_size(len(ids)) - 32))
+    ]
+
+
+@dataclasses.dataclass(frozen=True)
+class _JsonOption:
+    """One JSON source of filter-menu values: a column, a path inside it, a key."""
+
+    field_name: str
+    path: tuple[str, ...] = ()
+    key: str | None = None
+
+
+def _json_option_branch(option: _JsonOption) -> tuple[str, list]:
+    """Return one UNION branch selecting ``(json_type, text)`` for ``option``.
+
+    The column (or the value at ``path`` inside it) is read as an array; a
+    single non-array value counts as a one-element array. With ``key``, each
+    element's ``key`` member is returned instead of the element.
+    """
+    column = connection.ops.quote_name(Item._meta.get_field(option.field_name).column)
+    table = connection.ops.quote_name(Item._meta.db_table)
+    if connection.vendor == "postgresql":
+        target = f"i.{column}"
+        target_params: list = []
+        for step in option.path:
+            target = f"({target} -> %s)"
+            target_params.append(step)
+        element = "_el" if option.key is None else "(_el -> %s)"
+        key_params = [] if option.key is None else [option.key, option.key]
+        sql = f"""
+            SELECT CAST(%s AS text) AS tag, jsonb_typeof({element}) AS json_type,
+                {element} #>> '{{}}' AS value
+            FROM {table} i
+            CROSS JOIN LATERAL (SELECT {target} AS _v) AS _t
+            CROSS JOIN LATERAL jsonb_array_elements(
+                CASE
+                    WHEN _t._v IS NULL THEN '[]'::jsonb
+                    WHEN jsonb_typeof(_t._v) = 'array' THEN _t._v
+                    ELSE jsonb_build_array(_t._v)
+                END
+            ) AS _el
+            WHERE i.id IN (SELECT id FROM _scope)
+        """  # noqa: S608 - quoted names only; values are parameters
+        return sql, [option, *key_params, *target_params]
+    json_path = "$" + "".join(
+        '."' + step.replace('"', "") + '"' for step in option.path
+    )
+    if option.key is not None:
+        key_path = '$."' + option.key.replace('"', "") + '"'
+        sql = f"""
+            SELECT %s AS tag, json_type(_el.value, %s) AS json_type,
+                json_extract(_el.value, %s) AS value
+            FROM {table} i, json_each(i.{column}, %s) AS _el
+            WHERE i.id IN (SELECT id FROM _scope) AND _el.type = 'object'
+        """  # noqa: S608 - quoted names only; values are parameters
+        return sql, [option, key_path, key_path, json_path]
+    sql = f"""
+        SELECT %s AS tag, _el.type AS json_type, _el.value AS value
+        FROM {table} i, json_each(i.{column}, %s) AS _el
+        WHERE i.id IN (SELECT id FROM _scope)
+    """  # noqa: S608 - quoted names only; values are parameters
+    return sql, [option, json_path]
+
+
+def _distinct_json_elements(
+    scope: QuerySet,
+    options: list[_JsonOption],
+) -> dict[_JsonOption, list[tuple[str, str]]]:
+    """Return each option's distinct ``(json_type, text)`` elements, in one query.
+
+    Only the distinct values cross into Python, never the items.
+    """
+    found: dict[_JsonOption, list[tuple[str, str]]] = {option: [] for option in options}
+    if not options:
+        return found
+    tags = {str(index): option for index, option in enumerate(options)}
+    branches = []
+    params: list = []
+    scope_sql, scope_params = scope.order_by().values("id").query.sql_with_params()
+    params.extend(scope_params)
+    for tag, option in tags.items():
+        branch_sql, branch_params = _json_option_branch(option)
+        branches.append(branch_sql)
+        params.extend([tag, *branch_params[1:]])
+    sql = (
+        f"WITH _scope AS ({scope_sql}) "  # noqa: S608 - compiled ORM subquery
+        "SELECT DISTINCT tag, json_type, value FROM ("
+        + " UNION ALL ".join(branches)
+        + ") AS _options"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+    for tag, json_type, value in rows:
+        if json_type is None or json_type == "null" or value is None:
+            continue
+        found[tags[str(tag)]].append((str(json_type), value))
+    return found
+
+
+def _json_texts(elements: list[tuple[str, str]]) -> set[str]:
+    """Return the trimmed, non-empty text of JSON elements."""
+    values = set()
+    for _json_type, value in elements:
+        text = str(value).strip()
+        if text:
+            values.add(text)
+    return values
+
+
+def _json_authors(elements: list[tuple[str, str]]) -> set[str]:
+    """Return author names the way ``_extract_authors`` reads them."""
+    names = set()
+    for json_type, value in elements:
+        if json_type == "object":
+            try:
+                raw_author = json.loads(value)
+            except (TypeError, ValueError):
+                continue
+            names.update(_extract_authors(SimpleNamespace(authors=[raw_author])))
+        elif json_type not in {"array", "true", "false", "boolean"}:
+            names.update(_extract_authors(SimpleNamespace(authors=[value])))
+    return names
+
+
 def _payload_get(payload, key: str, default=""):
     if hasattr(payload, "get"):
         return payload.get(key, default)
@@ -505,7 +649,9 @@ def normalize_rule_payload(payload, owner):
         deduped_tags.append(value)
 
     list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
-    semantics_version = str(_payload_get(payload, "semantics_version", "") or "").strip()
+    semantics_version = str(
+        _payload_get(payload, "semantics_version", "") or ""
+    ).strip()
     if not semantics_version.isdigit():
         semantics_version = ""
 
@@ -725,7 +871,9 @@ def _collection_only_item_ids(
     """Return collected item ids that do not already have a tracker row."""
     tracked_item_ids = tracked_item_ids or set()
     collected_item_ids, _collected_episode_pairs = _resolve_collection_context(
-        owner, None, collection_context_cache,
+        owner,
+        None,
+        collection_context_cache,
     )
     if not collected_item_ids:
         return set()
@@ -768,7 +916,9 @@ def _collection_only_item_ids(
         return set()
 
     result_ids = set()
-    for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
+    for id_batch in batched(
+        candidate_item_ids, _id_batch_size(len(candidate_item_ids))
+    ):
         candidate_queryset = Item.objects.filter(id__in=id_batch)
         if search_query:
             candidate_queryset = candidate_queryset.filter(
@@ -922,7 +1072,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
     and skipped so the others still sync.
     """
     zero = {"checked": 0, "added": 0, "removed": 0}
-    item_ids = sorted({item.id for item in items or [] if item and getattr(item, "id", None)})
+    item_ids = sorted(
+        {item.id for item in items or [] if item and getattr(item, "id", None)}
+    )
     if not owner or not item_ids:
         return zero
 
@@ -942,7 +1094,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
         return zero
 
     batch_size = min(SET_SYNC_ID_BATCH, _id_batch_size(len(item_ids)))
-    existing: dict[int, set[int]] = {custom_list.id: set() for custom_list in smart_lists}
+    existing: dict[int, set[int]] = {
+        custom_list.id: set() for custom_list in smart_lists
+    }
     for id_batch in batched(item_ids, batch_size):
         for list_id, item_id in CustomListItem.objects.filter(
             custom_list_id__in=existing.keys(),
@@ -969,7 +1123,9 @@ def sync_smart_lists_for_items(owner, items) -> dict[str, int]:
             if to_add:
                 CustomListItem.objects.bulk_create(
                     [
-                        CustomListItem(custom_list=custom_list, item_id=item_id, added_by=owner)
+                        CustomListItem(
+                            custom_list=custom_list, item_id=item_id, added_by=owner
+                        )
                         for item_id in to_add
                     ],
                     ignore_conflicts=True,
@@ -1048,31 +1204,8 @@ def build_filter_data_for_items(
     ``owner`` supplies the tag names, provider region and linked-list options;
     ``target_media_types`` decides which type-specific panes the menu shows.
     """
-    item_ids = set(item_ids)
     region = getattr(owner, "watch_provider_region", None)
-
-    only_fields = (
-        "genres",
-        "implied_genres",
-        "release_datetime",
-        "source",
-        "languages",
-        "country",
-        "platforms",
-        "format",
-        "media_type",
-        "authors",
-    )
-    # The column holds every region's availability (~146 KiB a title); read it
-    # only when the menu will show the providers pane.
-    if region and region != "UNSET":
-        only_fields += ("watch_providers",)
-    item_batch_size = _id_batch_size(len(item_ids))
-    items = [
-        item
-        for id_batch in batched(item_ids, item_batch_size)
-        for item in Item.objects.filter(id__in=id_batch).only(*only_fields)
-    ]
+    show_providers_pane = bool(region and region != "UNSET")
 
     format_labels = {
         "hardcover": "Hardcover",
@@ -1094,41 +1227,66 @@ def build_filter_data_for_items(
     providers_set = set()
     has_unknown_year = False
 
-    for item in items:
-        for genre in item.genres or []:
-            genre_value = str(genre).strip()
-            if genre_value:
-                genres_set.add(genre_value)
-        for genre in getattr(item, "implied_genres", None) or []:
-            genre_value = str(genre).strip()
-            if genre_value:
-                implied_genres_set.add(genre_value)
+    # Each option is a DISTINCT read in SQL, so the menu costs a few small
+    # queries however long the list is, instead of loading every item (and,
+    # for providers, every region's availability JSON).
+    genres_option = _JsonOption("genres")
+    implied_option = _JsonOption("implied_genres")
+    languages_option = _JsonOption("languages")
+    platforms_option = _JsonOption("platforms")
+    authors_option = _JsonOption("authors")
+    provider_options = (
+        [
+            _JsonOption("watch_providers", path=(region, kind), key="provider_name")
+            for kind in ("flatrate", "free")
+        ]
+        if show_providers_pane
+        else []
+    )
+    json_options = [
+        genres_option,
+        implied_option,
+        languages_option,
+        platforms_option,
+        authors_option,
+        *provider_options,
+    ]
+    for scope in _item_scopes(item_ids):
+        json_values = _distinct_json_elements(scope, json_options)
+        genres_set.update(_json_texts(json_values[genres_option]))
+        implied_genres_set.update(_json_texts(json_values[implied_option]))
+        languages_set.update(_json_texts(json_values[languages_option]))
+        platforms_set.update(_json_texts(json_values[platforms_option]))
+        authors_set.update(_json_authors(json_values[authors_option]))
+        for option in provider_options:
+            providers_set.update(_json_texts(json_values[option]))
 
-        release_datetime = getattr(item, "release_datetime", None)
-        if release_datetime and getattr(release_datetime, "year", None):
-            years_set.add(release_datetime.year)
-        else:
-            has_unknown_year = True
+        # A missing date reads as a NULL year, which is the "Unknown" option.
+        for year in (
+            scope.annotate(
+                _release_year=ExtractYear("release_datetime", tzinfo=datetime.UTC),
+            )
+            .values_list("_release_year", flat=True)
+            .distinct()
+            .order_by()
+        ):
+            if year:
+                years_set.add(year)
+            else:
+                has_unknown_year = True
 
-        if item.source:
-            sources_set.add(item.source)
-
-        languages_set.update(_extract_languages(item))
-
-        country_value = _extract_country(item)
-        if country_value:
-            countries_set.add(country_value)
-            origins_set.add(country_value)
-
-        platforms_set.update(_extract_platforms(item))
-
-        format_value = str(getattr(item, "format", "") or "").strip()
-        if format_value:
-            formats_set.add(format_value)
-        authors_set.update(_extract_authors(item))
-
-        if region and region != "UNSET":
-            providers_set.update(_extract_item_providers(item, region) or [])
+        for source, country, raw_format in (
+            scope.values_list("source", "country", "format").distinct().order_by()
+        ):
+            if source:
+                sources_set.add(source)
+            country_value = str(country or "").strip()
+            if country_value:
+                countries_set.add(country_value)
+                origins_set.add(country_value)
+            format_value = str(raw_format or "").strip()
+            if format_value:
+                formats_set.add(format_value)
 
     source_labels = dict(Sources.choices)
     filter_data = {
@@ -1200,13 +1358,17 @@ def build_filter_data_for_items(
             media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
         ),
         "author_is_channel": bool(target_media_types)
-        and all(media_type == MediaTypes.VIDEO.value for media_type in target_media_types),
+        and all(
+            media_type == MediaTypes.VIDEO.value for media_type in target_media_types
+        ),
         "providers": [
             {"value": value, "label": value}
             for value in sorted(providers_set, key=lambda value: value.lower())
         ],
-        "show_providers": bool(region and region != "UNSET")
-        and any(media_type in PROVIDER_MEDIA_TYPES for media_type in target_media_types),
+        "show_providers": show_providers_pane
+        and any(
+            media_type in PROVIDER_MEDIA_TYPES for media_type in target_media_types
+        ),
         "relative_date_units": [
             {"value": value, "label": label}
             for value, label in RELATIVE_DATE_UNIT_CHOICES
