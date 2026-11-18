@@ -73,7 +73,7 @@ def _now_ts():
     return int(timezone.now().timestamp())
 
 
-def _now():
+def _now_to_minute():
     return timezone.now().replace(second=0, microsecond=0)
 
 
@@ -127,7 +127,7 @@ def _begin_game(user, item):
         item=item,
         user=user,
         status=Status.IN_PROGRESS.value,
-        start_date=_now(),
+        start_date=_now_to_minute(),
         entry_source=SOURCE_LABEL,
     )
     return {"row_id": row.id, "created": True, "previous": None}
@@ -142,7 +142,7 @@ def _begin_reading(user, item, media_type):
             item=item,
             user=user,
             status=Status.IN_PROGRESS.value,
-            start_date=_now(),
+            start_date=_now_to_minute(),
             entry_source=SOURCE_LABEL,
         )
         return {"row_id": row.id, "created": True, "previous": None}
@@ -152,7 +152,7 @@ def _begin_reading(user, item, media_type):
         "end_date": latest.end_date,
     }
     latest.status = Status.IN_PROGRESS.value
-    latest.start_date = latest.start_date or _now()
+    latest.start_date = latest.start_date or _now_to_minute()
     latest.save()
     return {"row_id": latest.id, "created": False, "previous": previous}
 
@@ -182,7 +182,7 @@ def start(user, source, media_type, media_id):
     elif media_type == MediaTypes.BOARDGAME.value and user.game_logging_style == "sessions":
         entry = BoardGame.objects.create(
             item=item, user=user, status=Status.IN_PROGRESS.value,
-            start_date=_now(), entry_source=SOURCE_LABEL,
+            start_date=_now_to_minute(), entry_source=SOURCE_LABEL,
         )
         row = {"row_id": entry.id, "created": True, "previous": None}
     elif media_type in READING:
@@ -262,7 +262,7 @@ def _save(user, record, media_type):
         row.progress += minutes
     elif media_type in READING and not _is_audiobook(record):
         row.reading_time += minutes
-    row.end_date = _now()
+    row.end_date = _now_to_minute()
     row.save()
 
 
@@ -276,7 +276,7 @@ def stop(user, source, media_type, media_id):
             if row is not None:
                 row.progress = 1
                 row.status = Status.COMPLETED.value
-                row.end_date = _now()
+                row.end_date = _now_to_minute()
                 row.save()
         else:
             _increment_boardgame(user, record["item_id"])
@@ -306,7 +306,7 @@ def log_play(user, source, media_id):
     """Record a board-game play in the user's chosen logging style."""
     item = _item(user, source, MediaTypes.BOARDGAME.value, media_id)
     if user.game_logging_style == "sessions":
-        now = _now()
+        now = _now_to_minute()
         BoardGame.objects.create(
             item=item, user=user, status=Status.COMPLETED.value, progress=1,
             start_date=now, end_date=now, entry_source=SOURCE_LABEL,
