@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from django.utils import timezone
 
+from app.helpers import coerce_int as _coerce_int
 from app.services import music_scrobble
 
 logger = logging.getLogger(__name__)
@@ -168,16 +169,6 @@ def _play_origin_url(additional):
     ):
         return spotify
     return ""
-
-
-def _coerce_int(value) -> int | None:
-    """Return value as an int, or None when it is missing or unparseable."""
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return None
 
 
 def _resolve_duration_ms(additional: dict) -> int | None:

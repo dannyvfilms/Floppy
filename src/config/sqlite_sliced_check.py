@@ -84,7 +84,7 @@ def _save(db_path: str, state: dict) -> None:
     )
 
 
-def _now() -> float:
+def _epoch_seconds() -> float:
     return time.time()
 
 
@@ -262,7 +262,7 @@ def run_slice(db_path: str) -> dict:
     """Do one bounded slice of verification; returns the persisted state."""
     started = time.monotonic()
     state = _load(db_path)
-    now = _now()
+    now = _epoch_seconds()
     state["slices"] = [s for s in state.get("slices", []) if now - s[0] < _DAY]
     budget = DAILY_BUDGET_SECONDS - sum(s[1] for s in state["slices"])
     if budget < _MIN_BUDGET:
