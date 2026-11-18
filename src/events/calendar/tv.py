@@ -388,6 +388,13 @@ def reopen_completed_tv_with_new_seasons(tv_item, season_items, events_bulk):
                 default_user=tv.user,
                 default_change_reason="New season announced",
             )
+            # bulk writes send no save signal: refresh the user's library
+            # pages, Home and Statistics the way a save would.
+            from app import signals
+
+            signals._handle_media_cache_change(
+                tv.user_id, MediaTypes.TV.value, reason="tv_reopened"
+            )
             logger.info(
                 "%s - Reopened TV for user %s and created %d planning seasons",
                 tv_item,

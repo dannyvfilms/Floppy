@@ -34,6 +34,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
 | React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `native-proof/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 
 ### Names that do not explain themselves
@@ -69,7 +70,23 @@ Django apps live under `src/`. Paths below are repository-relative.
   keys and clearing). `src/app/helpers.py` takes small value and request
   helpers with no narrower subject. Do not add a new `utils` module.
 
-<!-- Helper homes: add the helper families that have one shared home here, one line each with the module that owns them. -->
+### Helper homes
+
+These small helpers were once written again in module after module, and the
+copies drifted. Each now has one home; import it, do not copy it.
+`app.tests.test_helper_homes` fails when a new top-level copy appears and
+names the module to import from.
+
+- `coerce_int`, `coerce_list`, `wants_json`, `minutes_to_hm` ("1h 9m") and
+  `seconds_to_clock` ("1:02:03"): `src/app/helpers.py`, beside
+  `seconds_to_hm` and `minutes_to_hhmm`. Each docstring states what it does
+  with missing, blank and odd values.
+- `no_store` (OAuth responses): `src/integrations/oauth_models.py`, the one
+  module all four OAuth endpoint modules already import.
+- `_now` and `_parse_date` have no shared home: the old copies each returned
+  something different (an ISO string, a minute-rounded time, a feed date, a
+  query parameter). Name a new one for what it returns, as the renamed copies
+  are (`_now_iso`, `_parse_tvdb_datetime`).
 <!-- Shared view builders: add the public modules that own detail-page builders here. -->
 <!-- Split view files: add each subject module split out of a large view file here. -->
 
@@ -81,6 +98,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | An API endpoint | `src/api/fork_views_<subject>.py`, route in `src/api/fork_urls.py` | Declare its scope: `docs/architecture/api-scopes.md` |
 | A filter or sort for a list-shaped page | `src/app/library_query/filters.py` or `src/app/library_query/sorts.py` | "Adding a filter or sort" in `docs/architecture/library-query.md`, which also lists the tests and surfaces to update |
 | A cache for a page | Key builder and registration in `src/app/cache_utils.py` | Clear it through `clear_library_view_caches`: `docs/architecture/view-caches.md` |
+| A bulk write to tracking rows (`update`, `bulk_create`, `bulk_update`) | Where the write is; a row in `src/app/bulk_write_refresh.py` | Say how the library pages, Statistics and History learn about it: `app.tests.test_bulk_write_refresh` fails until you do |
 | A background task | `src/app/tasks_<subject>.py` (or the owning app's `tasks`) | Default `celery` queue unless a page waits on it: `AGENTS.md`, Local Commands |
 | A call to a metadata provider, including its image lookups | `src/app/providers/<provider>.py`. The one exception: game logos and backdrops from art-only services go in `src/app/game_artwork/` | Pages never wait on it (rule 2): fetch in a task or on save, render what is stored. Outbound rules: `docs/architecture/outbound-fetch.md`; credentials: `docs/architecture/provider-credential-consumers.md` |
 | An import or scheduled sync | `src/integrations/imports/<source>.py` | A run that finds no change writes nothing (see the rules below) |
@@ -88,6 +106,16 @@ Django apps live under `src/`. Paths below are repository-relative.
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
+
+**Recorded server answers for the Expo app.** `native-proof/app/data/__recorded__/`
+holds the real JSON of the endpoints the native detail, library, list, History and
+Home readers use, recorded from the sample library by
+`src/api/tests/test_native_recordings.py`. That test fails when a committed file no
+longer matches what the server returns, and the `*TransportCore.test.mjs` files read
+each file through the real reader (`native-proof/app/data/recordedAnswers.mjs`).
+Changing the shape of one of these endpoints means refreshing the files
+(`FLOPPY_RECORD_NATIVE=1 scripts/test.sh api.tests.test_native_recordings`) and
+reading the native diff: a changed field is one a native screen may read.
 
 ## Four rules the code holds to
 
@@ -101,7 +129,9 @@ Each rule has tests that fail when it breaks.
    `app.tests.test_read_pages_do_not_write`, `app.tests.test_statistics_cache`
    (serving makes no provider call), `app.tests.test_music_page_repair`.
 3. **One function clears view caches:** `clear_library_view_caches` in
-   `src/app/cache_utils.py`. `app.tests.test_view_cache_invalidation`.
+   `src/app/cache_utils.py`. `app.tests.test_view_cache_invalidation`. A write
+   that skips signals is listed with how it refreshes:
+   `app.tests.test_bulk_write_refresh`.
 4. **A recurring task with nothing to do costs milliseconds** and writes
    nothing. `integrations.tests.test_recurring_sync_unchanged`,
    `app.tests.test_backfill_day_keys`, `app.tests.test_runtime_backfill_requeue`.

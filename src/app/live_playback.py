@@ -17,6 +17,7 @@ from django.utils.http import RFC3986_SUBDELIMS, escape_leading_slashes
 from django.utils.text import slugify
 
 from app import helpers
+from app.helpers import coerce_int as _coerce_int
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import Item, MediaTypes, Sources
 from app.models.episode_runtimes import (
@@ -124,15 +125,6 @@ def _cache_key(user_id: int, slot: str | None = None) -> str:
     if slot:
         return f"{PLAYBACK_CACHE_PREFIX}:{user_id}:checkin:{slot}"
     return f"{PLAYBACK_CACHE_PREFIX}:{user_id}"
-
-
-def _coerce_int(value, default=None):
-    try:
-        if value is None:
-            return default
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def _coerce_float(value, default=None):
@@ -963,12 +955,8 @@ def get_user_playback_state(
 
 
 def _format_clock(total_seconds: int) -> str:
-    seconds = max(0, int(total_seconds or 0))
-    hours, remainder = divmod(seconds, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
+    """Return clock text for a playback position; missing or negative is "0:00"."""
+    return helpers.seconds_to_clock(max(0, int(total_seconds or 0)))
 
 
 def _learn_runtime(state: dict, duration_seconds: int | None) -> None:

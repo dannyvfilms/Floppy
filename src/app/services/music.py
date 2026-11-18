@@ -12,6 +12,7 @@ from django.utils.dateparse import parse_date
 from app.log_safety import exception_summary
 from app.models import Album, AlbumArtist, Artist, Item, Music, Track
 from app.models.music import ArtistMember
+from app.services.tracker_fold import fold_tracker_into
 
 logger = logging.getLogger(__name__)
 
@@ -1394,26 +1395,7 @@ def merge_album_records(source_album: Album, target_album: Album) -> Album:
             album=target_album,
         ).first()
         if existing:
-            tracker_updates = set()
-            preferred_status = _preferred_status(existing.status, tracker.status)
-            if preferred_status and preferred_status != existing.status:
-                existing.status = preferred_status
-                tracker_updates.add("status")
-            if existing.score is None and tracker.score is not None:
-                existing.score = tracker.score
-                tracker_updates.add("score")
-            if tracker.start_date and (
-                not existing.start_date or tracker.start_date < existing.start_date
-            ):
-                existing.start_date = tracker.start_date
-                tracker_updates.add("start_date")
-            if tracker.end_date and (
-                not existing.end_date or tracker.end_date > existing.end_date
-            ):
-                existing.end_date = tracker.end_date
-                tracker_updates.add("end_date")
-            if tracker_updates:
-                existing.save(update_fields=list(tracker_updates))
+            fold_tracker_into(tracker, existing)
             tracker.delete()
         else:
             tracker.album = target_album
@@ -1987,25 +1969,6 @@ def prefetch_album_covers(artist: Artist, limit: int | None = 20) -> int:
     return updated
 
 
-def _preferred_status(current: str | None, incoming: str | None) -> str | None:
-    """Pick the higher-precedence status between two values."""
-    from app.models import Status
-
-    if not current:
-        return incoming
-    if not incoming:
-        return current
-
-    order = {
-        Status.COMPLETED.value: 5,
-        Status.DROPPED.value: 4,
-        Status.IN_PROGRESS.value: 3,
-        Status.PAUSED.value: 2,
-        Status.PLANNING.value: 1,
-    }
-    return current if order.get(current, 0) >= order.get(incoming, 0) else incoming
-
-
 def merge_artist_records(source_artist: Artist, target_artist: Artist) -> Artist:
     """Merge a duplicate artist into a canonical one without losing data."""
     if source_artist.id == target_artist.id:
@@ -2027,42 +1990,7 @@ def merge_artist_records(source_artist: Artist, target_artist: Artist) -> Artist
         ).first()
 
         if existing:
-            updates = set()
-            preferred_status = _preferred_status(existing.status, tracker.status)
-            if preferred_status and preferred_status != existing.status:
-                existing.status = preferred_status
-                updates.add("status")
-
-            # Preserve earliest start and latest end dates
-            start_date = min(
-                [d for d in [existing.start_date, tracker.start_date] if d],
-                default=None,
-            )
-            end_date = max(
-                [d for d in [existing.end_date, tracker.end_date] if d],
-                default=None,
-            )
-            if start_date and start_date != existing.start_date:
-                existing.start_date = start_date
-                updates.add("start_date")
-            if end_date and end_date != existing.end_date:
-                existing.end_date = end_date
-                updates.add("end_date")
-
-            # Fill missing score/notes
-            if existing.score is None and tracker.score is not None:
-                existing.score = tracker.score
-                updates.add("score")
-            if tracker.notes and tracker.notes.strip():
-                if not existing.notes:
-                    existing.notes = tracker.notes
-                    updates.add("notes")
-                elif tracker.notes not in existing.notes:
-                    existing.notes = f"{existing.notes}\n{tracker.notes}"
-                    updates.add("notes")
-
-            if updates:
-                existing.save(update_fields=list(updates))
+            fold_tracker_into(tracker, existing)
             tracker.delete()
         else:
             tracker.artist = target_artist
@@ -2141,33 +2069,7 @@ def merge_artist_records(source_artist: Artist, target_artist: Artist) -> Artist
                 album=target_album,
             ).first()
             if existing:
-                tracker_updates = set()
-                preferred_status = _preferred_status(existing.status, tracker.status)
-                if preferred_status and preferred_status != existing.status:
-                    existing.status = preferred_status
-                    tracker_updates.add("status")
-
-                start_date = min(
-                    [d for d in [existing.start_date, tracker.start_date] if d],
-                    default=None,
-                )
-                end_date = max(
-                    [d for d in [existing.end_date, tracker.end_date] if d],
-                    default=None,
-                )
-                if start_date and start_date != existing.start_date:
-                    existing.start_date = start_date
-                    tracker_updates.add("start_date")
-                if end_date and end_date != existing.end_date:
-                    existing.end_date = end_date
-                    tracker_updates.add("end_date")
-
-                if existing.score is None and tracker.score is not None:
-                    existing.score = tracker.score
-                    tracker_updates.add("score")
-
-                if tracker_updates:
-                    existing.save(update_fields=list(tracker_updates))
+                fold_tracker_into(tracker, existing)
                 tracker.delete()
             else:
                 tracker.album = target_album
