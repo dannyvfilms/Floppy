@@ -383,8 +383,16 @@ def apply_item_metadata(
         # Only book payloads carry a page count, so an absent one means "not
         # provided", not "cleared" — nulling it wipes a stored comic/manga
         # progress denominator on every sync (#1077).
-        if field_name == "number_of_pages" and values[field_name] is None:
-            continue
+        if field_name == "number_of_pages":
+            reading_types = {
+                MediaTypes.BOOK.value,
+                MediaTypes.MANGA.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.COMIC_ISSUE.value,
+            }
+            # max_progress is an episode count for shows, not a page count.
+            if item.media_type not in reading_types or values[field_name] is None:
+                continue
         if getattr(item, field_name) != values[field_name]:
             setattr(item, field_name, values[field_name])
             update_fields.append(field_name)

@@ -476,6 +476,10 @@ class CalendarViewTests(TestCase):
             response = self.client.get(reverse("calendar"))
 
         links = response.context["calendar_links_props"]
+        for entry in links["statuses"] + links["releaseTypes"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
+        for entry in links["releaseMediaTypes"] + links["historyMediaTypes"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
         self.assertContains(response, "data-calendar-links-root")
         self.assertContains(response, links["releaseBaseUrl"])
         self.assertContains(response, links["historyBaseUrl"])

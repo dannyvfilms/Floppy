@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -9,6 +10,11 @@ import {
 } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button.jsx';
+import { CollectionEntryGroup, CollectionSectionHeading } from './CollectionCopies';
+import { SelectField } from './SelectField';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
+import { cardTypography } from './cardTypography';
 
 const FALLBACK_PALETTE = {
   surface: '#27272a',
@@ -127,6 +133,7 @@ export function CalendarLinks({
   labels,
   palette,
   embedded = false,
+  renderFeedPicker,
   onFeedChange,
   onSelectionChange,
   onCopyLink,
@@ -135,7 +142,9 @@ export function CalendarLinks({
   const { width } = useWindowDimensions();
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  const styles = useMemo(() => createStyles(colors, width >= 768, embedded), [colors, width, embedded]);
+  const wide = width >= 768;
+  const grouped = !embedded || !wide;
+  const styles = useMemo(() => createStyles(colors, wide, embedded), [colors, width, embedded]);
   const releaseTypeValues = useMemo(() => valuesFor(releaseMediaTypes), [releaseMediaTypes]);
   const historyTypeValues = useMemo(() => valuesFor(historyMediaTypes), [historyMediaTypes]);
   const statusValues = useMemo(() => valuesFor(statuses), [statuses]);
@@ -223,6 +232,13 @@ export function CalendarLinks({
     { value: 'releases', label: copy.releasesTab },
     { value: 'history', label: copy.historyTab },
   ];
+  const pickerOptions = [
+    { value: 'releases', label: 'Upcoming Releases', displayLabel: 'Upcoming' },
+    { value: 'history', label: 'Watch History', displayLabel: 'History' },
+  ];
+  const selectedPicker = pickerOptions.find(option => option.value === feed);
+  const mediaOptions = feed === 'history' ? historyMediaTypes : releaseMediaTypes;
+  const selectedMedia = feed === 'history' ? historyTypesSelection : releaseTypesSelection;
 
   const badgePalette = {
     outline: {
@@ -236,6 +252,68 @@ export function CalendarLinks({
     <Text style={styles.title}>{copy.title}</Text>
     <Text style={styles.help}>Sign in with your username and password to manage this.</Text>
   </View>;
+
+  // Expo and mobile web share the grouped-card layout (Collection sheet pattern);
+  // desktop web keeps its original single card with tabs.
+  if (grouped) {
+    const variant = embedded ? 'web' : 'native';
+    const group = (title, children) => <View style={styles.newSection}>
+      {title ? <CollectionSectionHeading title={title} palette={colors} variant={variant} /> : null}
+      <CollectionEntryGroup palette={colors} variant={variant}>
+        <View style={styles.newCard}>{children}</View>
+      </CollectionEntryGroup>
+    </View>;
+    const withDividers = rows => rows.map((row, index) => <View key={row.key}>
+      {index ? <View style={styles.rowDivider} /> : null}
+      {row}
+    </View>);
+    const switchRow = (key, item, selection, onToggle) => <View key={key} style={styles.switchRow}>
+      <View style={styles.rowLabel}>
+        {item.icon ? <Icon spec={item.icon} color={colors.textMuted} size={20} /> : null}
+        <Text style={styles.pickerLabel}>{item.label}</Text>
+      </View>
+      <View style={styles.switchSlot}><Switch accessibilityLabel={item.label} value={selection.includes(item.value)}
+        // Web matches the desktop OptionSwitch colors; Expo keeps the system switch look.
+        trackColor={embedded ? { false: colors.surfaceDim, true: colors.accentStrong } : { false: colors.surfaceStrong, true: colors.accent }}
+        thumbColor={embedded ? (selection.includes(item.value) ? colors.accentText : colors.textSecondary) : '#ffffff'}
+        activeThumbColor={embedded ? colors.accentText : '#ffffff'}
+        onValueChange={onToggle} /></View>
+    </View>;
+    const switchRows = (items, selection, key) => withDividers(items.map(item => switchRow(item.value, item, selection, () => {
+      const next = toggle(selection, item.value);
+      changeSelection(key, next, selectionState({ [key]: next }));
+    })));
+    const actionRow = (key, label, trailing, icon, onPress) => <Pressable key={key} accessibilityRole="button"
+      accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.switchRow, pressed && styles.pressed]}>
+      <View style={styles.rowLabel}>
+        <Icon spec={icon} color={colors.textMuted} size={20} />
+        <Text style={styles.pickerLabel}>{label}</Text>
+      </View>
+      <Text style={styles.pickerValue}>{trailing}</Text>
+    </Pressable>;
+    const mediaKey = feed === 'history' ? 'historyMediaTypes' : 'releaseMediaTypes';
+    const actions = [
+      onCopyLink && exportUrl ? actionRow('copy', 'Copy Calendar', copied ? 'Copied' : 'Copy', actionIcons.link, copyLink) : null,
+      onDownload && exportUrl ? actionRow('download', 'Download Calendar', 'Download', actionIcons.download, () => onDownload(exportUrl)) : null,
+    ].filter(Boolean);
+    return <View style={styles.linksStack}>
+      {group('Calendar Links', <View style={styles.switchRow}>
+        <View style={styles.rowLabel}>
+          <Icon spec={actionIcons.calendar} color={colors.textMuted} size={20} />
+          <Text numberOfLines={1} style={styles.pickerLabel}>Calendar Type</Text>
+        </View>
+        {renderFeedPicker ? renderFeedPicker({ value: feed, options: pickerOptions, onChange: changeFeed, palette: colors }) : <SelectField label="Calendar Type" labelHidden value={feed} options={pickerOptions} displayValue={selectedPicker.displayLabel} palette={colors}
+          accessibilityLabel={`Calendar Type: ${selectedPicker.label}`}
+          onChange={event => changeFeed(event.target.value)} popover
+          triggerStyle={styles.pickerTrigger} triggerTextStyle={styles.pickerValue}
+          indicator={<Text style={styles.pickerIndicator}>⌃{'\n'}⌄</Text>} />}
+      </View>)}
+      {group('Media Types', switchRows(mediaOptions, selectedMedia, mediaKey))}
+      {feed === 'releases' && statuses.length ? group('Status', switchRows(statuses, statusesSelection, 'statuses')) : null}
+      {feed === 'releases' && releaseTypes.length ? group('Release Dates', switchRows(releaseTypes, datesSelection, 'releaseTypes')) : null}
+      {actions.length ? group(copy.ics, withDividers(actions)) : null}
+    </View>;
+  }
 
   return <View style={styles.card}>
     <Text style={styles.title}>{copy.title}</Text>
@@ -370,6 +448,18 @@ function OptionSwitch({ label, checked, onPress, styles }) {
 function createStyles(colors, wide, embedded) {
   const optionWidth = wide ? '32%' : '100%';
   return StyleSheet.create({
+    linksStack: { gap: 20 },
+    newSection: { gap: 10 },
+    // Rows carry their own 50pt height; only Expo needs side inset (web's surface already pads 0).
+    newCard: { paddingHorizontal: embedded ? 0 : 16 },
+    rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+    pickerLabel: { color: colors.text, ...cardTypography.title, flexShrink: 1 },
+    rowDivider: { marginLeft: 28, height: 1, backgroundColor: colors.textMuted, opacity: 0.4 },
+    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
+    switchSlot: { height: 50, justifyContent: 'center', alignItems: 'center' },
+    pickerTrigger: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
+    pickerValue: { color: colors.textSecondary, fontSize: 16 },
+    pickerIndicator: { color: colors.textMuted, fontSize: 13, lineHeight: 8, textAlign: 'center' },
     card: embedded ? {
       gap: 12,
     } : {

@@ -18,6 +18,10 @@
          @click.outside="trackMenuOpen = false"
          @keydown.escape.window="trackMenuOpen = false"
          {% if track.reload_ms %}x-init="setTimeout(() => { if ($el.isConnected && !editTrackOpen && !createTrackOpen) {% if media_type == 'game' or media_type == 'movie' %}htmx.trigger($el, 'checkin-refresh'){% else %}location.reload(){% endif %} }, {{ track.reload_ms }})"{% endif %}>
+      {% component_id 'track-split-props' media as split_props_id %}
+      {{ track.actions|json_script:split_props_id }}
+      <div class="w-full md:w-auto" data-track-split-root data-props-id="{{ split_props_id }}" data-status-label="{{ status_label }}" {% if rest|length > 1 %}data-more-label="{% translate 'More tracking actions' %}"{% elif rest|length == 1 and rest.0.key == 'edit' %}data-edit-label="{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}"{% endif %}></div>
+      <div class="w-full md:w-auto" data-track-split-fallback>
       <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm md:w-auto">
         {% with action=main %}
           <button type="button"
@@ -70,6 +74,7 @@
         </div>
       {% endif %}
 
+      </div>
       <template x-teleport="body">
       <div x-show="editTrackOpen"
            @mousedown.self="editTrackOpen = false"
