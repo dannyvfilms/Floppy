@@ -347,6 +347,17 @@ def needs_refresh(
     """Return whether the item should refresh its Trakt popularity snapshot."""
     if force or not has_popularity_data(item):
         return True
+    # Popularity snapshots taken before the Trakt id/slug was persisted leave
+    # the item without a linkable Trakt identity; a normal refresh backfills it.
+    # "none" marks a lookup that found no Trakt match, which falls back to the
+    # usual staleness interval instead of re-querying on every check.
+    external_ids = item.provider_external_ids or {}
+    if (
+        not external_ids.get("trakt_id")
+        and not external_ids.get("trakt_slug")
+        and external_ids.get("trakt_lookup") != "none"
+    ):
+        return True
     now = now or timezone.now()
     return item.trakt_popularity_fetched_at <= (
         now - refresh_interval_for_item(item, now=now)
@@ -407,7 +418,45 @@ def _merge_external_ids(item: Item, lookup_payload: dict[str, Any]) -> dict[str,
         value = trakt_ids.get(source_key)
         if value not in (None, ""):
             merged[item_key] = str(value)
+    # trakt_ids["slug"] is always the show's slug (a season payload's ids carry
+    # no slug, so the merge keeps the show's). For seasons, trakt_ids["trakt"]
+    # is the *season's* Trakt id, which cannot name a /shows/<id> page, so only
+    # non-season rows store it as trakt_id; seasons keep the slug.
+    slug = trakt_ids.get("slug")
+    if slug not in (None, ""):
+        merged["trakt_slug"] = str(slug)
+    trakt_id = trakt_ids.get("trakt")
+    if trakt_id not in (None, "") and item.media_type != MediaTypes.SEASON.value:
+        merged["trakt_id"] = str(trakt_id)
+    merged.pop("trakt_lookup", None)
     return merged
+
+
+def trakt_page_url(
+    external_ids: dict | None,
+    route_media_type: str | None,
+    *,
+    season_number: int | None = None,
+) -> str | None:
+    """Return the Trakt web page URL for stored Trakt ids, if linkable.
+
+    The site resolves both slugs and numeric Trakt ids under /shows/<id> and
+    /movies/<id>; a season id does not, so seasons link through the show slug.
+    """
+    if not isinstance(external_ids, dict) or not supports_route_media_type(
+        route_media_type
+    ):
+        return None
+    if route_media_type == MediaTypes.SEASON.value:
+        slug = external_ids.get("trakt_slug")
+        if not slug or season_number is None:
+            return None
+        return f"https://trakt.tv/shows/{slug}/seasons/{season_number}"
+    ident = external_ids.get("trakt_slug") or external_ids.get("trakt_id")
+    if not ident:
+        return None
+    kind = "movies" if route_media_type == MediaTypes.MOVIE.value else "shows"
+    return f"https://trakt.tv/{kind}/{ident}"
 
 
 def refresh_trakt_popularity(
@@ -430,8 +479,21 @@ def refresh_trakt_popularity(
     route_media_type = route_media_type_for_item(item, route_media_type)
     lookup_payload = lookup_item_summary(item, route_media_type=route_media_type)
     if not lookup_payload:
+        external_ids = dict(item.provider_external_ids or {})
+        if external_ids.get("trakt_lookup") != "none":
+            external_ids["trakt_lookup"] = "none"
+            item.provider_external_ids = external_ids
+            item.save(update_fields=["provider_external_ids"])
         msg = f"No Trakt match found for item {item.id}"
         raise LookupError(msg)
+
+    # Persist Trakt identity before the rating gate: a match that has ids but
+    # no votes still earns the detail-page Trakt link.
+    merged_external_ids = _merge_external_ids(item, lookup_payload)
+    if merged_external_ids != (item.provider_external_ids or {}):
+        item.provider_external_ids = merged_external_ids
+        item.save(update_fields=["provider_external_ids"])
+
     if lookup_payload.get("rating") is None or lookup_payload.get("votes") is None:
         msg = f"Trakt payload missing rating/votes for item {item.id}"
         raise ValueError(msg)
@@ -443,8 +505,6 @@ def refresh_trakt_popularity(
     if popularity_score is None:
         msg = f"Unable to compute Trakt popularity score for item {item.id}"
         raise ValueError(msg)
-
-    merged_external_ids = _merge_external_ids(item, lookup_payload)
 
     item.trakt_rating = float(lookup_payload["rating"])
     item.trakt_rating_count = int(lookup_payload["votes"])
