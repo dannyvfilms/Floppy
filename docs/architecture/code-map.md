@@ -34,6 +34,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
 | React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `native-proof/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 
 ### Names that do not explain themselves
@@ -69,7 +70,23 @@ Django apps live under `src/`. Paths below are repository-relative.
   keys and clearing). `src/app/helpers.py` takes small value and request
   helpers with no narrower subject. Do not add a new `utils` module.
 
-<!-- Helper homes: add the helper families that have one shared home here, one line each with the module that owns them. -->
+### Helper homes
+
+These small helpers were once written again in module after module, and the
+copies drifted. Each now has one home; import it, do not copy it.
+`app.tests.test_helper_homes` fails when a new top-level copy appears and
+names the module to import from.
+
+- `coerce_int`, `coerce_list`, `wants_json`, `minutes_to_hm` ("1h 9m") and
+  `seconds_to_clock` ("1:02:03"): `src/app/helpers.py`, beside
+  `seconds_to_hm` and `minutes_to_hhmm`. Each docstring states what it does
+  with missing, blank and odd values.
+- `no_store` (OAuth responses): `src/integrations/oauth_models.py`, the one
+  module all four OAuth endpoint modules already import.
+- `_now` and `_parse_date` have no shared home: the old copies each returned
+  something different (an ISO string, a minute-rounded time, a feed date, a
+  query parameter). Name a new one for what it returns, as the renamed copies
+  are (`_now_iso`, `_parse_tvdb_datetime`).
 <!-- Shared view builders: add the public modules that own detail-page builders here. -->
 <!-- Split view files: add each subject module split out of a large view file here. -->
 

@@ -267,7 +267,7 @@ def _parse_rss_feed(root: Element, limit: int | None) -> list[dict]:
         # Published date
         pub_date_elem = item.find("pubDate")
         if pub_date_elem is not None and pub_date_elem.text:
-            episode["published"] = _parse_date(pub_date_elem.text.strip())
+            episode["published"] = _parse_feed_datetime(pub_date_elem.text.strip())
 
         # GUID
         guid_elem = item.find("guid")
@@ -352,7 +352,7 @@ def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
         if published_elem is None:
             published_elem = entry.find("published")
         if published_elem is not None and published_elem.text:
-            episode["published"] = _parse_date(published_elem.text.strip())
+            episode["published"] = _parse_feed_datetime(published_elem.text.strip())
 
         # ID (used as GUID)
         id_elem = entry.find("{http://www.w3.org/2005/Atom}id")
@@ -412,7 +412,7 @@ def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
     return episodes
 
 
-def _parse_date(date_str: str) -> datetime | None:
+def _parse_feed_datetime(date_str: str) -> datetime | None:
     """Parse date string from RSS feed.
 
     Handles common formats:

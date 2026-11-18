@@ -152,8 +152,19 @@ def drop_recommendations_if_hidden(request, metadata):
         }
 
 
-def enrich_detail_related_cards(request, media_metadata, *, media_type, tracking_user):
-    """Attach tracking and season labels using the owner selected by the view."""
+def enrich_detail_related_cards(
+    request,
+    media_metadata,
+    *,
+    media_type,
+    tracking_user,
+    preloaded_seasons=None,
+):
+    """Attach tracking and season labels using the owner selected by the view.
+
+    ``preloaded_seasons`` are the viewer's season rows the page already loaded
+    with their episodes; the season cards reuse them.
+    """
     for section_name, related_items in media_metadata["related"].items():
         if related_items:
             enriched_related_items = helpers.enrich_items_with_user_data(
@@ -161,6 +172,9 @@ def enrich_detail_related_cards(request, media_metadata, *, media_type, tracking
                 related_items,
                 section_name=section_name,
                 user=tracking_user,
+                preloaded_seasons=(
+                    preloaded_seasons if section_name == "seasons" else None
+                ),
                 library_media_type=(
                     MediaTypes.ANIME.value
                     if media_type == MediaTypes.ANIME.value

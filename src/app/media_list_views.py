@@ -3105,13 +3105,7 @@ def media_list(request, media_type):
                 continue
             parts = [video.channel] if video.channel else []
             if video.length_seconds:
-                minutes, seconds = divmod(video.length_seconds, 60)
-                hours, minutes = divmod(minutes, 60)
-                parts.append(
-                    f"{hours}:{minutes:02d}:{seconds:02d}"
-                    if hours
-                    else f"{minutes}:{seconds:02d}",
-                )
+                parts.append(helpers.seconds_to_clock(video.length_seconds))
             video.home_music_card = True
             video.card_subtitle_text = " · ".join(parts)
 
