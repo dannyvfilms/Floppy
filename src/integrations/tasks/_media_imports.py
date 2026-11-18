@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 import events
-from app import backfill_queue, cache_safety, statistics_sync
+from app import backfill_queue, cache_safety, cache_utils, statistics_sync
 from app.mixins import disable_fetch_releases
 from app.providers import credentials
 from app.services.watch_state import importing_watch_state
@@ -280,6 +280,13 @@ def import_media(
             getattr(importer_func, "__name__", importer_func),
             user_id,
         )
+
+    if has_imported_media(imported_counts):
+        # Importers write in bulk, which sends no save signal, so nothing
+        # else clears the library pages and Home for these rows. Any type can
+        # be among them, TV included, so the time-left order goes too. A poll
+        # that imported nothing clears nothing.
+        cache_utils.clear_library_view_caches(user_id, media_types=("tv",))
 
     # Queue collection metadata update task for media server imports
     _queue_post_import_collection_update(user_id, importer_func)
