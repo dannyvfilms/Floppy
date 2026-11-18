@@ -7,7 +7,6 @@ from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
-from django.db import models
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
@@ -17,6 +16,7 @@ from app import (
     fork_services_history,
     fork_services_music,
     history_cache,
+    music_artist_page,
     music_page_repair,
 )
 from app.forms import AlbumTrackerForm, ArtistTrackerForm
@@ -182,29 +182,11 @@ def _serialize_album(album, tracker=None):
 def _artist_activity(user, artist):
     """Return the caller's plays, date range and collection counts for an artist."""
     from app.helpers import get_artist_collection_stats
-    from app.music_views import _music_activity_date_range, _play_counts_by_music_id
 
-    entries = list(
-        Music.objects.filter(
-            models.Q(album__artist=artist)
-            | models.Q(album__artist_credits__artist=artist),
-            user=user,
-        )
-        .select_related("album")
-        .distinct(),
-    )
-    counts = _play_counts_by_music_id(entries)
-    first, last, _ = _music_activity_date_range(entries)
+    total_plays, first, last, _ = music_artist_page.artist_play_totals(user, artist)
     stats = get_artist_collection_stats(user, artist)
-    album_plays = {}
-    for entry in entries:
-        album_plays[entry.album_id] = album_plays.get(entry.album_id, 0) + counts.get(
-            entry.id,
-            0,
-        )
     return {
-        "album_plays": album_plays,
-        "total_plays": sum(counts.get(entry.id, 0) for entry in entries),
+        "total_plays": total_plays,
         "first_listened": first,
         "last_listened": last,
         "collection": {
@@ -213,6 +195,23 @@ def _artist_activity(user, artist):
             "tracks": stats["collected_tracks"],
             "total_tracks": stats["total_tracks"],
         },
+    }
+
+
+def _serialize_discography_album(album):
+    """Return an artist-page album: the album payload plus the caller's plays."""
+    payload = _serialize_album(album)
+    payload["play_count"] = getattr(album, "play_count", 0) or 0
+    return payload
+
+
+def _serialize_discography_group(group):
+    """Return one release-type group: its size, the albums shown, the next page."""
+    return {
+        "label": group["label"],
+        "count": group["count"],
+        "albums": [_serialize_discography_album(album) for album in group["albums"]],
+        "next_offset": group["next_offset"],
     }
 
 
@@ -360,12 +359,23 @@ class MusicArtistDetailView(drf_views.APIView):
             user=request.user,
             artist=artist,
         ).first()
-        payload = _serialize_artist(artist, tracker, include_albums=True)
-        activity = _artist_activity(request.user, artist)
-        album_plays = activity.pop("album_plays")
-        for album in payload["albums"]:
-            album["play_count"] = album_plays.get(album["id"], 0)
-        payload.update(activity)
+        payload = _serialize_artist(artist, tracker)
+        # The same albums and groups as the web page: every release counts,
+        # each group sends its first page and pages on through .../albums/.
+        all_albums = music_artist_page.artist_albums(
+            request.user,
+            artist,
+            merge=False,
+        )
+        groups = [
+            _serialize_discography_group(group)
+            for group in music_artist_page.discography_page(request.user, all_albums)
+        ]
+        payload["total_releases"] = len(all_albums)
+        payload["discography"] = groups
+        # Older apps group this flat list themselves.
+        payload["albums"] = [album for group in groups for album in group["albums"]]
+        payload.update(_artist_activity(request.user, artist))
         payload["repair_pending"] = repair_pending
         return Response(payload, status=HTTP.OK)
 
@@ -419,6 +429,46 @@ class MusicArtistDetailView(drf_views.APIView):
             )
         tracker.delete()
         return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/music/artists/[artist_id]/albums/
+class MusicArtistAlbumsView(drf_views.APIView):
+    """One page of a discography group, as the artist page shows it."""
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "group",
+                OpenApiTypes.STR,
+                required=True,
+                description="Release-type group label from the artist's discography.",
+            ),
+            OpenApiParameter("offset", OpenApiTypes.INT),
+            OpenApiParameter("limit", OpenApiTypes.INT, description="At most 100."),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request, artist_id):
+        """Return ``group``'s albums from ``offset`` (``limit`` at most 100)."""
+        artist = Artist.objects.filter(id=artist_id).first()
+        if artist is None:
+            return Response({"detail": "Artist not found."}, status=HTTP.NOT_FOUND)
+        limit, offset, err = parse_limit_offset(request)
+        if err:
+            return err
+        if "limit" not in request.GET:
+            limit = music_artist_page.ARTIST_ALBUM_PAGE_SIZE
+        limit = min(max(limit, 1), 100)
+        group = music_artist_page.discography_group_slice(
+            request.user,
+            music_artist_page.artist_albums(request.user, artist, merge=False),
+            request.GET.get("group", ""),
+            offset=offset,
+            limit=limit,
+        )
+        if group is None:
+            return Response({"detail": "Group not found."}, status=HTTP.NOT_FOUND)
+        return Response(_serialize_discography_group(group), status=HTTP.OK)
 
 
 # /api/v1/music/artists/[artist_id]/sync-discography/

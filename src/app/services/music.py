@@ -1435,11 +1435,18 @@ def canonicalize_album(album: Album, user=None) -> Album:
     return merge_album_records(album, canonical)
 
 
-def canonicalize_albums(albums: list[Album], user=None) -> list[Album]:
+def canonicalize_albums(
+    albums: list[Album],
+    user=None,
+    *,
+    merge: bool = True,
+) -> list[Album]:
     """Canonicalize many albums, checking for duplicate rows in one query.
 
     Only albums whose MusicBrainz identity is shared with another row go
     through canonicalize_album; every other album is returned as it is.
+    ``merge=False`` returns the canonical row without merging the
+    duplicate into it, for a request that only reads.
     """
     group_ids = {
         a.musicbrainz_release_group_id for a in albums if a.musicbrainz_release_group_id
@@ -1470,7 +1477,12 @@ def canonicalize_albums(albums: list[Album], user=None) -> list[Album]:
             shared = release_counts.get(album.musicbrainz_release_id, 0) > 1
         else:
             shared = False
-        canonical.append(canonicalize_album(album, user=user) if shared else album)
+        if not shared:
+            canonical.append(album)
+        elif merge:
+            canonical.append(canonicalize_album(album, user=user))
+        else:
+            canonical.append(find_canonical_album(album, user=user))
     return canonical
 
 
