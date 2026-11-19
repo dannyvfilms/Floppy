@@ -478,6 +478,7 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
+- `frontend/ui/IconButton.jsx`, `frontend/ui/RailTitle.jsx` (new shared round icon button and Home row heading; consumers: `PlaybackCard`, and `Rail` for `RailTitle`; universal react-native, web and native).
 - `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it, using the standard MediaCard indigo for both playing and paused/stale progress fills)
 - `expo/app/surfaces/PlaybackSlot.jsx`, `expo/app/data/playbackTransport.js`, `expo/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing follows the server's web detail destination; cards span up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
 - `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)

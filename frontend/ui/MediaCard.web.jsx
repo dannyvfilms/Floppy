@@ -755,6 +755,8 @@ export const MediaCard = React.memo(function MediaCard({
   const rootClass = [
     'media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group',
     variant === 'grid-square' ? gridSquareVariantClass : grid ? gridVariantClass : '',
+    // A card whose subtitle is the point (Now Playing's episode and clock) keeps it visible without hover.
+    grid && model.subtitleAlways ? 'media-card-subtitle-always' : '',
     className,
   ].filter(Boolean).join(' ');
   return <div ref={cardRef} className={rootClass}

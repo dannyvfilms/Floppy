@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from './Button';
+import { actionIcons } from './actionIcons';
+import { IconButton } from './IconButton';
 import { MediaCard } from './MediaCard';
+import { RailTitle } from './RailTitle';
 
 const defaultLabels = {
   nowPlaying: 'Now Playing',
@@ -107,12 +110,14 @@ export function PlaybackCard({ model, labels, palette, onOpenDetails, onPause, o
   const cardModel = {
     shape: 'landscape',
     aspectRatio: 16 / 9,
+    subtitleAlways: true,
     href: model?.href || '',
     title: model?.title || '',
     image: typeof model?.image === 'string'
       ? { src: model.image, alt: model?.title || '' }
       : model?.image || { src: '', alt: model?.title || '' },
-    progressBar: { percent, paused: !playing || stale },
+    // Dormant keeps the grid card's progress bar visible without hover.
+    progressBar: { percent, paused: !playing || stale, dormant: true },
     lines: subtitle ? [{ join: 'plain', clamp: true, parts: [{ text: subtitle }] }] : [],
   };
   const cardPalette = {
@@ -126,45 +131,23 @@ export function PlaybackCard({ model, labels, palette, onOpenDetails, onPause, o
     progressFill: '#6366f1',
     progressPaused: '#6366f1',
   };
+  const buttons = { surface: colors.surfaceStrong, surfaceHover: colors.surfaceHover,
+    text: colors.text, danger: colors.danger, focusStyle: colors.focusStyle };
+  const control = (key, icon, label, onPress, tone) => <IconButton key={key} icon={icon} label={label} tone={tone}
+    busy={busyAction === key} disabled={Boolean(busyAction)} dimmed={Boolean(busyAction) && busyAction !== key}
+    palette={buttons} onPress={onPress} />;
   const header = <View style={styles.headingRow}>
-    <Text role="heading" aria-level={3}
-      style={[styles.heading, viewportWidth < 640 && styles.headingCompact, { color: colors.text }]}>
-      {text.nowPlaying}
-    </Text>
+    <RailTitle compact={viewportWidth < 640} color={colors.text}>{text.nowPlaying}</RailTitle>
     {hasControl ? <View style={styles.controls}>
-      {onPause ? <Pressable accessibilityRole="button"
-        accessibilityLabel={text.pauseCheckIn} accessibilityState={{ busy: busyAction === 'pause' }}
-        disabled={Boolean(busyAction)} onPress={onPause}
-        style={({ pressed, focused }) => [styles.controlButton, {
-          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
-          opacity: busyAction && busyAction !== 'pause' ? 0.5 : 1,
-        }, focused && colors.focusStyle]}>
-        <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'pause' ? '…' : 'Ⅱ'}</Text>
-      </Pressable> : null}
-      {onStop ? <Pressable accessibilityRole="button"
-        accessibilityLabel={text.stopCheckIn} accessibilityState={{ busy: busyAction === 'stop' }}
-        disabled={Boolean(busyAction)} onPress={onStop}
-        style={({ pressed, focused }) => [styles.controlButton, {
-          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
-          opacity: busyAction && busyAction !== 'stop' ? 0.5 : 1,
-        }, focused && colors.focusStyle]}>
-        <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'stop' ? '…' : '■'}</Text>
-      </Pressable> : null}
-      {onCancel ? <Pressable accessibilityRole="button"
-        accessibilityLabel={text.cancelCheckIn} accessibilityState={{ busy: busyAction === 'cancel' }}
-        disabled={Boolean(busyAction)} onPress={onCancel}
-        style={({ pressed, focused }) => [styles.controlButton, {
-          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
-          opacity: busyAction && busyAction !== 'cancel' ? 0.5 : 1,
-        }, focused && colors.focusStyle]}>
-        <Text style={[styles.controlGlyph, { color: colors.danger }]}>{busyAction === 'cancel' ? '…' : '×'}</Text>
-      </Pressable> : null}
+      {onPause ? control('pause', actionIcons.pause, text.pauseCheckIn, onPause) : null}
+      {onStop ? control('stop', actionIcons.stop, text.stopCheckIn, onStop) : null}
+      {onCancel ? control('cancel', actionIcons.close, text.cancelCheckIn, onCancel, 'danger') : null}
     </View> : null}
   </View>;
 
   return <View style={[styles.root, { width }]}>
     {header}
-    <MediaCard model={cardModel} palette={cardPalette} width={width}
+    <MediaCard variant="grid" model={cardModel} palette={cardPalette} width={width}
       readOnly onOpen={onOpenDetails ? () => onOpenDetails(model?.href) : undefined} />
   </View>;
 }
@@ -234,11 +217,7 @@ export function CheckInState({ model, actions = [], labels, palette, onAction, b
 const styles = StyleSheet.create({
   root: { gap: 8 },
   headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  heading: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
-  headingCompact: { fontSize: 16, lineHeight: 21.6 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  controlButton: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  controlGlyph: { fontSize: 14, fontWeight: '700' },
   checkinCard: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 6 },
   checkinHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   checkinTitle: { fontSize: 14, fontWeight: '600' },

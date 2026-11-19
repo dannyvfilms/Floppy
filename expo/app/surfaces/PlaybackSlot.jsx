@@ -42,7 +42,11 @@ export default function PlaybackSlot({ onOpenDetail }) {
   const [message, setMessage] = useState('');
   const [busyCard, setBusyCard] = useState(null);
   const mounted = useRef(true);
-  const cardWidth = playbackCardWidth(viewportWidth, mobileGridLayout);
+  // The span formula assumes 16 pt screen gutters; Home's gutters are wider, so the card is
+  // clamped to the width the row really has (native only: web sizes the card in CSS).
+  const [rowWidth, setRowWidth] = useState(0);
+  const spanWidth = playbackCardWidth(viewportWidth, mobileGridLayout);
+  const cardWidth = rowWidth > 0 ? Math.min(spanWidth, rowWidth) : spanWidth;
 
   useEffect(() => subscribeAuthSession(setSession), []);
 
@@ -111,7 +115,7 @@ export default function PlaybackSlot({ onOpenDetail }) {
     }
   }
 
-  return <View style={styles.root}>
+  return <View style={styles.root} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.row}>
       {cards.map(card => {

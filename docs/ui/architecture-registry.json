@@ -2030,12 +2030,12 @@
       "register": "PLAYBACK",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "PlaybackCard uses the standard MediaCard indigo fill for playing and paused/stale progress states; browser runtime verification remains pending."
+          "status": "verified",
+          "evidence": "Now Playing mounts the grid MediaCard, RailTitle and IconButton; before/after rendered in Chromium (manual and session check-ins)."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "The earlier Now Playing layout was checked on Device Hub iPhone Duo (iOS 27.2); the latest playing and paused/stale color change has not been verified in a reloaded bundle."
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
         },
         "android": {
           "status": "unverified",
@@ -3813,6 +3813,46 @@
         "android": {
           "status": "unverified",
           "evidence": "Shared Collection and calendar row; runtime verification pending."
+        }
+      }
+    },
+    "frontend/ui/IconButton.jsx": {
+      "components": [
+        "IconButton"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing Pause, Stop and Cancel buttons in Chromium beside the previous controls."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RailTitle.jsx": {
+      "components": [
+        "RailTitle"
+      ],
+      "register": "RAILS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing heading in Chromium at the Home row heading size; Rail draws its row titles with it."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
         }
       }
     }
