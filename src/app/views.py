@@ -809,28 +809,18 @@ def rt_extras(
     media_type,
     media_id,
     season_number=None,
-    episode_number=None,
 ):
     """HTMX fragment: the deferred Rotten Tomatoes extras for a detail page.
 
     Loaded after the page renders because a cold match searches and scrapes
     rottentomatoes.com; results cache for a week. Returns an out-of-band
     external-links chip for movie/TV/anime/season pages (which warms the
-    match cache `_build_detail_link_sections` reads on later renders), or the
-    episode Tomatometer pill for episode pages.
+    match cache `_build_detail_link_sections` reads on later renders).
     """
     rt_link = None
-    rt_episode = None
 
     try:
-        if episode_number is not None:
-            # media_type is the episode's parent (tv/anime); the fragment
-            # renders the episode's Tomatometer pill
-            tv_metadata = services.get_media_metadata(media_type, media_id, source)
-            rt_episode = rottentomatoes.episode_scores(
-                tv_metadata, season_number, episode_number
-            )
-        elif media_type == MediaTypes.SEASON.value:
+        if media_type == MediaTypes.SEASON.value:
             tv_metadata = services.get_media_metadata(
                 "tv_with_seasons",
                 media_id,
@@ -860,7 +850,6 @@ def rt_extras(
         "app/components/rt_extras.html",
         {
             "rt_link": rt_link_entry,
-            "rt_episode": rt_episode,
         },
     )
 
@@ -1074,23 +1063,6 @@ def episode_details(
 
     imdb_score = _build_imdb_rating_context(episode_item, MediaTypes.EPISODE.value)
 
-    # The Rotten Tomatoes episode pill loads after render: a cold match
-    # searches and scrapes rottentomatoes.com (see rt_extras).
-    rt_extras_url = (
-        reverse(
-            "rt_extras",
-            kwargs={
-                "source": source,
-                "media_type": parent_media_type or MediaTypes.TV.value,
-                "media_id": media_id,
-                "season_number": season_number,
-                "episode_number": episode_number,
-            },
-        )
-        if season_number is not None and episode_number is not None
-        else None
-    )
-
     season_url = reverse(
         "anime_season_details"
         if parent_media_type == MediaTypes.ANIME.value
@@ -1155,7 +1127,6 @@ def episode_details(
         "next_episode_number": next_episode_number,
         "episode_metadata": episode_metadata,
         "imdb_score": imdb_score,
-        "rt_extras_url": rt_extras_url,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,

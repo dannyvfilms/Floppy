@@ -24,26 +24,3 @@
   </div>
 {% endif %}
 
-{# The episode pill is the whole fragment target: it replaces itself, so an #}
-{# empty result leaves an empty div. Episodes carry a Tomatometer only. #}
-{% if rt_episode %}
-  <a href="{{ rt_episode.url }}"
-     target="_blank"
-     rel="noopener noreferrer"
-     aria-label="{% translate 'Open Rotten Tomatoes episode page' %}"
-     class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-red-400/18 bg-red-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-    <span class="sr-only">{% translate "Rotten Tomatoes Tomatometer" %}</span>
-    <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-red-400/28 bg-red-500/14 sm:h-8 sm:w-8">
-      <span class="text-[9px] font-black tracking-[0.08em] text-red-200">RT</span>
-    </span>
-    {% if rt_episode.tomatometer %}
-      <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ rt_episode.tomatometer.value }}{{ rt_episode.tomatometer.suffix }}</span>
-      <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-      <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ rt_episode.tomatometer.count }}</span>
-    {% else %}
-      <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
-      <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-      <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% translate "Rotten Tomatoes" %}</span>
-    {% endif %}
-  </a>
-{% endif %}

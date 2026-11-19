@@ -13,7 +13,6 @@ mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 # Trimmed search page: movie rows use hyphenated attributes, TV rows do not
 SEARCH_HTML = (mock_path / "rottentomatoes_search.html").read_text()
 PAGE_HTML = (mock_path / "rottentomatoes_page.html").read_text()
-EPISODE_HTML = (mock_path / "rottentomatoes_episode.html").read_text()
 
 
 @override_settings(ROTTEN_TOMATOES=True, RT_TITLE_MATCH_THRESHOLD=0.75)
@@ -299,61 +298,6 @@ class RottenTomatoesScores(TestCase):
         self.assertEqual(rottentomatoes.season_scores(tv_metadata, 1), {})
         # only the show search was requested
         mock_api_request.assert_called_once()
-
-    @patch("app.providers.rottentomatoes.services.api_request")
-    def test_episode_scores(self, mock_api_request):
-        """Test that an episode uses the /sNN/eNN page below the matched show."""
-        mock_api_request.side_effect = [SEARCH_HTML, EPISODE_HTML]
-        tv_metadata = {
-            "media_type": "tv",
-            "title": "Dune: Prophecy",
-            "details": {"first_air_date": "2024-11-17"},
-        }
-
-        response = rottentomatoes.episode_scores(tv_metadata, 1, 6)
-
-        self.assertEqual(
-            response["url"],
-            "https://www.rottentomatoes.com/tv/dune_prophecy/s01/e06",
-        )
-        self.assertEqual(response["title"], "Dune: Prophecy")
-        self.assertEqual(response["episode"], 6)
-        # the episode scorecard's scorePercent becomes the Tomatometer
-        self.assertEqual(
-            response["tomatometer"],
-            {"value": "47", "suffix": "%", "count": "137 reviews", "certified": False},
-        )
-        self.assertEqual(mock_api_request.call_args.args[2], response["url"])
-
-        # second call is served from cache
-        rottentomatoes.episode_scores(tv_metadata, 1, 6)
-        self.assertEqual(mock_api_request.call_count, 2)
-
-    @patch("app.providers.rottentomatoes.services.api_request")
-    def test_episode_scores_not_found(self, mock_api_request):
-        """Test that an episode missing on Rotten Tomatoes returns nothing."""
-        error = requests.exceptions.HTTPError(
-            response=type("Response", (), {"status_code": 404})(),
-        )
-        mock_api_request.side_effect = [SEARCH_HTML, error]
-        tv_metadata = {"media_type": "tv", "title": "Dune: Prophecy", "details": {}}
-
-        self.assertEqual(rottentomatoes.episode_scores(tv_metadata, 1, 1), {})
-        self.assertEqual(mock_api_request.call_count, 2)
-
-    @patch("app.providers.rottentomatoes.services.api_request")
-    def test_episode_scores_no_scorecard_keeps_link(self, mock_api_request):
-        """Test that an episode page without scores still earns the link."""
-        mock_api_request.side_effect = [SEARCH_HTML, "<html></html>"]
-        tv_metadata = {"media_type": "tv", "title": "Dune: Prophecy", "details": {}}
-
-        response = rottentomatoes.episode_scores(tv_metadata, 1, 1)
-
-        self.assertEqual(
-            response["url"],
-            "https://www.rottentomatoes.com/tv/dune_prophecy/s01/e01",
-        )
-        self.assertIsNone(response["tomatometer"])
 
     @patch("app.providers.rottentomatoes.services.api_request")
     def test_cached_page_url(self, mock_api_request):

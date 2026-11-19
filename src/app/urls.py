@@ -378,11 +378,6 @@ urlpatterns = [
         name="rt_extras",
     ),
     path(
-        "api/rt-extras/<source:source>/<media_type:media_type>/<str:media_id>/<int:season_number>/<int:episode_number>/",
-        views.rt_extras,
-        name="rt_extras",
-    ),
-    path(
         "api/active-playback/",
         views.active_playback_fragment,
         name="active_playback_fragment",

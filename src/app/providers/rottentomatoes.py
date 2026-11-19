@@ -3,7 +3,7 @@
 There is no public API: the site's search results and the scorecard JSON
 embedded in title pages are parsed. Adapted from upstream Yamtrack PR #1712,
 extended with a match cache (so detail pages can offer a Rotten Tomatoes
-external link without a request) and per-episode score lookup.
+external link without a request).
 """
 
 import difflib
@@ -245,52 +245,6 @@ def season_scores(tv_metadata, season_number):
             if page
             else {}
         )
-        cache.set(cache_key, data, SCORES_CACHE_TIMEOUT)
-
-    return data
-
-
-def episode_scores(tv_metadata, season_number, episode_number):
-    """Return the episode's Rotten Tomatoes page and Tomatometer, if any.
-
-    Episodes live below the show's page as /sNN/eNN and carry a critics score
-    only, so the pill links to the page whether or not a score was published.
-    """
-    if season_number < 1 or episode_number < 1:
-        return {}
-
-    resolved = lookup(tv_metadata)
-    if resolved is None:
-        return {}
-    try:
-        match = _match(*resolved)
-    except requests.exceptions.RequestException as error:
-        return request_failed(tv_metadata.get("title"), error)
-    if not match:
-        return {}
-
-    url = f"{match['url']}/s{season_number:02d}/e{episode_number:02d}"
-    cache_key = f"rt_episode_scores_{url}"
-    data = cache.get(cache_key)
-
-    if data is None:
-        name = f"{match['title']} s{season_number:02d}e{episode_number:02d}"
-        try:
-            page = page_scores(url)
-        except requests.exceptions.RequestException as error:
-            if not is_not_found(error):
-                return request_failed(name, error)
-            logger.info("Rotten Tomatoes page for %s not found", name)
-            data = {}
-        else:
-            # A page without a scorecard still exists and is still linked
-            data = {
-                "url": url,
-                "title": match["title"],
-                "season": season_number,
-                "episode": episode_number,
-                "tomatometer": (page or {}).get("tomatometer"),
-            }
         cache.set(cache_key, data, SCORES_CACHE_TIMEOUT)
 
     return data

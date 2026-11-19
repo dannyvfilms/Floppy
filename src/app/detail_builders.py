@@ -918,6 +918,7 @@ _DETAIL_LINK_BRANDS = {
         "fallback_text": "WD",
     },
     "rottentomatoes": {
+        "logo_src": static("img/rottentomatoes-logo.svg"),
         "chip_classes": "border-red-400/18 bg-red-500/[0.07]",
         "badge_classes": "border-red-400/28 bg-red-500/14",
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
