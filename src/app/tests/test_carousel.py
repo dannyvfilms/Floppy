@@ -1,9 +1,11 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from app import carousel
@@ -310,6 +312,32 @@ class CarouselOverviewTests(SimpleTestCase):
 
         self.assertLess(html.index("Overview"), html.index("mqdefault.jpg"))
         self.assertIn("detail-carousel-overview-logo", html)
+
+    def test_season_logo_links_to_the_show(self):
+        carousel = {
+            "overview": {
+                "url": "https://images.example.com/backdrop.jpg",
+                "thumb_url": "https://images.example.com/thumb.jpg",
+                "logo_url": "https://images.example.com/logo.png",
+            },
+            "video": None,
+            "photos": [],
+        }
+
+        linked = render_to_string(
+            "app/components/detail_carousel_fragment.html",
+            {"carousel": carousel, "carousel_logo_url": "/details/tmdb/tv/1/silo"},
+        )
+        plain = render_to_string(
+            "app/components/detail_carousel_fragment.html",
+            {"carousel": carousel},
+        )
+
+        self.assertIn(
+            '<a href="/details/tmdb/tv/1/silo" class="detail-carousel-overview-logo-link">',
+            linked,
+        )
+        self.assertNotIn("detail-carousel-overview-logo-link", plain)
 
 
     def test_fragment_renders_the_phone_hero_only_when_there_is_one(self):
@@ -619,3 +647,52 @@ class GameArtworkWarmTests(SimpleTestCase):
         warm_game_artwork_task(["1", "2"])
 
         self.assertEqual(resolve.call_count, 2)
+
+
+@patch("app.carousel.resolve_carousel_media")
+class SeasonCarouselLogoLinkTests(TestCase):
+    """A season's title logo hides its title link, so the logo opens the show."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="viewer", password="unused-test-pass"
+        )
+        self.client.force_login(self.user)
+        self.carousel = {
+            "overview": {
+                "url": "https://x.test/backdrop.jpg",
+                "thumb_url": "https://x.test/thumb.jpg",
+                "logo_url": "https://x.test/logo.png",
+            },
+            "video": None,
+            "photos": [],
+        }
+
+    def fragment(self):
+        url = reverse(
+            "season_details",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_id": "125988",
+                "title": "silo",
+                "season_number": 4,
+            },
+        )
+        return self.client.get(url, {"fragment": "carousel"}).content.decode()
+
+    def test_tv_season_logo_links_to_the_tv_show(self, resolve):
+        resolve.return_value = self.carousel
+
+        self.assertIn('<a href="/details/tmdb/tv/125988/silo"', self.fragment())
+
+    def test_anime_library_season_logo_links_to_the_anime_page(self, resolve):
+        resolve.return_value = self.carousel
+        Item.objects.create(
+            media_id="125988",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Silo",
+        )
+
+        self.assertIn('<a href="/details/tmdb/anime/125988/silo"', self.fragment())

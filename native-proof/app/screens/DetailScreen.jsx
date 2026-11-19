@@ -274,6 +274,14 @@ export default function DetailScreen({ params, onBack, navigate }) {
     }
   }
 
+  // A season page's title is the show's name and opens the show, like the web title link.
+  const seasonIdentity = model?.identity?.media_type === 'season' ? model.identity : null;
+  const showIdentity = seasonIdentity?.source && seasonIdentity?.media_id ? {
+    mediaType: seasonIdentity.parent_media_type || 'tv',
+    source: seasonIdentity.source,
+    mediaId: seasonIdentity.media_id,
+  } : null;
+
   const features = useDetailFeatures({
     // Native starts read-only header requests from the navigation identity;
     // web receives the same information in its server-rendered response.
@@ -338,6 +346,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
       hideContent={loadFailed}
       onRetry={item ? () => setAttempt(value => value + 1) : undefined}
       onOpenItem={openDetail}
+      onOpenTitle={showIdentity ? () => openDetail(showIdentity) : undefined}
       onOpenExternal={openExternal}
       onOpenVideo={openVideo}
       onLoadMore={loadMoreEpisodes}
