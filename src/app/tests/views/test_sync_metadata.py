@@ -890,7 +890,7 @@ class SyncMetadataViewTests(TestCase):
         )
         self.assertEqual(
             {entry["label"] for entry in external_section["entries"]},
-            {"Letterboxd", "IMDb", "IMDb Parent's Guide", "Wikidata"},
+            {"Letterboxd", "IMDb", "Wikidata"},
         )
 
     @patch("app.metadata_sync_views._sync_plex_rating")
