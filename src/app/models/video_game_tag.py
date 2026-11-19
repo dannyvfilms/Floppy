@@ -31,6 +31,16 @@ class VideoGameTag(models.Model):
     checked_at = models.DateTimeField()
     failures = models.PositiveSmallIntegerField(default=0)
 
+    class Meta:
+        """Covering index so listing the found tags reads ~1k entries, not the table."""
+
+        indexes = [
+            models.Index(
+                fields=["status", "item", "game_title", "release_year"],
+                name="vgtag_status_cover_idx",
+            ),
+        ]
+
     def __str__(self):
         """Return the lookup outcome."""
         return f"{self.item_id}: {self.status} {self.game_title}"
