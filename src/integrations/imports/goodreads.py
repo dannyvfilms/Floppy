@@ -3,6 +3,7 @@ from collections import defaultdict
 from csv import DictReader
 from datetime import datetime
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.utils import timezone
 
@@ -82,6 +83,21 @@ class GoodReadsImporter:
                 error_msg = f"Error processing entry: {row_description} - {error}"
                 self.warnings.append(error_msg)
                 continue
+            except SoftTimeLimitExceeded:
+                # Rate-limited Open Library lookups can sleep long enough to
+                # trip the task's soft time limit. Stop here rather than losing
+                # every book already staged - "new" mode skips them on re-run.
+                logger.warning(
+                    "Goodreads import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining books.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
