@@ -778,7 +778,7 @@ Posthumous labels show event age and `Died YYYY` on separate lines without a sep
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
-- `frontend/ui/People.jsx`, `frontend/ui/mountPeople.jsx`, `frontend/pages/PeopleView.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/HomeShelves.jsx`, `src/app/media_card_model.py`, `src/app/people_views.py`, `src/app/detail_builders.py`
+- `src/app/media_card_model.py`, `src/app/people_views.py`, `src/app/detail_builders.py`
 - `frontend/settings/CreditAgeSetting.jsx` (preference control; browser native select remains template-owned)
 
 ## TAGS
