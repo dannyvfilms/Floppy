@@ -756,6 +756,7 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)

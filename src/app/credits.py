@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -557,9 +557,13 @@ def sync_item_author_credits(item, authors_full):
         ItemPersonCredit.objects.bulk_create(credits_to_create, ignore_conflicts=True)
 
 
-@transaction.atomic
 def upsert_person_profile(source, source_person_id, metadata):
-    """Create or update a local person profile from provider metadata."""
+    """Create or update a local person profile from provider metadata.
+
+    A person page calls this on every view, so it writes only when the
+    provider's profile differs from the stored row. An empty provider answer
+    (an outage) keeps the stored profile instead of blanking it.
+    """
     if (
         source not in Sources.values
         or not source_person_id
@@ -567,18 +571,34 @@ def upsert_person_profile(source, source_person_id, metadata):
     ):
         return None
 
-    person, _ = Person.objects.update_or_create(
-        source=source,
-        source_person_id=str(source_person_id),
-        defaults={
-            "name": _as_text(metadata.get("name")) or "Unknown Person",
-            "image": _as_text(metadata.get("image")),
-            "known_for_department": _as_text(metadata.get("known_for_department")),
-            "biography": _as_text(metadata.get("biography")),
-            "gender": _coerce_gender(metadata.get("gender")),
-            "birth_date": _coerce_iso_date(metadata.get("birth_date")),
-            "death_date": _coerce_iso_date(metadata.get("death_date")),
-            "place_of_birth": _as_text(metadata.get("place_of_birth")),
-        },
-    )
+    lookup = {"source": source, "source_person_id": str(source_person_id)}
+    person = Person.objects.filter(**lookup).first()
+    if not metadata:
+        return person
+
+    profile = {
+        "name": _as_text(metadata.get("name")) or "Unknown Person",
+        "image": _as_text(metadata.get("image")),
+        "known_for_department": _as_text(metadata.get("known_for_department")),
+        "biography": _as_text(metadata.get("biography")),
+        "gender": _coerce_gender(metadata.get("gender")),
+        "birth_date": _coerce_iso_date(metadata.get("birth_date")),
+        "death_date": _coerce_iso_date(metadata.get("death_date")),
+        "place_of_birth": _as_text(metadata.get("place_of_birth")),
+    }
+    if person is None:
+        try:
+            with transaction.atomic():
+                return Person.objects.create(**lookup, **profile)
+        except IntegrityError:
+            # Another request created the row first; update that one.
+            person = Person.objects.get(**lookup)
+
+    changed = [
+        field for field, value in profile.items() if getattr(person, field) != value
+    ]
+    if changed:
+        for field in changed:
+            setattr(person, field, profile[field])
+        person.save(update_fields=changed)
     return person
