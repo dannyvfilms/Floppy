@@ -117,10 +117,15 @@ def _infer_runs(keys, rows, *, include_candidates=False):
                     continue
                 candidate.record(row)
                 first = candidate.keys[0]
+                # A second log of a season's opener mid-pass is a duplicate,
+                # not a restart, when the pass carries on with this very play.
                 absorbed = any(
                     first in run.completed
                     and run.plays.get(first) == candidate.plays[first]
                     for run in runs
+                ) or (
+                    expected is not None
+                    and candidate.completed - {key} <= expected.completed
                 )
                 if absorbed:
                     del candidates[scope]
