@@ -174,7 +174,8 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const fmt=n=>n.toLocaleString('en-US');
 let byLoc=true, inclLogic=false;
 let openPage=null, openFile=null;
-const pf={};  // per-page UI filters
+const pf=new Map();  // per-page UI filters; a Map so a page key like '__proto__' can never reach Object.prototype
+function pfOf(k){let v=pf.get(k); if(!v){v={q:'',flt:'all'}; pf.set(k,v)} return v}
 try{const h=location.hash.slice(1); if(P[h]) openPage=h}catch(e){}
 
 function inc(f){return inclLogic||f.kind!=='logic'}
@@ -246,7 +247,7 @@ function pageRow(k){
 }
 function famOf(f){return f.reg||LAYER[f.layer]||f.layer}
 function detail(k){
-  const p=P[k]; const st=pf[k]||(pf[k]={q:'',flt:'all'});
+  const p=P[k]; const st=pfOf(k);
   let list=pageFiles(k).filter(inc);
   const counts={all:list.length,unsigned:list.filter(f=>vcat(f)!=='s').length,unique:list.filter(f=>f.own==='native-unique').length,dom:list.filter(f=>f.kind==='dom'||f.kind==='mixed').length,unver:list.filter(f=>vcat(f)==='u').length};
   const q=st.q.toLowerCase();
@@ -297,11 +298,11 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('button,input'); if(!t) return;
   if(t.dataset.page){const k=t.dataset.page; openPage=openPage===k?null:k; openFile=null; try{history.replaceState(null,'',openPage?'#'+openPage:location.pathname)}catch(_){ } renderAll(); const r=document.getElementById('r-'+k); if(r&&openPage) r.scrollIntoView({block:'nearest'}); return}
   if(t.dataset.file){openFile=openFile===t.dataset.file?null:t.dataset.file; renderAll(); return}
-  if(t.dataset.flt){(pf[openPage]=pf[openPage]||{q:'',flt:'all'}).flt=t.dataset.flt; renderAll(); return}
+  if(t.dataset.flt){pfOf(openPage).flt=t.dataset.flt; renderAll(); return}
   if(t.id==='w-loc'||t.id==='w-files'){byLoc=t.id==='w-loc'; $('#w-loc').setAttribute('aria-pressed',byLoc); $('#w-files').setAttribute('aria-pressed',!byLoc); renderAll(); return}
 });
 document.addEventListener('change',e=>{if(e.target.id==='logic'){inclLogic=e.target.checked; renderAll()}});
-document.addEventListener('input',e=>{const t=e.target; if(t.id&&t.id.startsWith('q-')){(pf[openPage]=pf[openPage]||{q:'',flt:'all'}).q=t.value; renderAll()}});
+document.addEventListener('input',e=>{const t=e.target; if(t.id&&t.id.startsWith('q-')){pfOf(openPage).q=t.value; renderAll()}});
 
 /* ---- boot ---- */
 renderAll();
