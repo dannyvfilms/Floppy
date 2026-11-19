@@ -33,7 +33,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | REST API | `src/api/` (endpoints in `src/api/fork_views_*.py`, routes in `src/api/fork_urls.py`) | `docs/architecture/api-scopes.md` |
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
-| React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `native-proof/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `expo/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
 | Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 
@@ -125,12 +125,12 @@ goes in that subject's module.
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
-**Recorded server answers for the Expo app.** `native-proof/app/data/__recorded__/`
+**Recorded server answers for the Expo app.** `expo/app/data/__recorded__/`
 holds the real JSON of the endpoints the native detail, library, list, History and
 Home readers use, recorded from the sample library by
 `src/api/tests/test_native_recordings.py`. That test fails when a committed file no
 longer matches what the server returns, and the `*TransportCore.test.mjs` files read
-each file through the real reader (`native-proof/app/data/recordedAnswers.mjs`).
+each file through the real reader (`expo/app/data/recordedAnswers.mjs`).
 Changing the shape of one of these endpoints means refreshing the files
 (`FLOPPY_RECORD_NATIVE=1 scripts/test.sh api.tests.test_native_recordings`) and
 reading the native diff: a changed field is one a native screen may read.

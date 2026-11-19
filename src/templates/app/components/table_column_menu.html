@@ -28,7 +28,7 @@
            name="hidden"
            :value="JSON.stringify(columns.filter(column => !column.visible).map(column => column.key))">
   </form>
-  <button class="p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+  <button class="media-column-button p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
           title="{% translate "Configure Table Columns" %}"
           @click="open = !open"
           type="button">

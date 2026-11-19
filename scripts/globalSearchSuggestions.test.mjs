@@ -21,8 +21,8 @@ async function load() {
     export { createRoot } from 'react-dom/client';
     export { GlobalSearch } from ${JSON.stringify(join(root, 'frontend/ui/GlobalSearch.jsx'))};
     export { createWebRequest } from ${JSON.stringify(join(root, 'frontend/ui/webRequest.web.js'))};
-    export { createRemoteSearchActions } from ${JSON.stringify(join(root, 'native-proof/app/data/searchTransportCore.js'))};
-    export { createAuthTransport } from ${JSON.stringify(join(root, 'native-proof/app/data/authTransportCore.js'))};
+    export { createRemoteSearchActions } from ${JSON.stringify(join(root, 'expo/app/data/searchTransportCore.js'))};
+    export { createAuthTransport } from ${JSON.stringify(join(root, 'expo/app/data/authTransportCore.js'))};
   `);
   const outfile = join(dir, 'out.mjs');
   await build({

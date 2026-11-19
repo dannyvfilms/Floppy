@@ -128,22 +128,6 @@
       }
     }
 
-    /* Mobile-only highlight carousel */
-    .stats-highlight-dots {
-      display: flex;
-      margin-top: 0.75rem;
-      margin-bottom: 0.75rem;
-    }
-    .stats-highlight-dot {
-      width: 0.5rem;
-      height: 0.5rem;
-      border-radius: 9999px;
-      background: var(--color-text-muted);
-      transition: background-color 150ms ease;
-    }
-    .stats-highlight-dot.is-active {
-      background: #818cf8;
-    }
     .stats-button-copy {
       min-width: 0;
       display: flex;
@@ -296,7 +280,7 @@
     .stats-mediatype-wrapper .stats-dropdown-panel {
       width: 100%;
     }
-    .stats-media-card-icon {
+    .stats-metric-icon {
       width: 2.75rem;
       height: 2.75rem;
       flex: 0 0 2.75rem;
@@ -306,10 +290,10 @@
       border-radius: 9999px;
       margin-right: 1rem;
     }
-    .stats-media-card-copy {
-      --stats-media-card-label-height: 0.75rem;
+    .stats-metric-copy {
+      --stats-metric-label-height: 0.75rem;
     }
-    .stats-media-card-copy {
+    .stats-metric-copy {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -318,23 +302,23 @@
       min-height: 2.75rem;
       padding-right: 0.25rem;
     }
-    .stats-media-card-title {
+    .stats-metric-title {
       display: flex;
       align-items: flex-start;
-      min-height: var(--stats-media-card-label-height);
+      min-height: var(--stats-metric-label-height);
       line-height: 1;
     }
-    .stats-media-card-value {
+    .stats-metric-value {
       line-height: 0.92;
     }
-    .stats-media-card-meta {
+    .stats-metric-meta {
       display: flex;
       align-items: baseline;
       gap: 0.25rem;
       min-width: 0;
-      min-height: var(--stats-media-card-label-height);
+      min-height: var(--stats-metric-label-height);
     }
-    .stats-media-card-range {
+    .stats-metric-range {
       min-width: 0;
       font-size: 0.75rem;
       line-height: 1;
@@ -343,36 +327,36 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .stats-media-card-range-desktop {
+    .stats-metric-range-desktop {
       display: inline;
     }
-    .stats-media-card-range-mobile {
+    .stats-metric-range-mobile {
       display: none;
     }
-    .stats-media-card-mobile-badge {
+    .stats-metric-mobile-badge {
       display: inline-flex;
       align-items: center;
       gap: 0.15rem;
       font-weight: 600;
       white-space: nowrap;
     }
-    .stats-media-card-mobile-badge-up,
-    .stats-media-card-mobile-badge-new {
+    .stats-metric-mobile-badge-up,
+    .stats-metric-mobile-badge-new {
       color: #34d399;
     }
-    .stats-media-card-mobile-badge-down {
+    .stats-metric-mobile-badge-down {
       color: #fb7185;
     }
-    .stats-media-card-mobile-badge-neutral {
+    .stats-metric-mobile-badge-neutral {
       color: var(--color-text-secondary);
     }
-    .stats-media-card-mobile-badge-icon {
+    .stats-metric-mobile-badge-icon {
       width: 0.75rem;
       height: 0.75rem;
       flex: 0 0 0.75rem;
       stroke-width: 2.25;
     }
-    .stats-media-card-tooltip-trigger {
+    .stats-metric-tooltip-trigger {
       color: var(--color-text-muted);
       transition: color 150ms ease;
       flex: 0 0 auto;
@@ -380,11 +364,11 @@
       line-height: 1;
       transform: none;
     }
-    .stats-media-card-tooltip-trigger svg {
+    .stats-metric-tooltip-trigger svg {
       display: block;
       transform: translateY(3px);
     }
-    .stats-media-card-tooltip-trigger:hover {
+    .stats-metric-tooltip-trigger:hover {
       color: var(--color-text-secondary);
     }
     .stats-tooltip {
@@ -413,105 +397,102 @@
       font-weight: 600;
       white-space: nowrap;
     }
-    .stats-media-card-tooltip-panel {
+    .stats-metric-tooltip-panel {
       left: auto;
       right: 0;
     }
-    .stats-media-card-tooltip-arrow {
+    .stats-metric-tooltip-arrow {
       left: auto;
       right: 0.75rem;
     }
-    .stats-media-card-grid {
+    .stats-metric-grid {
       overflow: visible;
       overflow-x: visible;
       overflow-y: visible;
     }
     @media (min-width: 640px) {
-      .stats-media-card-icon {
+      .stats-metric-icon {
         width: 4rem;
         height: 4rem;
         flex-basis: 4rem;
       }
-      .stats-media-card-copy {
-        --stats-media-card-label-height: 0.875rem;
+      .stats-metric-copy {
+        --stats-metric-label-height: 0.875rem;
         min-height: 4rem;
       }
     }
     @media (max-width: 639px) {
-      .stats-media-card-icon {
+      .stats-metric-icon {
         width: 2.375rem;
         height: 2.375rem;
         flex-basis: 2.375rem;
         margin-right: 0.75rem;
       }
-      .stats-media-card-copy {
+      .stats-metric-copy {
         align-self: center;
         justify-content: center;
         gap: 0.25rem;
         min-height: auto;
         padding-right: 0;
       }
-      .stats-media-card-title {
+      .stats-metric-title {
         display: none;
       }
-      .stats-media-card-value {
+      .stats-metric-value {
         display: block;
         line-height: 0.96;
         white-space: nowrap;
         overflow: visible;
         text-overflow: clip;
       }
-      .stats-media-card-meta {
+      .stats-metric-meta {
         align-items: center;
         gap: 0.3rem;
         min-height: auto;
       }
-      .stats-media-card-range {
+      .stats-metric-range {
         display: flex;
         align-items: center;
         font-size: 0.7rem;
         overflow: visible;
         text-overflow: clip;
       }
-      .stats-media-card-range-desktop {
+      .stats-metric-range-desktop {
         display: none;
       }
-      .stats-media-card-range-mobile {
+      .stats-metric-range-mobile {
         display: inline-flex;
         flex-direction: column;
         align-items: flex-start;
         gap: 0;
       }
-      .stats-media-card-tooltip-trigger {
+      .stats-metric-tooltip-trigger {
         align-self: center;
         display: inline-flex;
         align-items: center;
       }
-      .stats-media-card-tooltip-trigger svg {
+      .stats-metric-tooltip-trigger svg {
         width: 0.8rem;
         height: 0.8rem;
         transform: translateY(0);
       }
     }
     @media (max-width: 768px) {
-      .stats-media-card-grid {
+      .stats-metric-grid {
         overflow: visible;
         overflow-x: visible;
         overflow-y: visible;
       }
-      .stats-media-card-grid > [data-media-card]:nth-child(odd) .stats-media-card-tooltip-panel {
+      .stats-metric-grid > [data-stats-metric]:nth-child(odd) .stats-metric-tooltip-panel {
         left: 0;
         right: auto;
       }
-      .stats-media-card-grid > [data-media-card]:nth-child(odd) .stats-media-card-tooltip-arrow {
+      .stats-metric-grid > [data-stats-metric]:nth-child(odd) .stats-metric-tooltip-arrow {
         left: 0.1rem;
         right: auto;
       }
     }
     @media (min-width: 769px) {
-      .stats-highlight-dots {
-        display: none;
-      }
       .stats-range-button,
       .stats-compare-button,
       .stats-mediatype-button,
@@ -529,19 +510,6 @@
       }
     }
     @media (max-width: 768px) {
-      .stats-highlight-track {
-        display: flex;
-        gap: 0.75rem;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-      }
-      .stats-highlight-card {
-        flex: 0 0 100%;
-        scroll-snap-align: start;
-      }
-      .stats-highlight-track::-webkit-scrollbar {
-        height: 0;
-      }
       .stats-range-row {
         flex-wrap: wrap;
         align-items: stretch;
@@ -637,18 +605,6 @@
       }
       .stats-refresh-button {
         grid-column: -2 / -1;
-      }
-      .stats-highlight-track {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        overflow: visible;
-        scroll-snap-type: none;
-      }
-      .stats-highlight-card {
-        min-width: 0;
-      }
-      .stats-highlight-dots {
-        display: none;
       }
       .stats-hero-cards {
         margin-bottom: 1rem;
@@ -2317,62 +2273,15 @@
 
 {% block js %}
   <script>
-    function highlightCarousel() {
-      return {
-        activeIndex: 0,
-        init() {
-          const track = this.$refs.track;
-          if (!track) return;
-          const cards = Array.from(track.querySelectorAll("[data-carousel-card]"));
-          if (!cards.length) return;
-
-          const updateActive = () => {
-            if (window.matchMedia("(min-width: 769px)").matches) {
-              this.activeIndex = 0;
-              return;
-            }
-            const trackRect = track.getBoundingClientRect();
-            const center = trackRect.left + trackRect.width / 2;
-            let closestIndex = 0;
-            let closestDistance = Infinity;
-            cards.forEach((card, index) => {
-              const rect = card.getBoundingClientRect();
-              const cardCenter = rect.left + rect.width / 2;
-              const distance = Math.abs(cardCenter - center);
-              if (distance < closestDistance) {
-                closestDistance = distance;
-                closestIndex = index;
-              }
-            });
-            this.activeIndex = closestIndex;
-          };
-
-          this._updateActive = updateActive;
-          track.addEventListener("scroll", updateActive, { passive: true });
-          window.addEventListener("resize", updateActive);
-          requestAnimationFrame(updateActive);
-        },
-        scrollTo(index) {
-          const track = this.$refs.track;
-          if (!track) return;
-          const cards = Array.from(track.querySelectorAll("[data-carousel-card]"));
-          const target = cards[index];
-          if (!target) return;
-          target.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
-          this.activeIndex = index;
-        },
-      };
-    }
-
     // var (not let): this script re-executes on boosted navigation
     var statsMediaCardFitFrame = null;
 
     function fitStatisticsMediaCardValues() {
       const isMobile = window.matchMedia("(max-width: 639px)").matches;
 
-      document.querySelectorAll("[data-media-card]").forEach((card) => {
-        const value = card.querySelector(".stats-media-card-value");
-        const copy = card.querySelector(".stats-media-card-copy");
+      document.querySelectorAll("[data-stats-metric]").forEach((card) => {
+        const value = card.querySelector(".stats-metric-value");
+        const copy = card.querySelector(".stats-metric-copy");
         if (!value || !copy) {
           return;
         }

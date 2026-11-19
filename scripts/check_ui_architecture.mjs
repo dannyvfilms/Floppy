@@ -12,7 +12,7 @@ const forbiddenProps = new Set(['className', 'dangerouslySetInnerHTML', 'href', 
 const sourceExtensions = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'mts', 'cts'];
 // Application shell screens live beside the Expo project, not in the reusable
 // presentation tree. They still receive the universal AST checks below.
-export const isNativeAppShellPresentation = path => /^native-proof\/app\/.+\.(jsx|tsx)$/.test(path);
+export const isNativeAppShellPresentation = path => /^expo\/app\/.+\.(jsx|tsx)$/.test(path);
 const hasEvidence = verification => ['web', 'ios', 'android'].every(platform => {
   const item = verification?.[platform];
   return item && ['verified', 'unverified'].includes(item.status) && typeof item.evidence === 'string' && item.evidence.trim().length > 0;
@@ -278,7 +278,7 @@ function main() {
     return execFileSync('git', ['show', ref], { cwd: root, encoding: 'utf8' });
   } : undefined;
   const errors = validateRegistry(registry, base, files, path => readFileSync(resolve(root, path), 'utf8'), undefined, readBase);
-  errors.push(...inspectUniversal(readFileSync(resolve(root, 'native-proof/App.js'), 'utf8'), 'native-proof/App.js'));
+  errors.push(...inspectUniversal(readFileSync(resolve(root, 'expo/App.js'), 'utf8'), 'expo/App.js'));
   const repositoryFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' }).split('\0');
   for (const path of repositoryFiles) {
     if (!/\.(jsx|tsx)$/.test(path) || path.startsWith('frontend/') || !existsSync(resolve(root, path))) continue; // deleted in the working tree: nothing to inspect

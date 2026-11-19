@@ -1,7 +1,7 @@
 import { ROW_LOOKAHEAD_SCREENS } from './homeRowLoading.js';
 
 // Platform difference: the browser reports row positions with
-// IntersectionObserver; native measures rows on scroll (native-proof
+// IntersectionObserver; native measures rows on scroll (expo
 // homeRowWatcherCore.js). Both feed the same shared load decision in HomeShelves.
 
 function scrollParent(node) {

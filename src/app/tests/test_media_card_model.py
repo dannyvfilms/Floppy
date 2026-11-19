@@ -95,6 +95,38 @@ class MediaCardModelTest(TestCase):
             "href": "/episode/next/",
         }])
 
+    def test_next_episode_chip_names_the_episode_for_hover(self):
+        """The episode code comes from the link, so hover can say which one is next."""
+        media = SimpleNamespace(next_episode_queue=False)
+        ctx = {
+            "item": self.item,
+            "media": media,
+            "user": SimpleNamespace(is_authenticated=True, quick_season_update_mobile="next_episode"),
+        }
+        href = "/details/tmdb/tv/1/show/season/3/episode/5"
+        with patch("app.media_card_model.app_tags.next_episode_url", return_value=href):
+            chip = _corner_chips(ctx, "tv")[0]
+
+        self.assertEqual(chip["expandedText"], "Next episode: S03E05")
+        self.assertEqual(chip["expandedShortText"], "Next ep: S03E05")
+
+    def test_replacement_subtitle_lines_follow_the_saved_display(self):
+        """An episode code or release date is as visible at rest as the user's first line."""
+        from app.media_card_model import _item_lines
+
+        item = SimpleNamespace(season_number=1, episode_number=14)
+        ctx = {"item": item, "user": None, "show_episode_identity": True}
+        for use_lines, profile, expected in (
+            (True, {"lines": [{"display": "dormant"}], "display": "hover"}, True),
+            (True, {"lines": [{"display": "hover"}, {"display": "dormant"}], "display": "hover"}, False),
+            (False, {"lines": [], "display": "always"}, True),
+            (False, {"lines": [], "display": "hover"}, False),
+        ):
+            with patch("users.card_metadata.resolve_profile", return_value=profile):
+                lines = _item_lines({**ctx, "card_use_lines": use_lines}, "tv")
+            self.assertEqual(lines[0]["parts"][0]["text"], "S01 E14")
+            self.assertEqual(lines[0]["dormant"], expected, (use_lines, profile))
+
     def test_discover_actions(self):
         """Discover cards plan or hide a candidate with a POST that targets its row."""
         ctx = card_context(

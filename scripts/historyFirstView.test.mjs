@@ -21,9 +21,9 @@ const countRenders = {
       const source = await readFile(args.path, 'utf8');
       const start = source.indexOf('export const MediaCard = React.memo(function MediaCard(');
       assert.ok(start >= 0, 'MediaCard is memoized');
-      const body = source.indexOf('}) {\n', start) + '}) {\n'.length;
+      const body = source.indexOf(') {\n', start) + ') {\n'.length;
       return {
-        contents: `${source.slice(0, body)}  globalThis.__cardRenders?.push(model?.title);\n${source.slice(body)}`,
+        contents: `${source.slice(0, body)}  globalThis.__cardRenders?.push(props.model?.title);\n${source.slice(body)}`,
         loader: 'jsx',
       };
     });

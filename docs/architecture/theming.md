@@ -141,7 +141,7 @@ validates the whole payload before saving any part.
 
 ## The native app
 
-`native-proof/app/themeState.js` resolves the same states (system, light, dark,
+`expo/app/themeState.js` resolves the same states (system, light, dark,
 the presets from `html.<preset>`, custom) into native colour tokens and
 `app/theme.js` exposes them as the `palette` getters. `ThemeRoot` applies the
 user's theme: CSS variables on the web, dynamic colours on iOS for system, light
