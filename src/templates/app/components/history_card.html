@@ -233,6 +233,7 @@
   {# Modals #}
   {% if not react_card and entry.item and entry.item.media_type and history_mode != "release" %}
     {# Track Modal #}
+    <template x-teleport="body">
     <div x-show="trackOpen"
     @mousedown.self="trackOpen = false"
          x-cloak
@@ -243,6 +244,7 @@
         <div id="{% component_id 'track' entry.item entry.entry_key %}"></div>
       </div>
     </div>
+    </template>
 
     {# Lists Modal #}
   {% endif %}
