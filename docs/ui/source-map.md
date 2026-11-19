@@ -1453,7 +1453,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
 - `frontend/ui/Rail.jsx`
-- `frontend/ui/Rail.web.jsx`
+- `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`

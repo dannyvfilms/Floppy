@@ -5792,7 +5792,7 @@
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
-      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail, and warm the next screens of posters once the on-screen ones have loaded."
     },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",
