@@ -43,7 +43,7 @@ class YouTubeTakeoutParsingTests(TestCase):
         """A compressed export cannot allocate an unbounded history payload."""
         archive = zip_file.return_value.__enter__.return_value
         archive.namelist.return_value = ["watch-history.json"]
-        archive.getinfo.return_value.file_size = 100 * 1024 * 1024 + 1
+        archive.getinfo.return_value.file_size = youtube_takeout.MAX_HISTORY_FILE_BYTES + 1
         with self.assertRaisesRegex(MediaImportError, "too large"):
             youtube_takeout._history_from_zip(BytesIO())
         archive.read.assert_not_called()
