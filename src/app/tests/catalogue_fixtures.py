@@ -707,16 +707,17 @@ class SampleLibrary:
         ]
 
 
-def build_sample_library(user, *, empty_user=None, fake=None):
+def build_sample_library(user, *, empty_user=None, fake=None, now=None):
     """Create the sample library for ``user`` and return a ``SampleLibrary``.
 
     Cheap enough for ``setUpTestData``. ``empty_user``, when given, is left
     with nothing tracked. ``fake`` is the ``FakeTmdb`` to register shows and
-    people on; a new one is made when omitted.
+    people on; a new one is made when omitted. ``now`` fixes the instant the
+    play dates count back from (the recorded native answers need a fixed one).
     """
     fake = fake or FakeTmdb()
     library = SampleLibrary(user=user, empty_user=empty_user, fake=fake)
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     _sample_tv(library)
     _sample_grouped_anime(library)
     _sample_provider_types(library, now)

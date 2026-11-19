@@ -1849,8 +1849,8 @@ class StremioViewTests(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
-    @patch("integrations.views.tasks.import_stremio.delay")
-    @patch("integrations.views.stremio.login", return_value="auth-key")
+    @patch("integrations.stremio_views.tasks.import_stremio.delay")
+    @patch("integrations.stremio_views.stremio.login", return_value="auth-key")
     def test_connect_with_credentials(self, mock_login, mock_delay):
         """Connecting with email/password stores an encrypted auth key."""
         response = self.client.post(
@@ -1874,8 +1874,8 @@ class StremioViewTests(TestCase):
             ).exists(),
         )
 
-    @patch("integrations.views.tasks.import_stremio.delay")
-    @patch("integrations.views.stremio.get_user", return_value={"email": "x"})
+    @patch("integrations.stremio_views.tasks.import_stremio.delay")
+    @patch("integrations.stremio_views.stremio.get_user", return_value={"email": "x"})
     def test_connect_with_auth_key(self, mock_get_user, mock_delay):
         """Connecting with a pasted auth key validates it via getUser."""
         response = self.client.post(
@@ -1892,7 +1892,7 @@ class StremioViewTests(TestCase):
         self.assertEqual(account.email, "")
 
     @patch(
-        "integrations.views.stremio.login",
+        "integrations.stremio_views.stremio.login",
         side_effect=helpers.MediaImportError("Stremio API error: wrong password"),
     )
     def test_connect_bad_credentials(self, mock_login):
@@ -1915,8 +1915,8 @@ class StremioViewTests(TestCase):
         messages = [str(message) for message in response.context["messages"]]
         self.assertTrue(any("email and password" in m for m in messages))
 
-    @patch("integrations.views.tasks.import_stremio.delay")
-    @patch("integrations.views.stremio.login", return_value="auth-key")
+    @patch("integrations.stremio_views.tasks.import_stremio.delay")
+    @patch("integrations.stremio_views.stremio.login", return_value="auth-key")
     def test_disconnect_removes_account_and_schedule(self, mock_login, mock_delay):
         """Disconnecting removes the account and its periodic task."""
         self.client.post(
@@ -1942,7 +1942,7 @@ class StremioViewTests(TestCase):
         messages = [str(message) for message in response.context["messages"]]
         self.assertTrue(any("Connect Stremio" in m for m in messages))
 
-    @patch("integrations.views.tasks.import_stremio.delay")
+    @patch("integrations.stremio_views.tasks.import_stremio.delay")
     def test_import_queues_task(self, mock_delay):
         """Sync Now queues the import task."""
         StremioAccount.objects.create(

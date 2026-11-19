@@ -80,6 +80,7 @@
     </div>
 
     {# Track Modal #}
+    <template x-teleport="body">
     <div x-show="trackOpen"
          @mousedown.self="trackOpen = false"
          x-cloak
@@ -90,5 +91,6 @@
         <div id="album-track-modal-{{ tracker.album.id }}"></div>
       </div>
     </div>
+    </template>
   </div>
 {% endfor %}
