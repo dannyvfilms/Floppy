@@ -88,7 +88,25 @@ names the module to import from.
   query parameter). Name a new one for what it returns, as the renamed copies
   are (`_now_iso`, `_parse_tvdb_datetime`).
 <!-- Shared view builders: add the public modules that own detail-page builders here. -->
-<!-- Split view files: add each subject module split out of a large view file here. -->
+
+### Split view files
+
+Split a view file only when it holds several subjects that share little and
+change often; one long subject stays in one file. Each subject moves to
+`<subject>_views.py` beside it, the old file re-exports its views so URL names,
+`urls.py` and imports keep working, and moves are pure (same names and bodies,
+one subject per commit). A helper one subject uses moves with it; a helper
+several subjects use goes to one module in that app named for the purpose,
+never left in the old file for others to reach into.
+
+`src/integrations/views.py` is the first file split this way. Its subject
+modules so far: `src/integrations/webhook_views.py` (media-server and Seerr
+webhooks), `src/integrations/cover_proxy_views.py` (Audiobookshelf and Plex
+cover proxies), `src/integrations/stremio_views.py` (Stremio connect and the
+add-on), `src/integrations/mal_sync_views.py` (MyAnimeList sync). Their shared
+helpers are in `src/integrations/view_helpers.py`. Connect and import views
+for the other sources are still in `views.py`; a new view for a split subject
+goes in that subject's module.
 
 ## Where new code goes
 
