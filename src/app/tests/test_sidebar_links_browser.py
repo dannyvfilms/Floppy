@@ -35,14 +35,22 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             logout = sidebar.get_by_role("link", name="Logout", exact=True)
             expect(settings).to_have_attribute("href", reverse("account"))
             expect(logout).to_have_attribute("href", reverse("account_logout"))
-            with context.expect_page() as opened:
-                logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
-            confirmation = opened.value
-            # A new tab starts on about:blank, which already counts as loaded,
-            # so wait for the logout page's own address before reading it.
-            expect(confirmation).to_have_url(
-                self.live_server_url + reverse("account_logout"), timeout=15000
-            )
+            logout_url = self.live_server_url + reverse("account_logout")
+            # CI Chromium sometimes opens the modifier-click tab but never loads
+            # it (the tab's URL stays empty), so retry the click, not the check.
+            for attempt in range(3):
+                with context.expect_page() as opened:
+                    logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
+                confirmation = opened.value
+                try:
+                    # A new tab starts on about:blank, which already counts as
+                    # loaded, so wait for the logout page's own address.
+                    expect(confirmation).to_have_url(logout_url, timeout=10000)
+                    break
+                except AssertionError:
+                    if attempt == 2:
+                        raise
+                    confirmation.close()
             confirmation.wait_for_load_state()
             self.assertEqual(context.request.get(self.live_server_url + reverse("account")).status, 200)
             confirmation.close()
