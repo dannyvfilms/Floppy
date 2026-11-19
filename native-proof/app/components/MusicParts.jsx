@@ -13,6 +13,7 @@ import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
+import { musicTrackRowModel, podcastEpisodeRowModel } from '../../../frontend/ui/cardModels';
 import { MarkdownNotes } from '../../../frontend/ui/MarkdownNotes';
 import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview';
 import { MusicAlbumGrid } from '../../../frontend/ui/MusicAlbumCard';
@@ -164,9 +165,6 @@ function durationLabel(minutes) {
   return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
 
-function actionGroup(title, items) {
-  return { title, items, ordering: null, clickable: true };
-}
 
 function countLabel(count, singular, plural) {
   return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
@@ -299,63 +297,10 @@ function MusicRatingPicker({ value, label, scaleMax, palette: colors, onSelect }
 }
 
 
-function trackActions() {
-  return actionGroup('Track actions', [
-    { kind: 'action', key: 'listen', title: 'Add listen', icon: actionIcons.listAdd, tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Track notes', icon: actionIcons.edit, tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
-  ]);
-}
 
-function episodeActions() {
-  return actionGroup('Episode actions', [
-    { kind: 'action', key: 'play', title: 'Add play', icon: actionIcons.listAdd, tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Episode notes', icon: actionIcons.edit, tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
-  ]);
-}
 
 export function TrackRow({ track, onOpen, onAction, onRate }) {
-  const listens = track.playCount || 0;
-  const last = track.lastPlayed;
-  const collected = track.codec ? [{ text: `Collected: ${track.codec}`, muted: true }] : [];
-  const model = {
-    layout: 'row',
-    mediaType: 'music',
-    title: track.title,
-    image: { src: track.image || '', fallback: '', source: 'primary' },
-    altTitle: null,
-    statusChip: null,
-    lines: [
-      {
-        join: 'dot',
-        parts: [
-          { text: `Track ${track.number}${track.disc > 1 ? ` (Disc ${track.disc})` : ''}` },
-          ...(track.duration ? [{ text: track.duration, muted: true }] : []),
-        ],
-      },
-      ...(listens || collected.length ? [{
-        join: 'dot',
-        parts: listens
-          ? [
-            { text: last ? `Last listened: ${dateLabel(last.date)}` : 'Listened', muted: true },
-            ...(listens > 1 ? [{ text: `Listened ${listens} times`, muted: true }] : []),
-            ...collected,
-          ]
-          : collected,
-      }] : []),
-    ],
-    rating: {
-      label: track.score == null ? null : String(track.score),
-      value: track.score,
-      scaleMax: 10,
-      rateLabel: 'Rate',
-    },
-    // Scores write to the caller's Music row; without one there is nothing to
-    // rate yet, so the control stays read-only like an unrated card.
-    ratingEditable: track.musicId != null,
-    actions: trackActions(),
-  };
+  const model = musicTrackRowModel(track, { ratingEditable: track.musicId != null });
   return <MediaCard model={model}
     labels={{ rate: 'Rate', close: 'Close' }}
     palette={mediaCardPalette}
@@ -366,43 +311,7 @@ export function TrackRow({ track, onOpen, onAction, onRate }) {
 }
 
 export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
-  const state = episode.inProgress ? 'In progress' : episode.played ? 'Played' : 'Unplayed';
-  const model = {
-    layout: 'row',
-    mediaType: 'podcast',
-    title: episode.title,
-    image: { src: showImage, fallback: '', source: 'primary' },
-    altTitle: null,
-    statusChip: null,
-    lines: [
-      {
-        join: 'dot',
-        parts: [
-          { text: `Episode ${episode.number}` },
-          ...(episode.published ? [{ text: dateLabel(episode.published), muted: true }] : []),
-          ...(episode.duration ? [{ text: episode.duration, muted: true }] : []),
-        ],
-      },
-      {
-        join: 'dot',
-        parts: [
-          { text: state, muted: true },
-          ...(episode.inProgress && episode.progressLabel
-            ? [{ text: episode.progressLabel, muted: true }]
-            : []),
-        ],
-      },
-    ],
-    rating: {
-      label: episode.score == null ? null : String(episode.score),
-      value: episode.score,
-      scaleMax: 10,
-      rateLabel: 'Rate',
-    },
-    // An episode can be scored once it has a tracked play row.
-    ratingEditable: Boolean(episode.episodeId && onRate && (episode.played || episode.inProgress || episode.score != null)),
-    actions: episodeActions(),
-  };
+  const model = podcastEpisodeRowModel(episode, showImage, { ratingEditable: Boolean(episode.episodeId && onRate && (episode.played || episode.inProgress || episode.score != null)) });
   return <MediaCard model={model}
     labels={{ rate: 'Rate', close: 'Close' }}
     palette={mediaCardPalette}

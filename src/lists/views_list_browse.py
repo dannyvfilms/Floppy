@@ -16,13 +16,14 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from app import helpers
+from app.templatetags import app_tags
 from integrations.imports import trakt as trakt_imports
 from integrations.models import MDBListAccount, TraktAccount
 from lists.forms import CustomListForm
@@ -377,8 +378,4 @@ def list_cover_image(request, list_id):
     if image_url is None:
         image_url = custom_list.image
         cache.set(custom_list.cover_cache_key, image_url, 60 * 60)
-    return render(
-        request,
-        "lists/components/list_cover_image.html",
-        {"image_url": image_url, "name": custom_list.name},
-    )
+    return JsonResponse({"image": app_tags.image_url(image_url)})

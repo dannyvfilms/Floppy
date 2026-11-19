@@ -8,6 +8,8 @@ import { STATUS_ICON_SPECS } from './statusChipIcons';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 import { shouldRevealMediaCardActions, shouldShowMediaCardCorner, shouldShowMediaCardLine } from './mediaCardBehavior';
 import { actionIcons } from './actionIcons';
+import { getCardMenu } from './cardMenuHost';
+import { buildCardMenu } from './cardMenu';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
 const DEFAULT_PALETTE = {
@@ -131,22 +133,33 @@ function StatusChip({ chip, palette, labels }) {
   </View>;
 }
 
-function CornerChip({ chip, palette, labels, onOpenLink, compact }) {
+const CORNERS = { 'top-left': 'topLeft', 'top-right': 'topRight', 'bottom-left': 'bottomLeft', 'bottom-right': 'bottomRight' };
+
+// `chip.position` places any chip in a corner; `chip.icon` draws an icon beside or instead of its
+// text; `chip.action` makes it a button that runs that action (a watch toggle, for instance).
+function CornerChip({ chip, palette, labels, onOpenLink, onAction, compact }) {
   const local = chip.kind === 'local-only' || chip.kind === 'collected';
-  const position = chip.kind === 'local-only'
+  const position = styles[CORNERS[chip.position]] || (chip.kind === 'local-only'
     ? styles.bottomLeft
-    : chip.kind === 'runtime' || chip.kind === 'collected' ? styles.bottomRight : styles.topRight;
+    : chip.kind === 'runtime' || chip.kind === 'collected' ? styles.bottomRight : styles.topRight);
   const text = chip.kind === 'next-episode'
     ? `› ${compact ? (chip.compactText || labels.nextEpisodeCompact || 'Next') : chip.text}`
     : chip.kind === 'queue' ? `${chip.text} ›` : chip.text;
   const label = chip.kind === 'next-episode' ? labels.nextEpisode : chip.title || chip.text;
-  const appearance = [styles.cornerChip, position, local ? {
+  const appearance = [styles.cornerChip, position, chip.icon && styles.cornerChipRow, local ? {
     backgroundColor: palette.local.backgroundColor,
     borderColor: palette.local.borderColor,
     borderWidth: 1,
   } : { backgroundColor: palette.chipBackground }];
-  const content = <Text style={[styles.cornerText, { color: local ? palette.local.color : palette.chipText }]}
-    numberOfLines={1}>{text}</Text>;
+  const color = chip.color || (local ? palette.local.color : palette.chipText);
+  const content = <>
+    {chip.icon ? <Icon spec={chip.icon} size={14} color={color} /> : null}
+    {text ? <Text style={[styles.cornerText, { color }]} numberOfLines={1}>{text}</Text> : null}
+  </>;
+  if (chip.action && onAction) {
+    return <Pressable accessibilityRole="button" accessibilityLabel={label}
+      onPress={() => onAction(chip.action)} style={appearance}>{content}</Pressable>;
+  }
   if (chip.href && onOpenLink) {
     return <Pressable accessibilityRole="link" accessibilityLabel={label}
       onPress={() => onOpenLink(chip.href)} style={appearance}>{content}</Pressable>;
@@ -168,13 +181,16 @@ function ProgressBar({ bar, palette }) {
 }
 
 function Line({ line, palette }) {
+  const [expanded, setExpanded] = useState(false);
   if (!line || !line.parts?.length) return null;
   if (line.variant === 'provenance') {
     return <Text accessibilityLabel={line.tooltip} numberOfLines={1}
       style={[styles.provenance, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
   }
   const plain = line.join === 'plain';
-  return <Text accessibilityLabel={line.tooltip} numberOfLines={line.clamp ? 1 : undefined}
+  // `expandable` lines (an episode's overview) show two lines and open on tap.
+  const text = <Text accessibilityLabel={line.tooltip}
+    numberOfLines={line.expandable ? (expanded ? undefined : 2) : (line.clamp ? 1 : undefined)}
     style={[styles.line, { color: palette.textMuted }]}>
     {line.parts.map((part, index) => {
       const separator = !plain && index > 0 ? ' · ' : '';
@@ -185,6 +201,9 @@ function Line({ line, palette }) {
       return <Text key={index} style={style}>{separator}{part.score ? <Text style={{ color: palette.star }}>★ </Text> : null}{part.text}</Text>;
     })}
   </Text>;
+  if (!line.expandable) return text;
+  return <Pressable accessibilityRole="button" accessibilityState={{ expanded }}
+    onPress={() => setExpanded(value => !value)}>{text}</Pressable>;
 }
 
 function Title({ model, palette, onOpen, onOpenLink, onLongPress }) {
@@ -264,7 +283,12 @@ function AltTitle({ label, open, onPress, palette }) {
 }
 
 function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onLongPress, onRate, renderRating, readOnly, altOpen, setAltOpen, revealed = true }) {
+  const lines = model.lines?.map((line, index) => shouldShowMediaCardLine(model, line, revealed)
+    ? <Line key={index} line={line} palette={palette} /> : null);
+  // Artwork-only cards (a calendar cell) carry the title as an accessible label instead.
+  if (model.density === 'compact') return null;
   return <>
+    {model.subtitleAbove ? lines : null}
     <View style={styles.titleRow}>
       <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} onLongPress={onLongPress} />
       {model.altTitle ? <AltTitle label={labels.altTitle} open={altOpen}
@@ -276,15 +300,14 @@ function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onLongPress,
       <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} readOnly={readOnly} />
     </View>
     {altOpen && model.altTitle ? <Text style={[styles.altText, { color: palette.textMuted }]}>{model.altTitle}</Text> : null}
-    {model.lines?.map((line, index) => shouldShowMediaCardLine(model, line, revealed)
-      ? <Line key={index} line={line} palette={palette} /> : null)}
+    {model.subtitleAbove ? null : lines}
   </>;
 }
 
 // Memoized on its props: a list re-render (a shelf arriving, a page appended)
 // skips cards whose model and callbacks are unchanged. Parents pass stable
 // props for this to hold; a changed model still re-renders the card.
-export const MediaCard = React.memo(function MediaCard({
+const MediaCardBody = React.memo(function MediaCardBody({
   model,
   labels = {},
   palette,
@@ -379,8 +402,13 @@ export const MediaCard = React.memo(function MediaCard({
     </>;
     const actionRow = shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
       palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null;
-    return <View ref={cardRef} style={[styles.row, split && styles.rowSplit, split && model.rowWidth ? { width: model.rowWidth } : null, style]}>
-      <View style={split ? styles.rowArtworkSplit : styles.rowArtwork}>
+    // `rowSize: 'compact'` is the ranked-list row (Statistics): a small thumbnail, with an optional
+    // `rank` before it and `artworkShape: 'round'` for people and studios.
+    const compact = model.rowSize === 'compact';
+    return <View ref={cardRef} style={[styles.row, compact && styles.rowCompact, split && styles.rowSplit, split && model.rowWidth ? { width: model.rowWidth } : null, style]}>
+      {model.rank != null ? <Text style={[styles.rank, { color: colors.textMuted }]}>{model.rank}</Text> : null}
+      <View style={[split ? styles.rowArtworkSplit : styles.rowArtwork, compact && styles.rowArtworkCompact,
+        model.artworkShape === 'round' && styles.rowArtworkRound]}>
         <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen}
           onLongPress={onLongPress ? longPress : undefined} />
       </View>
@@ -396,7 +424,8 @@ export const MediaCard = React.memo(function MediaCard({
   return <View ref={cardRef} style={[styles.card, {
     width,
     backgroundColor: colors.card,
-    borderColor: colors.border,
+    borderColor: model.highlighted ? (colors.accent || colors.link) : colors.border,
+    borderWidth: model.highlighted ? 2 : 1,
   }, style]}
     onPointerEnter={event => {
       if (event?.nativeEvent?.pointerType === 'mouse' && (shownActions || model.hoverMetadata) && !activeSelection?.active) setReveal(true);
@@ -412,25 +441,64 @@ export const MediaCard = React.memo(function MediaCard({
           ? <MediaTypeChip chip={model.statusChip} palette={colors} />
           : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
         {model.cornerChips?.filter(chip => shouldShowMediaCardCorner(model, chip, isRevealed)).map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
-          chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} compact={width <= 120} />)}
+          chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} onAction={onAction}
+          compact={typeof width === 'number' && width <= 120} />)}
         <ProgressBar bar={model.progressBar} palette={colors} />
       </View>
-      <View style={styles.bodyStack}>
+      {model.density === 'compact' ? null : <View style={styles.bodyStack}>
         <CardScrim style={styles.scrim} />
         <View style={styles.body}>
           <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
             onOpenLink={gatedOpenLink} onLongPress={onLongPress ? longPress : undefined} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
             altOpen={altOpen} setAltOpen={setAltOpen} revealed={isRevealed} />
         </View>
-      </View>
+      </View>}
       {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
         palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
         onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
         dragging={dragging} renderIcon={renderActionIcon}
         onLongPress={onLongPress ? longPress : undefined}
-        style={{ top: 0, height: width / (ASPECT[model.shape] || ASPECT.poster) }} /> : null}
+        style={typeof width === 'number'
+          ? { top: 0, height: width / (Number(model.aspectRatio) || ASPECT[model.shape] || ASPECT.poster) }
+          : { top: 0, aspectRatio: Number(model.aspectRatio) || ASPECT[model.shape] || ASPECT.poster }} /> : null}
     </View>
   </View>;
+});
+
+// The card every surface uses. It adds the press-and-hold menu (Edit Lists, Edit Rating, Edit
+// Status, Edit Tracking, View History) from the actions and callbacks it is given, so a surface
+// that passes `onAction`, `onRate` and `renderRating` (and `onStatus` for tracked items) gets the
+// whole menu without building one. A surface that passes its own `onLongPress` keeps it.
+export const MediaCard = React.memo(function MediaCard(props) {
+  const { model, actions, readOnly, selection, dragging, onAction, onRate, onStatus, renderRating,
+    palette, labels, onLongPress } = props;
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const shownActions = readOnly ? null : (actions === undefined ? model.actions : actions);
+  const canRate = Boolean(!readOnly && model.ratingEditable && renderRating && onRate);
+  const menu = readOnly || selection?.active || dragging || onLongPress
+    ? []
+    : buildCardMenu(model, { actions: shownActions, canRate, canStatus: Boolean(onStatus) });
+  const body = <MediaCardBody {...props} />;
+  const NativeCardMenu = getCardMenu();
+  if (!menu.length || !NativeCardMenu) return body;
+  const colors = resolvePalette(palette);
+  const copy = { rate: 'Rate', close: 'Close', ...labels };
+
+  function onPressMenu(event) {
+    const id = event.nativeEvent.event;
+    if (id === 'rating') setRatingOpen(true);
+    else if (id.startsWith('status-')) onStatus?.(id.slice(7));
+    else if (id.startsWith('action-')) onAction?.(shownActions.items[Number(id.slice(7))]);
+  }
+
+  return <>
+    <NativeCardMenu actions={menu} palette={{ ...colors, overlay: 'rgba(0, 0, 0, 0.55)' }}
+      onPressAction={onPressMenu}>{body}</NativeCardMenu>
+    {ratingOpen ? <RatingDialog visible onClose={() => setRatingOpen(false)}
+      title={model.rating?.rateLabel || copy.rate} closeLabel={copy.close} palette={colors}
+      value={model.rating?.value ?? null} scaleMax={model.rating?.scaleMax || 10} renderRating={renderRating}
+      onSelect={score => { setRatingOpen(false); onRate(score); }} /> : null}
+  </>;
 });
 
 const styles = StyleSheet.create({
@@ -470,6 +538,8 @@ const styles = StyleSheet.create({
   cornerChip: { position: 'absolute', height: 24, justifyContent: 'center', borderRadius: 6,
     paddingHorizontal: 8, paddingVertical: 0, zIndex: 10, maxWidth: '90%' },
   cornerText: { fontSize: 11, fontWeight: '600', lineHeight: 16 },
+  cornerChipRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  topLeft: { top: 8, left: 8 },
   topRight: { top: 8, right: 8 },
   bottomRight: { bottom: 9, right: 6 },
   bottomLeft: { bottom: 9, left: 6 },
@@ -488,6 +558,10 @@ const styles = StyleSheet.create({
   ratingTitle: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 12, padding: 12, alignItems: 'flex-start' },
   rowArtwork: { width: 64 },
+  rowCompact: { padding: 0, paddingVertical: 4, gap: 10, alignItems: 'center' },
+  rowArtworkCompact: { width: 40, borderRadius: 6, overflow: 'hidden' },
+  rowArtworkRound: { borderRadius: 20 },
+  rank: { width: 16, fontSize: 14, fontWeight: '500' },
   rowSplit: { alignItems: 'center', padding: 16 },
   rowArtworkSplit: { width: 64 },
   rowBodySplit: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },

@@ -4012,7 +4012,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
@@ -4313,6 +4313,78 @@
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; native transport tests pass. Not run on an emulator or device in this change."
+        }
+      }
+    },
+    "frontend/ui/cardModels.js": {
+      "components": [
+        "highlightCardModel",
+        "personCardModel",
+        "creditCardModel",
+        "dlcCardModel",
+        "relatedCardModel",
+        "rankedRowModel",
+        "musicAlbumCardModel",
+        "musicRelationCardModel",
+        "musicTrackRowModel",
+        "podcastEpisodeRowModel"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenu.js": {
+      "components": [
+        "buildCardMenu",
+        "menuActionLabel",
+        "CARD_STATUSES"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenuHost.js": {
+      "components": [
+        "setCardMenu",
+        "getCardMenu"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Android runtime not exercised."
         }
       }
     }
@@ -5954,6 +6026,10 @@
     "frontend/ui/webRequest.web.js": {
       "register": "HOME",
       "purpose": "Web-only request for adapters that drive a shared transport core: same-origin JSON over Django's cookie session with the CSRF token on unsafe methods, query encoding identical to the native transport, errors carrying the HTTP status, optional AbortSignal pass-through, in-flight sharing of identical GETs (no cache, no retry) and an optional onTiming hook. Web-only because the browser signs in with the session cookie; native supplies its own request from authTransportCore.js."
+    },
+    "frontend/ui/sidebarPins.web.js": {
+      "register": "MEDIA-CARD",
+      "purpose": "Browser transport for the account's sidebar pins, used by the list card's Pin to sidebar button. Expo has no sidebar to pin to."
     }
   }
 }

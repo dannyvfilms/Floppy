@@ -223,7 +223,10 @@ Quick status uses the shared MediaCard and MediaCardActions, the browser card ad
 
 `frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `native-proof/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
 
-- `frontend/ui/mediaCardQuickStatus.web.js`
+- `frontend/ui/cardModels.js` (one adapter per kind of data the card shows: highlights, people, credits, DLC, related titles, ranked rows, music, lists)
+- `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js` (the press-and-hold menu, built once and installed by the native app)
+- `frontend/ui/sidebarPins.web.js` (browser sidebar pins for the list card's pin action; Expo has no sidebar)
+- `src/templates/app/components/music_tracker_card.html`, `src/templates/app/components/card_shell.html` (first-paint shells for cards React draws; `card_shell.html` is the shared poster-and-title shell used by `album_grid.html`, `artist_relation_grid.html`, `person_card_inline.html`, `person_filmography_card.html`, `active_playback_card.html` and `statistics/highlight_set.html`)
 
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
 
@@ -882,7 +885,6 @@ Native ListsPageView/ListCard hide metadata through an opt-in prop, and ListDeta
 - `native-proof/app/data/sidebarListPinsCore.js`
 
 - `src/templates/lists/components/fill_lists.html`
-- `src/templates/lists/components/list_cover_image.html`
 - `src/templates/lists/components/list_form.html`
 - `src/templates/lists/components/list_grid.html`
 - `src/templates/lists/components/list_item_button.html`
@@ -1593,3 +1595,4 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 - Calculated play duration flows through the existing History, Statistics, and Detail adapters to their shared presentation and coexisting web fallbacks. Shared `StatisticsCharts` keeps its responsive hook in every loading state; the native Detail adapter resolves structured History items lacking web URLs. Component ownership and retirement conditions remain unchanged; platform evidence is recorded in the component register.
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `native-proof/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
+- MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `native-proof/app/surfaces/cardMenuInstall.js`.

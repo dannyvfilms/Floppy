@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { openModal } from './ModalHost';
+import { toggleListPin, useListPinned } from './sidebarPins.web';
 import { RatingStars } from './RatingStars';
 import { DropdownItem, DropdownMenu } from './DropdownMenu';
 import { saveQuickStatus } from './mediaCardQuickStatus.web';
@@ -132,7 +133,17 @@ function NextEpisodeChip({ chip, labels }) {
   </a>;
 }
 
+const chipCorners = { 'top-left': 'top-2 left-2', 'top-right': 'top-2 right-2', 'bottom-left': 'bottom-2 left-2', 'bottom-right': 'bottom-2 right-2' };
+
 function CornerChip({ chip, labels }) {
+  if (chip.kind === 'text') {
+    // An icon chip sits above the card's text and scrim (z-20); with no text it is the round badge.
+    const badge = chip.icon && !chip.text;
+    return <div className={`absolute ${chipCorners[chip.position] || chipCorners['top-right']} text-xs shadow-md${chip.icon ? ' z-20 flex items-center gap-1 pointer-events-none' : ''}${badge ? ' h-6 w-6 justify-center rounded-full bg-black/50' : ' bg-gray-900/90 px-2 py-1 rounded-md'}`}
+      style={{ color: chip.color || '#fff' }} title={chip.title}
+      {...(chip.icon && !chip.text ? { role: 'img', 'aria-label': chip.title } : null)}>
+      {chip.icon && <Icon spec={chip.icon} className="w-3.5 h-3.5" />}{chip.text}</div>;
+  }
   if (chip.kind === 'runtime') {
     return <span className="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</span>;
   }
@@ -239,6 +250,21 @@ function Line({ line }) {
 // The Search list view: the same card content laid out as a row.
 function MediaRow({ model, slots, labels, actions, onAction, readOnly }) {
   const shownActions = readOnly ? null : actions;
+  if (model.rowSize === 'compact') {
+    // The ranked-list row (Statistics): a rank, a small thumbnail, the title and one line.
+    const radius = model.artworkShape === 'round' ? '50%' : '6px';
+    return <div className="flex items-center gap-2.5" style={{ padding: '4px 0' }}>
+      {model.rank != null && <span className="text-sm font-medium text-[var(--color-text-muted)]" style={{ width: 16 }}>{model.rank}</span>}
+      <a href={model.href} className="shrink-0" {...{ 'hx-boost': 'true' }}>
+        <img data-media-artwork="" loading="lazy" decoding="sync" alt={model.title} src={model.image.src}
+          className="object-cover bg-[var(--color-surface-alt)]" style={{ width: 40, height: 40, borderRadius: radius }} />
+      </a>
+      <div className="flex-1 min-w-0">
+        <a href={model.href} className="block text-sm font-medium text-[var(--color-text)] line-clamp-1 hover:text-[var(--color-link)]">{model.title}</a>
+        {(model.lines || []).map((line, index) => <Line key={index} line={line} />)}
+      </div>
+    </div>;
+  }
   return <div className="flex items-center p-4 gap-4">
     <div className="shrink-0 relative">
       <a href={model.href} {...{ 'hx-boost': 'true' }}>
@@ -291,6 +317,16 @@ function usePageValue(host, read) {
   return value;
 }
 
+// "Pin to sidebar" on a list card: the sidebar's pins are page state, so the label and the
+// filled pin follow `sidebar-pins-changed` instead of coming with the model.
+function PinButton({ action }) {
+  const pinned = useListPinned(action.pin.id);
+  const label = pinned ? action.titleActive : action.title;
+  return <button type="button" title={label} aria-label={label} aria-pressed={pinned}
+    className={actionClass(action.tone)} onClick={() => toggleListPin(action.pin)}>
+    <Icon spec={action.icon} className={`w-4 h-4${pinned ? ' fill-current' : ''}`} /></button>;
+}
+
 // The hover buttons. Track and list popups still live in the card's Alpine scope
 // (trackOpen, listsOpen) because their server forms close themselves through it.
 function CardOverlay({ actions, host, revealed, labels, onAction }) {
@@ -320,10 +356,10 @@ function CardOverlay({ actions, host, revealed, labels, onAction }) {
 
   return <div className={`media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out${actions.clickable ? ' pointer-coarse:hidden' : ''}${revealed ? ' opacity-100 pointer-events-auto media-card-overlay-revealed' : ' opacity-0 pointer-events-none'}`}>
     {/* The darkening is a filter on the poster (input.css), not a layer here: a black layer clipped to the rounded corners lets the bright poster show at the anti-aliased edge. */}
-    <a href={actions.href} className="absolute inset-0 z-0" />
+    <a href={actions.href} {...(actions.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} className="absolute inset-0 z-0" />
     {!editing && <div className="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
-      {actions.items.map((action, index) => action.kind === 'link'
-        ? <a key={index} href={action.href} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
+      {actions.items.map((action, index) => action.kind === 'pin' ? <PinButton key={index} action={action} /> : action.kind === 'link'
+        ? <a key={index} href={action.href} {...(actions.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
         : <button key={index} type="button" title={action.title} className={actionClass(action.tone)} onClick={() => run(action)}>
           <Icon spec={action.icon} className="w-4 h-4" /></button>)}
     </div>}
@@ -336,6 +372,28 @@ function CardOverlay({ actions, host, revealed, labels, onAction }) {
         title={actions.ordering.labels.drag}><Icon spec={actions.ordering.dragIcon} className="w-5 h-5" /></div>
     </div>}
   </div>;
+}
+
+// A list's cover can be slow to find (a provider lookup), so the page renders without it and the
+// card asks for it once it is near the screen. Cards with artwork never fetch.
+function useLazyCover(ref, art) {
+  const [src, setSrc] = useState(art?.src || '');
+  useEffect(() => {
+    setSrc(art?.src || '');
+    if (art?.src || !art?.coverUrl || !ref.current) return undefined;
+    let stale = false;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      fetch(art.coverUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => { if (!stale && data?.image) setSrc(data.image); })
+        .catch(() => { /* The placeholder stays. */ });
+    }, { rootMargin: '200px' });
+    observer.observe(ref.current);
+    return () => { stale = true; observer.disconnect(); };
+  }, [art?.src, art?.coverUrl]);
+  return src;
 }
 
 // Touch screens show the hover buttons on the first tap, and follow the link on the second.
@@ -414,17 +472,18 @@ function useRestTitle(ref, title, enabled) {
 
 // Square cards give the hover buttons the room above the text block: publish the
 // text block's height to the card so the stylesheet can end the overlay there.
-function useBodyHeight(cardRef, enabled) {
+function useBodyHeight(cardRef, enabled, visualRef) {
   useLayoutEffect(() => {
-    const card = cardRef.current;
+    // A card a server template hosts has no root of its own: its `.media-card` is the host.
+    const card = cardRef.current ?? visualRef?.current?.closest('.media-card');
     const body = card?.querySelector('.media-card-body');
-    if (!enabled || !card || !body) return undefined;
+    if (!card || !body || !(enabled || card.classList.contains('search-result-card-square'))) return undefined;
     const publish = () => card.style.setProperty('--card-body-h', `${body.offsetHeight}px`);
     publish();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
     observer?.observe(body);
     return () => { observer?.disconnect(); card.style.removeProperty('--card-body-h'); };
-  }, [cardRef, enabled]);
+  }, [cardRef, visualRef, enabled]);
 }
 
 // The save and score responses still swap server fragments out of band for pages
@@ -580,9 +639,11 @@ export const MediaCard = React.memo(function MediaCard({
   const cardRef = useRef(null);
   const titleRef = useRef(null);
   const restTitle = useRestTitle(titleRef, model.title, grid);
-  useBodyHeight(cardRef, variant === 'grid-square');
+  const visualRef = useRef(null);
+  useBodyHeight(cardRef, variant === 'grid-square', visualRef);
   const revealed = useTapToReveal(cardRef, host, !!shownActions, !!selection?.active, !!shownActions?.clickable);
   const live = useLiveCard(model);
+  const coverSrc = useLazyCover(visualRef, model.image);
   const [quick, setQuick] = useState(model.quickStatus);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickActive, setQuickActive] = useState(false);
@@ -612,23 +673,24 @@ export const MediaCard = React.memo(function MediaCard({
     return <MediaRow model={model} slots={slots} labels={copy} actions={shownActions}
       onAction={onAction} readOnly={readOnly} />;
   }
-  const art = model.image;
+  const art = coverSrc === (model.image?.src || '') ? model.image : { ...model.image, src: coverSrc };
   const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
   const aspectStyle = model.aspectRatio ? { aspectRatio: Number(model.aspectRatio) } : undefined;
   const bar = model.progressBar;
+  const lineNodes = (model.lines || []).map((line, index) => <Line key={index} line={line} />);
   const card = <>
-    <div className={`media-card-visual relative${quickActive || quickOpen ? ' media-quick-status-active' : ''}`}>
-      {model.recommend ? <div className="cursor-pointer"><img decoding="sync" loading="lazy" alt={model.title}
-        className={imgClass} style={aspectStyle} src={art.src} data-image-source={art.source} /></div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} onClick={(event) => {
+    <div ref={visualRef} className={`media-card-visual relative${quickActive || quickOpen ? ' media-quick-status-active' : ''}`}>
+      {model.recommend ? <div className="cursor-pointer">{art.src ? <img decoding="sync" loading="lazy" alt={model.title}
+        className={imgClass} style={aspectStyle} src={art.src} data-image-source={art.source} /> : <div className={imgClass} style={aspectStyle} />}</div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} {...(model.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} onClick={(event) => {
         if (selection?.active) { event.preventDefault(); selection.toggle(); }
       }}>
         {selection?.active && <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
           <input type="checkbox" className="cursor-pointer w-5 h-5" checked={selection.selected}
             aria-label={model.title} onChange={selection.toggle} />
         </div>}
-        <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} style={aspectStyle} src={art.src}
+        {art.src ? <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} style={aspectStyle} src={art.src}
           data-image-source={art.source}
-          {...(model.video ? { 'data-image-fallback': art.fallback, 'data-image-fallback-on-small': 'true' } : {})} />
+          {...(model.video ? { 'data-image-fallback': art.fallback, 'data-image-fallback-on-small': 'true' } : {})} /> : <div className={imgClass} style={aspectStyle} />}
       </a>}
       {quickAvailable && <div className="media-quick-status"
         onMouseEnter={() => setQuickActive(true)} onMouseLeave={() => setQuickActive(false)}
@@ -663,6 +725,7 @@ export const MediaCard = React.memo(function MediaCard({
         labels={copy} onAction={onAction} />}
     </div>
     <div className="media-card-body p-3 bg-card-body">
+      {model.subtitleAbove && lineNodes}
       <div className="media-card-title-row flex items-center gap-2 min-w-0">
         {model.titleLinks?.length ? <div className="min-w-0 flex-1">
           {model.titleLinks.map((part, index) => <a key={part.url} href={part.url} title={part.label}
@@ -671,7 +734,7 @@ export const MediaCard = React.memo(function MediaCard({
               : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
         </div> : model.recommend ? <h3 ref={titleRef} title={model.title} data-rest-title={restTitle || undefined}
           className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
-          : <a ref={titleRef} href={model.href} title={model.title} data-rest-title={restTitle || undefined} {...(model.boost ? { 'hx-boost': 'true' } : {})}
+          : <a ref={titleRef} href={model.href} title={model.title} data-rest-title={restTitle || undefined} {...(model.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...(model.boost ? { 'hx-boost': 'true' } : {})}
           className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
         {model.altTitle && <AltTitle text={model.altTitle} label={copy.altTitle} />}
         {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
@@ -685,7 +748,7 @@ export const MediaCard = React.memo(function MediaCard({
             editable={!readOnly && model.ratingEditable} onRate={onRate} />;
         })()}</span>}
       </div>
-      {(model.lines || []).map((line, index) => <Line key={index} line={line} />)}
+      {!model.subtitleAbove && lineNodes}
     </div>
   </>;
   if (!standalone) return card;
@@ -695,7 +758,9 @@ export const MediaCard = React.memo(function MediaCard({
     className,
   ].filter(Boolean).join(' ');
   return <div ref={cardRef} className={rootClass}
-    style={grid ? { '--card-title-rest-lines': '1', '--card-title-hover-lines': '3' } : undefined}>
+    style={grid ? { '--card-title-rest-lines': '1', '--card-title-hover-lines': '3',
+      ...(model.aspectRatio ? { aspectRatio: Number(model.aspectRatio) } : null),
+      ...(model.highlighted ? { outline: '2px solid var(--color-link)', outlineOffset: '-2px' } : null) } : undefined}>
     <div data-media-card-root="">{card}</div>
   </div>;
 });

@@ -1509,12 +1509,11 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(
             detail_response, 'hx-trigger="load delay:500ms, every 5s"'
         )
+        # React draws the album cards from these props, so a loaded cover is the album's image.
+        self.assertContains(detail_response, "data-music-albums-root", html=False)
         self.assertContains(
-            detail_response,
-            f'id="album-cover-{scored_album.id}"',
-            html=False,
+            detail_response, '"image": "http://example.com/scored-album.jpg"', html=False
         )
-        self.assertContains(detail_response, "hx-preserve", html=False)
 
         with patch("app.tasks.prefetch_album_covers_batch.delay") as mock_delay:
             refresh_response = self.client.get(
@@ -1525,11 +1524,8 @@ class MediaDetailsViewTests(TestCase):
         mock_delay.assert_called_once_with([artist.id], limit_per_artist=None)
         self.assertContains(refresh_response, "7.5")
         self.assertContains(
-            refresh_response,
-            f'id="album-cover-{scored_album.id}"',
-            html=False,
+            refresh_response, '"image": "http://example.com/scored-album.jpg"', html=False
         )
-        self.assertContains(refresh_response, "hx-preserve", html=False)
         self.assertContains(refresh_response, "Refreshing cover art")
         self.assertContains(refresh_response, 'hx-trigger="every 5s"')
         self.assertNotContains(refresh_response, "load delay")

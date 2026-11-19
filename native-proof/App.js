@@ -5,6 +5,7 @@ import { getActiveAuthSession, subscribeAuthSession } from './app/data/authSessi
 import { restoreAuthSession } from './app/data/authTransport';
 import { EXTRA_SCREENS } from './app/extraScreens';
 import { installNativeIconRenderer } from './app/iconRenderer';
+import { installNativeCardMenu } from './app/surfaces/cardMenuInstall';
 import floppyLogo from './assets/floppy-logo.png';
 import AuthScreen from './app/screens/AuthScreen';
 import CalendarScreen from './app/screens/CalendarScreen';
@@ -24,6 +25,7 @@ import { statusBarInset } from './app/status-bar-inset';
 import { palette } from './app/theme';
 
 installNativeIconRenderer();
+installNativeCardMenu();
 
 const TAB_SCREENS = {
   home: HomeScreen,
