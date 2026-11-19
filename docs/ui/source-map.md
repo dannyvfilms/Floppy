@@ -226,6 +226,7 @@ Quick status uses the shared MediaCard and MediaCardActions, the browser card ad
 - `frontend/ui/cardModels.js` (one adapter per kind of data the card shows: highlights, people, credits, DLC, related titles, ranked rows, music, lists)
 - `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js` (the press-and-hold menu, built once and installed by the native app)
 - `frontend/ui/sidebarPins.web.js` (browser sidebar pins for the list card's pin action; Expo has no sidebar)
+- `expo/app/mediaCardReuse.test.mjs` (guard: only the card may draw a card gradient), `src/templates/app/icons/pin.svg` (the list card's pin icon)
 - `src/templates/app/components/music_tracker_card.html`, `src/templates/app/components/card_shell.html` (first-paint shells for cards React draws; `card_shell.html` is the shared poster-and-title shell used by `album_grid.html`, `artist_relation_grid.html`, `person_card_inline.html`, `person_filmography_card.html`, `active_playback_card.html` and `statistics/highlight_set.html`)
 
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
