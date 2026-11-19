@@ -48,7 +48,7 @@ const DEFAULT_PALETTE = {
   rating: { lit: '#facc15', unlit: '#52525b', muted: '#a1a1aa', focusStyle: {} },
 };
 
-function resolvePalette(palette) {
+export function resolvePalette(palette) {
   return {
     ...DEFAULT_PALETTE,
     ...(palette || {}),
@@ -206,6 +206,19 @@ function Title({ model, palette, onOpen, onOpenLink, onLongPress }) {
     style={styles.titleColumn}>{text}</Pressable>;
 }
 
+// The rating picker dialog. Shared with the card's press-and-hold menu ("Edit Rating").
+export function RatingDialog({ visible, onClose, title, closeLabel, palette, value, scaleMax = 10, renderRating, onSelect }) {
+  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+    <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.modalBackdrop}>
+      <View accessibilityViewIsModal onStartShouldSetResponder={() => true}
+        style={[styles.ratingDialog, { backgroundColor: palette.card, borderColor: palette.border }]}>
+        <Text style={[styles.ratingTitle, { color: palette.text }]}>{title}</Text>
+        {renderRating({ value, label: title, scaleMax, palette: palette.rating, onSelect })}
+      </View>
+    </Pressable>
+  </Modal>;
+}
+
 function Rating({ model, palette, labels, renderRating, onRate, readOnly }) {
   const rating = model.rating;
   const [open, setOpen] = useState(false);
@@ -223,6 +236,9 @@ function Rating({ model, palette, labels, renderRating, onRate, readOnly }) {
       <Text style={[styles.ratingValue, { color: palette.star }]}>{rating.label}</Text>
     </View>;
   }
+  // An unrated card shows no star: it was a small touch target that sat there all the time.
+  // Rating an unrated item is "Edit Rating" in the press-and-hold menu.
+  if (value == null) return null;
   function select(score) {
     setValue(score);
     setOpen(false);
@@ -231,26 +247,12 @@ function Rating({ model, palette, labels, renderRating, onRate, readOnly }) {
   return <View style={styles.ratingWrap}>
     <Pressable accessibilityRole="button" accessibilityLabel={rating.rateLabel || labels.rate}
       accessibilityState={{ expanded: open }} onPress={() => setOpen(true)} style={styles.ratingButton}>
-      <Star color={value == null ? palette.textMuted : palette.star} />
-      {value != null ? <Text style={[styles.ratingValue, { color: palette.star }]}>{value}</Text> : null}
+      <Star color={palette.star} />
+      <Text style={[styles.ratingValue, { color: palette.star }]}>{value}</Text>
     </Pressable>
-    <Modal visible={open} transparent animationType="fade" statusBarTranslucent
-      onRequestClose={() => setOpen(false)}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.close}
-        onPress={() => setOpen(false)} style={styles.modalBackdrop}>
-        <View accessibilityViewIsModal onStartShouldSetResponder={() => true}
-          style={[styles.ratingDialog, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.ratingTitle, { color: palette.text }]}>{rating.rateLabel || labels.rate}</Text>
-          {renderRating({
-            value,
-            label: rating.rateLabel || labels.rate,
-            scaleMax: rating.scaleMax || 10,
-            palette: palette.rating,
-            onSelect: select,
-          })}
-        </View>
-      </Pressable>
-    </Modal>
+    <RatingDialog visible={open} onClose={() => setOpen(false)} title={rating.rateLabel || labels.rate}
+      closeLabel={labels.close} palette={palette} value={value} scaleMax={rating.scaleMax || 10}
+      renderRating={renderRating} onSelect={select} />
   </View>;
 }
 

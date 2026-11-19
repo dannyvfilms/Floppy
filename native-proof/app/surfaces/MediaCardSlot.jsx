@@ -4,6 +4,8 @@ import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
+// The explicit .jsx path: `./MediaCard` resolves to the DOM card on Expo web, which has no picker dialog.
+import { RatingDialog, resolvePalette } from '../../../frontend/ui/MediaCard.jsx';
 import { Icon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { TrackDialog } from '../../../frontend/ui/TrackDialog';
@@ -83,13 +85,13 @@ function actionGlyph(action) {
 
 function menuActionLabel(action) {
   if (action.modal === 'track') {
-    if (action.media?.mediaType === 'episode') return action.title === 'Watched' ? 'Edit watch' : 'Mark watched';
-    return 'Edit tracking';
+    if (action.media?.mediaType === 'episode') return action.title === 'Watched' ? 'Edit Watch' : 'Mark Watched';
+    return 'Edit Tracking';
   }
-  if (action.modal === 'lists') return 'Edit lists';
-  if (action.kind === 'link' && /\/history(?:[/?#]|$)/.test(action.href || '')) return 'View history';
-  if (action.vals?.action === 'planning') return 'Plan title';
-  if (action.vals?.action === 'dismiss') return 'Hide title';
+  if (action.modal === 'lists') return 'Edit Lists';
+  if (action.kind === 'link' && /\/history(?:[/?#]|$)/.test(action.href || '')) return 'View History';
+  if (action.vals?.action === 'planning') return 'Plan Title';
+  if (action.vals?.action === 'dismiss') return 'Hide Title';
   return action.title;
 }
 
@@ -548,18 +550,32 @@ const SlotCard = React.memo(function SlotCard({
     if (!canMenu) return [];
     const canStatus = model.identity && ['movie', 'tv', 'season', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame'].includes(model.identity.mediaType)
       && model.actions?.items?.some(action => action.modal === 'track');
-    const actions = (model.actions?.items || []).map((action, index) => ({
+    const canRate = Boolean(model.ratingEditable);
+    const entries = (model.actions?.items || []).map((action, index) => ({
       id: `action-${index}`, title: menuActionLabel(action), attributes: { disabled: Boolean(action.disabled) },
+      kind: action.modal === 'lists' ? 'lists' : action.modal === 'track' ? 'track'
+        : action.kind === 'link' && /\/history(?:[/?#]|$)/.test(action.href || '') ? 'history' : 'other',
     }));
-    if (canStatus) actions.push({ id: 'statuses', title: 'Update status',
-      subactions: ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped'].map(status => ({
-        id: `status-${status}`, title: status, state: model.statusChip?.status === status ? 'on' : 'off',
-      })) });
+    const pick = kind => entries.filter(entry => entry.kind === kind).map(({ kind: _kind, ...entry }) => entry);
+    const history = pick('history');
+    // Edit Lists, Edit Rating, Edit Status, Edit Tracking, a divider, then View History.
+    const actions = [
+      ...pick('other'),
+      ...pick('lists'),
+      ...(canRate ? [{ id: 'rating', title: 'Edit Rating' }] : []),
+      ...(canStatus ? [{ id: 'statuses', title: 'Edit Status',
+        subactions: ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped'].map(status => ({
+          id: `status-${status}`, title: status, state: model.statusChip?.status === status ? 'on' : 'off',
+        })) }] : []),
+      ...pick('track'),
+    ];
+    if (history.length) actions.push(...(actions.length ? [{ id: 'divider', divider: true }] : []), ...history);
     return actions;
   }, [canMenu, model]);
   const onPressMenu = useCallback(event => {
     const id = event.nativeEvent.event;
-    if (id.startsWith('status-')) handlers.changeStatus({ ...item, model }, id.slice(7));
+    if (id === 'rating') handlers.editRating({ ...item, model });
+    else if (id.startsWith('status-')) handlers.changeStatus({ ...item, model }, id.slice(7));
     else if (id.startsWith('action-')) handlers.runAction(model.actions.items[Number(id.slice(7))], model.title);
   }, [handlers, item, model]);
   const card = <MediaCard model={model} labels={labels} palette={mediaCardPalette}
@@ -609,6 +625,7 @@ export default function MediaCardSlot({
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
+  const [ratingTarget, setRatingTarget] = useState(null);
   const [sheetMounted, setSheetMounted] = useState(false);
   const itemKeys = items.map(item => item.key);
   const orderKey = itemKeys.join('|');
@@ -658,6 +675,11 @@ export default function MediaCardSlot({
       setActionError(error.message || 'Could not save this rating.');
       AccessibilityInfo.announceForAccessibility?.(error.message || 'Could not save this rating.');
     }
+  }
+
+  // "Edit Rating" in the press-and-hold menu: the picker the card's small star used to open.
+  function editRating(item) {
+    setRatingTarget(item);
   }
 
   function announce(message) {
@@ -757,7 +779,7 @@ export default function MediaCardSlot({
   // Card callbacks go through a ref to this render's functions, so the
   // handlers object never changes and memoized cards skip unrelated renders.
   const latest = useRef(null);
-  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, changeStatus, reorder, handleReorderDrag, rate };
+  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, changeStatus, reorder, handleReorderDrag, rate, editRating };
   const handlers = useMemo(() => ({
     hasOpen: () => !!latest.current.onOpenDetail,
     hasLink: () => !!(latest.current.onOpenLink || latest.current.onOpenDetail),
@@ -771,6 +793,7 @@ export default function MediaCardSlot({
     reorder: (item, step) => latest.current.reorder(item, step),
     drag: (item, event) => latest.current.handleReorderDrag(item, event),
     rate: (item, score) => latest.current.rate(item, score),
+    editRating: item => latest.current.editRating(item),
     layout: (item, event) => { layouts.current[item.key] = event.nativeEvent.layout; },
   }), []);
 
@@ -785,7 +808,10 @@ export default function MediaCardSlot({
     if (value !== undefined) {
       model = {
         ...model,
-        rating: model.rating && {
+        // An unrated library item has no rating object yet; rating it creates one.
+        rating: {
+          scaleMax: 10,
+          rateLabel: labels.rate,
           ...model.rating,
           value,
           label: value == null ? null : String(value),
@@ -832,6 +858,12 @@ export default function MediaCardSlot({
         <ListsAction key={pendingAction?.target || 'lists'} action={pendingAction} onClose={() => setPendingAction(null)} />
       </ScrollView> : null}
     </AdaptivePresentationSheet>}
+    {ratingTarget ? <RatingDialog visible onClose={() => setRatingTarget(null)}
+      title={ratingTarget.model.rating?.rateLabel || labels.rate} closeLabel={labels.close}
+      palette={resolvePalette(mediaCardPalette)}
+      value={ratings[ratingTarget.key] !== undefined ? ratings[ratingTarget.key] : ratingTarget.model.rating?.value ?? null}
+      scaleMax={ratingTarget.model.rating?.scaleMax || 10} renderRating={renderRatingStars}
+      onSelect={score => { setRatingTarget(null); rate(ratingTarget, score); }} /> : null}
     <MediaCardActionHost action={pendingAction} open={!!pendingAction && !['track', 'lists'].includes(pendingAction.modal)} labels={labels}
       palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
       {pendingAction && !['track', 'lists'].includes(pendingAction.modal) ? <ActionBody

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, ContextMenu, Group, Host, Picker, RNHostView, Text } from '@expo/ui/swift-ui';
+import { Button, ContextMenu, Divider, Group, Host, Picker, RNHostView, Text } from '@expo/ui/swift-ui';
 import { contentShape, disabled, pickerStyle, shapes, tag } from '@expo/ui/swift-ui/modifiers';
 
 // A menu-style Picker expresses one selected status as a native hierarchical
@@ -17,7 +17,7 @@ export default function NativeCardMenu({ actions, onPressAction, children }) {
         </Group>
       </ContextMenu.Trigger>
       <ContextMenu.Items>
-        {actions.map(action => action.subactions ? <Picker key={action.id} label={action.title}
+        {actions.map(action => action.divider ? <Divider key={action.id} /> : action.subactions ? <Picker key={action.id} label={action.title}
           selection={action.subactions.find(option => option.state === 'on')?.id || null}
           onSelectionChange={fire} modifiers={[pickerStyle('menu')]}>
           {action.subactions.map(option => <Text key={option.id} modifiers={[tag(option.id)]}>{option.title}</Text>)}

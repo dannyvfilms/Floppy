@@ -250,7 +250,34 @@ def _subtitle_lines(ctx, media_type):
     return lines
 
 
+def _special_lines_dormant(ctx, media_type):
+    """Whether a line that replaces the saved subtitle lines stays visible at rest.
+
+    Episode codes, release dates, play times and the like take the place of the
+    user's lines, so they follow the user's choice for the first line (or the
+    type-level choice when no per-line choice exists) instead of always waiting
+    for hover.
+    """
+    from users.card_metadata import DISPLAY_ALWAYS, DISPLAY_DORMANT, resolve_profile
+
+    profile = resolve_profile(ctx.get("user"), media_type)
+    if ctx.get("card_use_lines"):
+        lines = profile.get("lines") or []
+        return bool(lines) and lines[0].get("display") == DISPLAY_DORMANT
+    return profile["display"] == DISPLAY_ALWAYS
+
+
 def _item_lines(ctx, media_type):
+    """Lines under the title, each marked dormant (visible at rest) or hover."""
+    lines = _item_lines_by_precedence(ctx, media_type)
+    dormant = _special_lines_dormant(ctx, media_type)
+    for line in lines:
+        # Lines the saved profile produced already carry their own flag.
+        line.setdefault("dormant", dormant)
+    return lines
+
+
+def _item_lines_by_precedence(ctx, media_type):
     """Lines under the title, in the same precedence the template used."""
     media, item, user = ctx.get("media"), ctx.get("item"), ctx.get("user")
     lines = []
@@ -399,12 +426,13 @@ def _corner_chips(ctx, media_type):
                 "compactText": _("Next"),
                 "href": href,
             }
-            # Desktop hover widens the chip to name the episode, when it fits.
+            # Desktop hover widens the chip to name the episode: the long wording when it
+            # fits, else the short chip text with the code.
             match = _EPISODE_PATH.search(href)
             if match:
                 code = f"S{int(match[1]):02d}E{int(match[2]):02d}"
-                chip["expandedText"] = _("Next Episode: %(code)s") % {"code": code}
-                chip["expandedShortText"] = code
+                chip["expandedText"] = _("Next episode: %(code)s") % {"code": code}
+                chip["expandedShortText"] = f"{chip['text']}: {code}"
             chips.append(chip)
     return chips
 

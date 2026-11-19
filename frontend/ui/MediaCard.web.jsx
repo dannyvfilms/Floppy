@@ -70,22 +70,40 @@ function textWidth(element, text) {
   return measureContext.measureText(text).width;
 }
 
-// On a desktop hover the Next Episode chip widens to name the episode, the way the
-// status badge widens to its label. It picks the longest wording that fits in the
-// card beside the status badge, and stays as it is when none does. Touch screens
-// have no hover, so they keep the short chip (the CSS only widens on fine pointers).
-function useNextEpisodeMore(anchor, candidates) {
+// On a desktop hover the Next Episode chip widens leftwards across the card,
+// the way the status badge widens to its label, and the status badge hides to
+// make room. It picks the longest wording that fits in the card ("Next episode:
+// S01E03", else "Next ep: S01E03") and stays as it is when none does. Touch
+// screens have no hover, so the CSS only widens on fine pointers.
+function commonPrefixLength(a, b) {
+  let length = 0;
+  while (length < a.length && length < b.length && a[length] === b[length]) length += 1;
+  return length;
+}
+
+function useNextEpisodeMore(anchor, rest, candidates) {
   const [more, setMore] = useState(null);
-  const key = candidates.join('|');
+  const key = [rest, ...candidates].join('|');
   useLayoutEffect(() => {
     const element = anchor.current;
     const visual = element?.closest('.media-card-visual');
     if (!element || !visual || !candidates.length) { setMore(null); return undefined; }
     const measure = () => {
-      // Room beside the left status badge (8px edges, badge ~28px) minus the chip's chevron and padding.
-      const room = visual.clientWidth - 16 - 36 - 30;
+      // The whole card width, less the 8px edges and the chip's chevron and padding.
+      const room = visual.clientWidth - 16 - 30;
       const text = candidates.find((candidate) => textWidth(element, candidate) <= room);
-      setMore(text ? { text, width: Math.ceil(textWidth(element, text)) + 2 } : null);
+      if (!text) { setMore(null); return; }
+      // Keep what the two wordings share ("Next ") still; only the rest swaps and grows.
+      const shared = commonPrefixLength(rest, text);
+      const restTail = rest.slice(shared);
+      const moreTail = text.slice(shared);
+      setMore({
+        prefix: rest.slice(0, shared),
+        restTail,
+        moreTail,
+        restWidth: Math.ceil(textWidth(element, restTail)) + 1,
+        moreWidth: Math.ceil(textWidth(element, moreTail)) + 1,
+      });
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -98,18 +116,19 @@ function useNextEpisodeMore(anchor, candidates) {
 
 function NextEpisodeChip({ chip, labels }) {
   const anchor = useRef(null);
-  const more = useNextEpisodeMore(anchor, [chip.expandedText, chip.expandedShortText].filter(Boolean));
-  const rest = chip.compactText
-    ? <><span className="media-card-next-episode-full">{chip.text}</span>
-      <span className="media-card-next-episode-compact">{chip.compactText}</span></>
-    : <span>{chip.text}</span>;
+  const more = useNextEpisodeMore(anchor, chip.text, [chip.expandedText, chip.expandedShortText].filter(Boolean));
+  const full = more
+    ? <>{more.prefix}
+      <span className="media-card-next-rest" style={{ '--next-rest-width': `${more.restWidth}px` }}>{more.restTail}</span>
+      <span className="media-card-next-more" aria-hidden="true"
+        style={{ '--next-more-width': `${more.moreWidth}px` }}>{more.moreTail}</span></>
+    : chip.text;
   return <a ref={anchor} href={chip.href} {...{ 'hx-disable': '' }}
     className={`${chipBase} top-2 right-2 hover:bg-indigo-600 flex items-center gap-0.5 transition-colors`}
     data-next-episode="true" title={labels.nextEpisode} aria-label={labels.nextEpisode}>
     <ChevronRight />
-    <span className="media-card-next-rest">{rest}</span>
-    {more && <span className="media-card-next-more" aria-hidden="true"
-      style={{ '--next-more-width': `${more.width}px` }}>{more.text}</span>}
+    <span className="media-card-next-episode-full whitespace-nowrap">{full}</span>
+    {chip.compactText && <span className="media-card-next-episode-compact">{chip.compactText}</span>}
   </a>;
 }
 
@@ -300,7 +319,7 @@ function CardOverlay({ actions, host, revealed, labels, onAction }) {
   }
 
   return <div className={`media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out${actions.clickable ? ' pointer-coarse:hidden' : ''}${revealed ? ' opacity-100 pointer-events-auto media-card-overlay-revealed' : ' opacity-0 pointer-events-none'}`}>
-    <div className="absolute inset-0 bg-black/50 z-0" />
+    {/* The darkening is a filter on the poster (input.css), not a layer here: a black layer clipped to the rounded corners lets the bright poster show at the anti-aliased edge. */}
     <a href={actions.href} className="absolute inset-0 z-0" />
     {!editing && <div className="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
       {actions.items.map((action, index) => action.kind === 'link'
@@ -391,6 +410,21 @@ function useRestTitle(ref, title, enabled) {
     return () => observer?.disconnect();
   }, [ref, title, enabled]);
   return rest;
+}
+
+// Square cards give the hover buttons the room above the text block: publish the
+// text block's height to the card so the stylesheet can end the overlay there.
+function useBodyHeight(cardRef, enabled) {
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const body = card?.querySelector('.media-card-body');
+    if (!enabled || !card || !body) return undefined;
+    const publish = () => card.style.setProperty('--card-body-h', `${body.offsetHeight}px`);
+    publish();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+    observer?.observe(body);
+    return () => { observer?.disconnect(); card.style.removeProperty('--card-body-h'); };
+  }, [cardRef, enabled]);
 }
 
 // The save and score responses still swap server fragments out of band for pages
@@ -546,6 +580,7 @@ export const MediaCard = React.memo(function MediaCard({
   const cardRef = useRef(null);
   const titleRef = useRef(null);
   const restTitle = useRestTitle(titleRef, model.title, grid);
+  useBodyHeight(cardRef, variant === 'grid-square');
   const revealed = useTapToReveal(cardRef, host, !!shownActions, !!selection?.active, !!shownActions?.clickable);
   const live = useLiveCard(model);
   const [quick, setQuick] = useState(model.quickStatus);
