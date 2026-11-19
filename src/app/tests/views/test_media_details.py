@@ -3153,7 +3153,16 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertEqual(
             {entry["label"] for entry in external_section["entries"]},
-            {"Letterboxd", "IMDb", "IMDb Parent's Guide", "TVDB", "Wikidata"},
+            {"Letterboxd", "IMDb", "TVDB", "Wikidata"},
+        )
+        guides_section = next(
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] == "Guides"
+        )
+        self.assertEqual(
+            [entry["label"] for entry in guides_section["entries"]],
+            ["IMDb Parent's Guide"],
         )
 
     @patch("app.providers.services.get_media_metadata")
