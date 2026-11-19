@@ -14,8 +14,8 @@ class NullableProgressedAtMigrationTests(TransactionTestCase):
     """Preserve legacy NULL values when SQLite rebuilds a media table."""
 
     def test_unknown_progressed_at_survives_nullable_field_migration(self):
-        before = ("app", "0228_deletedentry")
-        after = ("app", "0229_nullable_progressed_at")
+        before = ("app", "0231_item_library_media_type_set")
+        after = ("app", "0232_nullable_progressed_at")
         executor = MigrationExecutor(connection)
         latest = executor.loader.graph.leaf_nodes()
 
@@ -28,6 +28,7 @@ class NullableProgressedAtMigrationTests(TransactionTestCase):
                 source="manual",
                 media_type="game",
                 title="Legacy Game",
+                library_media_type="game",
             )
             game_model = apps.get_model("app", "Game")
             game = game_model.objects.create(user_id=user.pk, item_id=item.pk)
