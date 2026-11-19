@@ -5,7 +5,7 @@ import { setDatePreferences } from './userDate';
 // The account preferences that change how a page prints: the web reads them in
 // the template (mobile grid layout, quick season buttons, date format) and the
 // server time zone. Loaded once per signed-in session and shared by pages.
-const FALLBACK = { quick: false, compact: true, loaded: false };
+const FALLBACK = { quick: false, compact: true, weekStart: null, loaded: false };
 let cache = { session: null, value: FALLBACK, pending: null };
 
 function load(session) {
@@ -22,6 +22,7 @@ function load(session) {
     cache.value = {
       quick: ['season_update', 'both'].includes(source.quick_season_update_mobile),
       compact: source.mobile_grid_layout !== 'comfortable',
+      weekStart: source.week_start_day === 'sunday' ? 'sunday' : 'monday',
       loaded: true,
     };
     return cache.value;

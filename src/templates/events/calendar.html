@@ -17,9 +17,7 @@
       {% url 'history' as history_url %}
       {% blocktranslate trimmed %}Upcoming episodes and releases for everything you're tracking, unless it's paused or dropped. What you've already watched, read or played is in <a href="{{ history_url }}" class="underline hover:text-[var(--color-link)]">History</a>.{% endblocktranslate %}
     </p>
-    {% if not release_dict %}
-      <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Nothing this month. Add a show, movie, book or game to your library and its upcoming dates appear here." %}</p>
-    {% endif %}
+    <p data-calendar-empty-notice {% if release_dict %}hidden{% endif %} class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Nothing this month. Add a show, movie, book or game to your library and its upcoming dates appear here." %}</p>
   </div>
 
   {{ calendar_props|json_script:"calendar-props" }}
@@ -46,7 +44,8 @@
   </div>
 
   {{ calendar_links_props|json_script:"calendar-links-props" }}
-  <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
+  {# Under md the React links render their own header-and-card groups (as the Collection modal does); the outer card is desktop only. #}
+  <div class="md:bg-[var(--color-surface)] md:p-5 md:rounded-lg mb-6"
        data-calendar-links-root
        data-props-id="calendar-links-props">
     <div class="flex items-center mb-3">

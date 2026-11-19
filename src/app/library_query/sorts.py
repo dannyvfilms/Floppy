@@ -366,6 +366,9 @@ def _random_sql(ctx: TypeContext, seed: int):
 
 # Measurements where zero means "not measured": such items sort last.
 MEASURED_SORT_KEYS = frozenset({"runtime", "time_watched", "time_to_beat"})
+# An empty value is unknown and sorts last: measurements, and a title with no
+# author (the media list's value for it is an empty string).
+EMPTY_IS_UNKNOWN_SORT_KEYS = MEASURED_SORT_KEYS | {"author"}
 
 
 def _next_episode_air_date_values(user, candidates, direction):
@@ -388,7 +391,7 @@ def _media_list_value(sort_key: str):
             sort_key,
             None,
         )
-        if sort_key in MEASURED_SORT_KEYS and not result:
+        if sort_key in EMPTY_IS_UNKNOWN_SORT_KEYS and not result:
             return None
         return result
 

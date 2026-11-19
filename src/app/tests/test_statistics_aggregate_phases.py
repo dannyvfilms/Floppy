@@ -167,7 +167,7 @@ class ReadingConsumptionTests(FinisherTestCase):
             end_date=now - timedelta(days=2),
         )
         acc = _RangeAccumulators()
-        acc.day_minutes_by_type["book"] = {"2026-11-01": 50}
+        acc.day_reading_units["book"] = {"2026-11-01": 50}
         acc.listening_minutes_total = 600
 
         all_time = _build_reading_consumption(

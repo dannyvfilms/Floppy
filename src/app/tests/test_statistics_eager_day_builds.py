@@ -241,9 +241,16 @@ class EagerDayBuildEquivalenceTests(TestCase):
         late = minutes(self.late_night)
         for media_type in (
             MediaTypes.MOVIE.value, MediaTypes.TV.value, MediaTypes.MUSIC.value,
-            MediaTypes.PODCAST.value, MediaTypes.BOOK.value,
+            MediaTypes.PODCAST.value,
         ):
             self.assertGreater(late.get(media_type, 0), 0, media_type)
+        # Page progress is a reading unit, kept apart from elapsed minutes.
+        self.assertGreater(
+            expected_full[self.late_night]["daily_reading_units"].get(
+                MediaTypes.BOOK.value, 0
+            ),
+            0,
+        )
         self.assertFalse(minutes(self.late_night + timedelta(days=1)))
         for day in self.spanned_days:
             self.assertEqual(expected_full[day]["activity"]["count"], 2, day)

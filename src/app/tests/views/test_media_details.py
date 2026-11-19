@@ -8289,8 +8289,8 @@ class MediaDetailsViewTests(TestCase):
         mock_episode.return_value = {
             "episode_title": "Che i giochi abbiano inizio",
             "title": "Those About to Die",
-            "cast": [],
-            "crew": [],
+            "cast": [{"person_id": "1308445", "name": "Carrie Coon", "role": "Lead"}],
+            "crew": [{"person_id": "123", "name": "Example Director", "department": "Directing"}],
         }
 
         response = self.client.get(
@@ -8312,6 +8312,8 @@ class MediaDetailsViewTests(TestCase):
             "Che i giochi abbiano inizio",
         )
         self.assertContains(response, "Finale di stagione in italiano.")
+        self.assertContains(response, "/person/tmdb/1308445/carrie-coon")
+        self.assertContains(response, "/person/tmdb/123/example-director")
 
         mock_get_metadata.assert_called()
         _args, kwargs = mock_get_metadata.call_args

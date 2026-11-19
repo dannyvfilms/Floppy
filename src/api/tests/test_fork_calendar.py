@@ -27,6 +27,10 @@ class CalendarLinksTests(FloppyApiTestCase):
         values = {entry["value"] for entry in payload["release_media_types"]}
         self.assertIn("movie", values)
         self.assertNotIn("episode", values)
+        for entry in payload["statuses"] + payload["release_types"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
+        for entry in payload["release_media_types"] + payload["history_media_types"]:
+            self.assertTrue(entry["icon"]["children"], entry["value"])
         self.assertTrue(payload["statuses"])
         self.assertTrue(payload["release_types"])
         self.assertNotIn("tv", payload["filter_statuses_by_type"])

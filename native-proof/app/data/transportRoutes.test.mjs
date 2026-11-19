@@ -196,6 +196,8 @@ test('music transport uses the authenticated request facade', async () => {
 
   await transport.loadArtistRelations({ artistId: 9 });
   assert.equal(calls[0].path, '/api/v1/music/artists/9/relations/');
+  await transport.loadArtistAlbums({ artistId: 9, group: 'EP + Live', offset: 24 });
+  assert.equal(calls.pop().path, '/api/v1/music/artists/9/albums/?group=EP+%2B+Live&offset=24');
 
   await transport.syncArtistMembers({ artistId: 9 });
   assert.equal(calls[1].path, '/api/v1/music/artists/9/sync-members/');
@@ -633,8 +635,10 @@ test('calendar transport pages a full month through the offset envelope', async 
   });
   const transport = createCalendarTransport({ auth: session });
   const page = await transport.readAll({ month: 11, year: 2026 });
-  assert.equal(calls[0].options.query.limit, 200);
-  assert.equal(calls[1].options.query.offset, 2);
+  // The statuses request starts alongside the first events page.
+  const pages = calls.filter(call => call.path === '/api/v1/calendar/');
+  assert.equal(pages[0].options.query.limit, 200);
+  assert.equal(pages[1].options.query.offset, 2);
   assert.equal(page.results.length, 3);
   assert.equal(page.pagination.total, 3);
 });
