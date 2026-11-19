@@ -174,7 +174,7 @@ export default function App() {
 
   return <NativeRoot style={[styles.root, { paddingTop: statusBarInset }]}>
     <NativeStatusBar backgroundColor={palette.background} />
-    <ShellSlot standalone={active?.screen === 'Onboarding'} active={tab} activeHref={activeHref} canGoBack={Boolean(active) || tab !== 'home'} onBack={back} onNavigate={openTab} onOpenHref={openHref}
+    <ShellSlot standalone={active?.screen === 'Onboarding'} overlaySearch={active?.screen === 'Detail'} active={tab} activeHref={activeHref} canGoBack={Boolean(active) || tab !== 'home'} onBack={back} onNavigate={openTab} onOpenHref={openHref}
       onOpenSearch={params => navigate('Search', params)}
       onOpenSuggestion={item => navigate('Detail', { item })}>
       <View style={styles.body}>

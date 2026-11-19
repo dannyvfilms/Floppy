@@ -363,6 +363,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/music/albums/{album_id}/tracks/` | GET | `music:read` |
 | `/api/v1/music/artists/` | GET POST | GET `music:read`; POST `music:write` |
 | `/api/v1/music/artists/{artist_id}/` | DELETE GET PATCH | DELETE `music:write`; GET `music:read`; PATCH `music:write` |
+| `/api/v1/music/artists/{artist_id}/albums/` | GET | `music:read` |
 | `/api/v1/music/artists/{artist_id}/plays/` | DELETE | `music:write` |
 | `/api/v1/music/artists/{artist_id}/relations/` | GET | `music:read` |
 | `/api/v1/music/artists/{artist_id}/sync-discography/` | POST | `music:write` |
@@ -413,6 +414,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/search/results/` | GET | `catalog:read` |
 | `/api/v1/search/sources/` | GET | `catalog:read` |
 | `/api/v1/search/suggestions/` | GET | `catalog:read` |
+| `/api/v1/search/type/` | PUT | `catalog:write` |
 | `/api/v1/statistics/featured-person/` | POST | `statistics:write` |
 | `/api/v1/statistics/overview/` | GET | `statistics:read` |
 | `/api/v1/statistics/preferences/` | GET PATCH | GET `statistics:read`; PATCH `statistics:write` |

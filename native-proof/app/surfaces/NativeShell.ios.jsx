@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { AccessibilityInfo, LayoutAnimation, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import { useHinge } from 'expo-hinge';
 import { ArrangementView, Host, RNHostView } from '@expo/ui/swift-ui';
 import { arrangementViewStyle, frame } from '@expo/ui/swift-ui/modifiers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,16 +9,20 @@ import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserv
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { RailModalHost, RailModalProvider, useRailModal } from '../../../frontend/ui/Modal';
 import { menuGeometry } from './menuGeometry.mjs';
+import { useDevicePose } from '../data/useDevicePose';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
+import { ShellLayoutContext } from './shellContext';
 
-function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, overlaySearch }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
   const [arrangement, setArrangement] = useState(null);
-  const hinge = useHinge();
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [searchHeight, setSearchHeight] = useState(96);
+  const pose = useDevicePose();
   const measuredDivision = division?.frame || (arrangement?.containerWidth === contentWidth ? arrangement : null);
-  const target = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
+  const target = menuGeometry(contentWidth || width, pose, measuredDivision);
   const [geometry, setGeometry] = useState(target);
   // The panel is part of one shape with the side rail: it reaches the screen edge through the
   // safe-area insets (the rail on a full-width menu) and slides in with the panel, so the rail
@@ -27,13 +30,13 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
   const bleed = { top: insets.top, left: insets.left, right: geometry.full ? insets.right : 0 };
   useLayoutEffect(() => {
     if (geometry.full === target.full && geometry.menuWidth === target.menuWidth && geometry.gap === target.gap) return;
-    if (open && !reduceMotion && (hinge?.status === 'fullyOpen' || hinge?.status === 'partiallyOpen')) {
+    if (open && !reduceMotion && (pose.hinged && pose.fold !== 'closed')) {
       LayoutAnimation.configureNext({ duration: 220, update: { type: LayoutAnimation.Types.easeOut } });
     }
     setGeometry(target);
-  }, [geometry, target.full, target.menuWidth, target.gap, hinge?.status, open, reduceMotion]);
+  }, [geometry, target.full, target.menuWidth, target.gap, pose.fold, open, reduceMotion]);
   return <View style={styles.row} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
-    {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && hinge?.status === 'partiallyOpen'
+    {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && pose.fold === 'partial'
       ? <Host pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
         style={StyleSheet.absoluteFill}>
         <ArrangementView modifiers={[arrangementViewStyle('split', { axes: 'horizontal' }), frame({ maxWidth: Infinity, maxHeight: Infinity })]}>
@@ -55,10 +58,15 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
         {sidebar}
       </View>
     </View>
-    <View style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
+    <View onLayout={event => setViewport(event.nativeEvent.layout)}
+      style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
       importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
-      <View style={[styles.search, horizontalContentPadding(insets, 22)]}>{search}</View>
-      {children}
+      <View onLayout={event => setSearchHeight(event.nativeEvent.layout.height)}
+        style={[styles.search, horizontalContentPadding(insets, 22), overlaySearch && styles.searchOverlay]}>{search}</View>
+      <ShellLayoutContext.Provider value={{ ...viewport, insets,
+        headerHeight: overlaySearch ? searchHeight : 0 }}>
+        {children}
+      </ShellLayoutContext.Provider>
     </View>
   </View>;
 }
@@ -67,18 +75,18 @@ function MeasuredNativeShell(props) {
   const regions = useReservedRegions();
   const division = regions.find(region => region.kind === 'division'
     && region.frame.height > region.frame.width && region.frame.x > 0);
-  const hinge = useHinge();
+  const pose = useDevicePose();
   const railEdge = useVerticalBarEdgeIOS();
-  const hasRail = Boolean(hinge || railEdge);
+  const hasRail = Boolean(pose.hasHinge || railEdge);
   return <RailModalProvider enabled={hasRail}>
     <ShellWithRail {...props} division={division} hasRail={hasRail} />
   </RailModalProvider>;
 }
 
 function StoreClientNativeShell(props) {
-  const hinge = useHinge();
+  const pose = useDevicePose();
   const railEdge = useVerticalBarEdgeIOS();
-  const hasRail = Boolean(hinge || railEdge);
+  const hasRail = Boolean(pose.hasHinge || railEdge);
   return <RailModalProvider enabled={hasRail}>
     <ShellWithRail {...props} hasRail={hasRail} />
   </RailModalProvider>;
@@ -90,7 +98,7 @@ export default function NativeShell(props) {
     : <ReservedRegionsProvider style={styles.root}><MeasuredNativeShell {...props} /></ReservedRegionsProvider>;
 }
 
-function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division }) {
+function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division, overlaySearch }) {
   const modal = useRailModal()?.active;
   const insets = useSafeAreaInsets();
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -105,7 +113,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const menu = { open, sidebar, search, palette, children, reduceMotion };
+  const menu = { open, sidebar, search, palette, children, reduceMotion, overlaySearch };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.background } }} />
@@ -138,6 +146,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { zIndex: 2, width: '100%', minHeight: 44,
     justifyContent: 'center', paddingTop: 25, paddingBottom: 27 },
+  // Only Media Details paints beneath search; the reviewed Home/search shell stays in flow.
+  searchOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   // Not clipped: the menu panel extends through the safe-area insets.
   row: { flex: 1, flexDirection: 'row', minHeight: 0 },
   sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },

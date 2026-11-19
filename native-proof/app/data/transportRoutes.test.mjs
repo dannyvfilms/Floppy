@@ -45,6 +45,7 @@ import {
   loadLists,
   loadTrack,
   saveTrack,
+  deleteTrack,
   resetMediaCardTransport,
   unwatchEpisode,
 } from '../surfaces/mediaCardTransport.js';
@@ -195,6 +196,8 @@ test('music transport uses the authenticated request facade', async () => {
 
   await transport.loadArtistRelations({ artistId: 9 });
   assert.equal(calls[0].path, '/api/v1/music/artists/9/relations/');
+  await transport.loadArtistAlbums({ artistId: 9, group: 'EP + Live', offset: 24 });
+  assert.equal(calls.pop().path, '/api/v1/music/artists/9/albums/?group=EP+%2B+Live&offset=24');
 
   await transport.syncArtistMembers({ artistId: 9 });
   assert.equal(calls[1].path, '/api/v1/music/artists/9/sync-members/');
@@ -632,8 +635,10 @@ test('calendar transport pages a full month through the offset envelope', async 
   });
   const transport = createCalendarTransport({ auth: session });
   const page = await transport.readAll({ month: 11, year: 2026 });
-  assert.equal(calls[0].options.query.limit, 200);
-  assert.equal(calls[1].options.query.offset, 2);
+  // The statuses request starts alongside the first events page.
+  const pages = calls.filter(call => call.path === '/api/v1/calendar/');
+  assert.equal(pages[0].options.query.limit, 200);
+  assert.equal(pages[1].options.query.offset, 2);
   assert.equal(page.results.length, 3);
   assert.equal(page.pagination.total, 3);
 });
@@ -878,4 +883,43 @@ test('mark unwatched with no recorded watch removes nothing', async () => {
   } finally {
     resetMediaCardTransport();
   }
+});
+
+
+test('editing a repeat loads and writes the selected instance instead of the latest one', async () => {
+  for (const identity of [
+    { mediaType: 'tv', source: 'tmdb', mediaId: '873', instanceId: 7 },
+    { mediaType: 'season', source: 'tmdb', mediaId: '873', seasonNumber: 2, instanceId: 7 },
+  ]) {
+    const base = `/api/v1/media/tv/tmdb/873${identity.seasonNumber ? `/${identity.seasonNumber}` : ''}`;
+    const exact = `${base}/history/7/`;
+    const { calls, session } = authFixture(path => path === exact
+      ? { consumption_id: 7, score: 6, notes: 'Earlier repeat', status: 'Completed' }
+      : path.endsWith('/state/') ? { tracked: true, consumptions: [{ consumption_id: 9, score: 10, notes: 'Latest' }] }
+        : path === `${base}/` ? { title: 'Columbo', max_progress: 67 } : null);
+    configureMediaCardTransport({ auth: session });
+    try {
+      const loaded = await loadTrack(identity);
+      assert.equal(loaded.model.notes.value, 'Earlier repeat');
+      assert.equal(loaded.model.instanceId, 7);
+      const model = normalizeTrackForm(loaded.model);
+      await saveTrack(identity, model, { ...initialTrackValues(model), notes: 'Selected repeat edit' }, true);
+      await deleteTrack(identity, model);
+      assert.equal(calls.find(call => call.options.method === 'PATCH').path, exact);
+      assert.equal(calls.find(call => call.options.method === 'DELETE').path, exact);
+    } finally { resetMediaCardTransport(); }
+  }
+});
+
+test('a missing explicit tracking instance never falls back to editing the latest', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path.endsWith('/history/404/')) throw new Error('Consumption entry not found.');
+    if (path.endsWith('/state/')) return { tracked: true, consumptions: [{ consumption_id: 9 }] };
+    return { title: 'Columbo' };
+  });
+  configureMediaCardTransport({ auth: session });
+  try {
+    await assert.rejects(loadTrack({ mediaType: 'tv', source: 'tmdb', mediaId: '873', instanceId: 404 }), /not found/);
+    assert.ok(calls.every(call => !call.options.method || call.options.method === 'GET'));
+  } finally { resetMediaCardTransport(); }
 });

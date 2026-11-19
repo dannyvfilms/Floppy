@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  activitySessionQuery,
   activityLine,
   activityLineWithWatched,
+  detailHeaderText,
   detailModelFromPayloads,
   detailRows,
   episodeActionPath,
@@ -15,7 +17,21 @@ import {
   notesFromConsumptions,
   statusLabel,
   trackingFromState,
+  trackingEntriesFromPayload,
 } from './detailTransportCore.js';
+import { scoreChipsFromPayload, trackingFactsFromPayload, viewerRatingFromPayload } from '../surfaces/detailActions.mjs';
+import { assertFields, recorded } from './recordedAnswers.mjs';
+import { getDatePreferences, setDatePreferences } from './userDate.js';
+
+test('activity sessions use the web history filters for detail identities', () => {
+  assert.deepEqual(activitySessionQuery({ mediaType: 'episode', source: 'tmdb', mediaId: '42', seasonNumber: 0, episodeNumber: 3 }),
+    { media_type: 'tv', source: 'tmdb', media_id: '42', season_number: 0, episode_number: 3 });
+  assert.equal(activitySessionQuery({ mediaType: 'anime', detailType: 'season', source: 'mal', mediaId: '1' }).media_type, 'tv');
+  assert.equal(activitySessionQuery({ mediaType: 'game', source: 'igdb', mediaId: '1' }).logging_style, 'sessions');
+  assert.deepEqual(activitySessionQuery({ musicKind: 'album', musicId: 7 }), { album: 7 });
+  assert.deepEqual(activitySessionQuery({ podcastId: 8 }), { media_type: 'podcast', podcast_show: 8 });
+  assert.equal(activitySessionQuery({ musicKind: 'artist' }), null);
+});
 
 test('identityFromItem prefers an explicit identity object', () => {
   assert.deepEqual(
@@ -200,6 +216,65 @@ test('activityLineWithWatched puts the watched time in front like the web hero',
   assert.equal(activityLineWithWatched('', '42min'), '42min');
 });
 
+test('hero duration, progress, metadata and dates follow the PWA order', () => {
+  assert.deepEqual(detailHeaderText({
+    duration_text: '2h 48min watched',
+    primary_text: 'Progress: 4/6',
+    date_start: '2026-01-18',
+    date_end: '2026-01-20',
+  }, { first_air_date: '2024-06-02', runtime: '42min' }), {
+    activityText: 'Jan. 18, 2026 - Jan. 20, 2026 • 2h 48min watched',
+    mobileMeta: '',
+  });
+  assert.deepEqual(detailHeaderText({
+    primary_text: 'Progress: 4/6',
+    date_start: '2026-01-18',
+    date_end: '2026-01-20',
+  }, { first_air_date: '2024-06-02', runtime: '42min' }), {
+    activityText: 'Jan. 18, 2026 - Jan. 20, 2026',
+    mobileMeta: '',
+  });
+});
+
+test('hero dates use the server timezone and user format and collapse a local day', () => {
+  const previous = getDatePreferences();
+  try {
+    setDatePreferences({ timeZone: 'America/Chicago', dateFormat: 'd_m_yyyy' });
+    assert.deepEqual(detailHeaderText({
+      primary_text: 'Played once',
+      date_start: '2026-11-11T01:00:00Z',
+      date_end: '2026-11-11T04:00:00Z',
+    }), { activityText: '10/11/2026', mobileMeta: '' });
+    assert.equal(detailHeaderText({
+      primary_text: 'Played once',
+      date_start: '2026-11-11T01:00:00Z',
+      date_end: '2026-11-12T04:00:00Z',
+      collapse_same_day: true,
+    }).activityText, '10/11/2026');
+  } finally {
+    setDatePreferences(previous);
+  }
+});
+
+test('hero omits missing or invalid dates without raw timestamps or duplicate metadata', () => {
+  assert.deepEqual(detailHeaderText(null, { release_date: '2012-07-28', runtime: '1h 30min' }), {
+    activityText: '', mobileMeta: '2012 · 1h 30min',
+  });
+  assert.deepEqual(detailHeaderText({ primary_text: 'Read once', date_end: 'not-a-date' }, { year: 2021 }), {
+    activityText: 'Read once', mobileMeta: '',
+  });
+  assert.deepEqual(detailHeaderText({ date_start: '2026-01-18' }), {
+    activityText: 'Jan. 18, 2026', mobileMeta: '',
+  });
+  for (const verb of ['watched', 'played', 'listened', 'read']) {
+    assert.equal(detailHeaderText({ duration_text: `45min ${verb}` }).activityText, `45min ${verb}`);
+  }
+  assert.deepEqual(detailHeaderText({}, { start_year: 1997 }), {
+    activityText: '', mobileMeta: '1997',
+  });
+  assert.deepEqual(detailHeaderText(null, null), { activityText: '', mobileMeta: '' });
+});
+
 test('activityLine matches the web subtitle', () => {
   assert.equal(activityLine({ mediaType: 'movie', runtime: '1h 58min', plays: 1 }), '1h 58min (Watched once)');
   assert.equal(activityLine({ mediaType: 'movie', runtime: '1h 58min', plays: 3 }), '1h 58min (Watched 3 times)');
@@ -282,4 +357,79 @@ test('trackingFromPayloads carries the ids the write controls need', async () =>
   const none = trackingFromPayloads({ identity: { source: 'manual' }, metadata: null, state: null });
   assert.deepEqual([none.tracked, none.tracking, none.catalogItemId, none.notes, none.history, none.sourceUrl],
     [false, null, null, [], [], '']);
+});
+
+
+test('episode scores use display scale and preserve explicit capability denials', () => {
+  const identity = { source: 'tmdb', mediaId: '7' };
+  const [row, cleared, legacy] = episodesFromPayload({ results: [
+    { item: { episode_number: 1 }, score: 8, display_score: 4, scale_max: 5, can_rate: false, can_list: false, can_watch: false, can_collect: false },
+    { item: { episode_number: 2 }, score: 8, display_score: null, scale_max: 5 },
+    { item: { episode_number: 3 }, score: 8, scale_max: 5, can_collect: true },
+  ] }, identity, 2);
+  assert.equal(row.score, 4);
+  assert.equal(row.scaleMax, 5);
+  assert.equal(row.canRate, false);
+  assert.equal(row.canList, false);
+  assert.equal(row.canWatch, false);
+  assert.equal(row.canCollect, false);
+  assert.equal(cleared.score, null);
+  assert.equal(legacy.score, 4);
+  assert.equal(legacy.canCollect, true);
+});
+
+test('repeat history preserves instance coordinates, display rating and edit permissions', () => {
+  const result = trackingEntriesFromPayload({ tracking_entries_count: 55, tracking_entries_has_more: true,
+    tracking_entries: [{ id: 42, media_type: 'season', identity: { mediaType: 'tv', detailType: 'season', source: 'tmdb', mediaId: '7', seasonNumber: 2, instanceId: 42 },
+      status: 3, display_score: 4, scale_max: 5, formatted_progress: 6, max_progress: 6,
+      start_date: '2026-01-18', end_date: '2026-01-20', notes: 'A repeat', can_edit: false }] });
+  assert.equal(result.count, 55);
+  assert.equal(result.hasMore, true);
+  assert.equal(result.entries[0].identity.instanceId, 42);
+  assert.equal(result.entries[0].identity.mediaType, 'season');
+  assert.equal(result.entries[0].identity.seasonNumber, 2);
+  assert.equal(result.entries[0].scoreLabel, '4/5');
+  assert.equal(result.entries[0].statusLabel, 'Completed');
+  assert.equal(result.entries[0].progressLabel, '6/6');
+  assert.equal(result.entries[0].editable, false);
+  assert.equal(result.entries[0].notes, 'A repeat');
+  assert.deepEqual(trackingEntriesFromPayload(), { entries: [], count: 0, hasMore: false });
+});
+
+test('recorded detail answers carry every tracking field the detail page reads', () => {
+  const tracked = recorded('detail-movie-tracked');
+  assertFields(tracked, {
+    title: 'string', identity: 'object', artwork: 'object', read_only: 'boolean', public_view: 'boolean',
+    capabilities: 'object', viewer_rating: 'object', score_chips: 'array', tag_sections: 'array',
+    facts: 'array', tracking: 'object', tracking_entries: 'array',
+    tracking_entries_count: 'number', tracking_entries_has_more: 'boolean',
+  }, 'detail');
+  assertFields(tracked.identity, { media_type: 'string', source: 'string', media_id: 'string' }, 'detail.identity');
+  assertFields(tracked.tracking, { status: 'string', score: ['number', 'null'], progress: ['number', 'null'] }, 'detail.tracking');
+  assertFields(tracked.viewer_rating, { enabled: 'boolean', scale_max: 'number', value: ['number', 'null'] }, 'detail.viewer_rating');
+  assertFields(tracked.capabilities, { can_update: 'boolean', can_track: 'boolean', can_request_seerr: 'boolean' }, 'detail.capabilities');
+  tracked.tracking_entries.forEach((entry, index) => assertFields(entry, {
+    id: 'number', status: 'string', display_score: ['number', 'null'], scale_max: 'number',
+    start_date: ['string', 'null'], end_date: ['string', 'null'], notes: 'string', can_edit: 'boolean',
+    media_type: 'string', identity: 'object',
+  }, `detail.tracking_entries[${index}]`));
+
+  // The History section: entries, their count and "show more".
+  const history = trackingEntriesFromPayload(tracked);
+  assert.ok(history.entries.length > 0);
+  assert.equal(history.count, tracked.tracking_entries_count);
+  assert.equal(history.hasMore, tracked.tracking_entries_has_more);
+  history.entries.forEach(entry => {
+    assert.ok(entry.id && entry.statusLabel, 'each play shows its status');
+    assert.ok(entry.identity.mediaType && entry.identity.source && entry.identity.mediaId);
+  });
+  assert.ok(trackingFactsFromPayload(tracked).some(fact => fact.label === 'Status'));
+  assert.equal(viewerRatingFromPayload(tracked).value, tracked.viewer_rating.value);
+  assert.ok(Array.isArray(scoreChipsFromPayload(tracked)));
+
+  const untracked = recorded('detail-movie-untracked');
+  assertFields(untracked, { tracking: 'null', tracking_entries: 'array', tracking_entries_count: 'number', capabilities: 'object' }, 'untracked detail');
+  assert.deepEqual(trackingEntriesFromPayload(untracked), { entries: [], count: 0, hasMore: false });
+  assert.equal(viewerRatingFromPayload(untracked), null);
+  assert.equal(untracked.capabilities.can_track, true);
 });

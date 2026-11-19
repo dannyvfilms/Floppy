@@ -28,6 +28,7 @@ from django.db.backends.signals import connection_created
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
+from config.data_paths import resolve_data_paths
 from config.runtime_profile import (
     PROFILE as RESOURCE_PROFILE,
 )
@@ -53,14 +54,8 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-_data_dir_override = config("FLOPPY_DATA_DIR", default=None)
-FLOPPY_DATA_DIR = Path(_data_dir_override) if _data_dir_override else BASE_DIR / "db"
-_database_path_override = config("FLOPPY_DB_PATH", default=None)
-FLOPPY_DB_PATH = (
-    Path(_database_path_override)
-    if _database_path_override
-    else FLOPPY_DATA_DIR / "db.sqlite3"
-)
+# Shared with the background SQLite verifier, which runs without Django.
+FLOPPY_DATA_DIR, FLOPPY_DB_PATH = resolve_data_paths(config, BASE_DIR)
 DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
@@ -1253,6 +1248,15 @@ else:
         "DISCOVER_WARMUP_ON_STARTUP",
         cast=bool,
     )
+# A tracked write rebuilds Discover in the background only for someone who
+# opened Discover (or called the recommendations API) in the last this many
+# days; for everyone else the tab is marked stale and rebuilt on the next visit.
+# 0 rebuilds after every write for everyone (the previous behaviour).
+DISCOVER_EAGER_REBUILD_DAYS = config(
+    "DISCOVER_EAGER_REBUILD_DAYS",
+    default=3,
+    cast=int,
+)
 
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
@@ -1291,6 +1295,7 @@ SHARED_DEFAULT_CREDENTIALS = {
     "IGDB_ID": "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
     "BGG_API_TOKEN": "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
     "COMICVINE_API": "cdab0706269e4bca03a096fbc39920dadf7e4992",
+    "WETRAKR_CLIENT_ID": "84fcb12dd6f78fc0efc0f279d5fea165",
 }
 
 TMDB_API = config(
@@ -1344,14 +1349,15 @@ MAL_API_SECRET = config(
     ),
 )
 
-# The application key a WeTrakr account is connected with. WeTrakr issues these
-# on request, so each user or instance brings their own (Settings > Metadata);
-# nothing ships with the image.
+# The application key every WeTrakr account is connected with. WeTrakr issued it
+# to Floppy as an app-owned developer key (no client secret, no redirect URI:
+# login is a device code), so it ships as a shared default. An instance or member
+# can still supply their own (Settings > Providers > WeTrakr).
 WETRAKR_CLIENT_ID = config(
     "WETRAKR_CLIENT_ID",
     default=secret(
         "WETRAKR_CLIENT_ID_FILE",
-        "",
+        SHARED_DEFAULT_CREDENTIALS["WETRAKR_CLIENT_ID"],
     ),
 )
 
@@ -1859,8 +1865,10 @@ CELERY_TASK_ROUTES = {
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
-    # Discover cache rebuilds go to the dedicated discover worker so a post-restart
-    # burst of O(users x tabs) tasks never starves imports or background work.
+    # Discover cache rebuilds have their own queue, but no tier starts a separate
+    # discover worker: the background worker consumes it alongside `celery` (see
+    # celery_queue_plan). Background priority keeps a post-restart burst of
+    # O(users x tabs) rebuilds behind imports and freshness work queued with it.
     "Refresh Discover Tab Cache": {
         "queue": "discover",
         "priority": CELERY_TASK_PRIORITY_BACKGROUND,
@@ -1893,6 +1901,12 @@ CELERY_TASK_ROUTES = {
     # Rebuilds a talent section the viewer already sees a stale copy of. It is a
     # full talent scan, so it belongs with the other bulk derived work.
     "Refresh statistics talent fragment": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # The all-time scan behind person page totals. Pages show stored numbers
+    # while it runs, so it waits with the other bulk derived work.
+    "Build person talent context": {
         "queue": "celery",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },

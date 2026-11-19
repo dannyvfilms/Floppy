@@ -1574,7 +1574,7 @@ class SqliteIntegrityTests(SimpleTestCase):
         script = ENTRYPOINT.read_text()
         check = 'timeout -k 5 "$SQLITE_ADMISSION_TIMEOUT" python manage.py sqlite_startup &'
 
-        self.assertIn("SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}", script)
+        self.assertIn("SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-120}", script)
         self.assertIn(check, script)
         # Admission must finish quickly; full verification is independent.
         self.assertNotIn("integrity_timeout", script)

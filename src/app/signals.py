@@ -124,6 +124,10 @@ _IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
     "importer_replacing_rows",
     default=False,
 )
+_MERGING_ITEMS: ContextVar[bool] = ContextVar(
+    "merging_items",
+    default=False,
+)
 _ACCOUNT_BEING_DELETED: ContextVar[bool] = ContextVar(
     "account_being_deleted",
     default=False,
@@ -168,6 +172,24 @@ def importer_replacing_rows():
         yield
     finally:
         _IMPORTER_REPLACING_ROWS.reset(token)
+
+
+@contextmanager
+def merging_items():
+    """Mark deletes inside the block as two items being merged into one.
+
+    A merge folds a duplicate tracking row into the surviving one and deletes
+    the duplicate. The user still tracks the title (under the surviving
+    identity), so the delete must not leave a deletion tombstone for the old
+    identity. The library change feed (`DeletedEntry`) still records the old
+    identity as gone: a mirroring client drops it and sees the surviving row
+    as changed.
+    """
+    token = _MERGING_ITEMS.set(True)
+    try:
+        yield
+    finally:
+        _MERGING_ITEMS.reset(token)
 
 
 @contextmanager
@@ -425,6 +447,15 @@ def clear_home_row_cache_on_music_podcast_tracker_change(sender, instance, **kwa
     clear_library_view_caches(user_id)
 
 
+@receiver([post_save, post_delete], sender=AlbumTracker)
+def refresh_statistics_on_album_tracker_change(sender, instance, **kwargs):
+    """Rebuild range aggregates when an album's tracking changes."""
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if instance.user_id:
+        statistics_cache.invalidate_statistics_cache(instance.user_id)
+
+
 @receiver([post_save, post_delete], sender=ItemTag)
 def sync_smart_lists_on_item_tag_change(sender, instance, **kwargs):
     """Incrementally update smart lists when a tag is applied to or removed from an item."""
@@ -551,6 +582,39 @@ def _invalidate_history_for_media_change(
             day_keys=normalized_day_keys,
             allow_inline=False,
         )
+
+
+def invalidate_bulk_episode_history(user_id, episodes, *, reason):
+    """Invalidate History for episodes written in bulk, after the commit.
+
+    ``bulk_create`` sends no save signals, so completing a show or season left
+    its days showing the old entries until the cache expired.
+    """
+    if (
+        not user_id
+        or media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
+    day_keys = sorted(
+        {
+            day_key
+            for episode in episodes
+            if (day_key := _episode_history_day_key(episode.end_date, episode.start_date))
+        },
+    )
+    if not day_keys:
+        return
+    transaction.on_commit(
+        lambda: _invalidate_history_for_media_change(
+            user_id,
+            day_keys=day_keys,
+            logging_styles=HISTORY_LOGGING_STYLES,
+            reason=reason,
+            prioritized=False,
+            force=True,
+        ),
+    )
 
 
 def _history_specs(day_keys):
@@ -718,6 +782,7 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     if (
         kwargs.get("raw")
         or _IMPORTER_REPLACING_ROWS.get()
+        or _MERGING_ITEMS.get()
         or _ACCOUNT_BEING_DELETED.get()
     ):
         return
@@ -1008,6 +1073,30 @@ def refresh_history_cache_on_episode_delete(sender, instance, **kwargs):
         return
     user_id = getattr(getattr(instance, "related_season", None), "user_id", None)
     day_key = _episode_history_day_key(instance.end_date, instance.start_date)
+    origin = kwargs.get("origin")
+    if isinstance(origin, (Season, TV)):
+        # Deleting a season or show cascades here once per episode. Gather the
+        # days on the row being deleted and invalidate them together after the
+        # commit, instead of one full cache round per episode for the same day.
+        pending = getattr(origin, "_episode_history_days", None)
+        if pending is None:
+            pending = origin._episode_history_days = {}
+            transaction.on_commit(
+                lambda: _invalidate_episode_history_changes(
+                    {
+                        owner: sorted(days)
+                        for owner, days in pending.items()
+                        if days
+                    },
+                    list(pending),
+                ),
+                using=kwargs.get("using"),
+            )
+        if user_id:
+            days = pending.setdefault(user_id, set())
+            if day_key:
+                days.add(day_key)
+        return
     changes = {user_id: [day_key]} if user_id and day_key else {}
     runtime_user_ids = [user_id] if user_id else []
     transaction.on_commit(
@@ -1677,8 +1766,12 @@ def schedule_runtime_backfill_on_item_save(
 
         clear_show_view_caches(instance.media_id, instance.source, EPISODE_DETAILS)
 
+    # A row created just now has no backfill state yet, so there is nothing to
+    # clear. Skipping the lookups matters when a show is completed for the
+    # first time and hundreds of episode items are created in one request.
     if (
-        instance.runtime_minutes is not None
+        not created
+        and instance.runtime_minutes is not None
         and instance.runtime_minutes != RUNTIME_UNKNOWN_FAILED
     ):
         MetadataBackfillState.objects.filter(
@@ -1689,7 +1782,7 @@ def schedule_runtime_backfill_on_item_save(
     genre_identity_changed = created or bool(
         genre_identity_fields.intersection(update_fields or set()),
     )
-    if genre_identity_changed:
+    if genre_identity_changed and not created:
         MetadataBackfillState.objects.filter(
             item=instance,
             field=MetadataBackfillField.GENRES,

@@ -359,6 +359,8 @@ def compare_existing(config_path):
                             for selector in clicks:
                                 page.locator(selector).first.click(timeout=12000)
                                 page.wait_for_timeout(1800)
+                            if case.get("scroll_to"):
+                                page.locator(case["scroll_to"]).first.scroll_into_view_if_needed(timeout=12000)
                             try:
                                 page.wait_for_function("() => [...document.images].filter(i => { const r = i.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }).every(i => i.complete)", timeout=6000)
                             except Exception:
@@ -373,7 +375,7 @@ def compare_existing(config_path):
                             file = f'{case["id"]}-{size}-{side}.png'
                             masks = [page.locator("input[type=password], #token")]
                             masks.extend(page.locator(selector) for selector in case.get("mask", []))
-                            page.screenshot(path=str(out / file), full_page=False,
+                            page.screenshot(path=str(out / file), full_page=bool(case.get("full_page")),
                                             animations="disabled", mask=masks, mask_color="#465365")
                             result["file"] = file
                         except Exception as error:

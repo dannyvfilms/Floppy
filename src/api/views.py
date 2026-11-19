@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import IntegrityError
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Prefetch, Subquery
 from django.db.utils import OperationalError
 from django.utils.timezone import datetime, localdate, make_aware
 
@@ -63,6 +63,7 @@ from events import tasks
 from events.models import Event
 from integrations.oauth_scope_info import has_full_account_access
 from integrations.state.ratings import rating_edit
+from lists import tasks as list_tasks
 from lists.forms import CustomListForm, validate_public_slug
 from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
@@ -226,7 +227,19 @@ class CalendarView(drf_views.APIView):
             )
 
         try:
-            releases = Event.objects.get_user_events(request.user, first_day, last_day)
+            # The serializer writes alert_failed_users for every event. Without
+            # the prefetch that was one whole-row user query per event: 800 of
+            # the Expo app's 817 queries for a 10k-library month (SURFACE-16).
+            releases = Event.objects.get_user_events(
+                request.user,
+                first_day,
+                last_day,
+            ).prefetch_related(
+                Prefetch(
+                    "alert_failed_users",
+                    queryset=get_user_model().objects.only("id"),
+                ),
+            )
         except Exception:
             logger.exception("Error occurred while fetching events.")
             return Response(
@@ -644,7 +657,10 @@ class ListDetailView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        paginated_data, err = paginate_list_items(request, user, user_list)
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
+        media_user = user if user_list.user_can_edit(user) else user_list.owner
+        paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:
             return err
         lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
@@ -659,7 +675,7 @@ class ListDetailView(drf_views.APIView):
                 "paginated_items": paginated_data,
                 "lists_by_item_id": lists_by_item_id,
                 "list_added_by_item_id": list_added_by_item_id,
-                "completed_counts": _get_list_completed_counts(user, [user_list.id]),
+                "completed_counts": _get_list_completed_counts(media_user, [user_list.id]),
                 "media_type_breakdown": _build_media_type_breakdown(user_list),
             },
         )
@@ -848,7 +864,10 @@ class ListItemsView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
-        paginated_data, err = paginate_list_items(request, user, user_list)
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
+        media_user = user if user_list.user_can_edit(user) else user_list.owner
+        paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:
             return err
         lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
@@ -1272,6 +1291,48 @@ class MediaTypeListView(drf_views.APIView):
 
 
 # /api/v1/media/[media_type]/[source]/[media_id]/
+def _in_library_bucket(item, library_media_type):
+    """Whether ``item`` is in the bucket ``filter_media`` would scope to."""
+    if library_media_type:
+        return item.library_media_type == library_media_type
+    return item.library_media_type != MediaTypes.ANIME.value
+
+
+def _show_seasons(shows, media_id, source, library_media_type):
+    """Return the viewer's seasons of a show, from its prefetched seasons.
+
+    Matches ``get_serie_seasons`` (this user's season rows for the show, in
+    the requested library bucket) without loading every season and its
+    episodes a second time.
+    """
+    return [
+        season
+        for show in shows
+        for season in show.seasons.all()
+        if season.user_id == show.user_id
+        and season.item.media_id == str(media_id)
+        and season.item.source == source
+        and _in_library_bucket(season.item, library_media_type)
+    ]
+
+
+def _season_watches(seasons, media_id, source, season_number, library_media_type):
+    """Return the viewer's episode watches of one season, from prefetched seasons.
+
+    Matches ``get_season_episodes`` without loading each watch again.
+    """
+    season_number = int(season_number)
+    return [
+        episode
+        for season in seasons
+        for episode in season.episodes.all()
+        if episode.item.media_id == str(media_id)
+        and episode.item.source == source
+        and episode.item.season_number == season_number
+        and _in_library_bucket(episode.item, library_media_type)
+    ]
+
+
 class MediaDetailView(drf_views.APIView):
     """Media view."""
 
@@ -1421,14 +1482,13 @@ class MediaDetailView(drf_views.APIView):
 
         seasons_by_number = None
         if media_type == MediaTypes.TV.value:
-            serie_seasons = list(
-                BasicMedia.objects.get_serie_seasons(
-                    user,
-                    media_id,
-                    source,
-                    library_media_type=library_media_type,
-                    annotate_progress=False,
-                ),
+            # The show rows above prefetched their seasons and each season's
+            # episodes; reuse them rather than load them all a second time.
+            serie_seasons = _show_seasons(
+                user_medias,
+                media_id,
+                source,
+                library_media_type,
             )
             BasicMedia.objects.annotate_episode_progress(
                 serie_seasons,
@@ -2768,14 +2828,14 @@ class MediaSeasonDetailView(drf_views.APIView):
             MediaTypes.SEASON.value,
         )
 
-        season_episodes = list(
-            BasicMedia.objects.get_season_episodes(
-                user,
-                media_id,
-                source,
-                season_number=season_number,
-                library_media_type=library_media_type,
-            ),
+        # The season rows above already hold every watch of this season with
+        # its catalogue row; reuse them instead of loading each watch again.
+        season_episodes = _season_watches(
+            user_medias,
+            media_id,
+            source,
+            season_number,
+            library_media_type,
         )
         episode_lists_by_number = BasicMedia.objects.get_season_episode_lists_by_number(
             user,
@@ -3169,6 +3229,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
         # FORK: the web season cards print the provider's overview, air date and
         # runtime, and whether the viewer owns a copy; the stored item has none.
         collected_numbers = set()
+        ratings_by_number = {}
         if episode_numbers:
             owned = set(
                 CollectionEntry.objects.filter(
@@ -3178,12 +3239,41 @@ class MediaSeasonEpisodesView(drf_views.APIView):
             collected_numbers = {
                 number for number, item_id in item_ids_by_number.items() if item_id in owned
             }
+            rating_rows = Episode.ratings.filter(
+                related_season__user=user, item_id=OuterRef("pk"), rating_only=True,
+            ).order_by("-scored_at", "-pk")
+            ratings_by_number = {
+                item.episode_number: item.preview_score
+                for item in Item.objects.filter(pk__in=item_ids_by_number.values()).annotate(
+                    preview_score=Subquery(rating_rows.values("score")[:1]),
+                ).only("episode_number") if item.preview_score is not None
+            }
+        token = request.auth
+        can_write = not hasattr(token, "has_scope") or token.has_scope("watchlist:write")
+        can_list = not hasattr(token, "has_scope") or token.has_scope("lists:write")
+        tracked_season = BasicMedia.objects.get_serie_seasons(
+            user, media_id, source, season_numbers=[season_number],
+            library_media_type=request.query_params.get("library_media_type"),
+            annotate_progress=False,
+        ).exists()
         for row in paginated["results"]:
-            provider = provider_rows.get((row.get("item") or {}).get("episode_number")) or {}
+            number = (row.get("item") or {}).get("episode_number")
+            provider = provider_rows.get(number) or {}
             row["overview"] = provider.get("overview") or provider.get("synopsis") or ""
             row["air_date"] = provider.get("air_date") or ""
             row["runtime"] = provider.get("runtime")
-            row["collected"] = (row.get("item") or {}).get("episode_number") in collected_numbers
+            row["collected"] = number in collected_numbers
+            tracked = tracked_by_number.get(number)
+            score = getattr(tracked, "score", None)
+            if score is None:
+                score = ratings_by_number.get(number)
+            row["score"] = float(score) if score is not None else None
+            row["display_score"] = float(user.scale_score_for_display(score)) if user.ratings_enabled and score is not None else None
+            row["scale_max"] = user.rating_scale_max
+            row["can_rate"] = bool(can_write and user.ratings_enabled and (tracked_season or tracked or number in ratings_by_number))
+            row["can_watch"] = can_write
+            row["can_collect"] = can_write
+            row["can_list"] = can_list and bool(row.get("item"))
         paginated["media_type_status"] = get_media_type_availability(
             user,
             request.query_params.get("library_media_type") or media_type,

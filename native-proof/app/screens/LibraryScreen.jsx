@@ -8,9 +8,11 @@ import { Button } from '../../../frontend/ui/Button';
 import { Screen } from '../components/Screen';
 import { createLibraryTransport, mediaRowsFromPayload } from '../data/libraryTransport';
 import { FILTER_MODES, libraryFilterSections, libraryQuery } from '../data/libraryTransportCore';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { palette, radius, spacing } from '../theme';
 import LibraryGrid from '../surfaces/LibraryGrid';
 import LibraryBulkActions from '../surfaces/LibraryBulkActions';
+import LibrarySettings from '../surfaces/LibrarySettings';
 import TableSlot from '../surfaces/TableSlot';
 
 const MEDIA_TYPE_LABELS = {
@@ -200,6 +202,8 @@ function LibraryPage({ params, navigate }) {
   const [selectedRows, setSelectedRows] = useState([]);
   const [savedViews, setSavedViews] = useState([]);
   const [savedViewName, setSavedViewName] = useState('');
+  // The name field only shows after Save View is chosen from the gear menu.
+  const [namingView, setNamingView] = useState(false);
   const [tagOptions, setTagOptions] = useState([]);
   const [subview, setSubview] = useState(params?.subview || defaultSubview(mediaType));
   const [groupBy, setGroupBy] = useState(params?.groupBy || 'item');
@@ -389,6 +393,7 @@ function LibraryPage({ params, navigate }) {
       const saved = await transport.createSavedView({ mediaType, name, query: savedViewQuery() });
       setSavedViews(current => [...current, saved]);
       setSavedViewName('');
+      setNamingView(false);
     } catch (cause) {
       setError(cause?.message || 'Saved view could not be created.');
     }
@@ -441,11 +446,15 @@ function LibraryPage({ params, navigate }) {
     setSelectedRows(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   }
 
-  const dynamicGenres = [...new Set(rows.flatMap(row => row.media?.item?.genres || []))].map(value => ({ value, label: value }));
-  const dynamicYears = [...new Set(rows.map(row => {
+  // Walks every loaded row, so only when the rows change, not on every keystroke.
+  const dynamicGenres = useMemo(
+    () => [...new Set(rows.flatMap(row => row.media?.item?.genres || []))].map(value => ({ value, label: value })),
+    [rows],
+  );
+  const dynamicYears = useMemo(() => [...new Set(rows.map(row => {
     const value = row.media?.item?.release_datetime;
     return value ? String(new Date(value).getUTCFullYear()) : '';
-  }).filter(Boolean))].map(value => ({ value, label: value })).sort((a, b) => b.value.localeCompare(a.value));
+  }).filter(Boolean))].map(value => ({ value, label: value })).sort((a, b) => b.value.localeCompare(a.value)), [rows]);
   const musicSubview = entitySubview;
   const filterOptions = {
     mediaTypes: Object.entries(MEDIA_TYPE_LABELS).map(([value, label]) => ({ value, label })),
@@ -534,6 +543,28 @@ function LibraryPage({ params, navigate }) {
   const showRail = isServer && windowWidth >= RAIL_MIN_WIDTH && Boolean(mediaType) && mediaType !== 'all';
   const allSelected = rows.length > 0 && !hasMore && selectedRows.length >= rows.length;
 
+  // The web settings gear: view layout, share, save and select, one menu. `icon` is the shared glyph
+  // (header menu) and `symbol` the SF Symbol the iOS rail menu draws; the label names the current view.
+  const viewItem = filters.view === 'table'
+    ? { label: 'Table View', icon: actionIcons.table, symbol: 'tablecells',
+      onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'grid' }) }
+    : { label: 'Grid View', icon: actionIcons.grid, symbol: 'square.grid.2x2',
+      onSelect: () => changeFilter({ type: 'set', key: 'view', value: 'table' }) };
+  // Below the divider the actions are in alphabetical order (Save, Select, Share), then saved views by name.
+  const belowView = [
+    ...(hasPreferences ? [{ label: 'Save View', icon: actionIcons.save, symbol: 'square.and.arrow.down',
+      onSelect: () => setNamingView(true) }] : []),
+    ...(!entitySubview ? [{ label: selectionMode ? 'Cancel Select' : 'Select Items',
+      icon: actionIcons.circleCheck, symbol: 'checkmark.circle',
+      onSelect: () => { setSelectionMode(value => !value); setSelectedRows([]); } }] : []),
+    ...(hasPreferences ? [{ label: 'Share View', icon: actionIcons.share, symbol: 'square.and.arrow.up',
+      onSelect: shareView }] : []),
+    ...(hasPreferences && savedViews.length ? [{ heading: 'Saved views' },
+      ...[...savedViews].sort((a, b) => a.name.localeCompare(b.name)).map(view => ({ key: `view-${view.id}`,
+        label: view.name, onSelect: () => changeFilter({ type: 'savedView', value: String(view.id) }) }))] : []),
+  ];
+  const settingsItems = [viewItem, ...(belowView.length ? [{ separator: true }, ...belowView] : [])];
+
   const state = loading
     ? 'loading'
     : error && rows.length === 0
@@ -542,15 +573,18 @@ function LibraryPage({ params, navigate }) {
         ? 'ready'
         : 'empty';
 
-  return <Screen chrome={false}>
-    {showRail ? <View style={styles.rail}>
-      <AlphabetBar options={ALPHABET.map(option => ({ ...option, selected: option.value === (filters.initial || '') }))}
-        label="Filter by starting character" palette={RAIL_PALETTE}
-        onNavigate={(_event, option) => setFilters(current => ({ ...current, initial: option.value }))} />
-    </View> : null}
-    <LibraryPageView
+  const gridView = filters.view === 'grid';
+  const onRate = (row, score) => transport.update({ identity: row.identity, values: { score } })
+    .then(() => setReloadToken(value => value + 1))
+    .catch(cause => setError(cause?.message || 'Rating could not be saved.'));
+
+  const rail = showRail ? <View style={styles.rail}>
+    <AlphabetBar options={ALPHABET.map(option => ({ ...option, selected: option.value === (filters.initial || '') }))}
+      label="Filter by starting character" palette={RAIL_PALETTE}
+      onNavigate={(_event, option) => setFilters(current => ({ ...current, initial: option.value }))} />
+  </View> : null;
+  const page = scrollProps => <LibraryPageView
       title={title}
-      subtitle="Everything you track, filtered the way you left it"
       count={total ?? (state === 'ready' ? rows.length : undefined)}
       countLabel={total === 1 ? 'item' : 'items'}
       labels={labels}
@@ -562,16 +596,17 @@ function LibraryPage({ params, navigate }) {
         : { title: 'Nothing here yet', body: 'Track something and it will appear in this library.' }}
       onRetry={() => setReloadToken(current => current + 1)}
       onEmptyAction={() => navigate('Discover')}
-      search={<View style={styles.searchGroup}>
-        <TextInput value={search} onChangeText={setSearch} placeholder="Search your library…"
-          placeholderTextColor={palette.textMuted} accessibilityLabel="Search your library"
-          returnKeyType="search" style={styles.searchInput} />
-        {mediaType && mediaType !== 'all' ? <View style={styles.saveViewRow}>
+      headerActions={hasPreferences || !entitySubview
+        ? <LibrarySettings items={settingsItems} palette={palette} /> : null}
+      filterForm={namingView ? <View style={styles.savedViews}>
+        <View style={styles.saveViewRow}>
           <TextInput value={savedViewName} onChangeText={setSavedViewName} placeholder="Name this view"
-            placeholderTextColor={palette.textMuted} accessibilityLabel="Saved view name" style={styles.nameInput} />
+            placeholderTextColor={palette.textMuted} accessibilityLabel="Saved view name" autoFocus style={styles.nameInput} />
           <Button label="Save view" tone="surface" disabled={!savedViewName.trim()}
             onPress={saveCurrentView} palette={buttonPalette} />
-        </View> : null}
+          <Button label="Cancel" tone="surface" onPress={() => { setNamingView(false); setSavedViewName(''); }}
+            palette={buttonPalette} />
+        </View>
         {savedViews.map(view => <View key={view.id} style={styles.savedViewRow}>
           <Text style={styles.savedViewName}>{view.name}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={`Move ${view.name} up`}
@@ -583,9 +618,10 @@ function LibraryPage({ params, navigate }) {
           <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${view.name} saved view`}
             onPress={() => deleteSavedView(view.id)}><Text style={styles.deleteSavedView}>Delete</Text></Pressable>
         </View>)}
-      </View>}
+      </View> : null}
       filters={<View style={styles.controls}>
-        <FilterBar filters={filters} options={filterOptions} palette={palette} resultCount={total}
+        <FilterBar variant="toolbar" showClear={false} filters={filters} options={filterOptions} palette={palette}
+          labels={{ filters: 'Filters', status: 'Status', allStatuses: 'Status', statuses: 'Statuses', sort: 'Sort', range: 'Range' }}
           busy={loading || loadingMore} onChange={changeFilter} />
         {mediaType === 'game' ? <View style={styles.modeRow}>
           {['item', 'series', 'franchise'].map(value => <Pressable key={value}
@@ -620,21 +656,20 @@ function LibraryPage({ params, navigate }) {
           onToggleSelect={() => { setSelectionMode(value => !value); setSelectedRows([]); }}
           onClearSelection={() => setSelectedRows([])}
           onDone={() => { setReloadToken(value => value + 1); setSelectedRows([]); setSelectionMode(false); }} /> : null}
-        {!entitySubview && (selectionMode || hasPreferences) ? <View style={styles.modeRow}>
-          {selectionMode ? <Button label={total ? `Select all ${total}` : 'Select all'} tone="surface"
+        {!entitySubview && selectionMode ? <View style={styles.modeRow}>
+          <Button label={total ? `Select all ${total}` : 'Select all'} tone="surface"
             busy={selectingAll} disabled={selectingAll || allSelected || !rows.length}
-            onPress={selectAllMatching} palette={buttonPalette} /> : null}
-          {hasPreferences && !selectionMode ? <Button label="Share View" tone="surface"
-            onPress={shareView} palette={buttonPalette} /> : null}
+            onPress={selectAllMatching} palette={buttonPalette} />
         </View> : null}
         {notice ? <Text accessibilityRole="alert" style={styles.inlineError}>{notice}</Text> : null}
       </View>}
-      content={filters.view === 'grid'
-        ? <LibraryGrid rows={rows} selecting={selectionMode} selected={selectedRows} onToggle={toggleSelected} groupBy={groupBy}
-          onOpen={openRow} onOpenHistory={() => navigate('History')}
-          onRate={(row, score) => transport.update({ identity: row.identity, values: { score } })
-            .then(() => setReloadToken(value => value + 1))
-            .catch(cause => setError(cause?.message || 'Rating could not be saved.'))} />
+      renderScroll={gridView ? ({ header, footer, ready }) => <LibraryGrid rows={ready ? rows : undefined}
+        selecting={selectionMode} selected={selectedRows} onToggle={toggleSelected} groupBy={groupBy}
+        onOpen={openRow} onOpenHistory={() => navigate('History')} onRate={onRate}
+        header={header} footer={footer} scrollProps={scrollProps}
+        onEndReached={ready && !loading ? loadMore : undefined} /> : undefined}
+      content={gridView
+        ? null
         : <TableSlot rows={rows} onOpenDetail={openRow}
           columnConfig={prefs.columns} onColumnsSave={hasPreferences ? saveColumns : undefined}
           selecting={selectionMode} selectedRows={selectedRows} onToggleSelect={toggleSelected}
@@ -650,7 +685,16 @@ function LibraryPage({ params, navigate }) {
           disabled={loadingMore} onPress={loadMore} palette={buttonPalette} /> : null}
         {loadingMore ? <ActivityIndicator color={palette.accent} /> : null}
       </View>}
-    />
+    />;
+
+  // The grid scrolls itself (a windowed list) with Screen's own scroll settings;
+  // the table keeps the page scroll.
+  // The A to Z rail stays outside the scrolling list: in grid view it goes in
+  // Screen's `floating` slot, beside the list, so its height spans the screen
+  // and it does not scroll away with the header.
+  return <Screen chrome={false} renderScroll={gridView ? page : undefined} floating={gridView ? rail : undefined}>
+    {gridView ? null : rail}
+    {gridView ? null : page()}
   </Screen>;
 }
 
@@ -659,6 +703,7 @@ const styles = StyleSheet.create({
   searchGroup: { width: '100%' },
   searchInput: { color: palette.text, backgroundColor: palette.surface, borderColor: palette.border,
     borderWidth: 1, borderRadius: radius.sm, minHeight: 44, paddingHorizontal: spacing.md, fontSize: 15 },
+  savedViews: { gap: spacing.xs },
   saveViewRow: { flexDirection: 'row', gap: spacing.sm },
   nameInput: { flex: 1, minWidth: 120, color: palette.text, backgroundColor: palette.surface,
     borderColor: palette.border, borderWidth: 1, borderRadius: radius.sm, minHeight: 40,

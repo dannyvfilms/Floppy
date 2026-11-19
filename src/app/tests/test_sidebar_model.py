@@ -63,3 +63,9 @@ class SidebarModelTest(TestCase):
         self.assertIn("sidebarNavigation(", html)
         self.assertNotRegex(html, r"data-sidebar-root[^>]*x-ignore")
         self.assertIn(f'href="{reverse("lists")}"', html)
+        self.assertIn(f'href="{reverse("account_logout")}"', html)
+
+    def test_logout_get_requires_confirmation(self):
+        response = self.client.get(reverse("account_logout"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(self.client.get(reverse("account")).wsgi_request.user.is_authenticated)

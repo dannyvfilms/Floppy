@@ -48,6 +48,10 @@ TRANSIENT_BACKOFF_SECONDS = (30, 60, 120, 120, 120)
 INITIAL_OBSERVATION_SECONDS = 60
 PUBLICATION_DELAY_TOLERANCE_SECONDS = 2 * 60
 AUTO_NEXT_THRESHOLD = 85.0
+# A claimed completion is kept until its play is saved, so a worker lost in
+# between can finish the save on redelivery. Longer than the broker's one-hour
+# visibility timeout, after which an unacknowledged task is delivered again.
+COMPLETING_TTL_SECONDS = 2 * 60 * 60
 SERVER_ERROR_MINIMUM = 500
 
 CREATE_SCRIPT = """
@@ -133,8 +137,15 @@ def _remaining_ttl(session, now):
     return max(1, int((deadline - now).total_seconds()) + 60)
 
 
-def start_session(payload, user_id, *, now=None):
-    """Atomically create or reuse the one active verifier for this playback."""
+def start_session(payload, user_id, *, now=None, schedule=None):
+    """Atomically create or reuse the one active verifier for this playback.
+
+    ``schedule(session_id, countdown, revision)`` queues the first observation.
+    It runs *before* the session is stored: a worker lost after storing would
+    otherwise leave a session with no verifier, and its redelivery would see
+    only a duplicate. A verifier queued for a session that was never stored
+    (a duplicate start) finds nothing and stops.
+    """
     identity = _identity(payload)
     if identity is None:
         return PlaybackDecision("terminal", reason="invalid_payload")
@@ -158,6 +169,8 @@ def start_session(payload, user_id, *, now=None):
     client = _client()
     if client is None:
         return PlaybackDecision("terminal", reason="guard_unavailable")
+    if schedule is not None:
+        schedule(session["id"], INITIAL_OBSERVATION_SECONDS, session["revision"])
     proposed = _dump(session)
     try:
         stored = client.eval(
@@ -195,7 +208,7 @@ def _read_session(session_id):
     return client, None, None
 
 
-def _cas(client, key, old_raw, session, now):
+def _cas(client, key, old_raw, session, now, *, ttl=None):
     new_raw = _dump(session)
     try:
         won = client.eval(
@@ -205,7 +218,7 @@ def _cas(client, key, old_raw, session, now):
             _index_key(session["id"]),
             old_raw,
             new_raw,
-            _remaining_ttl(session, now),
+            ttl or _remaining_ttl(session, now),
         )
     except redis.RedisError as error:
         logger.info("stremio_playback status=guard_unavailable error=%s", error)
@@ -527,8 +540,36 @@ class TransientPlaybackError(Exception):
     """Known temporary failure governed by the separate failure budget."""
 
 
-def observe_session(session_id, *, now=None):
-    """Observe and atomically advance one playback session."""
+def _advance(client, key, old_raw, session, now, countdown, reason, schedule):
+    """Store the next revision, queueing its observation first.
+
+    Queueing first means a stored revision always has a verifier waiting for
+    it. A verifier carries the revision it was queued for and stops when the
+    session has moved on, so a redelivered or duplicate verifier cannot start a
+    second polling chain.
+    """
+    if schedule is not None:
+        schedule(session["id"], countdown, session["revision"])
+    if not _cas(client, key, old_raw, session, now):
+        return PlaybackDecision("duplicate", session["id"], reason="stale_observation")
+    return PlaybackDecision("schedule", session["id"], countdown, reason=reason)
+
+
+def finish_completion(session_id):
+    """Close a session once its completed play has been saved."""
+    client, key, old_raw = _read_session(session_id)
+    if key is None or not _load(old_raw).get("completing"):
+        return
+    _close(client, key, old_raw, session_id)
+
+
+def observe_session(session_id, *, now=None, revision=None, schedule=None):
+    """Observe and atomically advance one playback session.
+
+    ``revision`` is the session revision this verifier was queued for; a
+    verifier for an older revision stops. ``schedule`` queues the next
+    observation (see ``_advance``). Without them the caller schedules.
+    """
     now = now or timezone.now()
     client, key, old_raw = _read_session(session_id)
     if client is None:
@@ -536,6 +577,19 @@ def observe_session(session_id, *, now=None):
     if key is None:
         return PlaybackDecision("duplicate", session_id, reason="session_inactive")
     session = _load(old_raw)
+    if session.get("completing"):
+        # Claimed by a verifier that did not finish saving the play: a worker
+        # lost after the claim. Saving it again is repeat-safe (the payload
+        # carries the watched time), so hand it back.
+        return PlaybackDecision(
+            "complete",
+            session_id,
+            payload=session["completing"],
+            user_id=session["user_id"],
+            reason="completion_resumed",
+        )
+    if revision is not None and session["revision"] != revision:
+        return PlaybackDecision("duplicate", session_id, reason="stale_verifier")
     if now >= _aware(session["deadline"]):
         _close(client, key, old_raw, session_id)
         return PlaybackDecision("expired", session_id, reason="deadline")
@@ -556,18 +610,18 @@ def observe_session(session_id, *, now=None):
         if now + timedelta(seconds=countdown) >= _aware(session["deadline"]):
             _close(client, key, old_raw, session_id)
             return PlaybackDecision("expired", session_id, reason="deadline")
-        if not _cas(client, key, old_raw, session, now):
-            return PlaybackDecision("duplicate", session_id, reason="stale_observation")
-        return PlaybackDecision("schedule", session_id, countdown, reason=str(error))
+        return _advance(
+            client, key, old_raw, session, now, countdown, str(error), schedule
+        )
 
     session["transient_failures"] = 0
     entry_id = _entry_id(session)
     entry = next((item for item in items if str(item.get("_id") or "") == entry_id), None)
     if entry is None:
         session["revision"] += 1
-        if not _cas(client, key, old_raw, session, now):
-            return PlaybackDecision("duplicate", session_id, reason="stale_observation")
-        return PlaybackDecision("schedule", session_id, 30, reason="library_item_missing")
+        return _advance(
+            client, key, old_raw, session, now, 30, "library_item_missing", schedule
+        )
     observation = normalize_state(entry, session["media_id"], session["media_type"])
 
     # The poll is the only source that reports a resume position for a client
@@ -590,9 +644,9 @@ def observe_session(session_id, *, now=None):
         session["best"] = observation
         session["revision"] += 1
         countdown = polling_delay(observation["duration"], observation["watched_percent"])
-        if not _cas(client, key, old_raw, session, now):
-            return PlaybackDecision("duplicate", session_id, reason="stale_observation")
-        return PlaybackDecision("schedule", session_id, countdown, reason="baseline_captured")
+        return _advance(
+            client, key, old_raw, session, now, countdown, "baseline_captured", schedule
+        )
 
     evidence = _session_evidence(session, observation)
     best = session["best"]
@@ -618,8 +672,6 @@ def observe_session(session_id, *, now=None):
         and completion_state["last_watched"] is not None
     )
     if complete:
-        if not _close(client, key, old_raw, session_id):
-            return PlaybackDecision("duplicate", session_id, reason="completion_already_claimed")
         watched_at = _aware(completion_state["last_watched"])
         payload = {
             "id": session["media_id"],
@@ -627,6 +679,13 @@ def observe_session(session_id, *, now=None):
             "viewedAt": int(watched_at.timestamp()),
             "_floppy_verified_completion": True,
         }
+        # Claim the completion but keep the session until the play is saved
+        # (``finish_completion``), so a lost worker's redelivery can save it.
+        session["completing"] = payload
+        if not _cas(
+            client, key, old_raw, session, now, ttl=COMPLETING_TTL_SECONDS
+        ):
+            return PlaybackDecision("duplicate", session_id, reason="completion_already_claimed")
         return PlaybackDecision(
             "complete", session_id, payload=payload, user_id=session["user_id"]
         )
@@ -639,6 +698,6 @@ def observe_session(session_id, *, now=None):
     if now + timedelta(seconds=countdown) >= _aware(session["deadline"]):
         _close(client, key, old_raw, session_id)
         return PlaybackDecision("expired", session_id, reason="deadline")
-    if not _cas(client, key, old_raw, session, now):
-        return PlaybackDecision("duplicate", session_id, reason="stale_observation")
-    return PlaybackDecision("schedule", session_id, countdown, reason="not_complete")
+    return _advance(
+        client, key, old_raw, session, now, countdown, "not_complete", schedule
+    )

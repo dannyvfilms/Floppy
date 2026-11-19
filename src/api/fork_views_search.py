@@ -174,6 +174,27 @@ class SearchSourcesView(drf_views.APIView):
         )
 
 
+# /api/v1/search/type/
+class SearchTypeView(drf_views.APIView):
+    """Remember the media type picked in the search bar."""
+
+    @extend_schema(
+        operation_id="updateSearchType",
+        request={"application/json": {"type": "object"}},
+        responses={200: dict, 400: DetailErrorSerializer},
+    )
+    def put(self, request):
+        """Save `{media_type}` as the user's last search type."""
+        media_type = request.data.get("media_type")
+        if media_type not in VALID_SEARCH_TYPES:
+            return Response(
+                {"detail": "media_type is not a searchable type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        saved = request.user.update_preference("last_search_type", media_type)
+        return Response({"media_type": saved}, status=HTTP.OK)
+
+
 # /api/v1/search/suggestions/
 class SearchSuggestionsView(drf_views.APIView):
     """Typeahead suggestions from the user's saved library."""
@@ -186,6 +207,12 @@ class SearchSuggestionsView(drf_views.APIView):
                 name="media_type",
                 type=str,
                 location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="sid",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Random id of the search box; a newer request from it stops an older one early.",
             ),
         ],
         responses={200: dict},
@@ -200,11 +227,16 @@ class SearchSuggestionsView(drf_views.APIView):
         ):
             return Response({"suggestions": []}, status=HTTP.OK)
         try:
-            suggestions = search_views.get_saved_suggestions(
-                request.user,
-                media_type,
-                query,
-            )
+            with search_views.without_postgres_jit():
+                suggestions = search_views.get_saved_suggestions(
+                    request.user,
+                    media_type,
+                    query,
+                    superseded=search_views.suggestion_superseded_check(
+                        request.user,
+                        request.GET.get("sid"),
+                    ),
+                )
         except Exception:  # - typeahead must never fail the page
             logger.debug("Suggestion search failed", exc_info=True)
             suggestions = []

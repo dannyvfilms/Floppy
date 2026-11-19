@@ -5,6 +5,7 @@ import { applyPreviewRefresh, readTags } from './mountTags';
 import { TagAssignmentDialog } from './TagManagement';
 import { TrackDialog } from './TrackDialog';
 import { initialTrackValues, normalizeTrackForm } from './mediaCardForms';
+import { rootStyle } from './rootStyle.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -23,7 +24,7 @@ function resolveColor(value, fallback) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   const palette = {
@@ -215,7 +216,7 @@ function useLegacyPopupOpen(host) {
 }
 
 function Adapter({ host, props }) {
-  const model = useMemo(() => normalizeTrackForm(props?.model || {}), [props]);
+  const model = useMemo(() => normalizeTrackForm(props?.model || props || {}), [props]);
   const initialValues = useMemo(() => initialTrackValues(model), [model]);
   const [values, setValues] = useState(initialValues);
   const [tabs, setTabs] = useState(() => props?.tabs || model.tabs || []);
@@ -252,9 +253,19 @@ function Adapter({ host, props }) {
     const fallback = root?.querySelector('[data-track-fallback]');
     if (!fallback) return undefined;
     const previous = fallback.style.display;
+    const background = root.style.backgroundColor;
+    const pointerEvents = root.style.pointerEvents;
     fallback.style.display = 'none';
-    return () => { fallback.style.display = previous; };
-  }, [host]);
+    if (model.variant === 'song') {
+      root.style.backgroundColor = 'transparent';
+      root.style.pointerEvents = 'none';
+    }
+    return () => {
+      fallback.style.display = previous;
+      root.style.backgroundColor = background;
+      root.style.pointerEvents = pointerEvents;
+    };
+  }, [host, model.variant]);
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
@@ -336,7 +347,7 @@ function Adapter({ host, props }) {
 
   return <TrackDialog
     open
-    maxWidth={1152}
+    maxWidth={model.variant === 'song' ? 400 : 1152}
     showHeader
     model={model}
     values={values}
@@ -347,6 +358,7 @@ function Adapter({ host, props }) {
     labels={labels}
     palette={palette}
     tabs={decorated}
+    generalPrefix={model.variant === 'song' ? <ServerTabBody host={host} selector="song-details" /> : null}
     onChange={change}
     onSubmit={next => send(model.action, {}, next)}
     onDelete={next => send(model.deleteAction, {}, next)}

@@ -1106,17 +1106,25 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         *,
         compact_episodes=False,
         light_rows=False,
+        defer_item_fields=(),
     ):
         """Apply appropriate prefetch_related based on media type.
 
         list_mode=True narrows the episode queryset to only the fields required
         for list-view progress/date calculations, avoiding the cost of
         materializing full Item objects for every episode.
+
+        defer_item_fields names Item columns to leave out of the season and
+        episode items this prefetches (Statistics caches these rows).
         """
         TV = apps.get_model("app", "TV")
         Season = apps.get_model("app", "Season")
         Episode = apps.get_model("app", "Episode")
         episode_qs = Episode.objects.select_related("item")
+        if defer_item_fields:
+            episode_qs = episode_qs.defer(
+                *(f"item__{field}" for field in defer_item_fields)
+            )
         if compact_episodes and (queryset.model == TV or media_type == MediaTypes.SEASON.value):
             # Window sorting runs over every watch. Joining the catalogue here
             # copies its wide JSON/text columns into every intermediate row.
@@ -1130,7 +1138,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             partition = [F("related_season_id"), F("item_id")]
             aggregates = {
                 "_card_total_count": Count("pk"),
-                "_card_completed_count": Count("pk", filter=Q(status=Status.COMPLETED.value)),
+                "_card_completed_count": Count("pk", filter=Episode.watch_q()),
                 "_card_dropped_count": Count("pk", filter=Q(status=Status.DROPPED.value)),
                 "_card_first_end": Min("end_date"),
                 "_card_last_end": Max("end_date"),
@@ -1161,6 +1169,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "id",
                     "end_date",
                     "status",
+                    "dropped",
                     "created_at",
                     "related_season_id",
                     "item_id",
@@ -1193,6 +1202,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                         "id",
                         "end_date",
                         "status",
+                        "dropped",
                         "created_at",
                         "related_season_id",
                         "item__id",
@@ -1212,6 +1222,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "seasons",
                     queryset=Season.objects.select_related("item").defer(
                         *(("item__watch_providers",) if list_mode else ()),
+                        *(f"item__{field}" for field in defer_item_fields),
                     ),
                 ),
                 Prefetch(
@@ -1383,14 +1394,12 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         today = timezone.localdate(now)
         show_keys = {}
         seasons_by_show = {}
-        catalogue_query = Q(pk__in=[])
         for media in medias:
             seasons = {season.item.season_number: season for season in media.seasons.all()}
             seasons_by_show[id(media)] = seasons
             item = next(iter(seasons.values())).item if seasons else media.item
             key = (item.media_id, item.source, media.active_episode_order_id)
             show_keys[id(media)] = key
-            catalogue_query |= Q(media_id=key[0], source=key[1], episode_order_id=key[2])
         calendar = self._season_events_by_show(
             [(key[0], key[1]) for key in show_keys.values()],
         )
@@ -1401,30 +1410,41 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     continue
                 coordinate = (event.item.season_number, event.content_number)
                 records[key][coordinate] = {"air_date": event.datetime, "title": ""}
-        for item in Item.objects.filter(
-            catalogue_query,
-            media_type=MediaTypes.EPISODE.value,
-            library_media_type=MediaTypes.EPISODE.value,
-            season_number__gt=0,
-            episode_number__isnull=False,
-        ).only(
-            "media_id",
-            "source",
-            "episode_order_id",
-            "season_number",
-            "episode_number",
-            "title",
-            "release_datetime",
-        ):
-            key = (item.media_id, item.source, item.episode_order_id)
-            record = records[key].setdefault(
-                (item.season_number, item.episode_number),
-                {"air_date": None},
-            )
-            record["title"] = item.title
-            date = item.release_datetime
-            if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
-                record["air_date"] = min(filter(None, (record["air_date"], date)))
+        # The catalogue is read by provider identity, in the form the episode
+        # index serves, and as columns: one condition per show made SQLite
+        # weigh every show against every episode row, and a model per episode
+        # is the largest thing a ranked shelf would otherwise build.
+        wanted = set(show_keys.values())
+        media_ids = sorted({key[0] for key in wanted})
+        for start in range(0, len(media_ids), 500):
+            for media_id, source, order_id, season_number, episode_number, title, date in (
+                Item.objects.filter(
+                    media_id__in=media_ids[start : start + 500],
+                    source__in={key[1] for key in wanted},
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=MediaTypes.EPISODE.value,
+                    season_number__gt=0,
+                    episode_number__isnull=False,
+                ).values_list(
+                    "media_id",
+                    "source",
+                    "episode_order_id",
+                    "season_number",
+                    "episode_number",
+                    "title",
+                    "release_datetime",
+                )
+            ):
+                key = (media_id, source, order_id)
+                if key not in wanted:
+                    continue
+                record = records[key].setdefault(
+                    (season_number, episode_number),
+                    {"air_date": None},
+                )
+                record["title"] = title
+                if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
+                    record["air_date"] = min(filter(None, (record["air_date"], date)))
         for media in medias:
             key = show_keys[id(media)]
             seasons = seasons_by_show[id(media)]
@@ -3184,6 +3204,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
+        # No max_progress: nothing reads it on an episode, and annotating
+        # evaluates the queryset, which loaded every watch of the season even
+        # when the caller then narrowed it to one page of episode numbers.
         queryset = self.filter_media_prefetch(
             user,
             media_id,
@@ -3191,6 +3214,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             source,
             season_number=season_number,
             library_media_type=library_media_type,
+            annotate_progress=False,
         )
 
         if episode_numbers is not None:

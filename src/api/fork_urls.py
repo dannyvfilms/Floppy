@@ -44,6 +44,11 @@ priority_urlpatterns = [
         name="api_search_sources",
     ),
     re_path(
+        r"^search/type/?$",
+        fork_views_search.SearchTypeView.as_view(),
+        name="api_search_type",
+    ),
+    re_path(
         r"^search/suggestions/?$",
         fork_views_search.SearchSuggestionsView.as_view(),
         name="api_search_suggestions",
@@ -404,6 +409,11 @@ urlpatterns = [
         name="api_collection_fields",
     ),
     re_path(
+        r"^collection/seasons/(?P<season_id>\d+)/?$",
+        fork_views_detail.CollectionSeasonAuditView.as_view(),
+        name="api_collection_season_audit",
+    ),
+    re_path(
         r"^collection/(?P<entry_id>\d+)/?$",
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",
@@ -432,6 +442,11 @@ urlpatterns = [
         r"^music/artists/(?P<artist_id>\d+)/?$",
         fork_views_music.MusicArtistDetailView.as_view(),
         name="api_music_artist_detail",
+    ),
+    re_path(
+        r"^music/artists/(?P<artist_id>\d+)/albums/?$",
+        fork_views_music.MusicArtistAlbumsView.as_view(),
+        name="api_music_artist_albums",
     ),
     re_path(
         r"^music/artists/(?P<artist_id>\d+)/sync-discography/?$",

@@ -11,8 +11,6 @@ import SearchResultsSlot from '../surfaces/SearchResultsSlot';
 // The web page has no search field of its own: the header search (ShellSlot)
 // submits here with `query` and `mediaType`, so the page only renders results.
 // It opens empty until a query arrives in the route params.
-const pageTop = { paddingTop: 24 };
-
 function CreateEntry() {
   const transport = useMemo(() => createSearchTransport(), []);
   const [options, setOptions] = useState(null);
@@ -84,7 +82,7 @@ function CreateEntry() {
 }
 
 export default function SearchScreen({ params, navigate }) {
-  return <Screen chrome={false} contentStyle={pageTop}>
+  return <Screen chrome={false}>
     {params?.createEntry ? <CreateEntry /> : <SearchPageView
       results={<SearchResultsSlot
         query={params?.query || ''}

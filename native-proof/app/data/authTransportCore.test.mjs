@@ -384,6 +384,27 @@ test('verifying a stored session clears it when the server rejects it', async ()
   assert.equal(storage.values.has('floppy.auth.session.v1'), false);
 });
 
+test('DRF missing-cookie 403 expires a stored session instead of stranding the app', async () => {
+  const storage = createStorage();
+  storage.values.set('floppy.auth.session.v1', JSON.stringify({
+    version: 1,
+    serverUrl: 'https://floppy.example',
+    authType: 'session',
+    cookies: { sessionid: 'session-1' },
+    csrfToken: 'csrf-1',
+    cookieText: 'sessionid=session-1; csrftoken=csrf-1',
+    user: { username: 'nova' },
+  }));
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ status: 403, body: { detail: 'Authentication credentials were not provided.' } }) },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  assert.equal((await auth.restore()).status, 'authenticated');
+  await assert.rejects(() => auth.verify(), error => error.code === AUTH_ERROR_CODES.EXPIRED);
+  assert.equal(auth.getState().status, 'expired');
+  assert.equal(storage.values.has('floppy.auth.session.v1'), false);
+});
+
 test('signup posts the native JSON request and stores only cookies', async () => {
   const storage = createStorage();
   const { fetchImpl, calls } = createFetch([

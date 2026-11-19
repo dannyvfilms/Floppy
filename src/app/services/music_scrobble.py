@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.text import slugify
 
+from app.helpers import coerce_int as _coerce_int
 from app.log_safety import exception_summary
 from app.models import (
     Album,
@@ -34,6 +35,7 @@ from app.services.music import (
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
+from app.services.tracker_fold import fold_tracker_into
 from integrations import import_progress
 
 logger = logging.getLogger(__name__)
@@ -972,11 +974,7 @@ def _dedupe_albums(
                 user=tracker.user, album=primary
             ).first()
             if existing:
-                if tracker.start_date and (
-                    not existing.start_date or tracker.start_date < existing.start_date
-                ):
-                    existing.start_date = tracker.start_date
-                    existing.save(update_fields=["start_date"])
+                fold_tracker_into(tracker, existing)
                 tracker.delete()
             else:
                 tracker.album = primary
@@ -1356,14 +1354,6 @@ def _parse_release_date(release_date: str | None):
             release_date = f"{release_date}-01"
         return parse_date(release_date)
     except Exception:
-        return None
-
-
-def _coerce_int(value: int | None) -> int | None:
-    """Return value as int if possible."""
-    try:
-        return int(value) if value is not None else None
-    except (TypeError, ValueError):
         return None
 
 

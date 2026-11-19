@@ -153,7 +153,7 @@ export function mediaRowFromPayload(row) {
       endDate: row.end_date || '',
     },
     cells: {
-      image: { kind: 'image', src: item.image || null, alt: title },
+      image: { kind: 'image', src: item.card_image || item.image || null, alt: title },
       title: { kind: 'title', text: title, href: `#open:${id}` },
       media_type: { kind: 'text', text: MEDIA_LABELS[mediaType] || mediaType, muted: true },
       score: {
@@ -293,7 +293,9 @@ export function mediaCardModelFromRow(row) {
     : '';
   const release = item.release_datetime;
   const year = yearLabel(release);
-  const image = item.image || null;
+  // The server picks the provider size a card shows (`card_image`); `image` stays
+  // full size for Detail.
+  const image = item.card_image || item.image || null;
   const square = ['music', 'podcast'].includes(mediaType);
   const landscape = ['game', 'boardgame', 'video'].includes(mediaType);
   const shape = square ? 'square' : landscape ? 'landscape' : 'poster';
@@ -444,6 +446,13 @@ export function createRemoteLibraryActions(request) {
       const { subview, groupBy, ...queryParams } = params;
       const path = libraryPath(params.mediaType, subview);
       const query = libraryQuery({ ...queryParams, group_by: groupBy, subview });
+      if (query.sort === 'end_date' && path.startsWith('/api/v1/media/')) {
+        // This screen labels end_date "Last watched", as the web does. The web
+        // maps it to the last_watched order (an unfinished title sorts by its
+        // last play); the media API keeps end_date as the literal completion
+        // date, so ask for last_watched. The music endpoints only know end_date.
+        query.sort = 'last_watched';
+      }
       return request(path, {
         query,
       });

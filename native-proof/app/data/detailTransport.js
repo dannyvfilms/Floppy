@@ -4,6 +4,7 @@
 import { getActiveAuthSession } from './authSession';
 import { formatUserDate, loadDatePreferences } from './userDate.js';
 import {
+  activitySessionQuery,
   episodeActionPath,
   episodesFromPayload,
   issuesFromPayload,
@@ -18,6 +19,12 @@ function call(path, options) {
     return Promise.reject(new Error('Sign in to your Floppy server to load this page.'));
   }
   return session.request(path, options);
+}
+
+export function loadActivitySessions(identity) {
+  const query = activitySessionQuery(identity);
+  if (!query) return Promise.resolve(null);
+  return call('/api/v1/history/sessions/', { query });
 }
 
 function resultList(payload) {
@@ -36,12 +43,13 @@ function settled(result) {
  * the controls that depend on it then stay hidden.
  */
 export async function loadDetailTracking(identity) {
-  await loadDatePreferences(call);
+  const datePreferences = loadDatePreferences(call);
   const path = mediaPath(identity);
   const [metadata, state] = await Promise.allSettled([
     call(`${path}/metadata/`),
     call(`${path}/state/`),
   ]);
+  await datePreferences;
   return trackingFromPayloads({ identity, metadata: settled(metadata), state: settled(state) });
 }
 
@@ -51,9 +59,16 @@ export async function loadIssues(identity, offset = 0, limit = 20) {
   return issuesFromPayload(payload, identity);
 }
 
-export async function loadSeasonEpisodes(identity, seasonNumber) {
-  const payload = await call(seasonEpisodesPath(identity, seasonNumber));
-  return episodesFromPayload(payload, identity, seasonNumber);
+export async function loadSeasonEpisodes(identity, seasonNumber, { offset = 0, withPage = false } = {}) {
+  const query = new URLSearchParams();
+  if (withPage) { query.set('limit', '20'); query.set('offset', String(offset)); }
+  if (identity.libraryMediaType === 'anime' || identity.mediaType === 'anime') query.set('library_media_type', 'anime');
+  const payload = await call(`${seasonEpisodesPath(identity, seasonNumber)}${query.size ? `?${query}` : ''}`);
+  const rows = episodesFromPayload(payload, identity, seasonNumber);
+  if (!withPage) return rows;
+  const total = Number(payload?.pagination?.total) || rows.length;
+  const nextOffset = offset + rows.length;
+  return { rows, total, loadMore: nextOffset < total ? { offset: nextOffset, label: `${Math.min(20, total - nextOffset)} more episodes` } : null };
 }
 
 export async function loadAnimeEpisodes(identity, queryString = '') {
@@ -107,6 +122,7 @@ export async function loadCollectionEntries(identity) {
   }
   return {
     counts,
+    context: { stats, copies: payload?.context_copies || [], auditKind: payload?.audit_kind, auditEntries: payload?.audit_entries || [], resolutionCounts: payload?.resolution_counts },
     entries: resultList(payload).map(entry => ({
       id: String(entry.id),
       title: [entry.media_type, entry.resolution, entry.hdr, entry.is_3d ? '3D' : '']

@@ -2708,7 +2708,13 @@ class PlexHistoryImporter:
                         item=season_item,
                         user=self.user,
                         related_tv=tv_obj,
-                        status=Status.IN_PROGRESS.value,
+                        # History for a new season of a show the user dropped
+                        # or paused is recorded without reopening the show.
+                        status=(
+                            tv_obj.status
+                            if tv_obj.status in app.models.USER_HELD_STATUSES
+                            else Status.IN_PROGRESS.value
+                        ),
                     )
                     season_score = self._preserved_score(
                         MediaTypes.SEASON.value,
@@ -2833,7 +2839,7 @@ class PlexHistoryImporter:
 
         item_identifier = (
             f"{record['series_title'] or tv_metadata.get('title')} "
-            f"S{record['season_number']}E{record['episode_number']}"
+            f"S{int(record['season_number']):02d}E{int(record['episode_number']):02d}"
         )
         self.warnings.append(
             f"{item_identifier}: not found in {Sources.TMDB.label} with ID "
@@ -3243,10 +3249,16 @@ class PlexHistoryImporter:
     ):
         """Update completion status for season and TV show if applicable."""
         if episode_number == helpers.season_last_episode_number(season_metadata):
-            season_obj.status = Status.COMPLETED.value
+            # A dropped or paused show stays off the shelf (#1133).
+            if season_obj.status not in app.models.USER_HELD_STATUSES:
+                season_obj.status = Status.COMPLETED.value
 
             last_season = tv_metadata.get("last_episode_season")
-            if last_season and last_season == season_number:
+            if (
+                last_season
+                and last_season == season_number
+                and tv_obj.status not in app.models.USER_HELD_STATUSES
+            ):
                 tv_obj.status = Status.COMPLETED.value
 
     def _build_metadata(self, entry: dict) -> dict:

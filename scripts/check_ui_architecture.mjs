@@ -56,7 +56,7 @@ export function inspectUniversal(source, file = 'component.jsx', { nativeAdapter
       const name = node.source.value;
       if (name === 'react-native') { nativeImport = true; if (logic) fail(node, 'shared logic cannot depend on a renderer'); }
       else if (name !== 'react' && !name.startsWith('.') && !nativeAdapter) fail(node, `unapproved import '${name}'; move platform or transport dependencies into an adapter`);
-      if (nativeAdapter && !name.startsWith('.') && !/^(?:react$|react-native(?:-|\/|$)|@react-native\/|expo(?:-|\/|$)|@expo\/)/.test(name)) fail(node, `unapproved native dependency '${name}'; use a reviewed native platform API`);
+      if (nativeAdapter && !name.startsWith('.') && !/^(?:react$|@react-native-masked-view\/masked-view$|react-native(?:-|\/|$)|@react-native\/|expo(?:-|\/|$)|@expo\/)/.test(name)) fail(node, `unapproved native dependency '${name}'; use a reviewed native platform API`);
       if (nativeAdapter && /^(react-dom|react-native-web|react-native-webview|expo-dom|expo\/dom|htmx|alpinejs)(\/|$)/.test(name)) fail(node, `web-only import '${name}' cannot implement native presentation`);
       if (name.startsWith('.') && /\.(css|scss|sass|html|svg)$/.test(name)) fail(node, 'web asset import; provide cross-platform styles or an adapter');
       if (!nativeAdapter && name === 'react-native' && node.specifiers?.some(s => ['Platform', 'Linking', 'NativeModules', 'NativeEventEmitter', 'PermissionsAndroid'].includes(s.imported?.name))) fail(node, 'platform APIs belong in a platform adapter');

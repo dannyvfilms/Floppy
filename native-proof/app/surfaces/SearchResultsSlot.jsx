@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import WindowedRail from './WindowedRail';
+import MediaCardSlot from './MediaCardSlot';
 import { SearchResults } from '../../../frontend/ui/SearchResults';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { mergeSearchRowPage, onlineRowParams, searchRowParams } from '../../../frontend/ui/searchRows';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { createSearchTransport } from '../data/searchTransport';
-import { enrichServerCard, musicCreateFromHref, routeCardHref } from '../data/serverCardCore';
+import { musicCreateFromHref, routeCardHref } from '../data/serverCardCore';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette } from '../theme';
-import MediaCardSlot from './MediaCardSlot';
 
 export const surface = {
   id: 'SEARCH-RESULTS',
@@ -84,15 +85,22 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     if (!navigate || !routeCardHref(card?.href, navigate)) onOpenDetail?.(card);
   }, [onOpenDetail, navigate, transport]);
 
-  // Each result is its own one-card host, so Track, Lists and rating open in place as on Home.
-  const renderCard = useCallback(item => <View style={{ width: itemWidth }}><MediaCardSlot
-    gridLayout="library"
-    cardWidth={itemWidth}
-    items={[{ key: String(item.id), model: enrichServerCard(item.card) }]}
-    onOpenDetail={() => openCard(item)}
-    onOpenLink={href => { if (!navigate || !routeCardHref(href, navigate)) openCard(item); }} /></View>,
-  [navigate, openCard, itemWidth]);
+  const renderCard = useCallback(item => {
+    const card = item.card;
+    const identity = card?.quickStatus?.identity;
+    // Music and other specialized cards keep their existing detail navigation.
+    if (!identity) return <MediaCard model={card} palette={palette} width={itemWidth}
+      onOpen={() => openCard(item)} onOpenLink={() => openCard(item)} onAction={() => openCard(item)} />;
+    const model = { ...card, identity, actions: card?.actions && {
+      ...card.actions, items: card.actions.items.map(action => ({ ...action, media: identity })),
+    } };
+    return <MediaCardSlot items={[{ key: item.key || card.cardKey || card.href, model }]}
+      cardWidth={itemWidth} gridGap={0} onOpenDetail={() => openCard(item)}
+      onOpenLink={href => { if (!navigate || !routeCardHref(href, navigate)) openCard(item); }} />;
+  }, [itemWidth, navigate, openCard]);
 
+  // The reviewed Expo results use the shared shelf card, rather than a Library grid host.
+  // Web keeps its existing card adapter and in-place actions.
   return <SearchResults
     {...view.props}
     state={creating ? 'loading' : view.state}

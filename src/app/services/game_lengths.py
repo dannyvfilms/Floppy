@@ -14,6 +14,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from app import helpers
+from app.helpers import coerce_int as _coerce_int
 from app.models import Item, MediaTypes, Sources
 from app.providers import credentials, igdb
 from app.providers import services as provider_services
@@ -611,15 +612,6 @@ def _extract_release_year_from_hltb_detail(profile: dict[str, Any]) -> int | Non
         except (TypeError, ValueError):
             continue
     return None
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value in (None, ""):
-            return None
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _seconds_to_minutes(value: Any) -> int:

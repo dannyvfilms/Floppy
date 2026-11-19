@@ -31,6 +31,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from app.db_retry import is_lock_error
+from app.history_cache_utils import history_deferred_item_fields
 from app.interactive_requests import interactive_request_active
 from app.models import StatisticsDirtyDay, StatisticsSnapshot, StatisticsSyncState
 from app.statistics_day_cache import (
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when the shape of a published payload changes; older snapshots are
 # served until the next sync replaces them.
-SNAPSHOT_SCHEMA_VERSION = 19
+SNAPSHOT_SCHEMA_VERSION = 22
 
 # Cheap ranges rebuilt on every sync, in this order.
 HOT_RANGES = (
@@ -203,7 +204,7 @@ def _pending_key(user_id: int) -> str:
 def _day_epoch_key(user_id: int) -> str:
     # Written without a TTL, so volatile-lru never evicts it: its absence means
     # the cache was flushed and every day payload has to be checked.
-    return f"stats:sync:day_epoch:{user_id}"
+    return f"stats:sync:day_epoch:v{SNAPSHOT_SCHEMA_VERSION}:{user_id}"
 
 
 def _eager_mode() -> bool:
@@ -614,15 +615,19 @@ def _fetch_instances(refs):
     instances = {}
     for label, pks in refs.items():
         model = apps.get_model(label)
-        queryset = model.objects.filter(pk__in=pks)
         related = {field.name for field in model._meta.get_fields()}
-        if "item" in related:
-            queryset = queryset.select_related("item")
+        item_paths = ["item"] if "item" in related else []
         if model._meta.model_name == "season":
-            queryset = queryset.select_related("related_tv__item")
+            item_paths.append("related_tv__item")
         elif model._meta.model_name == "episode":
-            queryset = queryset.select_related(
-                "related_season__item", "related_season__related_tv__item"
+            item_paths += ["related_season__item", "related_season__related_tv__item"]
+        # The hydrated payload is cached; keep the wide item columns no card
+        # reads out of it, as the aggregator does when it builds the payload.
+        queryset = model.objects.filter(pk__in=pks)
+        if item_paths:
+            # select_related() with no names would follow every relation.
+            queryset = queryset.select_related(*item_paths).defer(
+                *history_deferred_item_fields(*item_paths)
             )
         for instance in queryset:
             instances[(label, instance.pk)] = instance
@@ -976,10 +981,7 @@ def _build_days(
     lease_token: str | None = None,
 ) -> int:
     """Build day payloads in slices; clear each slice's dirty rows as it lands."""
-    from app.statistics_day_builder import (
-        _build_prefetch_for_range,
-        build_stats_for_day,
-    )
+    from app.statistics_day_builder import SpanPrefetches, build_stats_for_day
     from app.statistics_refresh import _enqueue_collected_backfills
 
     credit_hints = 0
@@ -990,7 +992,8 @@ def _build_days(
         if lease_token is not None and not _renew_lease(user.id, lease_token):
             raise _LostLeaseError
         chunk = days[offset : offset + size]
-        prefetch = _build_prefetch_for_range(user, chunk)
+        # Nearby days share one prefetch; a far-off dirty day gets its own.
+        prefetches = SpanPrefetches(user, chunk)
         collector = {
             "runtime_item_ids": set(),
             "genre_item_ids": set(),
@@ -1011,7 +1014,7 @@ def _build_days(
                 user.id,
                 day,
                 user=user,
-                prefetch=prefetch,
+                prefetch=prefetches.for_day(day),
                 defer_cache_write=True,
                 backfill_collector=collector,
             )

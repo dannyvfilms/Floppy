@@ -37,6 +37,22 @@ from integrations.models import ImportRun
 
 logger = logging.getLogger(__name__)
 
+# "Watchlist only" and "Collection only" are single-purpose modes. A source with
+# no stages of its own runs as "new" and, for the watchlist, keeps only its
+# planned entries (see ``bulk_create_media``).
+SINGLE_PURPOSE_MODES = frozenset({"watchlist", "update_collection"})
+watchlist_only = ContextVar("import_watchlist_only", default=False)
+
+
+@contextmanager
+def watchlist_only_scope(enabled):
+    """Keep only planned entries in ``bulk_create_media`` while ``enabled``."""
+    token = watchlist_only.set(enabled)
+    try:
+        yield
+    finally:
+        watchlist_only.reset(token)
+
 
 # Rows an import wrote with bulk_create, which sends no post_save signal. Set by
 # record_bulk_rows() for importers whose catch-up is scoped to what they wrote.
@@ -883,6 +899,16 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
     episode backfill failed, for callers that want to surface them.
     """
     warnings = []
+    if watchlist_only.get():
+        # Watchlist only keeps what the source plans to watch: no history rows
+        # and nothing already in progress, finished, dropped or paused.
+        for media_type, rows in list(bulk_media_list.items()):
+            bulk_media_list[media_type] = [
+                row
+                for row in rows
+                if getattr(row, "status", None) == Status.PLANNING.value
+                and media_type not in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value)
+            ]
     projected_item_ids = set()
     if not prepared:
         prepare_bulk_media(bulk_media_list, user)

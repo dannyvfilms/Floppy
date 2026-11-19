@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import {
   HistoryActivityDialog,
@@ -19,6 +19,8 @@ import {
   parseHistoryFilterUrl,
   shiftMonth,
 } from '../data/historyTransport';
+import { firstViewDayCount } from '../../../frontend/ui/historyFirstView';
+import { createMeasuredRowWatcher, measureInWindow } from '../data/homeRowWatcherCore';
 import { useAccountDisplay } from '../data/accountDisplay';
 import { getActiveAuthSession } from '../data/authSession';
 import { createListTransport } from '../data/listTransport';
@@ -80,6 +82,16 @@ function filterParams(filters, queryFrom, queryTo, scope) {
 // The web page body starts 24px below the header.
 const pageTop = { paddingTop: 24 };
 
+// The last History pages loaded for the signed-in session. Coming back to History shows
+// them at once while the fresh copy loads, instead of an empty screen each visit.
+const historyCaches = new WeakMap();
+const NO_SESSION = {};
+function sessionCache() {
+  const key = getActiveAuthSession() || NO_SESSION;
+  if (!historyCaches.has(key)) historyCaches.set(key, new Map());
+  return historyCaches.get(key);
+}
+
 export default function HistoryScreen({ navigate, onBack, params, transport: injectedTransport }) {
   const [transport] = useState(() => injectedTransport || createHistoryTransport());
   // A link into History (a person's plays, an album) scopes the whole feed.
@@ -104,6 +116,7 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
   const [loadingDays, setLoadingDays] = useState({});
   const [listPicker, setListPicker] = useState(null);
   const daysRef = useRef([]);
+  const [cache] = useState(sessionCache);
 
   useEffect(() => { daysRef.current = rawDays; }, [rawDays]);
 
@@ -116,16 +129,34 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
   const mediaTypeKey = (filters.mediaTypes || []).join(',');
   const genreKey = (filters.genres || []).join(',');
   const impliedGenreKey = (filters.impliedGenres || []).join(',');
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const display = useAccountDisplay();
+  // The month arrives whole, but only about two screens of cards mount at
+  // first; later days wait as placeholders and mount as they scroll near
+  // (frontend/ui/historyFirstView.js, the rule the web page uses).
+  const [dayWatcher] = useState(() => createMeasuredRowWatcher({ measure: measureInWindow, viewportHeight: height }));
+  useEffect(() => { dayWatcher.setViewportHeight(height); }, [height, dayWatcher]);
+  const [shownDays, setShownDays] = useState(() => new Set());
   // The server-side card hides the caption line on a compact phone grid.
   const captions = !(width <= 768 && display.compact);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
+  const queryKey = JSON.stringify([mode, mediaTypeKey, genreKey, impliedGenreKey, queryFrom, queryTo, scope, serverOffset]);
+
+  // Before paint, show the saved copy of this query if there is one; the fetch below refreshes it.
+  useLayoutEffect(() => {
+    const saved = server ? cache.get(queryKey) : null;
+    if (!saved) return;
+    setRawDays(saved.days);
+    setServerTotal(saved.total);
+    setLoading(false);
+    setRefreshing(true);
+  }, [server, cache, queryKey]);
+
   useEffect(() => {
     if (!server) return undefined;
     let active = true;
-    setLoading(true);
+    if (!cache.has(queryKey)) setLoading(true);
     setLoadError('');
     setRefreshError(false);
     setTransportError('');
@@ -142,9 +173,12 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
     request
       .then(payload => {
         if (!active) return;
-        setRawDays(historyDaysFromPayload(payload));
+        const loadedDays = historyDaysFromPayload(payload);
         const total = Number(payload?.pagination?.total);
-        setServerTotal(Number.isFinite(total) ? total : null);
+        const loadedTotal = Number.isFinite(total) ? total : null;
+        cache.set(queryKey, { days: loadedDays, total: loadedTotal });
+        setRawDays(loadedDays);
+        setServerTotal(loadedTotal);
         setLoading(false);
         setRefreshing(false);
       })
@@ -159,7 +193,7 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
         setRefreshing(false);
       });
     return () => { active = false; };
-  }, [transport, reloadToken, serverOffset, queryFrom, queryTo, mode, mediaTypeKey, genreKey, impliedGenreKey]);
+  }, [transport, cache, queryKey, reloadToken, serverOffset, queryFrom, queryTo, mode, mediaTypeKey, genreKey, impliedGenreKey]);
 
   function beginRefresh() {
     if (!server) return;
@@ -181,11 +215,26 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
       });
   }
 
-  const days = useMemo(() => decorate(
-    rawDays.map(day => ({ ...day, loadingMore: Boolean(loadingDays[day.key]) })),
-    mode,
-    captions,
-  ), [rawDays, loadingDays, mode, captions, display.loaded]);
+  // A new query starts from the first view again.
+  useEffect(() => { setShownDays(new Set()); }, [queryKey]);
+
+  const days = useMemo(() => {
+    const eager = firstViewDayCount(rawDays.map(day => day.entries.length));
+    return decorate(
+      rawDays.map((day, index) => ({
+        ...day,
+        lazy: index >= eager && !shownDays.has(day.key),
+        loadingMore: Boolean(loadingDays[day.key]),
+      })),
+      mode,
+      captions,
+    );
+  }, [rawDays, loadingDays, shownDays, mode, captions, display.loaded]);
+
+  // A waiting day already has its entries; showing it is all "load" means here.
+  function showDay(day) {
+    setShownDays(current => (current.has(day.key) ? current : new Set(current).add(day.key)));
+  }
 
   const pagination = useMemo(() => {
     if (!server || !serverTotal || serverTotal <= SERVER_PAGE_DAYS) return null;
@@ -279,7 +328,7 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
       .then(payload => {
         if (!Array.isArray(payload?.sessions) || !payload.sessions.length) return;
         setActivityEntry(current => (current?.key === entry.key
-          ? { ...entry, sessions: payload.sessions }
+          ? { ...entry, sessions: payload.sessions, activityIntensity: payload.activityIntensity || {} }
           : current));
       })
       .catch(() => {
@@ -423,6 +472,7 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
   }
 
   return <Screen chrome={false} contentStyle={pageTop}
+    onScroll={dayWatcher.check} onContentSizeChange={dayWatcher.check}
     floating={server ? <HistoryFilterFab count={filters.activeCount} label={labels.filters}
       palette={historyPalette} onPress={() => toggleFilters(true)} /> : null}>
     <HistoryView
@@ -443,6 +493,9 @@ export default function HistoryScreen({ navigate, onBack, params, transport: inj
       onEditEntry={requestEdit}
       onDeleteEntry={requestDelete}
       onLoadMore={loadMore}
+      onLoadDay={showDay}
+      onRetryDay={showDay}
+      watchDay={dayWatcher.watchRow}
       onApplyFilters={applyFilters}
       onClearFilters={clearFilters}
       onSaveView={server ? saveView : undefined}
