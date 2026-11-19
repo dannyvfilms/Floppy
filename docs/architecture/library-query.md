@@ -22,7 +22,9 @@ Surfaces whose unit is not one item keep their own pipeline:
 - TV's "time left" order, which is grouped and caches its own order. It ranks
   the filtered library from grouped rows (`app.tv_show_facts`,
   `app.tv_sort.build_time_left_records`), not from hydrated seasons and plays,
-  and hydrates one page;
+  and hydrates one page. Its groups put a caught-up show after the shows
+  still in progress, where the API and Home (episodes left) put it first.
+  Shows with nothing known stay last in both directions;
 - the podcast show view;
 - the music artist and album views;
 - Home's "recently unrated" shelf, which is bounded by its time window.
@@ -67,6 +69,13 @@ Surfaces whose unit is not one item keep their own pipeline:
 - **`ids()`, `contains()` and `matches()` serve smart-list membership.**
   `matches()` returns a `pk` subquery when every filter is SQL, so a scope can
   be passed on without loading it.
+  Membership is stored as `CustomListItem` rows, and every reader of a smart
+  list (list page, Home shelf, lists API, CSV export, RSS and arr feeds)
+  calls `lists.tasks.schedule_smart_list_sync` before answering from them.
+  That queues one debounced full sync per list per minute on the default
+  queue, so readers other than the app's own pages converge too, including
+  date-relative rules that change with no write. A list nobody reads is not
+  refreshed; there is no periodic job.
 - **One ordering everywhere.** The sort value comes first, with nulls last.
   Ties then go to the lower-cased title, season, episode and id, all in the
   requested direction (`executor.tie_breakers`). Equal values cannot move
@@ -99,8 +108,17 @@ needs Python. A sort's SQL form is either `sql` (one value) or `sql_order`
     (`app.tv_show_facts.TrackedShow`: four value queries a batch, no season,
     play or event model) when every Python sort and filter of the query
     declares `tv_facts`. Home's Up Next, upcoming, recent, completion and
-    episodes-left orders and the caught-up filter do. Any other reader of the
-    tracker row keeps the hydrated graph for the whole scan.
+    episodes-left orders, the caught-up filter, and the library's progress,
+    plays, start date, end date, last watched, runtime, time watched and
+    (API) time-left orders do: a show has one tracker row, and those values
+    are its `TV` properties. Runtime and time watched also prefill the
+    episode runtime index for the batch. Any other reader of the tracker row
+    keeps the hydrated graph for the whole scan.
+  - A movie's tracker rows are attached as `app.movie_rows.MovieRow` (one
+    value query a batch, no model) when the sort declares `movie_rows`
+    (runtime, time watched) and no filter reads the tracker.
+  - A sort whose Python value reads only the item (`item_only`: time to
+    beat, author) loads no tracker row at all.
   - Memory is bounded by the batch and the page. Computing values in Python is
     still one pass over the narrowed candidates.
 
@@ -182,14 +200,28 @@ ranges are part of their cache keys.
   - `tracker=True` marks values derived from tracker rows.
   - Set `tv_facts=True` (on a `SortDef` or a `FilterDef`) only if, for a
     show, the Python code reads nothing beyond what `TrackedShow` defines:
-    status, creation date, progress, last play, the released counts and the
-    seasons' number, status and progress. It reads through `getattr` with a
-    default in places, so a missing attribute would not fail; it would
-    reorder. Add the sort to `users.tests.test_home_row_show_facts`, which
-    compares it with the hydrated order in both directions.
+    status, creation date, progress, first and last play, completed episodes,
+    the released counts, the runtime members and the seasons' number, status
+    and progress. It reads through `getattr` with a default in places, so a
+    missing attribute would not fail; it would reorder. Add the sort to
+    `users.tests.test_home_row_show_facts`, which compares it with the
+    hydrated order in both directions.
+  - Set `movie_rows=True` only if, for a movie, the value reads the item and
+    the row's status, progress, end date and creation date (`MovieRow`);
+    `app.tests.test_library_query.MovieRowOrderTests` compares the orders.
+  - Set `item_only=True` on a Python sort whose value reads nothing but the
+    candidate item; the scan then loads no tracker row for it.
 
 `app.tests.test_library_query` checks that every SQL sort orders the same way
 on the scan path. A new sort is covered automatically.
+
+`app.tests.test_list_semantics` checks what each sort and filter means, on a
+library larger than one page: the web list, the media API the Expo library
+reads and a Home shelf must show the same order, and the list, the API and
+"select all" on both must keep the same titles. State the order in the table
+(`ORDERS`, or a `FilterCase` for a filter); the test fails until a new key has
+a row. A surface that differs on purpose goes in its `EXEMPT` table with the
+reason.
 
 ## Semantics that surfaces choose
 
@@ -227,7 +259,8 @@ switched over. They are intentional:
   platform. Items listing several platforms sort last. The API previously
   sorted by the first listed platform.
 - **Runtime, time watched and time to beat sort a zero value last,** as
-  unmeasured. Nulls sort last in both directions everywhere. A list page's
+  unmeasured, and a title with no author sorts last by author. Nulls sort
+  last in both directions everywhere. A list page's
   rating sort used to put unrated items first when ascending.
 - **Filters the media list ignored on types whose UI does not show them now
   apply to every type,** for example author on the movie API.
@@ -237,9 +270,15 @@ switched over. They are intentional:
 
 - Python predicates: provider availability, author, progress, and a season's
   effective status where it has to be derived.
-- Python sorts: time to beat, next episode air date, time left, and Home's
-  Up Next, upcoming, completion and episodes-left orders. These scan the
-  SQL-narrowed candidates.
+- Python sorts: time to beat, author, runtime, time watched, next episode air
+  date, time left, a show's dates, progress and plays, and Home's Up Next,
+  upcoming, completion and episodes-left orders. These scan the SQL-narrowed
+  candidates.
+  - Time to beat and author read only the candidate items; movies' runtime
+    and time watched read light rows; shows' runtime and time watched read
+    facts.
+  - Other types' runtime and time watched (anime, books) and TV's next
+    episode air date still hydrate each candidate's tracker graph.
   - For shows, Home's orders and the caught-up filter are O(n) in value rows,
     not in models: one item per candidate is all a scan builds.
   - Home's shelves share their shows' facts and released-episode counts

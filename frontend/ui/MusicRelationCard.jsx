@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from './MediaCard';
+import { musicRelationCardModel } from './cardModels';
 
 const PALETTE = {
   card: '#27272a',
@@ -29,29 +30,6 @@ const DEFAULT_LABELS = {
   close: 'Close',
 };
 
-function relationModel(relation, labels) {
-  return {
-    mediaType: 'music',
-    shape: 'poster',
-    href: relation.href,
-    image: { src: relation.image, fallback: '', source: 'primary' },
-    title: relation.name,
-    altTitle: null,
-    statusChip: relation.status ? { status: relation.status, label: relation.status } : null,
-    cornerChips: relation.current ? [] : [{ kind: 'label', text: labels.former }],
-    lines: relation.role
-      ? [{ join: 'plain', parts: [{ text: relation.role, muted: true }] }]
-      : [],
-    rating: relation.score == null ? null : {
-      label: String(relation.score),
-      value: relation.score,
-      scaleMax: 10,
-      rateLabel: labels.rate,
-    },
-    ratingEditable: false,
-  };
-}
-
 function mergePalette(palette) {
   return {
     ...PALETTE,
@@ -63,8 +41,10 @@ function mergePalette(palette) {
 
 export function MusicRelationCard({ relation, width, labels, palette, onOpen }) {
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
+  // `variant` is the browser card's grid layout; the native card ignores it.
   return <MediaCard
-    model={relationModel(relation, copy)}
+    variant="grid"
+    model={musicRelationCardModel(relation, copy)}
     labels={{ rate: copy.rate, close: copy.close }}
     palette={mergePalette(palette)}
     width={width}

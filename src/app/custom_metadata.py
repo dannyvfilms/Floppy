@@ -636,7 +636,7 @@ def detail_field_names_for_media_type(media_type: str) -> list[str]:
     return DETAIL_VALUE_ORDER.get(media_type, [])
 
 
-def _coerce_list(value) -> list[str]:
+def _coerce_text_list(value) -> list[str]:
     if isinstance(value, list):
         return [str(entry).strip() for entry in value if str(entry).strip()]
     if not value:
@@ -645,7 +645,7 @@ def _coerce_list(value) -> list[str]:
 
 
 def _serialize_list_for_initial(value) -> str:
-    return "\n".join(_coerce_list(value))
+    return "\n".join(_coerce_text_list(value))
 
 
 def _split_list_value(value) -> list[str]:
@@ -676,7 +676,7 @@ def _date_to_iso(value) -> str:
 
 def _normalize_stored_value(value, spec: CustomMetadataFieldSpec):
     if spec.list_value:
-        return _coerce_list(value)
+        return _coerce_text_list(value)
     if spec.numeric_value:
         try:
             return int(value) if value not in (None, "") else None
@@ -815,7 +815,7 @@ def provider_value_for_item(item, field_name: str, fallback=None):
         normalized = str(value).strip() if value not in (None, "") else ""
         return normalized or settings.IMG_NONE
     if spec.list_value:
-        return _coerce_list(value)
+        return _coerce_text_list(value)
     if spec.numeric_value:
         try:
             return int(value) if value not in (None, "") else None
@@ -846,7 +846,7 @@ def detail_value_for_item(item, field_name: str, fallback_details: dict | None =
     if spec.widget == "date":
         return _date_to_iso(value)
     if spec.list_value:
-        return _coerce_list(value)
+        return _coerce_text_list(value)
     if spec.numeric_value:
         try:
             return int(value) if value not in (None, "") else None

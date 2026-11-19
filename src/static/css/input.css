@@ -663,19 +663,37 @@ main > .container:has(img[data-artwork-ready="true"]),
   animation: none;
 }
 
+.media-card-progress-bar {
+  height: 3px;
+}
+
 .media-card-hover-outline::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 2px solid transparent;
+  /* Same 3px as the progress bar. */
+  border: 3px solid rgb(99 102 241);
   border-radius: inherit;
   pointer-events: none;
-  z-index: 30;
+  /* Under the progress bar (z-20), so the bar never moves and the outline
+     grows out of it. */
+  z-index: 19;
+  /* Grows up from the bar's edge while it fades in. Only opacity and transform
+     animate: both run on the compositor, so rapid hovering never drops frames
+     (animating clip-path or border-color repainted the card every frame). */
+  opacity: 0;
+  transform: scale(0.985, 0.97);
+  transform-origin: 50% 100%;
+  will-change: opacity, transform;
+  transition:
+    opacity 0.14s ease-out,
+    transform 0.14s ease-out;
 }
 
 @media (hover: hover) {
   .media-card-hover-outline:hover::after {
-    border-color: rgb(99 102 241);
+    opacity: 1;
+    transform: none;
   }
 
   /*
@@ -2731,6 +2749,16 @@ html.light .theme-toggle-icon-moon {
     filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
   }
 
+  /* A season's logo stands in for its title, so it links to the show like the
+     title does. The link takes the logo's box so the clickable area matches. */
+  .detail-carousel-overview-logo-link {
+    display: block;
+    width: min(40%, 32rem);
+  }
+
+  .detail-carousel-overview-logo-link > .detail-carousel-overview-logo {
+    width: 100%;
+  }
 
   .detail-carousel-strip-wrap {
     grid-area: strip;
@@ -3381,8 +3409,26 @@ html.light .theme-toggle-icon-moon {
 }
 .media-quick-status-error { position: absolute; z-index: 32; top: 36px; left: 8px; right: 8px;
   padding: 4px; color: white; background: #991b1b; font-size: 12px; }
+/* Touch screens keep the short chip. */
+.media-card-next-more { display: none; }
+
+/* The Next Episode chip widens on hover, like the status badge, and the status
+   badge hides to make room. The shared start of the two wordings stays put; the
+   short tail ("ep") closes while the long tail ("Episode: S01E03") opens. */
+@media (hover: hover) and (pointer: fine) and (min-width: 601px) {
+  .media-card-next-rest, .media-card-next-more { display: inline-block; vertical-align: top; overflow: hidden;
+    white-space: nowrap; transition: max-width .16s ease, opacity .16s ease; }
+  .media-card-next-rest { max-width: var(--next-rest-width, 8rem); }
+  .media-card-next-more.media-card-next-more { display: inline-block; max-width: 0; opacity: 0; }
+  [data-next-episode="true"]:hover .media-card-next-rest { max-width: 0; opacity: 0; }
+  [data-next-episode="true"]:hover .media-card-next-more { max-width: var(--next-more-width, 14rem); opacity: 1; }
+  .media-card-visual :is(.media-quick-status, .media-status-chip) { transition: opacity .12s ease; }
+  .media-card-visual:has([data-next-episode="true"]:hover) :is(.media-quick-status, .media-status-chip) {
+    opacity: 0; pointer-events: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .media-quick-status-label, .media-card-visual [data-next-episode="true"] { transition: none; }
+  .media-quick-status-label, .media-card-visual [data-next-episode="true"],
+  .media-card-next-rest, .media-card-next-more { transition: none; }
 }
 
 .media-card-next-episode-compact {
@@ -3481,6 +3527,19 @@ html.light .theme-toggle-icon-moon {
   height: 100%;
 }
 
+/* Every wrapper between the card and its image fills the card, so artwork that
+   is not 2:3 still covers the card down to the bottom edge. */
+:is(.search-result-card, .search-result-card-square) .media-card-visual,
+:is(.search-result-card, .search-result-card-square) .media-card-visual>:is(a, div.cursor-pointer):first-child {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+:is(.search-result-card, .search-result-card-square) .media-card-visual {
+  position: relative;
+}
+
 .search-result-card .media-card-poster {
   width: 100%;
   height: 100%;
@@ -3508,7 +3567,9 @@ html.light .theme-toggle-icon-moon {
   line-clamp: 3;
   line-height: var(--card-title-line);
   position: relative;
-  transition: color 0.2s ease;
+  /* No colour fade: the one-line ::before and this text are the same words, and
+     cross-fading them dipped the title to about two thirds brightness. */
+  transition: none;
 }
 
 .search-result-card .media-card-title[title] {
@@ -3526,7 +3587,7 @@ html.light .theme-toggle-icon-moon {
   text-overflow: ellipsis;
   color: #fff;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: none;
 }
 
 .search-result-card:hover .media-card-title[title] {
@@ -3535,10 +3596,16 @@ html.light .theme-toggle-icon-moon {
 
 .search-result-card:hover .media-card-title[title]:hover {
   color: var(--color-indigo-400, #818cf8);
+  transition: color 0.2s ease;
 }
 
 .search-result-card:hover .media-card-title[title]::before {
   opacity: 0;
+}
+
+/* A title cut at a word boundary by the card (see useRestTitle). */
+.search-result-card .media-card-title[data-rest-title]::before {
+  content: attr(data-rest-title);
 }
 
 .search-result-card .media-card-body {
@@ -3628,7 +3695,9 @@ html.light .theme-toggle-icon-moon {
   line-clamp: 3;
   line-height: var(--card-title-line);
   position: relative;
-  transition: color 0.2s ease;
+  /* No colour fade: the one-line ::before and this text are the same words, and
+     cross-fading them dipped the title to about two thirds brightness. */
+  transition: none;
 }
 
 .search-result-card-square .media-card-title[title] {
@@ -3646,7 +3715,7 @@ html.light .theme-toggle-icon-moon {
   text-overflow: ellipsis;
   color: #fff;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: none;
 }
 
 .search-result-card-square:hover .media-card-title[title] {
@@ -3655,10 +3724,16 @@ html.light .theme-toggle-icon-moon {
 
 .search-result-card-square:hover .media-card-title[title]:hover {
   color: var(--color-indigo-400, #818cf8);
+  transition: color 0.2s ease;
 }
 
 .search-result-card-square:hover .media-card-title[title]::before {
   opacity: 0;
+}
+
+/* A title cut at a word boundary by the card (see useRestTitle). */
+.search-result-card-square .media-card-title[data-rest-title]::before {
+  content: attr(data-rest-title);
 }
 
 /*
@@ -4000,9 +4075,11 @@ html.light .theme-toggle-icon-moon {
   max-height: none;
   margin-top: 0.25rem;
   opacity: 1;
-  color: #fff;
-  font-weight: 600;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  /* Same type as the hover subtitle, so a line that is always visible and one
+     that appears on hover look alike. */
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 400;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
 .stat-scroll-safe.stat-tooltip-safe {
@@ -4210,7 +4287,9 @@ html.light .theme-toggle-icon-moon {
 
   .media-filter-toolbar {
     display: grid !important;
-    grid-template-columns: repeat(3, fit-content(9rem)) auto;
+    /* The shared filter bar is one child that lays out its own three dropdowns
+       on one row; give it the full width left of the settings button. */
+    grid-template-columns: minmax(0, 1fr) auto;
     column-gap: calc(var(--spacing) * 1);
     row-gap: 0;
     align-items: center;
@@ -4527,7 +4606,12 @@ html.light .theme-toggle-icon-moon {
 }
 
 .media-card-rate-empty .media-card-rate-star svg {
+  /* An outline star. The icon has no stroke of its own, so without this the
+     empty star was invisible even when shown. */
   fill: none;
+  stroke: currentcolor;
+  stroke-width: 2;
+  stroke-linejoin: round;
 }
 
 .media-card-rate-empty:focus-visible {
@@ -4762,4 +4846,76 @@ button.tier-label:focus-visible .tier-label-edit {
     color: white;
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
+}
+
+/* The column button is the same square as the settings gear beside the title:
+   40px, 6px corners, icon centred. The filter toolbar's mobile rules size every
+   button in a .filter-control, so this repeats them at higher specificity. */
+.media-column-button,
+.filter-toolbar .filter-control>button.media-column-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 !important;
+  border-radius: 6px;
+  border-color: var(--color-border);
+}
+
+/*
+ * The hover darkening is a brightness filter on the poster rather than a black
+ * layer over it. The card clips everything to its rounded corners, and each
+ * layer is anti-aliased on its own, so a separate black layer let the bright
+ * poster show through at the corner pixels. One filtered image has one edge.
+ */
+.media-card-poster {
+  transition:
+    filter 0.14s ease-out,
+    transform var(--motion-duration) var(--motion-ease),
+    box-shadow var(--motion-duration) var(--motion-ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .media-card:hover .media-card-visual:has(.media-card-overlay) .media-card-poster {
+    filter: brightness(0.5);
+  }
+}
+
+.media-card-visual:has(.media-card-overlay-revealed) .media-card-poster {
+  filter: brightness(0.5);
+}
+
+/*
+ * Corner pixels. A grid card's poster fills the card, and the card clips its
+ * layers to the rounded corners one at a time. The card's own background and
+ * the poster both showed through at the anti-aliased edge as a light arc. The
+ * card background is not needed behind a full-bleed poster, and the poster is
+ * clipped a hair inside the card's 12px corner so it never reaches that edge.
+ */
+:is(.search-result-card, .search-result-card-square).media-card {
+  background-color: transparent !important;
+}
+
+:is(.search-result-card, .search-result-card-square) .media-card-poster {
+  clip-path: inset(0 round 13px);
+}
+
+/*
+ * Square cards (podcasts, music) have little room above the text. The hover
+ * buttons take the space above the text block instead of the card's centre, so
+ * a three-line title pushes them up and never covers them. The overlay stops
+ * where the text starts (--card-body-h, kept current by the card), which also
+ * keeps the title and its link clickable.
+ */
+.search-result-card-square .media-card-overlay {
+  /* From the inside of the 3px hover outline to the top of the title's tallest
+     letters: the text block's height less its 12px of top padding and the 4px
+     between the title box and its glyphs (14px type in a 20px line). The
+     buttons centre in that gap, so the space above and below them is equal. */
+  inset: 3px 0 calc(var(--card-body-h, 0px) - 0.75rem - 4px) 0;
+  /* Above the text block's scrim (z-10), which fades up over the artwork and
+     was tinting the buttons. The overlay no longer covers the title, so this
+     cannot block it. */
+  z-index: 11;
 }

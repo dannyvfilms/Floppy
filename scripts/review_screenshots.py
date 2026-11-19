@@ -45,7 +45,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
-EXPO_DIR = ROOT / "native-proof"
+EXPO_DIR = ROOT / "expo"
 EXPO_EXPORT = ROOT / ".floppy" / "expo-search-preview"  # no-auth search preview route
 ISBN = "9780306406157"
 USER, PASSWORD = "review", "review-pass-12345"
@@ -120,20 +120,20 @@ def stop_floppy():
 
 
 def export_expo():
-    """Build the Expo search-preview web export (see native-proof/app/routes/search-preview.jsx)."""
+    """Build the Expo search-preview web export (see expo/app/routes/search-preview.jsx)."""
     subprocess.run(["npm", "run", "-s", "export:search-preview"], cwd=EXPO_DIR, check=True)
 
 
 def serve_proxy(floppy, port):
-    """Serve the Expo export at /static/native-proof/ and proxy the rest to Floppy."""
+    """Serve the Expo export at /static/expo/ and proxy the rest to Floppy."""
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
         def handle_any(self):
-            if self.path.startswith("/static/native-proof/"):
-                rel = self.path.split("?")[0].removeprefix("/static/native-proof/") or "index.html"
+            if self.path.startswith("/static/expo/"):
+                rel = self.path.split("?")[0].removeprefix("/static/expo/") or "index.html"
                 file = EXPO_EXPORT / rel
                 if file.is_file():
                     kind = {"html": "text/html", "js": "application/javascript",
@@ -255,7 +255,7 @@ def expo_cases(browser, proxy_base, out, results):
     page = context.new_page()
     for scope, want_camera in (("all", 1), ("book", 1), ("manga", 1), ("comic", 1),
                                ("comicissue", 1), ("movie", 0), ("game", 0)):
-        page.goto(f"{proxy_base}/static/native-proof/?type={scope}")
+        page.goto(f"{proxy_base}/static/expo/?type={scope}")
         page.wait_for_timeout(3500)
         state = search_state(page)
         shot = out / f"expo-web-{scope}-phone.png"
@@ -265,7 +265,7 @@ def expo_cases(browser, proxy_base, out, results):
             "state": state, "expected": {"camera": want_camera, "spinner": 0},
             "pass": state["camera"] == want_camera and state["spinner"] == 0,
         })
-    page.goto(f"{proxy_base}/static/native-proof/?type=all")
+    page.goto(f"{proxy_base}/static/expo/?type=all")
     page.wait_for_timeout(3000)
     page.get_by_label("Scan barcode").first.click()
     page.wait_for_timeout(1500)

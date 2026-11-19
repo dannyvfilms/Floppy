@@ -345,7 +345,7 @@ def episode_payload(episode):
     }
 
 
-def _wants_json(request):
+def _wants_manager_json(request):
     """Return whether a request asked for the manager's JSON response."""
     return (
         request.GET.get("format") == "json"
@@ -376,7 +376,7 @@ def podcast_episodes_manage(request, show_id):
         ),
     )
 
-    if _wants_json(request):
+    if _wants_manager_json(request):
         return JsonResponse(
             {"episodes": [episode_payload(episode) for episode in episodes]},
         )
@@ -423,7 +423,7 @@ def podcast_episode_add(request, show_id):
     form = PodcastEpisodeForm(request.POST)
 
     if not form.is_valid():
-        if _wants_json(request):
+        if _wants_manager_json(request):
             return JsonResponse(
                 {"ok": False, "errors": _form_error_payload(form)},
                 status=400,
@@ -436,7 +436,7 @@ def podcast_episode_add(request, show_id):
     episode.episode_uuid = f"manual-{uuid4()}"
     episode.save()
 
-    if _wants_json(request):
+    if _wants_manager_json(request):
         return JsonResponse(
             {"ok": True, "episode": episode_payload(episode)},
         )
@@ -457,7 +457,7 @@ def podcast_episode_edit(request, episode_id):
     form = PodcastEpisodeForm(request.POST, instance=episode)
 
     if not form.is_valid():
-        if _wants_json(request):
+        if _wants_manager_json(request):
             return JsonResponse(
                 {"ok": False, "errors": _form_error_payload(form)},
                 status=400,
@@ -470,7 +470,7 @@ def podcast_episode_edit(request, episode_id):
 
     form.save()
 
-    if _wants_json(request):
+    if _wants_manager_json(request):
         return JsonResponse(
             {"ok": True, "episode": episode_payload(episode)},
         )
@@ -490,7 +490,7 @@ def podcast_episode_delete(request, episode_id):
     title = episode.title
     episode.delete()
 
-    if _wants_json(request):
+    if _wants_manager_json(request):
         return JsonResponse({"ok": True})
 
     messages.success(
@@ -1007,7 +1007,7 @@ def podcast_save(request):
                 self.title = episode.title
                 self.track_number = episode.episode_number
                 self.duration_formatted = (
-                    self._format_duration(episode.duration)
+                    helpers.seconds_to_clock(episode.duration)
                     if episode.duration
                     else None
                 )
@@ -1015,14 +1015,6 @@ def podcast_save(request):
                 self.id = episode.id
                 self.published = episode.published
                 self.episode_uuid = episode.episode_uuid
-
-            def _format_duration(self, seconds):
-                hours = seconds // 3600
-                minutes = (seconds % 3600) // 60
-                secs = seconds % 60
-                if hours > 0:
-                    return f"{hours}:{minutes:02d}:{secs:02d}"
-                return f"{minutes}:{secs:02d}"
 
         class PodcastShowAdapter:
             def __init__(self, show):

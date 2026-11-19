@@ -383,6 +383,16 @@ urlpatterns = [
         name="prefetch_artist_covers",
     ),
     path(
+        "music/artist/<int:artist_id>/albums/",
+        views.artist_discography_more,
+        name="artist_discography_more",
+    ),
+    path(
+        "music/repair/<str:kind>/<int:object_id>/",
+        views.music_repair_status,
+        name="music_repair_status",
+    ),
+    path(
         "music/artist/<int:artist_id>/relation-images/",
         views.prefetch_artist_relation_images,
         name="prefetch_artist_relation_images",

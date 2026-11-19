@@ -208,6 +208,24 @@ class JellyfinClientTests(SimpleTestCase):
         self.assertFalse(self.client.probe_playback_reporting())
 
     @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
+    def test_fetch_playback_activity_coerces_string_rowid(self, mock_request):
+        """The plugin returns rowid as a string; the cursor needs an int."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "results": [
+                    ["999", *[""] * 9],
+                    ["2000", *[""] * 9],
+                    ["not-a-number", *[""] * 9],
+                ],
+            },
+        )
+
+        rows = self.client.fetch_playback_activity(0, 100)
+
+        self.assertEqual([row["rowid"] for row in rows], [999, 2000])
+
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_fetch_playback_activity_parses_rows(self, mock_request):
         """Rows come back positionally and are mapped to named columns."""
         mock_request.return_value = MagicMock(

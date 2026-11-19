@@ -2419,6 +2419,72 @@ def history_card_react(context, entry, card_class, history_mode):
 
 
 @register.simple_tag(takes_context=True)
+def statistics_highlight_cards(context, highlights):
+    """Return the Statistics highlight tiles (first play, last play, today) for the first-paint shell."""
+    from app.statistics_views import _statistics_highlights_model
+
+    return _statistics_highlights_model(highlights, context.get("user"))
+
+
+@register.simple_tag(takes_context=True)
+def list_card_react(context, custom_list, profile_username=None):
+    """Return the shared React card's props for one custom list."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import list_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": list_card_model(
+                custom_list, context.get("user"), context.get("request"), profile_username,
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def filmography_card_react(context, entry, source=None):
+    """Return the shared React card's props for one person-filmography entry."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import filmography_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": filmography_card_model(entry, context.get("user"), source),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def music_tracker_card_react(context, kind, tracker):
+    """Return the shared React card's props for one library artist or album."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import music_tracker_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": music_tracker_card_model(
+                kind, tracker, context.get("user"), context.get("request"),
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
 def media_row_react(context, item, media, title, matched_title):
     """Return the shared React card's props for one Search list-view row."""
     from uuid import uuid4

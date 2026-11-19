@@ -444,6 +444,11 @@ urlpatterns = [
         name="api_music_artist_detail",
     ),
     re_path(
+        r"^music/artists/(?P<artist_id>\d+)/albums/?$",
+        fork_views_music.MusicArtistAlbumsView.as_view(),
+        name="api_music_artist_albums",
+    ),
+    re_path(
         r"^music/artists/(?P<artist_id>\d+)/sync-discography/?$",
         fork_views_music.MusicArtistSyncView.as_view(),
         name="api_music_artist_sync",

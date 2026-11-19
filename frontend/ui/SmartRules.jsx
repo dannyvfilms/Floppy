@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Title } from './Title';
 import { FormError, FormSelect, FormTextField } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -527,7 +528,7 @@ export function SmartRuleBuilder({
   return <View style={[styles.builder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <View style={styles.builderHeader}>
       <View style={styles.builderTitleBlock}>
-        <Text accessibilityRole="header" style={[styles.builderTitle, { color: colors.text }]}>{copy.title}</Text>
+        <Title color={colors.text}>{copy.title}</Title>
         <Text style={[styles.help, { color: colors.textMuted }]}>
           {readOnly ? copy.viewOnly : editMode ? copy.editing : copy.tierRule}
         </Text>
@@ -682,8 +683,7 @@ const styles = StyleSheet.create({
   builder: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },
   builderHeader: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   builderTitleBlock: { flexShrink: 1, minWidth: 0, gap: 2 },
-  builderTitle: { fontSize: 17, fontWeight: '700' },
-  builderActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    builderActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   groupsContent: { gap: 10 },
   group: { borderTopWidth: 1, paddingTop: 10, gap: 8 },
   groupHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },

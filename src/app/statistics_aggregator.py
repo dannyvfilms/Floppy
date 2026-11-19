@@ -682,6 +682,11 @@ def _build_combined_hours_charts(day_minutes_by_type, hour_minutes):
         MediaTypes.MUSIC.value,
         MediaTypes.PODCAST.value,
         MediaTypes.VIDEO.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.MANGA.value,
     )
 
     merged_day_minutes: defaultdict = defaultdict(float)
@@ -794,6 +799,7 @@ class _RangeAccumulators:
         "anime_genres",
         "day_minutes_by_type",
         "day_play_counts",
+        "day_reading_units",
         "game_decades",
         "game_genres",
         "game_rollups",
@@ -826,6 +832,7 @@ class _RangeAccumulators:
         )
         self.day_play_counts = defaultdict(dict)
         self.day_minutes_by_type = defaultdict(dict)
+        self.day_reading_units = defaultdict(dict)
         self.listening_minutes_total = 0
         self.movie_genres = _play_rollup()
         self.tv_genres = _play_rollup()
@@ -1205,9 +1212,13 @@ def _merge_day(acc, day, day_stats):
     for media_type, minutes in day_stats.get("daily_minutes_by_type", {}).items():
         acc.day_minutes_by_type[media_type][day_iso] = minutes
 
+    for media_type, units in day_stats.get("daily_reading_units", {}).items():
+        acc.day_reading_units[media_type][day_iso] = units
+
     _merge_rollups(acc, day_stats)
 
     daily_minutes = day_stats.get("daily_minutes_by_type", {}) or {}
+    reading_units = day_stats.get("daily_reading_units", {}) or {}
     plays_total = sum(totals.get("plays_by_type", {}).values())
     activity_total = plays_total
     # Same rule as the total, kept per media type so the heatmap can
@@ -1218,7 +1229,9 @@ def _merge_day(acc, day, day_stats):
         if plays
     }
     for media_type in _NON_PLAY_ACTIVITY_TYPES:
-        if daily_minutes.get(media_type, 0):
+        if (
+            daily_minutes.get(media_type, 0) or reading_units.get(media_type, 0)
+        ) and not by_type.get(media_type):
             activity_total += 1
             by_type[media_type] = by_type.get(media_type, 0) + 1
     if activity_total == 0 and sum(daily_minutes.values()) > 0:
@@ -1727,7 +1740,11 @@ def _build_hours_per_media_type(acc, user):
     hours_per_media_type = {}
     for media_type, total_minutes in acc.minutes_by_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
-            hours_per_media_type[media_type] = _plays_label(total_minutes)
+            plays = int(acc.plays_by_type.get(media_type, 0))
+            hours_per_media_type[media_type] = (
+                f"{plays} play{'s' if plays != 1 else ''} · "
+                f"{stats._format_hours_minutes(total_minutes, user.duration_format)}"
+            )
         else:
             hours_per_media_type[media_type] = stats._format_hours_minutes(
                 total_minutes, user.duration_format
@@ -2328,7 +2345,7 @@ def _build_reading_consumption(acc, user, media_type, start_date, end_date, row_
     completion_label = _READING_COMPLETION_LABELS.get(media_type, "Items Finished")
     release_label = _READING_RELEASE_LABELS.get(media_type, "Items Released")
     color = config.get_stats_color(media_type)
-    units_by_day = acc.day_minutes_by_type.get(media_type, {})
+    units_by_day = acc.day_reading_units.get(media_type, {})
     unit_total = sum(units_by_day.values()) if units_by_day else 0
 
     completed_lengths, completed_datetimes = _reading_completions(

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { CalendarView } from '../pages/CalendarView';
 import { ReleaseCalendar } from './ReleaseCalendar';
+import { rootStyle } from './rootStyle.web';
 
 function post(url, csrf, fields) {
   return fetch(url, {
@@ -20,7 +21,7 @@ function withAlpha(value, alpha) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const surfaceMuted = token('--color-surface-muted', '#52525b');
   return {
@@ -31,6 +32,7 @@ function readPalette() {
     surfaceMutedSoft: withAlpha(surfaceMuted, 0.4),
     surfaceHover: token('--color-surface-hover', '#3f3f46'),
     border: token('--color-border', '#3f3f46'),
+    surfaceBorder: token('--color-surface-border', '#454d59'),
     text: token('--color-text', '#fafafa'),
     textSecondary: token('--color-text-secondary', '#d4d4d8'),
     textMuted: token('--color-text-muted', '#a1a1aa'),
@@ -94,6 +96,48 @@ function savedFilters(props) {
 function Adapter({ props }) {
   const [palette] = useState(readPalette);
   const [initialFilters] = useState(() => savedFilters(props));
+  const [calendarProps, setCalendarProps] = useState(props);
+  const [monthLoading, setMonthLoading] = useState(false);
+  const [monthError, setMonthError] = useState('');
+  const request = useRef(null);
+  const displayedUrl = useRef(window.location.href);
+
+  async function loadMonth(url, push = true) {
+    if (!url) return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setMonthLoading(true);
+    setMonthError('');
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok || response.redirected) throw new Error('Calendar could not be loaded.');
+      const documentNext = new DOMParser().parseFromString(await response.text(), 'text/html');
+      const data = documentNext.getElementById('calendar-props');
+      if (!data) throw new Error('Calendar could not be loaded.');
+      const next = JSON.parse(data.textContent);
+      if (controller.signal.aborted) return;
+      const emptyNotice = document.querySelector('[data-calendar-empty-notice]');
+      const nextNotice = documentNext.querySelector('[data-calendar-empty-notice]');
+      if (emptyNotice && nextNotice) emptyNotice.hidden = nextNotice.hidden;
+      setCalendarProps(next);
+      if (push) window.history.pushState(null, '', url);
+      displayedUrl.current = window.location.href;
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        if (!push) window.history.replaceState(null, '', displayedUrl.current);
+        setMonthError('Calendar could not be loaded. Please try again.');
+      }
+    } finally {
+      if (request.current === controller) setMonthLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const onPopState = () => loadMonth(window.location.href, false);
+    window.addEventListener('popstate', onPopState);
+    return () => { request.current?.abort(); window.removeEventListener('popstate', onPopState); };
+  }, []);
 
   function persistFilters(filters) {
     try {
@@ -113,7 +157,7 @@ function Adapter({ props }) {
   }
 
   function menuAction({ key, value }) {
-    const menu = props.menu || {};
+    const menu = calendarProps.menu || {};
     if (key === 'fetch') {
       const form = Object.assign(document.createElement('form'), {
         method: 'post',
@@ -129,7 +173,7 @@ function Adapter({ props }) {
       return;
     }
     if (key === 'today') {
-      navigate(menu.urls?.today);
+      loadMonth(menu.urls?.today);
       return;
     }
     if (key === 'download') {
@@ -149,13 +193,15 @@ function Adapter({ props }) {
     chrome={false}
     sections={['calendar']}
     palette={palette}
+    notice={monthError}
     calendar={<ReleaseCalendar
-      {...props}
+      {...calendarProps}
       palette={palette}
       initialFilters={initialFilters}
-      onNavigate={navigate}
+      monthLoading={monthLoading}
+      onNavigate={loadMonth}
       onOpenRelease={(release) => navigate(release.href)}
-      onViewChange={(view) => navigate(props.navigation?.views?.[view])}
+      onViewChange={(view) => navigate(calendarProps.navigation?.views?.[view])}
       onFiltersChange={persistFilters}
       onMenuAction={menuAction} />} />;
 }

@@ -22,6 +22,7 @@ from integrations.oauth_models import (
     OAuthClient,
     OAuthDeviceAuthorization,
 )
+from integrations.oauth_models import no_store as _no_store
 from integrations.oauth_scope_info import (
     FULL_ACCOUNT_SCOPE,
     first_party_full_access_enabled,
@@ -47,12 +48,6 @@ def _rate_limited(request: HttpRequest, bucket: str) -> bool:
         return cache.incr(key) > DEVICE_AUTHORIZATION_LIMIT
     except ValueError:  # the key expired between add and incr
         return False
-
-
-def _no_store(response: JsonResponse) -> JsonResponse:
-    response["Cache-Control"] = "no-store"
-    response["Pragma"] = "no-cache"
-    return response
 
 
 def _oauth_error(

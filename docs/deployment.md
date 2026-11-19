@@ -227,9 +227,9 @@ An empty value does not override a path. A relative path starts from the
 process working directory. Use absolute paths so that each process uses the
 same location.
 
-SQLite startup admission has a 30-second deadline by default. Set
-`FLOPPY_SQLITE_ADMISSION_TIMEOUT` to a positive whole number of seconds to
-adjust it for slower storage. If admission times out, the entrypoint retries
+SQLite startup admission has a 120-second deadline by default, which covers
+slow CPUs and storage. Set `FLOPPY_SQLITE_ADMISSION_TIMEOUT` to a positive
+whole number of seconds to adjust it. If admission times out, the entrypoint retries
 once; a second timeout parks startup before migrations and services start.
 
 If `SECRET` and `SECRET_FILE` are not set, the container stores its generated
@@ -1038,7 +1038,7 @@ directly.
 
 ### If the SQLite startup check times out
 
-Each admission attempt stops after the configured deadline (30 seconds by
+Each admission attempt stops after the configured deadline (120 seconds by
 default); after one retry, two consecutive timeouts park startup. Check the
 command's diagnosis and storage/lock state. A timeout alone is not a corruption
 finding and does not force a scan on the next ordinary restart.

@@ -52,18 +52,20 @@ class StremioPlaybackTaskTests(SimpleTestCase):
     @patch.object(_webhook.verify_stremio_playback, "apply_async")
     @patch.object(_webhook, "_process_webhook")
     @patch("integrations.stremio_playback.start_session")
-    def test_start_schedules_only_a_new_guarded_session(
+    def test_start_hands_the_session_its_verifier_scheduler(
         self, mock_start, mock_process, mock_apply
     ):
+        """start_session queues the verifier itself, before storing the session."""
         mock_start.return_value = PlaybackDecision("schedule", "session-1", 60)
 
-        _webhook.process_stremio_webhook.run(
-            {"id": "tt1", "type": "movie"}, 42
-        )
+        _webhook.process_stremio_webhook.run({"id": "tt1", "type": "movie"}, 42)
 
         mock_process.assert_called_once()
+        schedule = mock_start.call_args.kwargs["schedule"]
+        mock_apply.assert_not_called()
+        schedule("session-1", 60, 0)
         mock_apply.assert_called_once_with(
-            args=["session-1"], countdown=60
+            args=["session-1"], kwargs={"revision": 0}, countdown=60
         )
 
     @patch.object(_webhook.verify_stremio_playback, "apply_async")
@@ -74,24 +76,47 @@ class StremioPlaybackTaskTests(SimpleTestCase):
     ):
         mock_start.return_value = PlaybackDecision("duplicate", "session-1")
 
-        _webhook.process_stremio_webhook.run(
-            {"id": "tt1", "type": "movie"}, 42
-        )
+        _webhook.process_stremio_webhook.run({"id": "tt1", "type": "movie"}, 42)
 
         mock_apply.assert_not_called()
 
     @patch.object(_webhook.verify_stremio_playback, "apply_async")
     @patch("integrations.stremio_playback.observe_session")
-    def test_observer_schedules_a_fresh_task_without_celery_retry(
+    def test_observer_queues_its_successor_through_the_session(
         self, mock_observe, mock_apply
     ):
+        """observe_session queues the next revision before storing it."""
         mock_observe.return_value = PlaybackDecision("schedule", "session-1", 90)
 
-        _webhook.verify_stremio_playback.run("session-1")
+        _webhook.verify_stremio_playback.run("session-1", revision=3)
 
+        kwargs = mock_observe.call_args.kwargs
+        self.assertEqual(kwargs["revision"], 3)
+        mock_apply.assert_not_called()
+        kwargs["schedule"]("session-1", 90, 4)
         mock_apply.assert_called_once_with(
-            args=["session-1"], countdown=90
+            args=["session-1"], kwargs={"revision": 4}, countdown=90
         )
+
+    @patch("integrations.stremio_playback.finish_completion")
+    @patch.object(_webhook, "_process_webhook")
+    @patch("integrations.stremio_playback.observe_session")
+    def test_completion_closes_the_session_only_after_the_play_is_saved(
+        self, mock_observe, mock_process, mock_finish
+    ):
+        payload = {"id": "tt1", "type": "movie", "viewedAt": 1}
+        mock_observe.return_value = PlaybackDecision(
+            "complete", "session-1", payload=payload, user_id=42
+        )
+        mock_process.side_effect = RuntimeError("worker lost")
+
+        with self.assertRaises(RuntimeError):
+            _webhook.verify_stremio_playback.run("session-1")
+        mock_finish.assert_not_called()
+
+        mock_process.side_effect = None
+        _webhook.verify_stremio_playback.run("session-1")
+        mock_finish.assert_called_once_with("session-1")
 
     @patch.object(_webhook, "_process_webhook")
     @patch("integrations.stremio_playback.observe_session")

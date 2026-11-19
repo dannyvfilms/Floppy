@@ -11,6 +11,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app.icon_specs import release_type_icon, status_icon, type_icon
 from app.models import Item, MediaTypes, Status
 from app.templatetags.app_tags import (
     media_status_readable,
@@ -76,6 +77,7 @@ class CalendarLinksView(drf_views.APIView):
                     {
                         "value": media_type,
                         "label": media_type_readable_plural(media_type),
+                        "icon": type_icon(media_type),
                     }
                     for media_type in media_types
                 ],
@@ -83,15 +85,24 @@ class CalendarLinksView(drf_views.APIView):
                     {
                         "value": media_type,
                         "label": media_type_readable_plural(media_type),
+                        "icon": type_icon(media_type),
                     }
                     for media_type in HISTORY_MEDIA_TYPES
                 ],
                 "statuses": [
-                    {"value": status, "label": media_status_readable(status)}
+                    {
+                        "value": status,
+                        "label": media_status_readable(status),
+                        "icon": status_icon(status),
+                    }
                     for status in statuses
                 ],
                 "release_types": [
-                    {"value": value, "label": str(label)}
+                    {
+                        "value": value,
+                        "label": str(label),
+                        "icon": release_type_icon(value),
+                    }
                     for value, label in release_type_choices
                 ],
                 "initial_release_media_types": [

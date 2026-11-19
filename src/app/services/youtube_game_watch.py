@@ -10,6 +10,7 @@ import unicodedata
 
 from django.db.models import Q
 
+from app.helpers import minutes_to_hm
 from app.models import MediaTypes, Video, VideoGameTag
 
 
@@ -45,29 +46,33 @@ def watched_for_game(user, game_item):
     if game_item.media_type != MediaTypes.GAME.value:
         return None
     manual = Video.objects.filter(user=user, game_link__game_item=game_item)
-    tagged = Video.objects.filter(
-        user=user,
-        game_link__isnull=True,
-        item__video_game_tag__status=VideoGameTag.Status.FOUND,
-    ).filter(~Q(pk__in=manual.values("pk")))
-    rows = [(v.progress, v.length_seconds) for v in manual]
-    rows += [
-        (progress, length)
-        for progress, length, title, year in tagged.values_list(
-            "progress",
-            "length_seconds",
-            "item__video_game_tag__game_title",
-            "item__video_game_tag__release_year",
-        )
+    rows = list(manual.values_list("progress", "length_seconds"))
+    # Start from the (few) found tags, not the user's whole video table: walking
+    # every video row to reach its tag is one random read per row on a cold disk.
+    # The tag titles are matched here, then only the matching items' videos load.
+    tagged_items = [
+        item_id
+        for item_id, title, year in VideoGameTag.objects.filter(
+            status=VideoGameTag.Status.FOUND,
+        ).values_list("item_id", "game_title", "release_year")
         if tag_matches_game(title, year, game_item)
     ]
+    if tagged_items:
+        rows += list(
+            Video.objects.filter(
+                user=user,
+                item_id__in=tagged_items,
+                game_link__isnull=True,
+            )
+            .filter(~Q(pk__in=manual.values("pk")))
+            .values_list("progress", "length_seconds"),
+        )
     if not rows:
         return None
     videos = len(rows)
     # Position can pass the runtime after a rewatch or a seek past the end.
     seconds = sum(min(p, n) if n else p for p, n in rows)
-    hours, minutes = divmod(seconds // 60, 60)
-    label = f"{hours}h {minutes}m" if hours else f"{minutes}m"
+    label = minutes_to_hm(seconds // 60)
     return {
         "videos": videos,
         "seconds": seconds,
