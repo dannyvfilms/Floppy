@@ -1,8 +1,49 @@
 {% load i18n %}
 {% load app_tags %}
+{% load static %}
 {# Deferred Rotten Tomatoes extras, swapped in after the detail page renders. #}
-{# The link chip replaces the empty #detail-link-rt span inside the popup's #}
-{# "External links" section out-of-band so it lands next to the other chips. #}
+{# The score cards and link chip arrive out-of-band: the cards join the score #}
+{# row's #detail-score-rt slot and the chip joins the links popup's "External #}
+{# links" section. An unresolved match leaves both slots empty. #}
+{% if rt_scores.tomatometer or rt_scores.popcornmeter %}
+  <span id="detail-score-rt" hx-swap-oob="true" class="contents">
+    {% if rt_scores.tomatometer %}
+      <a href="{{ rt_scores.url }}"
+         target="_blank"
+         rel="noopener noreferrer"
+         title="{% translate 'Rotten Tomatoes Tomatometer' %}"
+         class="detail-provider-score-card detail-provider-score-card--rt-tomatometer inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-red-400/18 bg-red-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+        <span class="sr-only">{% translate "Rotten Tomatoes Tomatometer" %}</span>
+        <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-red-400/28 bg-red-500/14 sm:h-8 sm:w-8">
+          {% include "app/icons/tomato.svg" with classes="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-400" %}
+        </span>
+        <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ rt_scores.tomatometer.value }}{{ rt_scores.tomatometer.suffix }}</span>
+        {% if rt_scores.tomatometer.count %}
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ rt_scores.tomatometer.count }}</span>
+        {% endif %}
+      </a>
+    {% endif %}
+    {% if rt_scores.popcornmeter %}
+      <a href="{{ rt_scores.url }}"
+         target="_blank"
+         rel="noopener noreferrer"
+         title="{% translate 'Rotten Tomatoes Popcornmeter' %}"
+         class="detail-provider-score-card detail-provider-score-card--rt-popcornmeter inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-orange-400/18 bg-orange-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+        <span class="sr-only">{% translate "Rotten Tomatoes Popcornmeter" %}</span>
+        <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-orange-400/28 bg-orange-500/14 sm:h-8 sm:w-8">
+          {% include "app/icons/popcorn.svg" with classes="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-400" %}
+        </span>
+        <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ rt_scores.popcornmeter.value }}{{ rt_scores.popcornmeter.suffix }}</span>
+        {% if rt_scores.popcornmeter.count %}
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ rt_scores.popcornmeter.count }}</span>
+        {% endif %}
+      </a>
+    {% endif %}
+  </span>
+{% endif %}
+
 {% if rt_link %}
   <div id="detail-link-rt" hx-swap-oob="true">
     <a href="{{ rt_link.url }}"
@@ -23,4 +64,3 @@
     </a>
   </div>
 {% endif %}
-

@@ -813,11 +813,13 @@ def rt_extras(
     """HTMX fragment: the deferred Rotten Tomatoes extras for a detail page.
 
     Loaded after the page renders because a cold match searches and scrapes
-    rottentomatoes.com; results cache for a week. Returns an out-of-band
-    external-links chip for movie/TV/anime/season pages (which warms the
-    match cache `_build_detail_link_sections` reads on later renders).
+    rottentomatoes.com; results cache for a week. Returns out-of-band
+    Tomatometer/Popcornmeter score cards plus an external-links chip for
+    movie/TV/anime/season pages (which warms the match cache
+    `_build_detail_link_sections` reads on later renders).
     """
     rt_link = None
+    rt_scores = None
 
     try:
         if media_type == MediaTypes.SEASON.value:
@@ -827,13 +829,14 @@ def rt_extras(
                 source,
                 [season_number],
             )
-            season_data = rottentomatoes.season_scores(tv_metadata, season_number)
-            rt_link = (season_data or {}).get("url")
+            rt_scores = rottentomatoes.season_scores(tv_metadata, season_number)
+            rt_link = (rt_scores or {}).get("url")
         elif media_type in rottentomatoes.LINKED_MEDIA_TYPES:
             media_metadata = services.get_media_metadata(
                 media_type, media_id, source
             )
-            rt_link = (rottentomatoes.media_scores(media_metadata) or {}).get("url")
+            rt_scores = rottentomatoes.media_scores(media_metadata)
+            rt_link = (rt_scores or {}).get("url")
     except services.ProviderAPIError:
         # the page already showed any provider error; just leave the extras out
         logger.warning(
@@ -850,6 +853,7 @@ def rt_extras(
         "app/components/rt_extras.html",
         {
             "rt_link": rt_link_entry,
+            "rt_scores": rt_scores,
         },
     )
 
