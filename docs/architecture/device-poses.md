@@ -40,7 +40,7 @@ if (isPose(pose, 'partial')) { /* ... */ }
 `poseValue` takes the most specific key that matches (a whole pose, then a fold, then an orientation) and falls back to
 `default`, so a rule can start broad and be narrowed for one pose.
 
-- **Expo:** `useDevicePose()` (`native-proof/app/data/useDevicePose.js`) combines `expo-hinge` and the window size. Media
+- **Expo:** `useDevicePose()` (`expo/app/data/useDevicePose.js`) combines `expo-hinge` and the window size. Media
   Details also gets `pose` on its `heroViewport`.
 - **PWA:** `frontend/settings/pose.web.js` sets `data-pose`, `data-pose-fold` and `data-pose-orientation` on `<html>`
   and fires a `devicepose` event on `window` when it changes. `window.__devicePose` holds the current pose. CSS can use

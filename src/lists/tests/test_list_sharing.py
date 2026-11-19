@@ -45,7 +45,8 @@ class ListSharingTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Planning")
-        self.assertContains(response, "Shared with you · view only")
+        # The card reads this line from its JSON props, where the middle dot is escaped.
+        self.assertContains(response, "Shared with you \\u00b7 view only")
 
     def test_viewer_opens_the_list_without_edit_controls(self):
         """The detail page renders for a viewer without add or edit actions."""

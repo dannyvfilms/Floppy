@@ -114,8 +114,8 @@ def tracked_tests(root: Path) -> list[str]:
 
 
 def _where_to_add(path: str) -> str:
-    if path.startswith("native-proof/"):
-        return "add it under native-proof/app/ (test:transport in native-proof/package.json)"
+    if path.startswith("expo/"):
+        return "add it under expo/app/ (test:transport in expo/package.json)"
     return (
         "add it to test:js-logic in package.json "
         "(or test:ui-render if it needs --test-force-exit)"

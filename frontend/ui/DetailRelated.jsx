@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { MediaCard } from './MediaCard';
+import { dlcCardModel } from './cardModels';
 import { RatingStars } from './RatingStars';
 
 const DEFAULT_LABELS = {
@@ -116,35 +117,25 @@ function RelatedSection({
   </View>;
 }
 
-function SteamDlcCard({ dlc, width, palette }) {
-  return <View style={{ width }}>
-    <View style={[styles.steamArtwork, { width, backgroundColor: palette.placeholder,
-      borderColor: palette.border }]}>
-      {dlc.image
-        ? <Image source={{ uri: dlc.image }} style={StyleSheet.absoluteFill} resizeMode="cover"
-          accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-        : <Text numberOfLines={2} style={[styles.steamPlaceholder, { color: palette.textMuted }]}>{dlc.title}</Text>}
-    </View>
-    <Text numberOfLines={2} style={[styles.steamTitle, { color: palette.text }]}>{dlc.title}</Text>
-  </View>;
+function SteamDlcCard({ dlc, width, palette, onOpen }) {
+  return <MediaCard variant="grid" model={dlcCardModel(dlc)} width={width}
+    palette={{ ...palette, card: palette.surface }} onOpen={onOpen} onAction={onOpen} />;
 }
 
 function SteamDlcSection({ dlcs, width, labels, palette, onOpenExternal, web = false }) {
   if (!dlcs?.length) return null;
   const gap = 12;
-  const cardWidth = web ? '100%' : Math.max(120, Math.floor((width - gap) / 2));
+  // Two across on a phone; three across in the browser, where the section is wider.
+  const cardWidth = web ? '31%' : Math.max(120, Math.floor((width - gap) / 2));
   return <View style={styles.section}>
     <Text accessibilityRole="header" aria-level={2} style={[styles.sectionTitle, { color: palette.text }]}>
       {labels.dlcs}
     </Text>
     <View style={styles.grid}>
-      {dlcs.map((dlc, index) => <Pressable key={`${dlc.url}-${index}`} accessibilityRole="link"
-        accessibilityLabel={dlc.title}
-        disabled={!onOpenExternal}
-        onPress={() => onOpenExternal?.(dlc.url)}
-        style={styles.steamCard}>
-        <SteamDlcCard dlc={dlc} width={cardWidth} palette={palette} />
-      </Pressable>)}
+      {dlcs.map((dlc, index) => <View key={`${dlc.url}-${index}`} style={[styles.steamCard, { width: cardWidth }]}>
+        <SteamDlcCard dlc={dlc} width={cardWidth} palette={palette}
+          onOpen={onOpenExternal ? () => onOpenExternal(dlc.url) : undefined} />
+      </View>)}
     </View>
   </View>;
 }

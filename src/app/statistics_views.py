@@ -527,10 +527,14 @@ def _statistics_summary_model(media_type, row, comparison, period_label):
 def _statistics_highlight_card(entry, key, label, prefix, user):
     if not entry:
         return None
+    # Cached labels are stored untranslated (gettext_noop), so they translate here, per request.
+    label = gettext(label)
     played_at = entry.get("played_at")
-    date_label = prefix
+    date_label = gettext(prefix)
     if played_at is not None:
-        date_label = f"{prefix} {app_tags.date_format(played_at, user)}".strip()
+        date_label = gettext("Played %(value_1)s") % {
+            "value_1": app_tags.date_format(played_at, user),
+        }
     media_type = entry.get("media_type") or ""
     return {
         "key": key,
@@ -565,7 +569,7 @@ def _statistics_highlights_model(history_highlights, user):
             user,
         )
         if card:
-            card["date"] = f"{today_card.get('date_prefix') or 'Played in'} {today_card.get('year') or ''}".strip()
+            card["date"] = f"{gettext(today_card.get('date_prefix') or 'Played in')} {today_card.get('year') or ''}".strip()
             month = history_highlights.get("today_month")
             day = history_highlights.get("today_day")
             params = []

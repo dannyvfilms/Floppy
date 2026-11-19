@@ -72,11 +72,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -92,11 +92,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -112,11 +112,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -132,11 +132,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -2030,12 +2030,12 @@
       "register": "PLAYBACK",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "PlaybackCard uses the standard MediaCard indigo fill for playing and paused/stale progress states; browser runtime verification remains pending."
+          "status": "verified",
+          "evidence": "Now Playing mounts the grid MediaCard, RailTitle and IconButton; before/after rendered in Chromium (manual and session check-ins)."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "The earlier Now Playing layout was checked on Device Hub iPhone Duo (iOS 27.2); the latest playing and paused/stale color change has not been verified in a reloaded bundle."
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
         },
         "android": {
           "status": "unverified",
@@ -3815,6 +3815,46 @@
           "evidence": "Shared Collection and calendar row; runtime verification pending."
         }
       }
+    },
+    "frontend/ui/IconButton.jsx": {
+      "components": [
+        "IconButton"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing Pause, Stop and Cancel buttons in Chromium beside the previous controls."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RailTitle.jsx": {
+      "components": [
+        "RailTitle"
+      ],
+      "register": "RAILS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing heading in Chromium at the Home row heading size; Rail draws its row titles with it."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4012,7 +4052,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
@@ -4308,11 +4348,83 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Pure JavaScript with no platform API, moved from native-proof/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
+          "evidence": "Pure JavaScript with no platform API, moved from expo/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
         },
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; native transport tests pass. Not run on an emulator or device in this change."
+        }
+      }
+    },
+    "frontend/ui/cardModels.js": {
+      "components": [
+        "highlightCardModel",
+        "personCardModel",
+        "creditCardModel",
+        "dlcCardModel",
+        "relatedCardModel",
+        "rankedRowModel",
+        "musicAlbumCardModel",
+        "musicRelationCardModel",
+        "musicTrackRowModel",
+        "podcastEpisodeRowModel"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenu.js": {
+      "components": [
+        "buildCardMenu",
+        "menuActionLabel",
+        "CARD_STATUSES"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenuHost.js": {
+      "components": [
+        "setCardMenu",
+        "getCardMenu"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Android runtime not exercised."
         }
       }
     }
@@ -5945,7 +6057,7 @@
     },
     "frontend/ui/homeRowWatcher.web.js": {
       "register": "HOME",
-      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: native-proof/app/data/homeRowWatcherCore.js."
+      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: expo/app/data/homeRowWatcherCore.js."
     },
     "frontend/ui/rootStyle.web.js": {
       "register": "TOKENS",
@@ -5958,6 +6070,10 @@
     "frontend/ui/mountIntegrationPanels.jsx": {
       "register": "INTEGRATION-PANELS",
       "purpose": "Mount the shared ArrLibraryPanels over the server-rendered track modal library panel: resolve theme tokens, render Open in Radarr/Sonarr/Seerr as real anchors, copy paths through the browser clipboard adapter and send Search now through the existing HTMX POST that swaps the panel; the server markup stays the fallback."
+    },
+    "frontend/ui/sidebarPins.web.js": {
+      "register": "MEDIA-CARD",
+      "purpose": "Browser transport for the account's sidebar pins, used by the list card's Pin to sidebar button. Expo has no sidebar to pin to."
     }
   }
 }

@@ -2,6 +2,8 @@ import React from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MarkdownPreview } from './MarkdownPreview';
 import { Icon } from './Icon';
+import { MediaCard } from './MediaCard';
+import { relatedCardModel } from './cardModels';
 import { ProviderLogo } from './ProviderLogo';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
@@ -320,27 +322,6 @@ export function DetailEpisodeCards({ title, count, order, orderLabel, onOrderCha
   </View>;
 }
 
-function OverlayCard({ src, title, palette, width, height, accessibilityLabel, accessibilityRole, onPress, disabled, highlighted, fillWidth }) {
-  const [failed, setFailed] = React.useState(false);
-  const uri = failed ? '' : src;
-  const frame = [styles.overlayCard, fillWidth ? { flex: 1, aspectRatio: width / height } : { width, height }, {
-    backgroundColor: palette.placeholder,
-    borderColor: highlighted ? palette.accent : 'transparent',
-    borderWidth: highlighted ? 2 : 0,
-  }];
-  const body = <>
-    {uri ? <Image source={{ uri }} resizeMode="cover" style={StyleSheet.absoluteFill} accessible={false}
-      onError={() => setFailed(true)} /> : <View style={styles.overlayPlaceholder}>
-      <Icon spec={actionIcons.image} size={48} color={palette.textMuted} />
-    </View>}
-    {[56, 62, 68, 74, 80, 86, 92].map(top => [`${top}%`, 0.14]).map(([top, opacity]) => <View key={top} pointerEvents="none"
-      style={[styles.overlayShade, { backgroundColor: palette.background, top, opacity }]} />)}
-    <Text numberOfLines={1} style={[styles.overlayTitle, { color: palette.text }]}>{title}</Text>
-  </>;
-  if (disabled || !onPress) return <View accessible accessibilityLabel={accessibilityLabel} style={frame}>{body}</View>;
-  return <Pressable accessibilityRole={accessibilityRole || 'link'} accessibilityLabel={accessibilityLabel} onPress={onPress} style={frame}>{body}</Pressable>;
-}
-
 /** The web related-media grid (franchise collection, DLC): three cards a row, current title outlined. */
 export function DetailRelatedGrid({ title, items, palette, onOpen, current, moreLabel = 'Show more', lessLabel = 'Show less' }) {
   const [all, setAll] = React.useState(false);
@@ -350,9 +331,9 @@ export function DetailRelatedGrid({ title, items, palette, onOpen, current, more
     <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
     <View style={styles.relatedGrid}>
       {shown.map(item => <View key={item.key} style={styles.relatedCell}>
-        <OverlayCard src={item.image} title={item.title} palette={palette} width={2} height={3} fillWidth
-          accessibilityLabel={item.title} highlighted={Boolean(current && String(item.identity?.mediaId) === String(current))}
-          onPress={() => onOpen?.(item)} />
+        <MediaCard variant="grid" width="100%" palette={{ ...palette, card: palette.surface }}
+          model={relatedCardModel(item, Boolean(current && String(item.identity?.mediaId) === String(current)))}
+          onOpen={onOpen ? () => onOpen(item) : undefined} />
       </View>)}
     </View>
     {items.length > 6 ? <Pressable accessibilityRole="button" onPress={() => setAll(value => !value)} style={styles.showMore}>

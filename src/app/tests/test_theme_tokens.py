@@ -175,7 +175,7 @@ class ThemeTokenContractTests(SimpleTestCase):
         self.assertNotIn("padding-left:", row_rule.group("body"))
         self.assertNotIn("margin-left:", row_rule.group("body"))
 
-    def test_media_card_hover_outline_stays_inside_above_progress(self):
+    def test_media_card_hover_outline_stays_inside_under_progress(self):
         css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(
             encoding="utf-8"
         )
@@ -192,7 +192,8 @@ class ThemeTokenContractTests(SimpleTestCase):
         self.assertNotIn("hover:ring-2 hover:ring-indigo-500", template)
         self.assertIsNotNone(outline_rule)
         self.assertIn("inset: 0", outline_rule.group("body"))
-        self.assertIn("z-index: 30", outline_rule.group("body"))
+        # Under the progress bar (z-20), so the bar never moves and the outline grows out of it.
+        self.assertIn("z-index: 19", outline_rule.group("body"))
 
     def test_completed_appearance_animations_release_fixed_modals(self):
         css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(

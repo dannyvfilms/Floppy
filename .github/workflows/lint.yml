@@ -63,11 +63,11 @@ jobs:
         run: npm run check:ui-architecture
 
       - name: Install isolated Expo proof dependencies
-        working-directory: native-proof
+        working-directory: expo
         run: npm ci --ignore-scripts
 
       # Every *.test.mjs in the repository: the web logic and render tests in
-      # scripts/ and the Expo app's transport tests in native-proof/app/.
+      # scripts/ and the Expo app's transport tests in expo/app/.
       # scripts/check_js_tests.py fails first if a test file is in no list.
       - name: JavaScript tests
         env:
@@ -75,7 +75,7 @@ jobs:
         run: npm run test:js
 
       - name: Export Expo platform bundles
-        working-directory: native-proof
+        working-directory: expo
         env:
           CI: "1"
         run: npm run export -- --platform all
@@ -83,7 +83,7 @@ jobs:
       # Both npm audits allow only the dated exceptions in
       # .github/npm-audit-exceptions.json; an expired one fails again.
       - name: Audit Expo proof dependencies
-        working-directory: native-proof
+        working-directory: expo
         run: node ../scripts/npm_audit_gate.mjs --audit-level=high
 
       - name: Audit frontend build dependencies
