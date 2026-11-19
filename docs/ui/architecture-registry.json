@@ -644,6 +644,26 @@
         }
       }
     },
+    "frontend/ui/Title.jsx": {
+      "components": [
+        "Title"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; the web dialogs that now mount it (Dialog, history, people, bulk, tags, forms) were not re-rendered in Chromium for this change."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone Duo and iPhone 16 simulators rendered the presentation sheet title and an on-device old-versus-new comparison of every migrated title through Title (comparison route not kept). The dialog consumers were not opened one by one."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
     "frontend/ui/DropdownMenu.jsx": {
       "components": [
         "DropdownMenu",
@@ -5772,7 +5792,7 @@
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
-      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail, and warm the next screens of posters once the on-screen ones have loaded."
     },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",

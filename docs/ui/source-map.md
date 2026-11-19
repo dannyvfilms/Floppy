@@ -94,6 +94,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
 - `frontend/ui/DropdownMenu.jsx` (`FORM-CONTROLS` shared anchored presentation, consumed by Sidebar and the opt-in SelectField popover; web and Android runtime regression unverified)
+- `frontend/ui/Title.jsx` (`FORM-CONTROLS` shared title for sheets, dialogs, form bars and pages: 16, 18, 20 and 24 pt at 600, and 24 and 28 pt at 700; consumers: `AdaptivePresentationSheet`, `Screen`, `BarcodeScannerModal`, `ListDetailScreen`, `MusicParts`, `controls/Dialog`, `SelectField`, `MediaCardFormControls`, `HistoryFeed`, `PeopleToolbar`, `BulkActions`, `TagManagement`, `TrackForm`, `SmartRules`, `StatisticsSections`, `ListHeader`, `ListRecommendationsView`, `DeviceConnect`; universal react-native, web and native; `DeviceApproval`, hero and detail headings and Home row titles keep their own)
 - `expo/app/components/AdaptivePresentationSheet.jsx`, `expo/app/components/SheetCloseButton.jsx`, `expo/app/components/SheetCloseButton.ios.jsx`, `expo/app/components/SheetHost.jsx`, `expo/app/components/SheetHost.ios.jsx`, `expo/app/components/useSheetInsets.js`, `expo/app/components/useSheetInsets.ios.js` (Expo UI sheet adapter and platform close controls; iOS applies a reduced horizontal safe-area inset to content while the close control can occupy the Duo rail; Detail actions consume it, while other modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
 - Detail Collection uses the shared embedded `CollectionCopyDialog` inside `AdaptivePresentationSheet`; Collection screen and web dialog consumers remain. `DropdownMenu` supplies the sidebar and optional `SelectField` popover; multi-select is opt-in. The native modal host isolates registration from active-entry updates and sheets host nested dialogs locally. These remain partial/coexisting until remaining consumers migrate; Duo opened the Collection sheet and selected Format, while browser, Android and multi-select runtime remain unverified.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
@@ -1452,7 +1453,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
 - `frontend/ui/Rail.jsx`
-- `frontend/ui/Rail.web.jsx`
+- `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`

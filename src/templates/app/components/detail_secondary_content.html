@@ -526,7 +526,7 @@
         {% if cast_row.total %}
           <section class="mb-3" {% detail_section_attrs user detail_family "content" "cast" %}>
             {% people_cast row=cast_row source=media.source collapse_key="detail-cast-open" %}
-              {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
+              {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" rails_mount=True %}
             {% endpeople_cast %}
           </section>
         {% endif %}
@@ -534,7 +534,7 @@
         {% if crew_row.total %}
           <section class="mb-3" {% detail_section_attrs user detail_family "content" "crew" %}>
             {% people_cast row=crew_row source=media.source collapse_key="detail-crew-open" %}
-              {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
+              {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" rails_mount=True %}
             {% endpeople_cast %}
           </section>
         {% endif %}
