@@ -105,6 +105,7 @@
                   hx-swap="none"
                   x-data="mediaForm"
                   x-init="init"
+                  data-default-edit-entry-date="{{ request.user.default_edit_entry_date }}"
                   {% if general_existing_instance %}data-existing-instance{% endif %}
                   @submit="closeTrackModal($el)">
           {% csrf_token %}

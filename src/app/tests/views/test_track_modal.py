@@ -136,6 +136,35 @@ class TrackModalViewTests(TestCase):
             progress=0,
         )
 
+    @patch("app.track_modal_views.tmdb.metadata_languages", return_value=[])
+    def test_track_modal_exposes_default_edit_entry_date_to_the_form(
+        self, _mock_languages,
+    ):
+        """The saved preference reaches an existing tracking form."""
+        self.user.default_edit_entry_date = "no_date"
+        self.user.save(update_fields=["default_edit_entry_date"])
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            ),
+            {"instance_id": self.movie.pk},
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        model = response.context["track_form_presentation"]["model"]
+        self.assertEqual(model.get("defaultEditEntryDate"), "no_date")
+        self.assertTrue(
+            'data-default-edit-entry-date="no_date"' in response.content.decode(),
+            "The track form omitted the user's saved end-date preference.",
+        )
+
     def assert_release_shortcut_labels(self, response, count=2):
         """The release date picker should carry the release-date suggestion label."""
         self.assertIn("Release Date", response.content.decode())

@@ -208,6 +208,64 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_label("Public username", exact=True)).to_have_value("public-person")
         self.assertEqual(self.errors, [])
 
+    def test_default_end_date_setting_uses_shared_control_and_saves(self):
+        """The shared preference control saves through the existing browser form."""
+        for target, return_value in (
+            ("users.views.tmdb.watch_provider_regions", []),
+            ("users.views.tmdb.metadata_languages", []),
+        ):
+            provider_patch = patch(target, return_value=return_value)
+            provider_patch.start()
+            self.addCleanup(provider_patch.stop)
+        response = self.page.goto(f"{self.live_server_url}/settings/preferences")
+        self.assertEqual(response.status, 200)
+
+        trigger = self.select_trigger("Default End Date")
+        expect(trigger).to_contain_text("Current Date")
+        if screenshot_path := os.environ.get("FLOPPY_UI_EVIDENCE_PATH"):
+            self.page.screenshot(path=screenshot_path, full_page=True)
+        self.choose_option("Default End Date", "No End Date")
+
+        form = self.page.locator('form[x-data="formDirtyTracker()"]')
+        active_values = form.locator('[name="default_edit_entry_date"]:enabled')
+        expect(active_values).to_have_count(1)
+        expect(active_values).to_have_value("no_date")
+        with self.page.expect_response(
+            lambda item: item.request.method == "POST"
+            and "/settings/preferences" in item.url,
+        ) as saved:
+            form.get_by_role("button", name="Save Preferences", exact=True).click()
+        self.assertEqual(saved.value.status, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.default_edit_entry_date, "no_date")
+        self.assertEqual(self.errors, [])
+
+    def test_default_end_date_server_fallback_saves_without_react_bundle(self):
+        """The native select fallback remains usable if the settings island fails."""
+        self.block_renderer = True
+        for target, return_value in (
+            ("users.views.tmdb.watch_provider_regions", []),
+            ("users.views.tmdb.metadata_languages", []),
+        ):
+            provider_patch = patch(target, return_value=return_value)
+            provider_patch.start()
+            self.addCleanup(provider_patch.stop)
+        response = self.page.goto(f"{self.live_server_url}/settings/preferences")
+        self.assertEqual(response.status, 200)
+
+        fallback = self.page.locator('select[name="default_edit_entry_date"]')
+        expect(fallback).to_be_visible()
+        fallback.select_option("no_date")
+        form = self.page.locator('form[x-data="formDirtyTracker()"]')
+        with self.page.expect_response(
+            lambda item: item.request.method == "POST"
+            and "/settings/preferences" in item.url,
+        ) as saved:
+            form.get_by_role("button", name="Save Preferences", exact=True).click()
+        self.assertEqual(saved.value.status, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.default_edit_entry_date, "no_date")
+
     def test_shared_import_preferences_and_steam_tooltip(self):
         """The retained provider uses the same controls and clamps help to the viewport."""
         self.page.set_viewport_size({"width": 390, "height": 850})

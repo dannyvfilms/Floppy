@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { View } from 'react-native';
 import { mountRoot } from './root';
+import { SelectField } from '../ui/SelectField';
 import { SettingsView } from '../pages/SettingsView';
 import { SettingsAccountView } from '../pages/SettingsAccountView';
 import { SettingsPreferencesView } from '../pages/SettingsPreferencesView';
@@ -50,6 +52,72 @@ const pagePalette = {
   radius: 8,
 };
 
+const preferenceFieldPalette = {
+  surface: 'var(--color-panel)',
+  surfaceStrong: 'var(--color-surface-strong)',
+  surfaceMuted: 'var(--color-surface-muted)',
+  border: 'var(--color-surface-border)',
+  fieldBorder: 'var(--color-surface-border)',
+  text: 'var(--color-text)',
+  textSecondary: 'var(--color-text-secondary)',
+  textMuted: 'var(--color-text-muted)',
+  accent: 'var(--color-link)',
+  accentStrong: 'var(--color-link)',
+  accentText: 'var(--color-text)',
+  overlay: 'rgba(0, 0, 0, 0.55)',
+  disabled: 'var(--color-text-muted)',
+  preferenceCards: true,
+};
+
+function DefaultEditEntryDateField({ field }) {
+  const fallback = field?.querySelector('[data-default-edit-entry-date-fallback]');
+  const fallbackSelect = fallback?.querySelector('select[name="default_edit_entry_date"]');
+  const reactRoot = field?.querySelector('[data-default-edit-entry-date-react]');
+  const valueInput = field?.querySelector('[data-default-edit-entry-date-value]');
+  const [value, setValue] = useState(fallbackSelect?.value || 'current_date');
+
+  useEffect(() => {
+    if (!fallback || !fallbackSelect || !reactRoot || !valueInput) return undefined;
+    valueInput.value = fallbackSelect.value;
+    valueInput.disabled = false;
+    fallbackSelect.disabled = true;
+    fallback.hidden = true;
+    reactRoot.hidden = false;
+    return () => {
+      fallbackSelect.value = valueInput.value;
+      fallbackSelect.disabled = false;
+      valueInput.disabled = true;
+      fallback.hidden = false;
+      reactRoot.hidden = true;
+    };
+  }, [fallback, fallbackSelect, reactRoot, valueInput]);
+
+  if (!fallbackSelect || !reactRoot || !valueInput) return null;
+  const options = Array.from(fallbackSelect.options, option => ({
+    value: option.value,
+    label: option.textContent || '',
+  }));
+  const change = event => {
+    const nextValue = String(event.target.value);
+    setValue(nextValue);
+    valueInput.value = nextValue;
+    valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+    valueInput.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  return createPortal(<SelectField
+    id="default_edit_entry_date"
+    name="default_edit_entry_date"
+    label={field.dataset.label}
+    help={field.dataset.help}
+    options={options}
+    value={value}
+    palette={preferenceFieldPalette}
+    iconChevron
+    onChange={change}
+  />, reactRoot);
+}
+
 // Keep the server-rendered page body in place. React mounts a plain container and
 // the original node is re-parented into it; unmount restores the cloned fallback.
 function ServerContent({ node }) {
@@ -61,20 +129,26 @@ function ServerContent({ node }) {
 
 export function mountSettingsView(host, props) {
   const content = host.querySelector('[data-settings-page-content]');
+  const defaultEndDateField = props.page === 'settingsPreferences'
+    ? content?.querySelector('[data-default-edit-entry-date-field]')
+    : null;
   const Page = PAGES[props.page];
   const contentSlot = content ? <ServerContent node={content} /> : null;
-  const dispose = mountRoot(host, <SettingsView
-    active={props.active}
-    navigation={props.navigation}
-    permissions={props.permissions}
-    availablePages={props.availablePages}
-    labels={props.labels}
-    icons={props.icons}
-    palette={pagePalette}>
-    {Page
-      ? <Page heading={false} content={contentSlot} labels={props.labels} palette={pagePalette} />
-      : contentSlot}
-  </SettingsView>);
+  const dispose = mountRoot(host, <>
+    <SettingsView
+      active={props.active}
+      navigation={props.navigation}
+      permissions={props.permissions}
+      availablePages={props.availablePages}
+      labels={props.labels}
+      icons={props.icons}
+      palette={pagePalette}>
+      {Page
+        ? <Page heading={false} content={contentSlot} labels={props.labels} palette={pagePalette} />
+        : contentSlot}
+    </SettingsView>
+    {defaultEndDateField ? <DefaultEditEntryDateField field={defaultEndDateField} /> : null}
+  </>);
   // Anchors rendered by React are new to HTMX. Boost only the navigation card so
   // settings links keep the body-swap behavior and content links keep their
   // normal navigation, matching the server fallback.

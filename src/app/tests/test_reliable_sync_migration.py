@@ -17,8 +17,9 @@ class ReliableSyncMigrationTests(TransactionTestCase):
         """An active provider survives upgrade; earlier gaps cannot appear complete."""
         executor = MigrationExecutor(connection)
         after = executor.loader.graph.leaf_nodes()
-        before = [node for node in after if node[0] != "app"] + [
-            ("app", "0215_video_game_tag")
+        before = [node for node in after if node[0] not in {"app", "users"}] + [
+            ("app", "0215_video_game_tag"),
+            ("users", "0158_sidebar_pins"),
         ]
         executor.migrate(before)
         try:

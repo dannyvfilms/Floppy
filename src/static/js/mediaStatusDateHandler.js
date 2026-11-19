@@ -477,7 +477,12 @@ document.addEventListener("alpine:init", () => {
     shouldDefaultEndDate() {
       const statusField = this.$el.querySelector('[name="status"]');
       const endDateField = this.$el.querySelector('[name="end_date"]');
-      if (!statusField || !endDateField || this.endCleared) {
+      if (
+        !statusField ||
+        !endDateField ||
+        this.endCleared ||
+        this.$el.dataset.defaultEditEntryDate === "no_date"
+      ) {
         return false;
       }
       const status = statusField.value;
