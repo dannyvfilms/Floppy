@@ -225,7 +225,7 @@ function Title({ model, palette, onOpen, onOpenLink, onLongPress }) {
   }
   const text = <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>{model.title}</Text>;
   if (!onOpen) return <View style={styles.titleColumn}>{text}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpen} onLongPress={onLongPress}
+  return <Pressable accessibilityRole="link" accessibilityLabel={model.accessibilityLabel || model.title} onPress={onOpen} onLongPress={onLongPress}
     style={styles.titleColumn}>{text}</Pressable>;
 }
 

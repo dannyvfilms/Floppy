@@ -60,6 +60,8 @@ export function personCardModel(person = {}) {
 // A title in a person's credits: the role and the year and type underneath.
 export function creditCardModel(entry = {}) {
   const meta = [entry.year, entry.mediaTypeLabel].filter(Boolean).join(' · ');
+  const role = entry.role || entry.roleLine;
+  const ageLabel = entry.ageLabel || '';
   const chip = entry.watchedRuntimeLabel
     ? { kind: 'text', position: 'top-right', text: entry.watchedRuntimeLabel }
     : entry.voteAverage
@@ -70,7 +72,12 @@ export function creditCardModel(entry = {}) {
     href: entry.href,
     image: image(entry.imageUrl, entry.imageFallback),
     title: entry.title,
-    lines: [line(entry.role || entry.roleLine, { clamp: false }), line(meta, { dormant: true })].filter(Boolean),
+    accessibilityLabel: [entry.title, role, ageLabel.replace(/\s*\n\s*/g, ', ')].filter(Boolean).join(', '),
+    lines: [
+      line(role, { clamp: false }),
+      ageLabel ? line(ageLabel, { variant: 'credit-age', clamp: false }) : null,
+      line(meta, { dormant: true }),
+    ].filter(Boolean),
     statusChip: null,
     cornerChips: chip ? [chip] : [],
     actions: null,
