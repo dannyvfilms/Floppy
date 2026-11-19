@@ -446,6 +446,13 @@ export function createRemoteLibraryActions(request) {
       const { subview, groupBy, ...queryParams } = params;
       const path = libraryPath(params.mediaType, subview);
       const query = libraryQuery({ ...queryParams, group_by: groupBy, subview });
+      if (query.sort === 'end_date' && path.startsWith('/api/v1/media/')) {
+        // This screen labels end_date "Last watched", as the web does. The web
+        // maps it to the last_watched order (an unfinished title sorts by its
+        // last play); the media API keeps end_date as the literal completion
+        // date, so ask for last_watched. The music endpoints only know end_date.
+        query.sort = 'last_watched';
+      }
       return request(path, {
         query,
       });

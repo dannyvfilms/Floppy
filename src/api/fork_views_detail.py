@@ -487,6 +487,11 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
     }
 
 
+def _gallery_slide(gallery, name):
+    """One slide of a detail carousel, or an empty dict when it has none."""
+    return (gallery or {}).get(name) or {}
+
+
 class DetailPageView(drf_views.APIView):
     """Project provider detail metadata and the caller's own tracking state."""
 
@@ -908,8 +913,11 @@ class DetailPageView(drf_views.APIView):
             "artwork": {
                 "src": metadata.get("image") or "",
                 "aspect": "poster",
-                "backdrop": (gallery or {}).get("hero", {}).get("url") or (gallery or {}).get("overview", {}).get("url") or "",
-                "logo": (gallery or {}).get("overview", {}).get("logo_url") or (gallery or {}).get("hero", {}).get("logo_url") or "",
+                # A gallery with no artwork stores None for these slides.
+                "backdrop": _gallery_slide(gallery, "hero").get("url")
+                or _gallery_slide(gallery, "overview").get("url") or "",
+                "logo": _gallery_slide(gallery, "overview").get("logo_url")
+                or _gallery_slide(gallery, "hero").get("logo_url") or "",
                 "gallery": _primitive(gallery or {"photos": [], "video": None}),
                 "gallery_supported": carousel.carousel_supported(media_type, source),
             },

@@ -11,7 +11,7 @@ Output lands in .floppy/pr-shots/<pr>/<before|after>/.
 you can push to) and rewrites a marked section of the PR description.
 """
 
-# ruff: noqa: INP001, T201, S603, S607, S108
+# ruff: noqa: T201, S603, S607, S108
 import argparse
 import json
 import os
@@ -28,6 +28,9 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED = ROOT / "scripts" / "pr_screenshots_seed.py"
+# The shared sample library the seed builds (also opened by the every-page
+# test). Copied into each captured worktree so both captures match.
+LIBRARY = ROOT / "src" / "app" / "tests" / "catalogue_fixtures.py"
 REDIS_PORT = 6391
 CREDENTIALS = ("shots", "shots-pass-12345")
 VIEWPORTS = {"desktop": (1280, 900), "phone": (390, 844)}
@@ -145,6 +148,7 @@ class Server:
     def start(self):
         """Migrate, seed, collect static, serve, and return the seeded paths."""
         self.manage("migrate", "--noinput")
+        shutil.copyfile(LIBRARY, self.src / "shots_library.py")
         seeded = self.manage("shell", stdin=SEED.read_text())
         self.manage("collectstatic", "--noinput")
         self.process = subprocess.Popen(

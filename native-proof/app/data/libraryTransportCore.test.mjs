@@ -7,6 +7,7 @@ import {
   mediaRowsFromPayload,
   createRemoteLibraryActions,
 } from './libraryTransportCore.js';
+import { assertFields, recorded } from './recordedAnswers.mjs';
 
 test('library query maps filter-bar state to the shared API filter contract', () => {
   assert.deepEqual(libraryQuery({
@@ -71,6 +72,26 @@ test('native library writes use scoped bulk endpoints and preserve item identity
     ['/api/v1/library/bulk/collection/', { item_ids: [7, 9] }],
     ['/api/v1/lists/12/items/bulk/', { item_ids: [7, 9] }],
     ['/api/v1/library/bulk/plays/', { item_ids: [7, 9], options: { scope: 'aired' }, dry_run: true }],
+  ]);
+});
+
+test('"Last watched" asks the media API for the same order as the web', async () => {
+  // app.tests.test_list_semantics reads the API with last_watched for this
+  // reason; end_date there is the literal completion date.
+  const calls = [];
+  const transport = createRemoteLibraryActions(async (path, options) => {
+    calls.push({ path, query: options.query });
+    return {};
+  });
+  await transport.load({ mediaType: 'movie', sort: 'end_date', direction: 'desc' });
+  await transport.load({ mediaType: 'all', sort: 'end_date' });
+  await transport.load({ mediaType: 'music', subview: 'albums', sort: 'end_date' });
+  await transport.load({ mediaType: 'movie', sort: 'start_date' });
+  assert.deepEqual(calls.map(call => [call.path, call.query.sort]), [
+    ['/api/v1/media/movie/', 'last_watched'],
+    ['/api/v1/media/', 'last_watched'],
+    ['/api/v1/music/albums/', 'end_date'],
+    ['/api/v1/media/movie/', 'start_date'],
   ]);
 });
 
@@ -153,4 +174,35 @@ test('library cards load the server card size and keep the full image for Detail
   assert.equal(mapped.cells.image.src, row.item.card_image);
   const older = { ...row, item: { ...row.item, card_image: undefined } };
   assert.equal(mediaCardModelFromRow(older).image.src, row.item.image);
+});
+
+test('recorded library answers carry every field a library row reads', () => {
+  const payload = recorded('library-movie');
+  assertFields(payload, { results: 'array', pagination: 'object' }, 'library');
+  assertFields(payload.pagination, { total: 'number', next: ['string', 'null'] }, 'library.pagination');
+  assert.ok(payload.results.length > 0);
+  payload.results.forEach((row, index) => {
+    const where = `library.results[${index}]`;
+    assertFields(row, {
+      id: 'number', item_id: 'string', status: 'number', score: ['number', 'null'],
+      progress: ['number', 'null'], progress_unit: ['string', 'null'], episodes_left: ['number', 'null'],
+      start_date: ['string', 'null'], end_date: ['string', 'null'], created_at: 'string', item: 'object',
+    }, where);
+    assertFields(row.item, {
+      title: 'string', media_type: 'string', library_media_type: ['string', 'null'], source: 'string',
+      media_id: 'string', image: ['string', 'null'], release_datetime: ['string', 'null'],
+      genres: 'array', runtime_minutes: ['number', 'null'],
+    }, `${where}.item`);
+  });
+
+  const rows = mediaRowsFromPayload(payload);
+  assert.equal(rows.length, payload.results.length);
+  rows.forEach(row => {
+    assert.ok(row.title && row.identity.mediaType && row.identity.source && row.identity.mediaId);
+    assert.notEqual(row.cells.status.text, '—', `${row.title} shows its tracking status`);
+  });
+
+  const empty = recorded('library-movie-empty');
+  assert.deepEqual(mediaRowsFromPayload(empty), []);
+  assert.equal(empty.pagination.total, 0);
 });

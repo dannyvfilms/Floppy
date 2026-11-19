@@ -31,6 +31,7 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Status,
+    Video,  # FORK: fork-only media type
 )
 from app.templatetags.app_tags import media_url
 from events.models import Event
@@ -1220,6 +1221,8 @@ serializer_map = {
     AlbumTracker: MediaSerializer,
     Season: MediaSerializer,
     TV: MediaSerializer,
+    # A list can hold a YouTube video; without this its list JSON answered 500.
+    Video: MediaSerializer,
 }
 
 
