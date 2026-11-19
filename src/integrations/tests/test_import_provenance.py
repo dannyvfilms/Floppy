@@ -271,6 +271,17 @@ class CloseAbandonedImportRunsTests(TestCase):
         running.refresh_from_db()
         self.assertEqual(running.status, ImportRun.Status.RUNNING)
 
+    def test_youtube_takeout_uses_its_extended_hard_limit(self):
+        active = self._run(source="youtube_takeout", age=timedelta(hours=2))
+        stale = self._run(source="youtube_takeout", age=timedelta(hours=5))
+
+        self.assertEqual(close_abandoned_import_runs(), 1)
+
+        active.refresh_from_db()
+        stale.refresh_from_db()
+        self.assertEqual(active.status, ImportRun.Status.RUNNING)
+        self.assertEqual(stale.status, ImportRun.Status.FAILED)
+
     def test_self_rescheduling_backfills_are_left_alone(self):
         runs = [self._run(source=source) for source in ("lastfm", "koito")]
 
