@@ -5,6 +5,7 @@ from celery import Celery, Task, states
 from celery.exceptions import Ignore
 from celery.signals import (
     worker_before_create_process,
+    worker_init,
     worker_process_init,
     worker_ready,
     worker_shutting_down,
@@ -56,12 +57,26 @@ if os.environ.get("FLOPPY_PROCESS_ROLE") != "interactive":
     app.autodiscover_tasks()
 
 
+def _quiet_refused_control_messages():
+    """Log a refused pickle control message once, not as a CRITICAL traceback."""
+    import logging
+
+    from app.log_safety import RejectedControlMessageFilter
+
+    logging.getLogger("kombu.messaging").addFilter(RejectedControlMessageFilter())
+
+
 @worker_ready.connect
 def _enable_fault_log(**_kwargs):
     """Record the traceback of a fatal signal in a worker (see run_state)."""
     from config import run_state
 
     run_state.enable_fault_log()
+
+
+@worker_init.connect
+def _install_control_message_filter(**_kwargs):
+    _quiet_refused_control_messages()
 
 
 @worker_ready.connect
