@@ -2,63 +2,7 @@
 
 from django.db import migrations, models
 
-
-def _column_exists(schema_editor, table_name, column_name):
-    """Return whether the user preference column already exists."""
-    connection = schema_editor.connection
-    if connection.vendor == "postgresql":
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_schema = current_schema() "
-                "AND table_name = %s AND column_name = %s",
-                [table_name, column_name],
-            )
-            return cursor.fetchone() is not None
-    with connection.cursor() as cursor:
-        columns = {
-            getattr(column, "name", column[0])
-            for column in connection.introspection.get_table_description(
-                cursor,
-                table_name,
-            )
-        }
-    return column_name in columns
-
-
-def _constraint_exists(schema_editor, table_name, constraint_name):
-    """Return whether the preference check constraint already exists."""
-    connection = schema_editor.connection
-    with connection.cursor() as cursor:
-        return constraint_name in connection.introspection.get_constraints(
-            cursor,
-            table_name,
-        )
-
-
-class AddFieldIfNotExists(migrations.AddField):
-    """Add the preference field only when its database column is absent."""
-
-    def database_forwards(self, app_label, schema_editor, from_state, to_state):
-        model = to_state.apps.get_model(app_label, self.model_name)
-        field = model._meta.get_field(self.name)
-        if _column_exists(schema_editor, model._meta.db_table, field.column):
-            return
-        super().database_forwards(app_label, schema_editor, from_state, to_state)
-
-
-class AddConstraintIfNotExists(migrations.AddConstraint):
-    """Add the preference constraint only when it is absent."""
-
-    def database_forwards(self, app_label, schema_editor, from_state, to_state):
-        model = to_state.apps.get_model(app_label, self.model_name)
-        if _constraint_exists(
-            schema_editor,
-            model._meta.db_table,
-            self.constraint.name,
-        ):
-            return
-        super().database_forwards(app_label, schema_editor, from_state, to_state)
+from app.migration_operations import AddConstraintIfNotExists, AddFieldIfNotExists
 
 
 class Migration(migrations.Migration):
