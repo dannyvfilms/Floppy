@@ -216,10 +216,10 @@
       </a>
     {% endif %}
 
-    {# Rotten Tomatoes score cards land here via the rt_extras fragment's #}
-    {# out-of-band swap; a cold match costs rottentomatoes.com page loads. #}
+    {# Rotten Tomatoes extras resolve lazily: this span fires rt_extras, whose #}
+    {# out-of-band swap replaces it with score cards and fills the links popup. #}
     {% if rt_extras_url %}
-      <span id="detail-score-rt"></span>
+      <span id="detail-score-rt" hx-get="{{ rt_extras_url }}" hx-trigger="load" hx-swap="none"></span>
     {% endif %}
 
     {% include "app/components/detail_score_chip_slot.html" with media=media current_instance=current_instance media_type=media_type user=user user_medias=user_medias public_view=public_view csrf_token=csrf_token only %}

@@ -3709,6 +3709,9 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  .\[program\:sqlite-verification\] {
+    program: sqlite-verification;
+  }
   .group-open\:rotate-90 {
     &:is(:where(.group):is([open], :popover-open, :open) *) {
       rotate: 90deg;
@@ -7836,7 +7839,7 @@ html.light .theme-toggle-icon-moon {
     border-color: rgb(16 185 129 / 26%);
     background: rgb(16 185 129 / 10%);
   }
-  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > .relative, :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > a.detail-provider-score-card, :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card), :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-slot {
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > .relative, :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > a.detail-provider-score-card, :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > #detail-score-rt > a.detail-provider-score-card, :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card), :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-slot {
     flex: none;
     width: var(--detail-card-width);
     min-width: var(--detail-card-width);
@@ -7865,6 +7868,12 @@ html.light .theme-toggle-icon-moon {
     --detail-card-accent: 129 140 248;
   }
   :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--opencritic {
+    --detail-card-accent: 251 146 60;
+  }
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--rt-tomatometer {
+    --detail-card-accent: 248 113 113;
+  }
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--rt-popcornmeter {
     --detail-card-accent: 251 146 60;
   }
   :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__source {
@@ -8388,7 +8397,7 @@ html.light .theme-toggle-icon-moon {
     border-color: rgb(16 185 129 / 26%);
     background: rgb(16 185 129 / 10%);
   }
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > .relative, .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > a.detail-provider-score-card, .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card), .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-slot {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > .relative, .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > a.detail-provider-score-card, .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > #detail-score-rt > a.detail-provider-score-card, .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card), .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-slot {
     flex: none;
     width: var(--detail-card-width);
     min-width: var(--detail-card-width);
@@ -8420,6 +8429,12 @@ html.light .theme-toggle-icon-moon {
     --detail-card-accent: 129 140 248;
   }
   .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--opencritic {
+    --detail-card-accent: 251 146 60;
+  }
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--rt-tomatometer {
+    --detail-card-accent: 248 113 113;
+  }
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--rt-popcornmeter {
     --detail-card-accent: 251 146 60;
   }
   .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__source {
