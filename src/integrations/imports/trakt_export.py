@@ -19,7 +19,7 @@ from integrations.imports.helpers import (
     MediaImportError,
     MediaImportUnexpectedError,
 )
-from integrations.imports.trakt import TraktImporter
+from integrations.imports.trakt import TRAKT_API_BASE_URL, TraktImporter
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,10 @@ class TraktExportImporter(TraktImporter):
 
     def _get_paginated_data(self, endpoint, item_type="items"):
         """Read the export files standing in for ``endpoint``."""
-        path = endpoint.removeprefix(self.user_base_url)
+        # Hidden sections live under /users/hidden/, not the per-user base URL.
+        path = endpoint.removeprefix(self.user_base_url).removeprefix(
+            f"{TRAKT_API_BASE_URL}/users"
+        )
         prefixes = ENDPOINT_FILES.get(path)
         if prefixes is None:
             logger.warning("No Trakt export file mapped for endpoint %s", endpoint)
