@@ -710,7 +710,9 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
 - `src/templates/app/components/artist_discography_container.html`
-- `src/templates/app/components/artist_discography_groups.html`
+- `src/templates/app/components/artist_discography_groups.html` (each release-type group shows its first 24 albums; the heading counts every album in the group)
+- `src/templates/app/components/artist_discography_more.html` (a group's "Show more" button, the shared React `button`, and the hidden length the cover poller sends back so an expanded group stays expanded)
+- `src/templates/app/components/artist_discography_group_albums.html` (a group's album grid island and its button; `artist_discography_more` returns it one page longer, as one grid from the first album so rows stay aligned)
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`

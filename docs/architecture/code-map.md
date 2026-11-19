@@ -17,7 +17,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 |---|---|---|
 | Models and their querysets | `src/app/models/` (one file per subject; `src/app/models/manager.py` holds the per-row hydration and progress annotations shared by detail, Home and list pages) | `docs/agents/domain_model.md` |
 | List-shaped pages (media list, list pages, Home shelves, list API) | `src/app/library_query/` decides which rows and in what order; `src/app/media_list_views.py` renders one page of them; `src/app/media_list_filters.py` is the API entry | `docs/architecture/library-query.md` |
-| Detail pages | `src/app/media_details_views.py`, `src/app/season_details_views.py`, `src/app/detail_builders.py`, `src/app/detail_related.py` | `docs/architecture/media-card.md` |
+| Detail pages | `src/app/media_details_views.py`, `src/app/season_details_views.py`, `src/app/detail_builders.py`, `src/app/detail_related.py`; music pages in `src/app/music_views.py`, with the artist page's albums and totals (shared with the artist API) in `src/app/music_artist_page.py` | `docs/architecture/media-card.md` |
 | History | `src/app/history_views.py`, `src/app/history_processor.py`, `src/app/history_cache*.py` | `docs/architecture/history-memory.md` |
 | Statistics | `src/app/statistics*.py` (pipeline), `src/app/stats_*.py` (sections), `src/app/statistics_views.py` | `docs/architecture/statistics-sync.md` |
 | Discover | `src/app/discover/`, `src/app/discover_views.py`, `src/app/tasks_discover.py` | |
