@@ -502,6 +502,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 tmdb_id = self._resolve_tv_by_title(
                     search_title,
                     self._extract_series_year(payload),
+                    season_number=self._played_season_number(payload),
                 )
             else:
                 from app.providers import tmdb
@@ -642,6 +643,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 matched_id = self._resolve_tv_by_title(
                     series_title,
                     self._extract_series_year(payload),
+                    season_number=self._resolve_season_number(payload),
                 )
             except Exception as exc:
                 logger.warning(
@@ -1691,6 +1693,20 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if metadata_type == "season":
             return MediaTypes.SEASON.value
         return self._get_media_type(payload)
+
+    def _played_season_number(self, payload):
+        """Return the season being played, for episode or season payloads.
+
+        An episode's ``index`` is the episode number, so only ``parentIndex``
+        names its season; a season payload's own ``index`` is the season.
+        """
+        metadata = payload.get("Metadata") or {}
+        if metadata.get("type") == "season":
+            return self._resolve_season_number(payload)
+        season_number, _episode_number = self._extract_season_episode_from_payload(
+            payload,
+        )
+        return season_number
 
     def _resolve_season_number(self, payload):
         """Return the season number for a Plex season payload."""
