@@ -369,9 +369,7 @@ class YamtrackImporter:
                     int(row["season_number"]) if row["season_number"] != "" else None
                 )
                 episode_number = (
-                    int(row["episode_number"])
-                    if row["episode_number"] != ""
-                    else None
+                    int(row["episode_number"]) if row["episode_number"] != "" else None
                 )
                 specs.append(
                     {
@@ -995,9 +993,7 @@ class YamtrackImporter:
 
         library_media_type = (row.get("library_media_type") or "").strip().lower()
 
-        season_number = (
-            int(row["season_number"]) if row.get("season_number") else None
-        )
+        season_number = int(row["season_number"]) if row.get("season_number") else None
         episode_number = (
             int(row["episode_number"]) if row.get("episode_number") else None
         )

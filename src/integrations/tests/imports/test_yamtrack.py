@@ -335,7 +335,9 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
 
         movie = Movie.objects.get(user=self.user)
         self.assertEqual(movie.created_at, datetime(2021, 4, 3, 12, 34, 56, tzinfo=UTC))
-        self.assertEqual(movie.progressed_at, datetime(2022, 5, 4, 13, 45, 56, tzinfo=UTC))
+        self.assertEqual(
+            movie.progressed_at, datetime(2022, 5, 4, 13, 45, 56, tzinfo=UTC)
+        )
         self.assertEqual(movie.scored_at, datetime(2023, 6, 5, 14, 56, 57, tzinfo=UTC))
         self.assertEqual(movie.start_date, datetime(2021, 4, 1, tzinfo=UTC))
         self.assertEqual(movie.end_date, datetime(2021, 4, 2, tzinfo=UTC))
@@ -457,7 +459,9 @@ media,musicbrainz-import-date-artist,musicbrainz,music_artist,Import Date Artist
 1668,tmdb,episode,Friends,https://image.url,1,1,,,,,2025-11-19T19:00:05+00:00,,
 """
 
-        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_data.encode()), self.user, "new"
+        )
 
         self.assertEqual(warnings, "")
         self.assertEqual(
@@ -481,7 +485,9 @@ media,musicbrainz-import-date-artist,musicbrainz,music_artist,Import Date Artist
 1234,igdb,game,Some Game,https://image.url,,,,60,Completed,,,,not-a-date
 """
 
-        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_data.encode()), self.user, "new"
+        )
 
         self.assertEqual(warnings, "")
         game = Game.objects.get(user=self.user)
@@ -520,9 +526,7 @@ media,musicbrainz-import-date-artist,musicbrainz,music_artist,Import Date Artist
         games = Game.objects.filter(user=self.user)
         self.assertEqual(games.count(), 2)
         self.assertEqual(set(games.values_list("progress", flat=True)), {3600, 5400})
-        history_dates = {
-            game.history.get().history_date for game in games
-        }
+        history_dates = {game.history.get().history_date for game in games}
         self.assertEqual(
             history_dates,
             {
@@ -562,7 +566,9 @@ class ImportYamtrackRaggedRows(TestCase):
             "2025-12-28T15:26:52+00:00,2025-12-28T15:09:49+00:00\n"
         )
 
-        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_data.encode()), self.user, "new"
+        )
 
         self.assertIn("Skipping row 1", warnings)
         self.assertFalse(Book.objects.filter(user=self.user).exists())
@@ -576,7 +582,9 @@ class ImportYamtrackRaggedRows(TestCase):
             "2023-01-09T05:00:00+00:00,336,2025-12-28T15:26:52+00:00\n"
         )
 
-        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_data.encode()), self.user, "new"
+        )
 
         self.assertEqual(warnings, "")
         book = Book.objects.get(user=self.user)
@@ -593,7 +601,9 @@ class ImportYamtrackRaggedRows(TestCase):
             "2025-12-28T15:09:47+00:00\n"
         )
 
-        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        counts, warnings = yamtrack.importer(
+            BytesIO(csv_data.encode()), self.user, "new"
+        )
 
         self.assertEqual(warnings, "")
         book = Book.objects.get(user=self.user)
@@ -830,7 +840,9 @@ class ImportYamtrackTagsRoundTrip(TestCase):
             episode_number=None,
             defaults={"title": "The Odyssey", "image": "https://image.url"},
         )
-        Movie.objects.create(item=item, user=self.exporter, status=Status.COMPLETED.value)
+        Movie.objects.create(
+            item=item, user=self.exporter, status=Status.COMPLETED.value
+        )
         tag = Tag.objects.create(user=self.exporter, name="ABCXYZ")
         ItemTag.objects.create(tag=tag, item=item)
         self.csv_content = "".join(exports.generate_rows(self.exporter))
@@ -849,8 +861,9 @@ class ImportYamtrackTagsRoundTrip(TestCase):
 
         movie = Movie.objects.get(user=self.importer_user)
         tag_names = list(
-            ItemTag.objects.filter(item=movie.item, tag__user=self.importer_user)
-            .values_list("tag__name", flat=True)
+            ItemTag.objects.filter(
+                item=movie.item, tag__user=self.importer_user
+            ).values_list("tag__name", flat=True)
         )
         self.assertEqual(tag_names, ["ABCXYZ"])
 

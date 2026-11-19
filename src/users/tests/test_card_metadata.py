@@ -23,8 +23,11 @@ class CardMetadataTests(SimpleTestCase):
 
     def test_episode_code_padding_and_missing_coordinates(self):
         for season, episode, expected in (
-            (0, 3, "S00E03"), (3, 3, "S03E03"), (123, 456, "S123E456"),
-            (3, None, "S03"), (None, 3, None),
+            (0, 3, "S00E03"),
+            (3, 3, "S03E03"),
+            (123, 456, "S123E456"),
+            (3, None, "S03"),
+            (None, 3, None),
         ):
             with self.subTest(season=season, episode=episode):
                 self.assertEqual(_format_episode_code(season, episode), expected)
@@ -104,7 +107,9 @@ class CardMetadataTests(SimpleTestCase):
                 },
             }
         )
-        self.assertEqual(parsed["types"]["game"]["fields"], ["platforms", "release_year"])
+        self.assertEqual(
+            parsed["types"]["game"]["fields"], ["platforms", "release_year"]
+        )
         self.assertEqual(parsed["types"]["movie"]["fields"], ["release_year"])
 
     def test_platform_line_reads_the_item_platforms(self):
@@ -132,7 +137,9 @@ class CardMetadataTests(SimpleTestCase):
         )
         item = SimpleNamespace(platforms=["PC", "Switch"])
         media = SimpleNamespace(card_collection_platforms=["PlayStation 5", "Switch"])
-        self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PlayStation 5, Switch")
+        self.assertEqual(
+            card_lines(user, "game", item, media)[0]["text"], "PlayStation 5, Switch"
+        )
         media.card_collection_platforms = []
         self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PC, Switch")
 
@@ -281,7 +288,9 @@ class HandRolledCardTests(SimpleTestCase):
             start_date=datetime(2026, 3, 4, 12, tzinfo=UTC),
             aggregated_start_date=datetime(2026, 1, 1, 12, tzinfo=UTC),
         )
-        self.assertEqual(card_lines(user, "game", None, grouped)[0]["text"], "2026-01-01")
+        self.assertEqual(
+            card_lines(user, "game", None, grouped)[0]["text"], "2026-01-01"
+        )
         self.assertEqual(card_lines(user, "game", None, SimpleNamespace()), [])
 
     def test_every_non_person_type_can_pick_the_date_fields(self):
@@ -290,7 +299,9 @@ class HandRolledCardTests(SimpleTestCase):
 
         for entry in editor_catalog():
             ids = {field["id"] for field in entry["fields"]}
-            expected = set() if entry["id"] == PERSON else {
-                "date_added", "start_date", "end_date"
-            }
+            expected = (
+                set()
+                if entry["id"] == PERSON
+                else {"date_added", "start_date", "end_date"}
+            )
             self.assertEqual(ids & {"date_added", "start_date", "end_date"}, expected)
