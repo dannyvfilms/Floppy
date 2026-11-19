@@ -1,0 +1,111 @@
+{
+  "deferredGroups": [
+    {
+      "label": "TV Shows",
+      "mediaType": "tv",
+      "rowIds": [
+        "1"
+      ]
+    },
+    {
+      "label": "TV Seasons",
+      "mediaType": "season",
+      "rowIds": [
+        "2"
+      ]
+    },
+    {
+      "label": "Movies",
+      "mediaType": "movie",
+      "rowIds": [
+        "3"
+      ]
+    },
+    {
+      "label": "Anime",
+      "mediaType": "anime",
+      "rowIds": [
+        "4"
+      ]
+    },
+    {
+      "label": "Manga",
+      "mediaType": "manga",
+      "rowIds": [
+        "5"
+      ]
+    },
+    {
+      "label": "Games",
+      "mediaType": "game",
+      "rowIds": [
+        "6"
+      ]
+    },
+    {
+      "label": "Books",
+      "mediaType": "book",
+      "rowIds": [
+        "7"
+      ]
+    },
+    {
+      "label": "Comics",
+      "mediaType": "comic",
+      "rowIds": [
+        "8"
+      ]
+    },
+    {
+      "label": "Board Games",
+      "mediaType": "boardgame",
+      "rowIds": [
+        "9"
+      ]
+    },
+    {
+      "label": "Music",
+      "mediaType": "music",
+      "rowIds": [
+        "10"
+      ]
+    },
+    {
+      "label": "Podcasts",
+      "mediaType": "podcast",
+      "rowIds": [
+        "11"
+      ]
+    },
+    {
+      "label": "Videos",
+      "mediaType": "video",
+      "rowIds": [
+        "12"
+      ]
+    }
+  ],
+  "groups": [],
+  "itemsLimit": 14,
+  "labels": {
+    "altTitle": "Show alternative title",
+    "artworkRefreshing": "Refreshing artwork...",
+    "emptyHint": "Add or enable rows from the Home Screen settings page to populate this view.",
+    "emptyTitle": "Nothing is configured for Home yet",
+    "loadingMore": "Loading more",
+    "loadingRow": "Loading row",
+    "nextEpisode": "Jump to next episode",
+    "nextEpisodeCompact": "Next",
+    "noStatus": "No Status",
+    "openSettings": "Open Home Screen Settings",
+    "retry": "Try again",
+    "rowEmpty": "Nothing here yet.",
+    "scrollLeft": "Scroll left",
+    "scrollRight": "Scroll right",
+    "toggleSort": "Toggle sort direction for",
+    "unableToLoad": "Unable to load this row."
+  },
+  "readOnly": false,
+  "settingsUrl": "/settings/home-screen",
+  "showMediaTypeHeaders": false
+}

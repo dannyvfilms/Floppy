@@ -21,6 +21,7 @@ import requests
 from django.conf import settings
 from django.utils.translation import gettext
 
+from app.public_errors import PublicMessageError
 from integrations import safe_fetch
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ _NAME_RE = re.compile(r"^[0-9a-f]{64}\.(?:jpg|png|webp)$")
 _META_KEYS = ("og:image", "og:image:url", "og:image:secure_url", "twitter:image")
 
 
-class CoverError(Exception):
+class CoverError(PublicMessageError):
     """A cover could not be used. The message is safe to show to the person."""
 
 

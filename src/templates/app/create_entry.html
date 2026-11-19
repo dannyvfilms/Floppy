@@ -142,8 +142,8 @@
         <div x-show="showField('parentShow')">
           <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Parent TV Show" %}</label>
           {% parent_picker_react "tv" as parent_tv_picker %}
-          {{ parent_tv_picker.props|json_script:parent_tv_picker.id }}
           <div class="relative">
+            {{ parent_tv_picker.props|json_script:parent_tv_picker.id }}
             <input id="parent-tv-id" name="parent_tv" type="hidden">
             <div data-parent-picker-root data-props-id="{{ parent_tv_picker.id }}" x-ignore>
               <div class="relative">
@@ -192,8 +192,8 @@
         <div x-show="showField('parentSeason')">
           <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Parent Season" %}</label>
           {% parent_picker_react "season" as parent_season_picker %}
-          {{ parent_season_picker.props|json_script:parent_season_picker.id }}
           <div class="relative">
+            {{ parent_season_picker.props|json_script:parent_season_picker.id }}
             <input id="parent-season-id" name="parent_season" type="hidden">
             <div data-parent-picker-root data-props-id="{{ parent_season_picker.id }}" x-ignore>
               <div class="relative">

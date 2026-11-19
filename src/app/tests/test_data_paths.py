@@ -520,7 +520,7 @@ fi
             self.assertIn("SQLite schema is current", result.stderr)
             self.assertNotIn("<migrate>", commands)
             self.assertIn("supervisord", commands)
-            self.assertIn("timeout <-k> <5> <30>", commands)
+            self.assertIn("timeout <-k> <5> <120>", commands)
 
     def test_busybox_timeout_143_is_reported_and_retried_once(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -539,7 +539,7 @@ fi
             self.assertIn("retrying once", result.stderr)
             self.assertNotIn("integrity check failed", result.stderr)
             self.assertEqual(commands.count("timeout <"), 2)
-            self.assertIn("<30>", commands)
+            self.assertIn("<120>", commands)
 
     def test_gnu_timeout_124_is_retried_and_can_succeed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -614,6 +614,20 @@ fi
             self.assertIn("sqlite_startup> <--prepare-migrations>", commands)
             self.assertEqual(commands.count("timeout <"), 3)
             self.assertEqual(commands.count("<7>"), 3)
+
+    def test_default_admission_timeout_allows_slow_hosts(self):
+        """Django start-up alone can exceed 30s on slow homelab hardware (#2023)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DATA_DIR=str(data), ADMISSION_STATUS="10"
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(commands.count("<120>"), 1)
 
     def test_invalid_admission_timeout_stops_sqlite_startup(self):
         for timeout_value in ("0", "12seconds"):
@@ -727,6 +741,31 @@ fi
         for directory in (database, verification):
             self.assertIn(
                 f"chown <-R> <-h> <abc:abc> <--> <{directory}>", commands
+            )
+
+    def test_sqlite_sidecars_are_repaired(self):
+        """Root-run startup verification publishes these beside the database,
+        so they must be handed to PUID like the database itself (#1901).
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            database = root / "database" / "db.sqlite3"
+            database.parent.mkdir()
+            suffixes = (
+                ".verification.json",
+                ".migration-ready.json",
+                ".integrity.status.json",
+                ".integrity.verified.json",
+            )
+            for suffix in suffixes:
+                Path(f"{database}{suffix}").write_text("{}")
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DB_PATH=str(database)
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for suffix in suffixes:
+            self.assertIn(
+                f"chown <-h> <abc:abc> <--> <{database}{suffix}>", commands
             )
 
     def test_cache_failure_uses_normal_collection_and_ownership(self):

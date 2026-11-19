@@ -69,6 +69,8 @@ export function StatisticsView({
       onChangeRange={onChangeRange}
       onChangeMediaTypes={onChangeMediaTypes}
       onRefresh={onRefresh}
+      comparison={comparison}
+      onCompareMode={onCompareMode}
       onSelectHighlight={onSelectHighlight}
       onRetry={onRetry} />) : null}
     {!loading && !error ? <React.Fragment>

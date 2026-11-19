@@ -3,6 +3,11 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FormSaveBar } from '../ui/FormSaveBar';
 import { SelectField } from '../ui/SelectField';
 import { ToggleChip } from '../ui/ToggleChip';
+import { ReorderList } from '../ui/ReorderList';
+import { Icon } from '../ui/Icon';
+import { actionIcons } from '../ui/actionIcons';
+import { ConfirmDialog } from './ConfirmDialog';
+import { Button } from '../ui/Button';
 
 const defaultPalette = {
   background: '#18181b',
@@ -163,7 +168,18 @@ function rowAutoTitle(section, row) {
   const first = statuses.length === 1
     ? (statusField?.options || []).find(option => String(option.value) === String(statuses[0]))?.label || statuses[0]
     : (statuses.length > 1 ? `${statuses.length} Statuses` : 'Library');
-  return first;
+  const parts = [first];
+  const subview = mediaSubviewDefaults(section.media_type);
+  if (subview) {
+    const value = row.filters?.subview || subview;
+    const field = (section.filter_fields || []).find(candidate => candidate.key === 'subview');
+    const label = field?.options?.find(option => option.value === value)?.label || value;
+    if (first === 'Library') parts[0] = label;
+    else parts.push(label);
+  }
+  rowFilterPills(section, row).filter(pill => !['status', 'media_types', 'subview'].includes(pill.key))
+    .forEach(pill => parts.push(pill.key === 'tag' && row.filters?.tag_mode === 'not' ? `Not tagged ${pill.value}` : pill.value));
+  return parts.slice(0, 4).join(' • ');
 }
 
 function rowPlaceholder(section, row) {
@@ -183,6 +199,7 @@ function sectionPreview(section) {
  * caller owns transport, list search results, validation and persistence.
  */
 export function HomeScreenEditor({
+  dragIcon,
   sections = [],
   initialSections,
   listChoices = [],
@@ -190,6 +207,7 @@ export function HomeScreenEditor({
   showMediaTypeHeaders = false,
   mediaTypeChipsEnabled = false,
   mediaTypeChipStyle,
+  segmentedAppearance = false,
   onChange,
   onSave,
   validate,
@@ -215,6 +233,7 @@ export function HomeScreenEditor({
   };
   const dirty = useMemo(() => !sameValues(values, baseline), [sections, showMediaTypeHeaders, mediaTypeChipsEnabled, mediaTypeChipStyle]);
   const [expanded, setExpanded] = useState({});
+  const [colorEditor, setColorEditor] = useState(null);
   const [rowEditors, setRowEditors] = useState({});
   const [listSearch, setListSearch] = useState({});
   const [nextRowId, setNextRowId] = useState(() => sections.reduce((maxId, section) => Math.max(maxId, ...(section.rows || []).map(row => Number.parseInt(String(row.id || '0'), 10) || 0)), 0) + 1);
@@ -384,7 +403,7 @@ export function HomeScreenEditor({
     const target = index + direction;
     if (target < 0 || target >= sections.length) return;
     const next = [...sections];
-    [next[index], next[target]] = [next[target], next[index]];
+    next.splice(target, 0, next.splice(index, 1)[0]);
     update(next);
   }
 
@@ -393,7 +412,7 @@ export function HomeScreenEditor({
     const rows = next[sectionIndex].rows;
     const target = rowIndex + direction;
     if (target < 0 || target >= rows.length) return;
-    [rows[rowIndex], rows[target]] = [rows[target], rows[rowIndex]];
+    rows.splice(target, 0, rows.splice(rowIndex, 1)[0]);
     update(next);
   }
 
@@ -466,14 +485,19 @@ export function HomeScreenEditor({
   const canAddUpNext = section => section.media_type === 'tv' || (section.media_type === 'all' && (section.available_media_types || []).includes('tv'));
   const canAddRecent = section => section.media_type !== 'all' && !(section.rows || []).some(row => row.row_type === 'recently_unrated');
 
-  return <View style={styles.form}>
-    <Text style={[styles.help, { color: colors.textMuted }]}>{copy.copy}</Text>
+  return <View style={[styles.form, colors.pageCards && { padding: 24, backgroundColor: colors.surface, borderRadius: 8 }]}>
+    {copy.copy ? <Text style={[styles.help, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20 }]}>{copy.copy}</Text> : null}
     {localErrors.lists ? <Text accessibilityRole="alert" style={[styles.help, { color: colors.danger }]}>{localErrors.lists}</Text> : null}
 
-    {sections.map((section, sectionIndex) => {
+    <ReorderList items={sections} keyForItem={section => section.media_type} labelForItem={section => section.label}
+      icon={dragIcon} palette={colors} disabled={disabled || saving} gap={colors.pageCards ? 4 : 12}
+      onMove={(from, to) => reorderSection(from, to - from)}
+      renderItem={(section, sectionIndex, sectionHandle) => {
       const isExpanded = Boolean(expanded[section.media_type]);
-      return <View key={section.media_type} style={[styles.sectionCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        <View style={styles.sectionHeader}>
+      return <View key={section.media_type} style={[styles.sectionCard, { borderColor: colors.pageCards ? colors.fieldBorder : colors.border, backgroundColor: colors.surface }, colors.pageCards && { borderRadius: 12 }]}>
+        <View style={[styles.sectionHeader, colors.pageCards && { paddingHorizontal: 12, paddingVertical: 8, minHeight: 60, gap: 12 }]}>
+          {sectionHandle}
+          {section.icon && colors.pageCards ? <Icon spec={section.icon} color={colors.textSecondary} size={20} /> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${isExpanded ? copy.collapse : copy.expand}: ${section.label}`}
@@ -483,7 +507,11 @@ export function HomeScreenEditor({
             <Text style={[styles.sectionName, { color: colors.text }]}>{section.label || section.media_type}</Text>
             {!isExpanded && section.rows?.length ? <Text numberOfLines={1} style={[styles.sectionPreview, { color: colors.textMuted }]}>{sectionPreview(section)}</Text> : null}
           </Pressable>
-          {section.media_type_chip_color ? <View style={styles.colorControl}>
+          {section.media_type_chip_color && colors.pageCards ? <Pressable accessibilityRole="button" accessibilityLabel={`${section.label} ${copy.labelColor}`}
+            disabled={disabled} onPress={() => setColorEditor({ index: sectionIndex, label: section.label, value: section.media_type_chip_color })}
+            style={{ width: 44, height: 44, borderWidth: 1, borderColor: colors.fieldBorder, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 28, height: 24, backgroundColor: section.media_type_chip_color, borderWidth: 1, borderColor: colors.border }} />
+          </Pressable> : section.media_type_chip_color ? <View style={styles.colorControl}>
             <View style={[styles.colorDot, { backgroundColor: section.media_type_chip_color, borderColor: colors.border }]} />
             <TextInput
               accessibilityLabel={`${section.label} ${copy.labelColor}`}
@@ -494,7 +522,11 @@ export function HomeScreenEditor({
               onChangeText={color => setSectionColor(sectionIndex, color)}
               style={[styles.colorText, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textSecondary }]} />
           </View> : null}
-          <View style={styles.moveRow}>
+          {colors.pageCards ? <Pressable accessibilityRole="button" accessibilityLabel={`${isExpanded ? copy.collapse : copy.expand}: ${section.label}`}
+            onPress={() => toggleExpanded(section.media_type)} style={{ padding: 8 }}>
+            <View style={isExpanded ? { transform: [{ rotate: '180deg' }] } : undefined}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} /></View>
+          </Pressable> : null}
+          {!sectionHandle ? <View style={styles.moveRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${copy.moveUp}: ${section.label}`}
@@ -511,14 +543,17 @@ export function HomeScreenEditor({
               style={({ pressed }) => [styles.moveButton, { borderColor: colors.border }, pressed && { backgroundColor: colors.surfaceStrong }]}>
               <Text style={[styles.moveText, { color: colors.textMuted }]}>↓</Text>
             </Pressable>
-          </View>
+          </View> : null}
         </View>
 
         {isExpanded ? <View style={styles.sectionBody}>
           {!(section.rows || []).length ? <View style={[styles.emptyRows, { borderColor: colors.border }]}>
             <Text style={[styles.help, { color: colors.textMuted }]}>{copy.noRows}</Text>
           </View> : null}
-          {(section.rows || []).map((row, rowIndex) => {
+          <ReorderList items={section.rows || []} keyForItem={row => row.client_id}
+            labelForItem={row => row.custom_title || rowAutoTitle(section, row)} icon={dragIcon} palette={colors}
+            disabled={disabled || saving} onMove={(from, to) => reorderRow(sectionIndex, from, to - from)}
+            renderItem={(row, rowIndex, rowHandle) => {
             const editorOpen = Boolean(rowEditors[row.client_id]);
             const pills = rowFilterPills(section, row);
             const choices = sortChoices(section, row);
@@ -528,7 +563,7 @@ export function HomeScreenEditor({
             });
             return <View key={row.client_id} style={[styles.row, { borderColor: colors.border, backgroundColor: colors.background }]}>
               <View style={styles.rowHeader}>
-                <View style={styles.moveRow}>
+                {rowHandle || <View style={styles.moveRow}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`${copy.moveUp}: ${copy.rowName} ${rowIndex + 1}`}
@@ -545,7 +580,7 @@ export function HomeScreenEditor({
                     style={({ pressed }) => [styles.moveButton, { borderColor: colors.border }, pressed && { backgroundColor: colors.surfaceStrong }]}>
                     <Text style={[styles.moveText, { color: colors.textMuted }]}>↓</Text>
                   </Pressable>
-                </View>
+                </View>}
                 <TextInput
                   accessibilityLabel={copy.rowName}
                   value={row.custom_title || ''}
@@ -609,7 +644,7 @@ export function HomeScreenEditor({
                       />)}
                     </View>
                   </View> : null}
-                  {choices.length ? <SelectField
+                  {choices.length ? <SelectField iconChevron={Boolean(colors.pageCards)}
                     id={`home-${row.client_id}-sort`}
                     label={copy.sort}
                     options={choices}
@@ -657,7 +692,7 @@ export function HomeScreenEditor({
                         </Pressable> : null}
                       </View>;
                     }
-                    return <SelectField
+                    return <SelectField iconChevron={Boolean(colors.pageCards)}
                       key={field.key}
                       id={`home-${row.client_id}-${field.key}`}
                       label={field.label}
@@ -672,7 +707,7 @@ export function HomeScreenEditor({
                       onChange={event => updateRow(sectionIndex, rowIndex, entry => setRowFilter(entry, field.key, event.target.value === 'all' ? 'all' : event.target.value))}
                     />;
                   })}
-                  {filterFields(section).filter(field => field.key === 'media_types').flatMap(field => (field.options || []).filter(option => (option.subviews || []).length).map(option => <SelectField
+                  {filterFields(section).filter(field => field.key === 'media_types').flatMap(field => (field.options || []).filter(option => (option.subviews || []).length).map(option => <SelectField iconChevron={Boolean(colors.pageCards)}
                     key={`subview-${option.value}`}
                     id={`home-${row.client_id}-subview-${option.value}`}
                     label={`${option.label} display level`}
@@ -694,7 +729,7 @@ export function HomeScreenEditor({
                     placeholder={copy.searchLists}
                     onChangeText={text => setListSearch(current => ({ ...current, [row.client_id]: text }))}
                     style={[styles.rowInput, { borderColor: colors.border, backgroundColor: colors.surface, color: colors.text }]} />
-                  <SelectField
+                  <SelectField iconChevron={Boolean(colors.pageCards)}
                     id={`home-${row.client_id}-list`}
                     label={copy.listSelection}
                     placeholder={copy.searchLists}
@@ -711,7 +746,7 @@ export function HomeScreenEditor({
                   <Text style={[styles.help, { color: colors.textMuted }]}>{copy.selected} {row.custom_list_name || copy.noList}</Text>
                 </View> : null}
 
-                {row.row_type === 'recently_unrated' && section.media_type === 'music' ? <SelectField
+                {row.row_type === 'recently_unrated' && section.media_type === 'music' ? <SelectField iconChevron={Boolean(colors.pageCards)}
                   id={`home-${row.client_id}-recent`}
                   label="Recent unrated plays"
                   options={[
@@ -727,7 +762,7 @@ export function HomeScreenEditor({
                 /> : null}
               </View> : null}
             </View>;
-          })}
+          }} />
 
           <View style={styles.addRowWrap}>
             <Text style={[styles.label, { color: colors.textMuted }]}>{copy.addRow}</Text>
@@ -756,7 +791,7 @@ export function HomeScreenEditor({
           </View>
         </View> : null}
       </View>;
-    })}
+    }} />
 
     <View style={styles.globalGrid}>
       <View style={[styles.globalCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -782,7 +817,7 @@ export function HomeScreenEditor({
           palette={colors}
           onChange={next => update(sections, { mediaTypeChipsEnabled: next })}
         />
-        {mediaTypeChipStyles.length ? <SelectField
+        {mediaTypeChipStyles.length && !segmentedAppearance ? <SelectField iconChevron={Boolean(colors.pageCards)}
           id="home-chip-style"
           label={copy.labelAppearance}
           options={mediaTypeChipStyles}
@@ -791,10 +826,38 @@ export function HomeScreenEditor({
           palette={colors}
           onChange={event => update(sections, { mediaTypeChipStyle: event.target.value })}
         /> : null}
+        {mediaTypeChipStyles.length && segmentedAppearance ? <View style={{ gap: 6 }}>
+          <Text style={[styles.label, { color: colors.textMuted }]}>{copy.labelAppearance}</Text>
+          <View accessibilityRole="radiogroup" style={styles.segments}>
+            {mediaTypeChipStyles.map(option => {
+              const selected = String(option.value) === String(chipStyle);
+              return <Pressable key={option.value} accessibilityRole="radio" aria-checked={selected} accessibilityState={{ checked: selected, disabled }}
+                disabled={disabled} onPress={() => update(sections, { mediaTypeChipStyle: option.value })}
+                style={[styles.segment, { borderColor: colors.border, backgroundColor: selected ? colors.accentStrong || colors.accent : 'transparent' }]}>
+                <Text style={{ color: selected ? colors.accentContrast || colors.text : colors.textSecondary, fontSize: 13 }}>{option.label}</Text>
+              </Pressable>;
+            })}
+          </View>
+        </View> : null}
       </View>
     </View>
 
-    <FormSaveBar
+    <ConfirmDialog visible={Boolean(colorEditor)} title={`${colorEditor?.label || ''} ${copy.labelColor}`}
+      confirmLabel="Apply" palette={colors} buttonPalette={buttonPalette}
+      error={colorEditor && !/^#[0-9a-f]{6}$/i.test(colorEditor.value) ? 'Enter a six-digit hex color.' : undefined}
+      onCancel={() => setColorEditor(null)} onConfirm={() => {
+        if (!colorEditor || !/^#[0-9a-f]{6}$/i.test(colorEditor.value)) return;
+        setSectionColor(colorEditor.index, colorEditor.value);
+        setColorEditor(null);
+      }}>
+      <TextInput accessibilityLabel="Label color" value={colorEditor?.value || ''} autoCapitalize="none" autoCorrect={false}
+        onChangeText={value => setColorEditor(current => ({ ...current, value }))}
+        style={[styles.colorText, { color: colors.text, borderColor: colors.fieldBorder || colors.border }]} />
+    </ConfirmDialog>
+    {colors.pageCards ? <View style={{ alignItems: 'flex-end', gap: 8, marginTop: 8 }}>
+      {localError ? <Text accessibilityRole="alert" style={[styles.help, { color: colors.danger }]}>{localError}</Text> : null}
+      <Button label={copy.save} busy={saving} disabled={saving || disabled} onPress={save} icon={actionIcons.save} palette={buttonPalette} size="md" />
+    </View> : <FormSaveBar
       dirty={dirty}
       saving={saving}
       disabled={disabled}
@@ -804,11 +867,13 @@ export function HomeScreenEditor({
       labels={copy}
       palette={colors}
       buttonPalette={{ ...defaultButtonPalette, ...buttonPalette }}
-    />
+    />}
   </View>;
 }
 
 const styles = StyleSheet.create({
+  segments: { flexDirection: 'row', gap: 6 },
+  segment: { flexGrow: 1, alignItems: 'center', borderWidth: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 12 },
   form: { gap: 16 },
   help: { fontSize: 12, lineHeight: 17 },
   label: { fontSize: 12, fontWeight: '600' },

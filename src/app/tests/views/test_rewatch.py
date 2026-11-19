@@ -278,7 +278,7 @@ class RewatchViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         messages = [str(m) for m in response.context["messages"]]
         self.assertTrue(
-            any("Season 1" in m and "left as is" in m for m in messages),
+            any("Season 1" in m and "Left as is" in m for m in messages),
             messages,
         )
         season_2.refresh_from_db()

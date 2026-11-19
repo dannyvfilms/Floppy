@@ -780,6 +780,8 @@ class MediaDetailsViewTests(TestCase):
         # Movies and TV reserve the hero up front so the page does not jump
         # when the carousel fragment brings the backdrop.
         self.assertIn('class="detail-carousel-grid detail-hero-pending"', content)
+        self.assertIn('hx-trigger="load"', content)
+        self.assertIn("detail-hero-waiting", content)
         self.assertIn("detail-carousel-grid__title", content)
         self.assertIn("detail-carousel-grid__actions", content)
         self.assertIn('<p class="detail-mobile-meta md:hidden">2020 · 2h 6min</p>', content)
@@ -859,7 +861,7 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn('src="https://x/logo.png"', content)
         self.assertEqual(content.count('id="detail-carousel-logo-slot"'), 1)
         self.assertNotIn('hx-trigger="load delay:100ms"', content)
-        self.assertNotIn("detail-hero-pending", content)
+        self.assertNotIn('class="detail-carousel-grid detail-hero-pending"', content)
         gallery.assert_not_called()
 
     @patch("app.providers.services.get_media_metadata")
@@ -1204,11 +1206,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn(
             'class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10"', content
         )
-        self.assertIn('class="detail-media-grid"', content)
-        self.assertIn("window.matchMedia('(max-width: 768px)').matches", content)
-        self.assertIn(
-            "document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6", content
-        )
+        # Seasons render as the shared scrollable rail, not the old detail grid.
+        self.assertIn('data-home-row-wrapper="true"', content)
+        self.assertIn("home-row-card", content)
         self.assertIn(
             'class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"', content
         )
@@ -1220,10 +1220,6 @@ class MediaDetailsViewTests(TestCase):
         self.assertLess(
             content.index('class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col"'),
             content.index('class="w-full md:w-3/4"'),
-        )
-        self.assertIn(
-            'class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden"',
-            content,
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -1913,6 +1909,7 @@ class MediaDetailsViewTests(TestCase):
         _mock_is_incomplete_album,
         mock_get_release,
     ):
+        cache.clear()  # no repair cool-down left by an earlier test
         artist = Artist.objects.create(
             name="Brian Eno",
             musicbrainz_id="ff95eb47-41c4-4f7f-a104-cdc30f02e872",
@@ -1952,6 +1949,11 @@ class MediaDetailsViewTests(TestCase):
                 },
             ),
         )
+        # The page queued the repair (run inline by the test settings) and
+        # drew the credits it had; the next view shows the repaired ones.
+        self.assertEqual(response.status_code, 200)
+        mock_get_release.assert_called_once()
+        response = self.client.get(response.request["PATH_INFO"])
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Brian Eno</a> \u2014 ", html=False)
@@ -4800,15 +4802,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "2026-03-01 - 2026-03-12")
         self.assertContains(response, "1h 30min watched")
         self.assertIn('<div class="mb-3 md:mb-1 text-center md:text-start">', content)
-        self.assertIn(
-            'class="flex w-full items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] @max-[26rem]:flex-col md:hidden group cursor-pointer hover:text-[var(--color-text)] hover:underline"',
-            content,
-        )
-        self.assertIn("1h 30min (1/8)", content)
-        self.assertIn(
-            'class="hidden w-full flex-wrap items-center justify-center gap-y-1 md:flex md:justify-start group cursor-pointer hover:text-[var(--color-text)] hover:underline"',
-            content,
-        )
+        self.assertIn("data-detail-activity-subtitle-root", content)
+        self.assertIn('data-dates="2026-03-01 - 2026-03-12"', content)
+        self.assertIn('data-duration="1h 30min watched"', content)
         self.assertNotContains(response, "Your History")
         self.assertNotContains(response, "FIRST PLAYED")
         self.assertNotContains(response, "LAST PLAYED")
@@ -8034,6 +8030,69 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    @patch("app.views.tmdb.episode")
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_score_chips_link_to_source_pages(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        mock_episode,
+    ):
+        """The TMDB and IMDb score pills link to the episode's page on each site."""
+        Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+            imdb_rating=8.2,
+            imdb_rating_count=1355,
+            provider_external_ids={"imdb_id": "tt2306295"},
+        )
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+        mock_episode.return_value = {"score": 7.1, "score_count": 15}
+
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'href="https://www.themoviedb.org/tv/1668/season/1/episode/1"',
+        )
+        self.assertContains(
+            response,
+            'href="https://www.imdb.com/title/tt2306295/"',
+        )
+
     @patch("app.views.tmdb.episode", return_value={})
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
@@ -8115,6 +8174,67 @@ class MediaDetailsViewTests(TestCase):
     @patch("app.views.tmdb.episode")
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_links_credits_to_the_person_page(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        mock_episode,
+    ):
+        """Episode credits render without a `media` context and link by source (#1953)."""
+        mock_get_metadata.return_value = {
+            "title": "Angel",
+            "media_id": "2426",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "season/4": {"episodes": [{"episode_number": 9}]},
+        }
+        mock_process_episodes.return_value = [
+            {
+                "media_id": "2426",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": 4,
+                "episode_number": 9,
+                "title": "Long Day's Journey",
+                "watched": False,
+            },
+        ]
+        mock_episode.return_value = {
+            "cast": [
+                {"person_id": "159320", "name": "Andy Hallett", "role": "Lorne"},
+            ],
+            "crew": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "2426",
+                    "title": "angel",
+                    "season_number": 4,
+                    "episode_number": 9,
+                },
+            ),
+        )
+
+        person_url = reverse(
+            "person_detail",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "person_id": "159320",
+                "name": "andy-hallett",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        # The server cards shown before React mounts link from the same props
+        # the island receives; the props JSON alone would not match href="...".
+        self.assertContains(response, f'href="{person_url}"')
+
+    @patch("app.views.tmdb.episode")
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_episode_details_honors_metadata_language(
         self,
         mock_process_episodes,
@@ -8169,8 +8289,8 @@ class MediaDetailsViewTests(TestCase):
         mock_episode.return_value = {
             "episode_title": "Che i giochi abbiano inizio",
             "title": "Those About to Die",
-            "cast": [],
-            "crew": [],
+            "cast": [{"person_id": "1308445", "name": "Carrie Coon", "role": "Lead"}],
+            "crew": [{"person_id": "123", "name": "Example Director", "department": "Directing"}],
         }
 
         response = self.client.get(
@@ -8192,6 +8312,8 @@ class MediaDetailsViewTests(TestCase):
             "Che i giochi abbiano inizio",
         )
         self.assertContains(response, "Finale di stagione in italiano.")
+        self.assertContains(response, "/person/tmdb/1308445/carrie-coon")
+        self.assertContains(response, "/person/tmdb/123/example-director")
 
         mock_get_metadata.assert_called()
         _args, kwargs = mock_get_metadata.call_args

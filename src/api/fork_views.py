@@ -15,6 +15,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
+from app.collection_views import (
+    _collection_browser_item,
+    _decorate_collection_entries,
+)
 from app.forms import CollectionEntryForm
 from app.models import (
     BasicMedia,
@@ -27,6 +31,7 @@ from app.models import (
 from .contract_serializers import DetailErrorSerializer
 from .fork_helpers import get_or_create_provider_item
 from .fork_serializers import CollectionEntrySerializer
+from .fork_views_collection import apply_custom_field_values
 from .helpers import (
     check_source_type,
     check_valid_type,
@@ -137,9 +142,15 @@ class CollectionView(drf_views.APIView):
             queryset = queryset.filter(item__media_type=item_media_type)
 
         total = queryset.count()
+        page_entries = list(queryset[offset : offset + limit])
+        # FORK: attach the viewer's rating and TV completeness so native
+        # clients can filter on them.
+        _decorate_collection_entries(request.user, page_entries)
+        for entry in page_entries:
+            entry.card = _collection_browser_item(entry, request.user)["card"]
         paginated = paginate_data(
             request,
-            list(queryset[offset : offset + limit]),
+            page_entries,
             limit,
             offset,
             total=total,
@@ -150,6 +161,10 @@ class CollectionView(drf_views.APIView):
             many=True,
             serializer_class=CollectionEntrySerializer,
         )
+        # The web page's per-type chip colors, so clients do not carry their own.
+        from app.collection_views import _COLLECTION_MEDIA_COLORS
+
+        paginated["media_type_colors"] = dict(_COLLECTION_MEDIA_COLORS)
         return Response(paginated, status=HTTP.OK)
 
     def post(self, request):
@@ -252,7 +267,17 @@ class CollectionEntryView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        entry = form.save()
+        # Saved together: a rejected custom field must not leave the form saved.
+        with transaction.atomic():
+            entry = form.save()
+            custom_error = apply_custom_field_values(
+                entry,
+                request.user,
+                request.data.get("custom_field_values"),
+            )
+            if custom_error:
+                transaction.set_rollback(True)
+                return Response({"detail": custom_error}, status=HTTP.BAD_REQUEST)
         collected_at = form.cleaned_data.get("collected_at")
         if collected_at:
             CollectionEntry.objects.filter(id=entry.id).update(

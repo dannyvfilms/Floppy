@@ -1,6 +1,6 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { FormError, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';
@@ -44,7 +44,9 @@ const DEFAULT_LABELS = {
   allowRecommendations: 'Allow recommendations',
   allowRecommendationsHelp: 'Let anyone recommend items for this public list.',
   smart: 'Smart List',
-  smartHelp: 'Automatically updates based on media types and filters. Rule editing is not ported here.',
+  smartHelp: 'Automatically updates based on media types and filters',
+  usernamePlaceholder: 'Username',
+  addByUsername: 'Add',
   tags: 'List Tags',
   tagsHelp: 'Separate tags with commas.',
   tagSuggestions: 'Suggested tags',
@@ -132,6 +134,34 @@ function ToggleRow({ label, help, checked, disabled, onChange, colors, labels })
   </View>;
 }
 
+function UsernameAdder({ role, colors, labels, onAdd }) {
+  const [value, setValue] = useState('');
+  const name = value.trim();
+  function add() {
+    if (!name) return;
+    onAdd(name, role);
+    setValue('');
+  }
+  return <View style={styles.usernameRow}>
+    <TextInput
+      accessibilityLabel={role === 'viewer' ? labels.addViewer : labels.addCollaborator}
+      value={value}
+      onChangeText={setValue}
+      onSubmitEditing={add}
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholder={labels.usernamePlaceholder}
+      placeholderTextColor={colors.textMuted}
+      selectionColor={colors.accent}
+      style={[styles.usernameInput, {
+        color: colors.text,
+        borderColor: colors.border,
+        backgroundColor: colors.surfaceStrong,
+      }]} />
+    <Button label={labels.addByUsername} tone="surface" disabled={!name} onPress={add} palette={colors} />
+  </View>;
+}
+
 export function ListForm({
   mode = 'create',
   list = {},
@@ -165,9 +195,9 @@ export function ListForm({
   const isPublic = visibility === 'public';
   const isLinkVisible = visibility === 'public' || visibility === 'unlisted';
   const isEdit = mode === 'edit';
-  const urlPrefix = list.urlPrefix || 'https://floppy.example/lists/';
+  const urlPrefix = list.urlPrefix || '';
   const listReference = slugPreview(publicSlug) || list.id || '';
-  const currentUrl = listReference ? `${urlPrefix}${listReference}` : '';
+  const currentUrl = urlPrefix && listReference ? `${urlPrefix}${listReference}` : '';
 
   function submit() {
     onSubmit?.({
@@ -193,7 +223,7 @@ export function ListForm({
 
   function addMember(name, role = 'collaborator') {
     const id = name.toLowerCase();
-    setMembers(current => current.some(member => member.id === id)
+    setMembers(current => current.some(member => member.name.toLowerCase() === id)
       ? current
       : [...current, { id, name, handle: `@${id}`, role }]);
   }
@@ -234,7 +264,7 @@ export function ListForm({
             <Text style={[styles.help, { color: colors.textMuted }]}>
               {currentUrl ? `${copy.currentUrl} ${currentUrl}` : copy.saveForUrl}
             </Text>
-            <Text style={[styles.help, { color: colors.textMuted }]}>{urlPrefix}</Text>
+            {urlPrefix ? <Text style={[styles.help, { color: colors.textMuted }]}>{urlPrefix}</Text> : null}
           </View> : null}
 
           <View style={styles.toggleGroup}>
@@ -284,7 +314,8 @@ export function ListForm({
                 {availablePeople.map(person => <Badge key={person.id} label={`+ ${person.name}`}
                   tone="outline" palette={badges} onPress={() => addMember(person.name)} />)}
               </View>
-            </View> : <Text style={[styles.help, { color: colors.textMuted }]}>{copy.everyoneIsMember}</Text>}
+            </View> : null}
+            <UsernameAdder role="collaborator" colors={colors} labels={copy} onAdd={addMember} />
           </View>
 
           <View style={styles.field}>
@@ -304,6 +335,7 @@ export function ListForm({
               {availablePeople.map(person => <Badge key={`view-${person.id}`} label={`+ ${person.name}`}
                 tone="outline" palette={badges} onPress={() => addMember(person.name, 'viewer')} />)}
             </View> : null}
+            <UsernameAdder role="viewer" colors={colors} labels={copy} onAdd={addMember} />
           </View>
 
           <FormError message={errors.form} palette={colors} />
@@ -332,6 +364,8 @@ export function ListForm({
 }
 
 const styles = StyleSheet.create({
+  usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  usernameInput: { flex: 1, minWidth: 0, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, fontSize: 14 },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 640, maxHeight: '92%', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   headerBlock: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },

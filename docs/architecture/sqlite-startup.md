@@ -5,12 +5,19 @@ Ordinary restarts do not warm the database, run `quick_check`, run
 schema, migration history, model table/column names and recovery sidecars.
 Each SQLite statement has a five-second progress deadline and a two-second busy
 timeout; the entrypoint bounds the whole command, including imports and I/O,
-to `FLOPPY_SQLITE_ADMISSION_TIMEOUT` seconds (default 30, then five seconds to
-kill it). This setting must be a positive whole number. GNU `timeout` returns
+to `FLOPPY_SQLITE_ADMISSION_TIMEOUT` seconds (default 120, then five seconds to
+kill it; Django start-up alone takes tens of seconds on slow hosts). This setting must be a positive whole number. GNU `timeout` returns
 124 when it reaches the deadline; BusyBox may return 143 after sending TERM.
 The entrypoint treats both as timeouts, retries admission once, then parks if
 the retry also times out. A kernel storage operation in uninterruptible sleep
 cannot be made healthy by a Python or shell deadline.
+
+Because the deadline includes imports, the image ships compiled bytecode for
+the standard library, dependencies and app (`compileall` in the Dockerfile,
+guarded by `config.tests.test_dockerfile_bytecode`). Without it every Python
+start recompiled its imports from source: from a cold disk cache, admission
+took 7 to 11 s and the container 27 to 32 s to answer, against 4 to 5 s and
+12 to 14 s with bytecode (Docker Desktop, 4 CPUs, 20k-item library).
 
 An expired verification, absent record, interrupted scan or previous timeout
 only lets the sliced background verifier continue; a changed image does not. These are not corruption findings. An old record is not proof that
@@ -124,8 +131,11 @@ SQLite more cache does not help when the container's memory is smaller than the
 database, and no `PRAGMA` changes the walk order. The fix is to verify in file
 order.
 
-Supervisor runs `sqlite_startup --background` (`sqlite-verification`) 60 seconds
-after start and then every 10 minutes, niced. It makes no copy and takes no
+Supervisor runs `config/sqlite_background.py` (`sqlite-verification`) 60 seconds
+after start and then every 10 minutes, niced. It is the same slice as
+`sqlite_startup --background`, run without starting Django: the verifier needs
+only the standard library, and two Django start-ups per slice (the command and
+its deadline worker, about 6.5 s of CPU) were most of an idle instance's CPU. It makes no copy and takes no
 write lock. Nothing blocks startup or serving, and nothing is re-run because the
 image changed: state is tied to the database file (`DB_FILE.verification.
 progress.json`), so work resumes across restarts and upgrades, and a replaced
@@ -160,7 +170,8 @@ its copy; that is not yet sliced or swept.
 
 Observe `[sqlite-verification] slice status=...` logs and the progress file
 (`verified_through`, `unverified_units`, `fk_incomplete`, `deep_incomplete`).
-Run a slice manually with `python manage.py sqlite_startup --background`.
+Run a slice manually with `python manage.py sqlite_startup --background` (or
+`python config/sqlite_background.py`; both share `run_background_slice`).
 
 A snapshot passing `quick_check` establishes structural integrity of its
 copy only. It does **not** establish relational integrity. Existing scheduled

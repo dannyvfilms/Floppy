@@ -31,6 +31,10 @@ for (const page of Object.values(pages)) {
   if (seen.has(page.id)) problems.push(`duplicate page id: ${page.id}`);
   seen.add(page.id);
   if (!page.webRoute || !page.nativeScreen) problems.push(`${page.id}: missing webRoute/nativeScreen`);
+  // Every registered path must exist, whatever the status: a legacy entry may not point at a deleted file.
+  for (const key of ['nativeScreen', 'nativeAdapter', 'view', 'webAdapter']) {
+    if (page[key] && !existsSync(resolve(root, page[key]))) problems.push(`${page.id}: ${key} does not exist: ${page[key]}`);
+  }
   if (page.status === 'shared') {
     for (const key of ['view', 'webAdapter']) {
       if (!page[key]) problems.push(`${page.id}: shared page is missing ${key}`);

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { MediaCardActionHost } from './MediaCardActionHost';
@@ -33,6 +33,8 @@ const defaultLabels = {
   collaborator: 'Collaborator',
   viewer: 'Viewer',
   addCollaborator: 'Add collaborator',
+  usernamePlaceholder: 'Username',
+  addByUsername: 'Add',
   everyoneIsMember: 'Everyone available is already a member.',
   remove: 'Remove',
   links: 'Links & export',
@@ -73,11 +75,40 @@ function visibilityLabel(visibility, copy) {
         : visibility;
 }
 
+function UsernameEntry({ colors, labels, onAdd }) {
+  const [value, setValue] = useState('');
+  const name = value.trim();
+  function add() {
+    if (!name) return;
+    onAdd?.(name);
+    setValue('');
+  }
+  return <View style={styles.usernameRow}>
+    <TextInput
+      accessibilityLabel={labels.addCollaborator}
+      value={value}
+      onChangeText={setValue}
+      onSubmitEditing={add}
+      autoCapitalize="none"
+      autoCorrect={false}
+      placeholder={labels.usernamePlaceholder}
+      placeholderTextColor={colors.textMuted}
+      selectionColor={colors.accent}
+      style={[styles.usernameInput, {
+        color: colors.text,
+        borderColor: colors.border,
+        backgroundColor: colors.surfaceStrong,
+      }]} />
+    <Button label={labels.addByUsername} tone="surface" disabled={!name} onPress={add} />
+  </View>;
+}
+
 export function ListMembershipSection({
   list,
   palette,
   labels,
   suggestions = [],
+  allowUsernameEntry = false,
   onChangeVisibility,
   onAddMember,
   onRemoveMember,
@@ -133,7 +164,7 @@ export function ListMembershipSection({
 
     {canEdit && isOwner ? <View style={styles.addBlock}>
       <Text style={[styles.help, { color: colors.textMuted }]}>{copy.addCollaborator}</Text>
-      {suggestions.length === 0 ? <Text style={[styles.help, { color: colors.textMuted }]}>
+      {suggestions.length === 0 && !allowUsernameEntry ? <Text style={[styles.help, { color: colors.textMuted }]}>
         {copy.everyoneIsMember}
       </Text> : <View style={styles.badgeRow}>
         {suggestions.map(name => <Badge
@@ -143,6 +174,7 @@ export function ListMembershipSection({
           palette={badges}
           onPress={() => onAddMember?.(name)} />)}
       </View>}
+      {allowUsernameEntry ? <UsernameEntry colors={colors} labels={copy} onAdd={onAddMember} /> : null}
     </View> : null}
   </View>;
 }
@@ -184,6 +216,7 @@ export function ListMembershipPopup({
   palette,
   labels,
   suggestions = [],
+  allowUsernameEntry = false,
   onClose,
   onChangeVisibility,
   onAddMember,
@@ -203,6 +236,7 @@ export function ListMembershipPopup({
       palette={colors}
       labels={copy}
       suggestions={suggestions}
+      allowUsernameEntry={allowUsernameEntry}
       onChangeVisibility={onChangeVisibility}
       onAddMember={onAddMember}
       onRemoveMember={onRemoveMember} />
@@ -225,6 +259,8 @@ const styles = StyleSheet.create({
   memberCopy: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 14, fontWeight: '600' },
   memberHandle: { fontSize: 12 },
+  usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  usernameInput: { flex: 1, minWidth: 0, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, fontSize: 14 },
   addBlock: { gap: 6, marginTop: 4 },
   links: { borderTopWidth: 1, marginTop: 4, paddingTop: 10, gap: 6 },
   linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, paddingVertical: 8 },

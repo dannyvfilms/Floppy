@@ -59,7 +59,9 @@
               </div>
 
               {# History #}
-              <div x-data="{ historyOpen: false }">
+              {# The Edit action swaps a track modal (x-show="trackOpen") into the history overlay, so both flags live here. Closing that modal closes the overlay. #}
+              <div x-data="{ historyOpen: false, trackOpen: true }"
+                   x-effect="if (!trackOpen) { historyOpen = false; trackOpen = true }">
                 <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
                         title="{% translate "View your activity history" %}"
                         hx-get="{% media_view_url 'history_modal' episode.item %}"

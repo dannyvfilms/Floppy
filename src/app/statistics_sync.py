@@ -31,6 +31,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from app.db_retry import is_lock_error
+from app.history_cache_utils import history_deferred_item_fields
 from app.interactive_requests import interactive_request_active
 from app.models import StatisticsDirtyDay, StatisticsSnapshot, StatisticsSyncState
 from app.statistics_day_cache import (
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when the shape of a published payload changes; older snapshots are
 # served until the next sync replaces them.
-SNAPSHOT_SCHEMA_VERSION = 19
+SNAPSHOT_SCHEMA_VERSION = 22
 
 # Cheap ranges rebuilt on every sync, in this order.
 HOT_RANGES = (
@@ -97,7 +98,9 @@ def coalesce_import_changes(user_id: int):
         yield users[user_id]
         return
     fields = ("generation", "last_marked_at", "full_sweep_requested_at")
-    previous = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
+    previous = (
+        StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
+    )
     mark_aggregate(user_id, reason="media_import_started", full_sweep=True)
     marker = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
     changes = {"marked": False, "unchanged": False, "scoped": False}
@@ -201,7 +204,7 @@ def _pending_key(user_id: int) -> str:
 def _day_epoch_key(user_id: int) -> str:
     # Written without a TTL, so volatile-lru never evicts it: its absence means
     # the cache was flushed and every day payload has to be checked.
-    return f"stats:sync:day_epoch:{user_id}"
+    return f"stats:sync:day_epoch:v{SNAPSHOT_SCHEMA_VERSION}:{user_id}"
 
 
 def _eager_mode() -> bool:
@@ -421,9 +424,7 @@ def ensure_sync(user_id: int, *, urgent: bool = False, scheduled=False) -> bool:
         # keeps the interactive lane. Everything a playback merely marked is
         # bulk work on the background lane.
         queue = INTERACTIVE_QUEUE if urgent else BACKGROUND_QUEUE
-        statistics_sync_task.apply_async(
-            args=[user_id], priority=priority, queue=queue
-        )
+        statistics_sync_task.apply_async(args=[user_id], priority=priority, queue=queue)
     except Exception as exc:  # pragma: no cover - broker unavailable
         cache.delete(_gate_key(user_id))
         if scheduled:
@@ -614,15 +615,19 @@ def _fetch_instances(refs):
     instances = {}
     for label, pks in refs.items():
         model = apps.get_model(label)
-        queryset = model.objects.filter(pk__in=pks)
         related = {field.name for field in model._meta.get_fields()}
-        if "item" in related:
-            queryset = queryset.select_related("item")
+        item_paths = ["item"] if "item" in related else []
         if model._meta.model_name == "season":
-            queryset = queryset.select_related("related_tv__item")
+            item_paths.append("related_tv__item")
         elif model._meta.model_name == "episode":
-            queryset = queryset.select_related(
-                "related_season__item", "related_season__related_tv__item"
+            item_paths += ["related_season__item", "related_season__related_tv__item"]
+        # The hydrated payload is cached; keep the wide item columns no card
+        # reads out of it, as the aggregator does when it builds the payload.
+        queryset = model.objects.filter(pk__in=pks)
+        if item_paths:
+            # select_related() with no names would follow every relation.
+            queryset = queryset.select_related(*item_paths).defer(
+                *history_deferred_item_fields(*item_paths)
             )
         for instance in queryset:
             instances[(label, instance.pk)] = instance
@@ -976,10 +981,7 @@ def _build_days(
     lease_token: str | None = None,
 ) -> int:
     """Build day payloads in slices; clear each slice's dirty rows as it lands."""
-    from app.statistics_day_builder import (
-        _build_prefetch_for_range,
-        build_stats_for_day,
-    )
+    from app.statistics_day_builder import SpanPrefetches, build_stats_for_day
     from app.statistics_refresh import _enqueue_collected_backfills
 
     credit_hints = 0
@@ -990,7 +992,8 @@ def _build_days(
         if lease_token is not None and not _renew_lease(user.id, lease_token):
             raise _LostLeaseError
         chunk = days[offset : offset + size]
-        prefetch = _build_prefetch_for_range(user, chunk)
+        # Nearby days share one prefetch; a far-off dirty day gets its own.
+        prefetches = SpanPrefetches(user, chunk)
         collector = {
             "runtime_item_ids": set(),
             "genre_item_ids": set(),
@@ -1011,7 +1014,7 @@ def _build_days(
                 user.id,
                 day,
                 user=user,
-                prefetch=prefetch,
+                prefetch=prefetches.for_day(day),
                 defer_cache_write=True,
                 backfill_collector=collector,
             )
@@ -1054,6 +1057,20 @@ def _clear_dirty(user_id: int, days, dirty_tokens) -> None:
         StatisticsDirtyDay.objects.filter(query, user_id=user_id).delete()
 
 
+_NOT_A_PHASE = ("days_ms",)
+
+
+def _phase_summary(timings: dict) -> str:
+    """Wall milliseconds per aggregate phase, as ``phase:ms`` pairs."""
+    return ",".join(
+        f"{key[:-3]}:{value:.0f}"
+        for key, value in timings.items()
+        if key.endswith("_ms")
+        and not key.endswith("_cpu_ms")
+        and key not in _NOT_A_PHASE
+    )
+
+
 def _aggregate_range(
     user,
     range_name: str,
@@ -1061,6 +1078,7 @@ def _aggregate_range(
     deadline=None,
     lease_token: str | None = None,
     timings: dict | None = None,
+    pass_memo: dict | None = None,
 ) -> dict:
     from app.statistics_aggregator import _aggregate_statistics_from_days
     from app.statistics_highlights import normalize_highlight_images
@@ -1068,20 +1086,31 @@ def _aggregate_range(
 
     timings = {} if timings is None else timings
     start_date, end_date = _get_predefined_range_dates(range_name)
+    resolve_started = time.monotonic()
     day_list = _resolve_day_list(user, start_date, end_date)
+    timings["resolve_days_ms"] = (time.monotonic() - resolve_started) * 1000
     # A bounded range walks every calendar day, and a day never built (most
     # are empty) would otherwise be built one at a time inside the aggregate,
-    # ~13 queries each. Build them first with one prefetch per slice.
-    missing = sorted(_missing_days(user.id, day_list), reverse=True)
-    timings["missing_days"] = len(missing)
-    if missing:
+    # ~13 queries each. The aggregate reports the days its own read did not
+    # find, a batch at a time, and they are built here with one prefetch per
+    # slice. Checking beforehand instead decoded every day payload twice.
+    timings["missing_days"] = 0
+    timings["days_ms"] = 0.0
+
+    def build_missing(days):
+        timings["missing_days"] += len(days)
         build_started = time.monotonic()
         try:
-            credit_hints += _build_days(
-                user, missing, deadline, {}, lease_token=lease_token
+            return _build_days(
+                user,
+                sorted(days, reverse=True),
+                deadline,
+                {},
+                lease_token=lease_token,
             )
         finally:
-            timings["days_ms"] = (time.monotonic() - build_started) * 1000
+            timings["days_ms"] += (time.monotonic() - build_started) * 1000
+
     data = _aggregate_statistics_from_days(
         user,
         day_list,
@@ -1089,9 +1118,14 @@ def _aggregate_range(
         end_date,
         build_missing=True,
         credit_backfill_hints=credit_hints,
+        timings=timings,
+        pass_memo=pass_memo,
+        build_days=build_missing,
     )
     # Cache-only: artwork the cache lacks is fetched by the background worker.
+    images_started = time.monotonic()
     normalize_highlight_images(data)
+    timings["images_ms"] = (time.monotonic() - images_started) * 1000
     return data
 
 
@@ -1148,10 +1182,7 @@ def run_sync(
         state = StatisticsSyncState.objects.get(user_id=user_id)
         generation = state.generation
         day_epoch = cache.get(_day_epoch_key(user_id))
-        full = (
-            state.full_sweep_requested_at is not None
-            or day_epoch is None
-        )
+        full = state.full_sweep_requested_at is not None or day_epoch is None
 
         if state.full_sweep_requested_at is not None:
             sweep_epoch = state.full_sweep_requested_at.isoformat()
@@ -1245,9 +1276,9 @@ def run_sync(
                             batch_size=500,
                         )
                     dirty_tokens = dict(
-                        StatisticsDirtyDay.objects.filter(
-                            user_id=user_id
-                        ).values_list("day", "token")
+                        StatisticsDirtyDay.objects.filter(user_id=user_id).values_list(
+                            "day", "token"
+                        )
                     )
                 cache.set(stale_scan_key, 1, timeout=86400)
         # Dirty days first, newest first: repeatedly warming Today must not
@@ -1293,6 +1324,10 @@ def run_sync(
             for snapshot in snapshots.values()
         )
 
+        # Lookups the ranges of this pass share. In memory for this pass
+        # only: never cached, never published.
+        pass_memo: dict = {}
+
         def needs_rebuild(range_name):
             snapshot = snapshots.get(range_name)
             return (
@@ -1318,6 +1353,7 @@ def run_sync(
                 deadline,
                 lease_token=lease_token,
                 timings=range_timings,
+                pass_memo=pass_memo,
             )
             publish_snapshot(
                 user_id, range_name, data, generation, lease_token=lease_token
@@ -1333,13 +1369,15 @@ def run_sync(
             )
             logger.info(
                 "stats_range_summary user_id=%s range=%s generation=%s elapsed_ms=%.2f "
-                "missing_days=%s days_ms=%.2f",
+                "missing_days=%s days_ms=%.2f days_decoded=%s phases_ms=%s",
                 user_id,
                 range_name,
                 generation,
                 range_seconds * 1000,
                 range_timings.get("missing_days", 0),
                 range_timings.get("days_ms", 0.0),
+                range_timings.get("days_decoded", 0),
+                _phase_summary(range_timings),
             )
 
         # Cleared only once the pass completes: a continuation must still see
@@ -1397,7 +1435,9 @@ def run_sync(
             if not is_lock_error(exc):
                 raise
             # The lease lapses on its own, after which the reconciler can claim.
-            logger.warning("stats_sync_release_locked user_id=%s error=%s", user_id, exc)
+            logger.warning(
+                "stats_sync_release_locked user_id=%s error=%s", user_id, exc
+            )
 
     if status == "locked":
         # Queueing a follow-up now would just meet the same lock.

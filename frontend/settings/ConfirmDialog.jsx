@@ -41,6 +41,7 @@ export function ConfirmDialog({
   buttonPalette = {},
   onCancel,
   onConfirm,
+  children,
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
@@ -72,6 +73,7 @@ export function ConfirmDialog({
             style={[styles.input, { backgroundColor: colors.surfaceStrong, borderColor: colors.border, color: colors.text }]}
           />
         </View> : null}
+        {children}
         {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
         <View style={styles.actions}>
           <Button label={cancelLabel} tone="surface" disabled={busy} onPress={onCancel} palette={buttons} />

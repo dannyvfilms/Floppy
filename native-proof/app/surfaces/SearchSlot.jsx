@@ -1,9 +1,10 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
-import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
+import { createSearchTransport, suggestionsFromPayload } from '../data/searchTransport';
+import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -11,7 +12,7 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared React Native search field renders here with the media-type menu, two-character suggestions, the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed-in suggestions query /api/v1/media/?search= through the session facade; signed-out keeps the sample rows. The web adapter keeps the GET search action and JSON suggestion endpoint. Expo export is compile-only evidence: camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
+  note: 'The shared React Native search field renders here with the reviewed media-type menu, barcode types and copy, two-character suggestions from /api/v1/search/suggestions/ (saved titles, collected and tagged items, matched titles), the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed-out suggestions are empty; there is no sample content. Platform verification is recorded in the UI register.',
 };
 
 const mediaTypes = [
@@ -27,21 +28,6 @@ const mediaTypes = [
   { display: 'Music', value: 'music' },
   { display: 'Podcasts', value: 'podcast' },
   { display: 'Videos', value: 'video' },
-];
-
-const library = [
-  { title: 'Dune', subtitle: 'Movie · 2021', type: 'movie' },
-  { title: 'Dune: Part Two', subtitle: 'Movie · 2024', type: 'movie' },
-  { title: 'Dune Messiah', subtitle: 'Book · Frank Herbert', type: 'book' },
-  { title: 'The Bear', subtitle: 'TV Show · In progress', type: 'tv' },
-  { title: 'Blue Eye Samurai', subtitle: 'Anime · Completed', type: 'anime' },
-  { title: 'Vinland Saga', subtitle: 'Manga · Makoto Yukimura', type: 'manga' },
-  { title: 'Hades', subtitle: 'Game · 12 hours played', type: 'game' },
-  { title: 'Saga #1', subtitle: 'Comic Issue · Brian K. Vaughan', type: 'comicissue' },
-  { title: 'Wingspan', subtitle: 'Board Game · 4 plays', type: 'boardgame' },
-  { title: 'Piranesi', subtitle: 'Book · Susanna Clarke', type: 'book' },
-  { title: 'The Last of Us', subtitle: 'TV Show · Planning', type: 'tv' },
-  { title: 'Every Frame a Painting', subtitle: 'Video · Essay', type: 'video' },
 ];
 
 const labels = {
@@ -98,8 +84,6 @@ const searchPalette = {
   ...(Platform.OS === 'ios' ? { inputHeight: 44, searchTouchWidth: 44 } : {}),
 };
 
-const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 export default function SearchSlot({
   expanded = false,
   initialQuery = '',
@@ -107,13 +91,21 @@ export default function SearchSlot({
   onOpenSearch,
   onOpenSuggestion,
   onSubmit,
+  onTypeChange,
+  dismissSignal = 0,
 }) {
   const { width } = useWindowDimensions();
-  const [transport] = useState(() => createSearchTransport());
+  const [session, setSession] = useState(() => getActiveAuthSession());
+  useEffect(() => subscribeAuthSession(setSession), []);
+  const transport = useMemo(
+    () => createSearchTransport(session ? { auth: session } : {}),
+    [session],
+  );
   const compact = width < 640;
-  const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
   const [scannerVisible, setScannerVisible] = useState(false);
   const pendingBarcode = useRef(null);
+
+  const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
 
   const requestBarcode = useCallback(() => new Promise(resolve => {
     pendingBarcode.current = resolve;
@@ -127,37 +119,22 @@ export default function SearchSlot({
     resolve?.(result);
   }, []);
 
-  const loadSuggestions = useCallback(async ({ query, mediaType }) => {
-    await wait(180);
-    if (transport.mode === 'server' && transport.searchSuggestions) {
-      return { suggestions: await transport.searchSuggestions({ search: query, mediaType }) };
+  const loadSuggestions = useCallback(async ({ query, mediaType, signal }) => {
+    if (transport.mode !== 'server') return { suggestions: [] };
+    // A session sign-in uses the web typeahead; a token sign-in reads the same one from the API.
+    // `signal` cancels the request when a newer keystroke replaces it.
+    if (transport.searchSuggestions) {
+      return { suggestions: await transport.searchSuggestions({ search: query, mediaType, signal }) };
     }
-    if (transport.mode === 'server') {
-      const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
-      return {
-        suggestions: localResultsFromPayload(payload).slice(0, 8).map((item, index) => ({
-          ...item,
-          id: `${item.type}-${index}`,
-          title: item.title,
-          subtitle: [item.note, item.year, item.status].filter(Boolean).join(' · '),
-          mediaType: item.type,
-        })),
-      };
-    }
-    const needle = query.toLowerCase();
-    return {
-      suggestions: library
-        .filter(item => mediaType === 'all' || item.type === mediaType)
-        .filter(item => item.title.toLowerCase().includes(needle))
-        .slice(0, 8)
-        .map((item, index) => ({
-          id: `${item.type}-${index}`,
-          title: item.title,
-          subtitle: item.subtitle,
-          mediaType: item.type,
-        })),
-    };
-  }, [transport]);
+    const payload = await transport.loadSuggestions({ query, mediaType, signal });
+    return { suggestions: suggestionsFromPayload(payload, session?.serverUrl || '') };
+  }, [transport, session]);
+
+  // Remember the picked type on the server (as the web does) and in the shell.
+  function changeType(mediaType) {
+    onTypeChange?.(mediaType);
+    transport.saveType?.({ mediaType })?.catch?.(() => {});
+  }
 
   function openSuggestion(suggestion) {
     // Typeahead rows without an item identity (artists, podcast shows) open as a search.
@@ -170,9 +147,11 @@ export default function SearchSlot({
     <GlobalSearch
       useKeyboardOverlap={useKeyboardOverlap}
       expanded={expanded}
+      dismissSignal={dismissSignal}
       compact={compact}
       query={initialQuery}
       selectedType={selectedType}
+      onTypeChange={changeType}
       mediaTypes={mediaTypes}
       barcodeTypes={['all', 'book', 'manga', 'comic', 'comicissue']}
       labels={labels}

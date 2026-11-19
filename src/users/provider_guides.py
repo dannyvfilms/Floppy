@@ -97,10 +97,10 @@ def setup_guide(request, slug):
             [_t("Download and install the"), _a("HTTP Scrobbler add-on", "https://github.com/sboddy/KodiAddon-HttpScrobbler"), _t(".")],
             [_t("In Kodi, go to"), _b("Settings > Services > Control"), _t("and enable"), _b("Allow remote control via HTTP"), _t(".")],
             [_t("In the HTTP Scrobbler add-on settings, set the webhook URL to:"), _copy("webhook")],
-            [_em("Tip: open the Kodi web interface at"), ("code", "http://<kodi-ip>:8080"), _em("to configure the add-on — easier than using the remote.")],
+            [_em("Tip: open the Kodi web interface at"), ("code", "http://<kodi-ip>:8080"), _em("to configure the add-on, which is easier than using the remote.")],
             [_t("Leave the username and password fields blank.")],
             [_t("If you use the add-on's"), _b("Skip all events after sending stop/end"),
-             _t("option, turn it off — it can suppress the events Floppy needs to mark an episode watched.")],
+             _t("option, turn it off. It can suppress the events Floppy needs to mark an episode watched.")],
             [_t("An item is marked watched when playback reaches 80% or Kodi reports"), _em("Playback finished"), _t(".")],
         ], {"webhook": url})
     if slug == "navidrome":
@@ -117,7 +117,7 @@ def setup_guide(request, slug):
                       _("Not supported yet. A Floppy tracker for Nuvio TV has been proposed but isn't in any Nuvio release."), [
             [_t("Create an"), _a("app token", tokens),
              _t("in Access & Tokens, named after the device. The default permissions already cover everything Nuvio needs.")],
-            [_t("Copy the token secret when it's shown — Floppy only displays it once.")],
+            [_t("Copy the token secret when it's shown. Floppy only displays it once.")],
             [_t("In a Nuvio TV build with the Floppy tracker, enter this Server URL and the token secret you copied:"), _copy("webhook")],
             [_t("Revoke the token in"), _a("App tokens", tokens), _t("to disconnect the device. This never deletes your tracking data.")],
         ], {"webhook": url})

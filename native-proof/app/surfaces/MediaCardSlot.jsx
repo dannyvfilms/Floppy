@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, FlatList, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { Icon } from '../../../frontend/ui/Icon';
-import { TrackForm } from '../../../frontend/ui/TrackForm';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
+import { TrackDialog } from '../../../frontend/ui/TrackDialog';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import {
   applyListToggle,
@@ -14,7 +15,10 @@ import {
   normalizeListsModel,
   normalizeTrackForm,
 } from '../../../frontend/ui/mediaCardForms';
-import { mediaCardPalette, spacing } from '../theme';
+import { libraryGridLayout } from '../../../frontend/ui/mediaCardSizing';
+import { mediaCardPalette, palette, spacing } from '../theme';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import NativeCardMenu from './NativeCardMenu';
 import { emitMediaCardChange, subscribeMediaCardChange } from './mediaCardEvents';
 import {
   createTag,
@@ -23,7 +27,6 @@ import {
   loadLists,
   loadTrack,
   loadTrackTabs,
-  mediaCardVariant,
   reorderListItem,
   reorderListItems,
   runDiscoverAction,
@@ -37,10 +40,10 @@ import {
 
 export const surface = {
   id: 'MEDIA-CARD',
-  title: 'Media card',
-  where: 'Home rails, Discover, Library, Search and List results',
+  title: 'Media card grid',
+  where: 'Library grid layout',
   status: 'ported',
-  note: 'Poster, square, landscape and row cards render the shared model with the shared ArtworkImage loading, fallback, provenance and stale states, chips, progress, rating, action overlay, touch/hover reveal, explicit read-only mode and selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, link routing, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Drag reorder exposes an adjustable position and hint, step and accessibility actions, and announces moves and failures; the web Track General form is shared presentation through mountTrackForm. The Expo export compiles the finished card; iOS, Android, browser and screen-reader runtime interaction remain unverified.',
+  note: 'Renders the card models handed in through the items prop; the Library grid builds them from the same /api/v1/media/ rows the table shows. The native action host owns the Track and Lists form bodies through the platform transport, card-change events, ratings and link routing. A signed-out or unreachable transport shows a sign-in prompt instead of sample content. The Expo export compiles the finished card; iOS, Android, browser and screen-reader runtime interaction remain unverified.',
 };
 
 const labels = {
@@ -52,105 +55,10 @@ const labels = {
   open: 'Open',
 };
 
-function actionsFor(title, media, trackTitle = 'Edit tracking') {
-  return {
-    href: '/demo/library',
-    items: [
-      {
-        kind: 'modal',
-        modal: 'track',
-        tone: 'indigo',
-        title: trackTitle,
-        glyph: '✎',
-        url: '/demo/track',
-        vals: { return_url: '/demo/library' },
-        target: '#track-demo',
-        media,
-      },
-      {
-        kind: 'modal',
-        modal: 'lists',
-        tone: 'emerald',
-        title: 'Add to custom lists',
-        glyph: '☰',
-        url: '/demo/lists',
-        vals: { return_url: '/demo/library' },
-        target: '#lists-demo',
-        media,
-      },
-      {
-        kind: 'link',
-        tone: 'amber',
-        title: 'View your activity history',
-        glyph: '◷',
-        href: '/demo/history',
-        media,
-      },
-    ],
-    ordering: null,
-    modals: { track: 'track-demo', lists: 'lists-demo' },
-    csrfToken: '',
-    clickable: true,
-    title,
-    media,
-  };
-}
-
-function discoverActionsFor(title, media) {
-  const vals = {
-    candidate_media_type: media.mediaType,
-    identity_media_type: media.mediaType === 'episode' ? 'episode' : '',
-    library_media_type: '',
-    source: media.source,
-    media_id: media.mediaId,
-    season_number: media.seasonNumber != null ? String(media.seasonNumber) : '',
-    active_media_type: 'all',
-    show_more: '0',
-    row_key: 'demo',
-    discover_debug: '0',
-    title,
-    image: '',
-    release_date: '',
-  };
-  return {
-    href: '/demo/discover',
-    items: [
-      {
-        kind: 'post',
-        tone: 'emerald',
-        title: 'Add to Planning',
-        glyph: '＋',
-        vals: { ...vals, action: 'planning' },
-        media,
-      },
-      {
-        kind: 'post',
-        tone: 'rose',
-        title: 'Hide from Discover',
-        glyph: '⦸',
-        vals: { ...vals, action: 'dismiss' },
-        media,
-      },
-      {
-        kind: 'modal',
-        modal: 'lists',
-        tone: 'amber',
-        title: 'Add to custom lists',
-        glyph: '☰',
-        url: '/demo/lists',
-        vals: { return_url: '/demo/discover' },
-        target: '#lists-discover',
-        media,
-      },
-    ],
-    ordering: null,
-    modals: { lists: 'lists-discover' },
-    csrfToken: '',
-    clickable: true,
-    title,
-    media,
-  };
-}
+const signInLabels = {
+  title: 'Sign in required',
+  body: 'Sign in to your Floppy server to use this action.',
+};
 
 function identityKey(identity) {
   if (!identity) return '';
@@ -163,190 +71,6 @@ function identityKey(identity) {
   ].join('|');
 }
 
-const demoMedia = {
-  orbit: {
-    mediaType: 'tv',
-    source: 'tmdb',
-    mediaId: '76479',
-    title: 'The Quiet Orbit',
-    subtitle: 'S1 E6 · The Long Night',
-  },
-  signal: {
-    mediaType: 'podcast',
-    source: 'pocketcasts',
-    mediaId: 'signal-carrier-wave',
-    episodeNumber: 3,
-    showId: '77',
-    trackId: '301',
-    title: 'Signal & Static',
-    subtitle: 'Episode 3 · Carrier Wave',
-  },
-  episode: {
-    mediaType: 'episode',
-    source: 'tmdb',
-    mediaId: '76479',
-    seasonNumber: 1,
-    episodeNumber: 6,
-    title: 'The Long Night',
-    subtitle: 'S1 E6 · The Quiet Orbit',
-  },
-  studio: {
-    mediaType: 'movie',
-    source: 'tmdb',
-    mediaId: '603',
-    title: 'Building a Home Studio',
-    subtitle: '2024 · 12:40',
-  },
-  lanterns: {
-    mediaType: 'book',
-    source: 'openlibrary',
-    mediaId: 'OL27448W',
-    title: 'Paper Lanterns',
-    subtitle: '2022 · 320 pages',
-  },
-};
-
-const reorderOrdering = {
-  listId: '9',
-  itemId: '4',
-  itemIds: {
-    'quiet-orbit': '1',
-    'signal-static': '2',
-    'paper-lanterns': '3',
-    'home-studio': '4',
-    'the-long-night': '5',
-  },
-  url: '/demo/lists/9/reorder',
-  labels: {
-    first: 'Move to first',
-    back: 'Move back',
-    next: 'Move next',
-    last: 'Move to last',
-    drag: 'Drag to reorder',
-  },
-};
-
-const demoItems = [
-  {
-    key: 'quiet-orbit',
-    model: {
-      mediaType: 'tv',
-      identity: demoMedia.orbit,
-      shape: 'poster',
-      video: false,
-      href: '/demo/the-quiet-orbit',
-      image: { src: 'https://picsum.photos/seed/floppy-orbit/400/600', fallback: '', source: 'primary' },
-      title: 'The Quiet Orbit',
-      altTitle: null,
-      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
-      cornerChips: [{ kind: 'next-episode', text: 'Next ep', href: '/demo/the-quiet-orbit/next' }],
-      titleLinks: [],
-      progressBar: { percent: 62, paused: false },
-      lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• 6 / 10 episodes', muted: true }] }],
-      rating: { label: '8.0', value: 8, scaleMax: 10, rateLabel: 'Rate' },
-      ratingEditable: true,
-      actions: actionsFor('The Quiet Orbit', demoMedia.orbit),
-    },
-  },
-  {
-    key: 'signal-static',
-    model: {
-      mediaType: 'podcast',
-      identity: demoMedia.signal,
-      shape: 'square',
-      video: false,
-      href: '/demo/signal-and-static',
-      image: { src: 'https://picsum.photos/seed/floppy-signal/400/400', fallback: '', source: 'primary' },
-      title: 'Signal & Static',
-      altTitle: 'Signal and Static',
-      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
-      cornerChips: [],
-      titleLinks: [],
-      progressBar: { percent: 38, paused: true },
-      lines: [{ join: 'plain', parts: [{ text: '2023' }, { text: '• 3 / 8 episodes', muted: true }] }],
-      rating: { label: '4.5', value: 4.5, scaleMax: 5, rateLabel: 'Rate' },
-      ratingEditable: true,
-      actions: actionsFor('Signal & Static', demoMedia.signal, 'Add play'),
-    },
-  },
-  {
-    key: 'home-studio',
-    model: {
-      mediaType: 'video',
-      identity: demoMedia.studio,
-      shape: 'landscape',
-      video: true,
-      href: '/demo/building-a-home-studio',
-      image: { src: 'https://picsum.photos/seed/floppy-studio/800/450', fallback: '', source: 'primary' },
-      title: 'Building a Home Studio',
-      altTitle: null,
-      statusChip: { kind: 'status', status: 'Completed', hideOnMobile: false },
-      cornerChips: [{ kind: 'runtime', text: '12:40' }],
-      titleLinks: [],
-      progressBar: null,
-      lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• Watched', muted: true }] }],
-      rating: null,
-      ratingEditable: true,
-      actions: { ...actionsFor('Building a Home Studio', demoMedia.studio), ordering: reorderOrdering },
-    },
-  },
-  {
-    key: 'paper-lanterns',
-    model: {
-      mediaType: 'book',
-      identity: demoMedia.lanterns,
-      shape: 'poster',
-      video: false,
-      href: '/demo/paper-lanterns',
-      image: { src: null, fallback: '', source: 'primary' },
-      title: 'Paper Lanterns',
-      altTitle: null,
-      statusChip: {
-        kind: 'media-type',
-        type: 'book',
-        style: 'soft',
-        color: '#D946EF',
-        contrast: '#FFFFFF',
-        label: 'Book',
-      },
-      cornerChips: [{ kind: 'collected', text: '4/8 collected', title: '4 of 8 episodes collected' }],
-      titleLinks: [],
-      progressBar: null,
-      lines: [{ join: 'plain', parts: [{ text: '2022' }, { text: '• 0 / 320 pages', muted: true }] }],
-      rating: { label: '6.5', value: 6.5, scaleMax: 10, rateLabel: 'Rate' },
-      ratingEditable: false,
-      actions: discoverActionsFor('Paper Lanterns', demoMedia.lanterns),
-    },
-  },
-  {
-    key: 'the-long-night',
-    model: {
-      mediaType: 'episode',
-      identity: demoMedia.episode,
-      shape: 'poster',
-      video: false,
-      href: '/demo/the-quiet-orbit/s1/e6',
-      image: { src: 'https://picsum.photos/seed/floppy-orbit-night/400/600', fallback: '', source: 'primary' },
-      title: 'The Long Night',
-      altTitle: null,
-      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
-      cornerChips: [{ kind: 'queue', text: 'S1 E6' }],
-      titleLinks: [],
-      progressBar: null,
-      lines: [{ join: 'plain', parts: [{ text: 'The Quiet Orbit' }, { text: '• 48 min', muted: true }] }],
-      rating: null,
-      ratingEditable: false,
-      actions: actionsFor('The Long Night', demoMedia.episode, 'Mark watched'),
-    },
-  },
-];
-
-const discoverCandidateKeys = new Set(
-  demoItems
-    .filter(item => item.model.actions?.items?.some(action => action.vals?.action === 'dismiss'))
-    .map(item => identityKey(item.model.identity)),
-);
-
 function actionGlyph(action) {
   if (action.kind === 'drag') return '≡';
   if (action.modal === 'track') return '✎';
@@ -357,9 +81,38 @@ function actionGlyph(action) {
   return '•';
 }
 
+function menuActionLabel(action) {
+  if (action.modal === 'track') {
+    if (action.media?.mediaType === 'episode') return action.title === 'Watched' ? 'Edit watch' : 'Mark watched';
+    return 'Edit tracking';
+  }
+  if (action.modal === 'lists') return 'Edit lists';
+  if (action.kind === 'link' && /\/history(?:[/?#]|$)/.test(action.href || '')) return 'View history';
+  if (action.vals?.action === 'planning') return 'Plan title';
+  if (action.vals?.action === 'dismiss') return 'Hide title';
+  return action.title;
+}
+
+// The shapes the web card's action buttons draw, by the action they perform.
+function actionSpec(action) {
+  if (action.icon) return action.icon;
+  if (action.modal === 'track') return actionIcons.edit;
+  if (action.modal === 'lists') return actionIcons.listAdd;
+  if (action.kind === 'link') return actionIcons.history;
+  return null;
+}
+
 function renderActionIcon(action) {
-  if (action.icon) return <Icon spec={action.icon} color="#ffffff" size={18} />;
+  const spec = actionSpec(action);
+  if (spec) return <Icon spec={spec} color={mediaCardPalette.chipText} size={18} />;
   return <Text accessible={false} style={styles.actionGlyph}>{actionGlyph(action)}</Text>;
+}
+
+function SignInPrompt() {
+  return <View style={styles.hostStack}>
+    <Text accessibilityRole="header" style={styles.signInTitle}>{signInLabels.title}</Text>
+    <Text style={styles.hostBody}>{signInLabels.body}</Text>
+  </View>;
 }
 
 const listLabels = {
@@ -401,203 +154,37 @@ const trackLabels = {
 const formPalette = {
   ...mediaCardPalette,
   textSecondary: mediaCardPalette.textSecondary,
-  surfaceStrong: '#3f3f46',
-  surfaceMuted: '#52525b',
-  accent: '#6366f1',
-  accentContrast: '#ffffff',
-  danger: '#f87171',
+  surfaceStrong: palette.surfaceStrong,
+  surfaceMuted: palette.surfaceMuted,
+  accent: palette.accentStrong,
+  accentContrast: mediaCardPalette.chipText,
+  danger: palette.danger,
   radius: 8,
   focusStyle: {},
   dateTime: mediaCardPalette,
 };
 
-const demoLists = {
-  itemId: 1,
-  title: 'The Quiet Orbit',
-  lists: [
-    { id: '1', name: 'Weekend queue', hasItem: true, tags: ['Sci-fi'] },
-    { id: '2', name: 'Comfort watches', hasItem: false, tags: ['Comfort'] },
-    { id: '3', name: 'With friends', hasItem: false, tags: [] },
-  ],
-  tags: ['Comfort', 'Sci-fi'],
-  toggleUrl: '/demo/lists/toggle',
-  csrfToken: 'demo',
-};
-
-const demoTrack = {
-  title: 'The Quiet Orbit',
-  titleSubtitle: 'S1 E6 · The Long Night',
-  mediaType: 'tv',
-  action: '/demo/track',
-  deleteAction: '/demo/track/delete',
-  csrfToken: 'demo',
-  submitLabel: 'Save',
-  deleteLabel: 'Delete',
-  fields: [
-    {
-      name: 'status',
-      label: 'Status',
-      type: 'select',
-      value: 'In progress',
-      required: true,
-      options: [
-        { value: 'Planning', label: 'Planning' },
-        { value: 'In progress', label: 'In progress' },
-        { value: 'Paused', label: 'Paused' },
-        { value: 'Completed', label: 'Completed' },
-        { value: 'Dropped', label: 'Dropped' },
-      ],
-    },
-    { name: 'score', label: 'Score', type: 'number', value: '8', min: 0, max: 10 },
-    { name: 'progress', label: 'Progress', type: 'number', value: '6', min: 0, max: 10, help: 'Episodes watched' },
-    { name: 'start_date', label: 'Start date', type: 'date', value: '2026-10-01' },
-    { name: 'end_date', label: 'End date', type: 'date', value: '' },
-  ],
-  notes: { value: 'Watching with the family.', label: 'Notes' },
-  labels: trackLabels,
-  trackTime: false,
-};
-
-const demoEpisodeTrack = {
-  title: 'The Long Night',
-  titleSubtitle: 'S1 E6 · The Quiet Orbit',
-  mediaType: 'episode',
-  variant: 'episode',
-  action: '/demo/episode/watch',
-  deleteAction: '/demo/episode/drop',
-  csrfToken: 'demo',
-  submitLabel: 'Add watch',
-  deleteLabel: 'Drop',
-  fields: [{ name: 'end_date', label: 'Watch date', type: 'date', value: '2026-10-12' }],
-  labels: trackLabels,
-  trackTime: false,
-};
-
-const demoSongTrack = {
-  title: 'Signal & Static',
-  titleSubtitle: 'Episode 3 · Carrier Wave',
-  mediaType: 'podcast',
-  variant: 'song',
-  action: '/demo/podcast/play',
-  deleteAction: '',
-  csrfToken: 'demo',
-  submitLabel: 'Add play',
-  deleteLabel: 'Delete',
-  fields: [{ name: 'end_date', label: 'Play date', type: 'date', value: '2026-10-12' }],
-  labels: trackLabels,
-  trackTime: false,
-};
-
-function demoTrackFor(identity) {
-  const variant = mediaCardVariant(identity);
-  if (variant === 'episode') return demoEpisodeTrack;
-  if (variant === 'song') return demoSongTrack;
-  return demoTrack;
-}
-
-const demoTrackTabs = [
-  {
-    id: 'tags',
-    label: 'Tags',
-    kind: 'tags',
-    status: 'ready',
-    error: '',
-    tags: [
-      { id: 'comfort', name: 'Comfort watches', hasTag: true, pending: false, error: '' },
-      { id: 'sci-fi', name: 'Sci-fi', hasTag: false, pending: false, error: '' },
-      { id: 'family', name: 'Family', hasTag: false, pending: false, error: '' },
-    ],
-  },
-  {
-    id: 'metadata',
-    label: 'Metadata',
-    kind: 'metadata',
-    status: 'ready',
-    error: '',
-    fields: [
-      { label: 'Title', value: 'The Quiet Orbit' },
-      { label: 'Media type', value: 'tv' },
-      { label: 'Provider', value: 'tmdb' },
-      { label: 'Provider id', value: '76479' },
-      { label: 'Release', value: '2024-02-09' },
-      { label: 'Genres', value: 'Science Fiction, Drama' },
-      { label: 'Provider score', value: '8.1' },
-    ],
-    imageUrl: 'https://picsum.photos/seed/floppy-orbit/400/600',
-    canEditArtwork: true,
-    itemId: 'demo-orbit',
-  },
-  {
-    id: 'collection',
-    label: 'Collection',
-    kind: 'collection',
-    status: 'ready',
-    error: '',
-    entries: [
-      { id: 'copy-1', title: 'The Quiet Orbit', detail: 'Blu-ray · 1080p · HDR10', date: '2025-03-14' },
-      { id: 'copy-2', title: 'The Quiet Orbit', detail: 'Digital · 4K', date: '2025-02-02' },
-    ],
-  },
-  {
-    id: 'plays',
-    label: 'Episode plays',
-    kind: 'plays',
-    status: 'ready',
-    error: '',
-    entries: [
-      { id: 'play-1', title: 'In progress', detail: 'Episode 6 · The Long Night', date: '2026-10-12' },
-      { id: 'play-2', title: 'Completed', detail: 'Episode 5 · Drift', date: '2026-10-08' },
-    ],
-  },
-  {
-    id: 'status-history',
-    label: 'Status history',
-    kind: 'status-history',
-    status: 'ready',
-    error: '',
-    changes: [
-      { id: 'change-1', old: 'Planning', next: 'In progress', reason: 'Manual', date: '2026-10-01' },
-      { id: 'change-2', old: '', next: 'Planning', reason: 'Discover', date: '2026-09-28' },
-    ],
-  },
-  {
-    id: 'discover',
-    label: 'Discover',
-    kind: 'discover',
-    status: 'ready',
-    error: '',
-    hidden: false,
-    canToggle: true,
-    itemId: 'demo-orbit',
-  },
-];
-
 function updateTab(tabs, id, updater) {
   return tabs.map(tab => (tab.id === id ? updater(tab) : tab));
 }
 
-function delay(milliseconds) {
-  return new Promise(resolve => setTimeout(resolve, milliseconds));
-}
-
 function ListsAction({ action, onClose }) {
   const transportReady = hasMediaCardTransport();
-  const identity = action.media || { mediaType: 'tv', source: 'tmdb', mediaId: 'demo', title: action.title };
-  const fallback = normalizeListsModel(demoLists);
-  const [model, setModel] = useState(transportReady ? null : fallback);
-  const [status, setStatus] = useState(transportReady ? 'loading' : 'ready');
-  const [membership, setMembership] = useState(() => listsMembership(fallback));
+  const identity = action?.media || null;
+  const [model, setModel] = useState(null);
+  const [status, setStatus] = useState('loading');
+  const [membership, setMembership] = useState({});
   const [tag, setTag] = useState('');
   const [pending, setPending] = useState({});
   const [errors, setErrors] = useState({});
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!transportReady) return undefined;
+    if (!transportReady || !identity) return undefined;
     let alive = true;
     setStatus('loading');
     setErrors({});
-    loadLists(identity, action.title)
+    loadLists(identity, action.mediaTitle || identity.title || '')
       .then(data => {
         if (!alive) return;
         const next = normalizeListsModel(data);
@@ -607,7 +194,7 @@ function ListsAction({ action, onClose }) {
       })
       .catch(() => { if (alive) setStatus('error'); });
     return () => { alive = false; };
-  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId, action.title]);
+  }, [attempt, transportReady, identity?.mediaType, identity?.source, identity?.mediaId, action?.mediaTitle]);
 
   async function toggle(list) {
     if (pending[list.id]) return;
@@ -615,18 +202,17 @@ function ListsAction({ action, onClose }) {
     setErrors(current => ({ ...current, [list.id]: '' }));
     try {
       const has = Boolean(membership[list.id]);
-      if (transportReady) {
-        const data = await toggleList(identity, list.id, has);
-        setMembership(current => applyListToggle(current, list.id, data.hasItem));
-      } else {
-        await delay(250);
-        setMembership(current => applyListToggle(current, list.id, !has));
-      }
+      const data = await toggleList(identity, list.id, has);
+      setMembership(current => applyListToggle(current, list.id, data.hasItem));
     } catch (error) {
       setErrors(current => ({ ...current, [list.id]: error.message || listLabels.toggleFailed }));
     } finally {
       setPending(current => ({ ...current, [list.id]: false }));
     }
+  }
+
+  if (!transportReady || !identity) {
+    return <SignInPrompt />;
   }
 
   return <ListsForm
@@ -647,25 +233,23 @@ function ListsAction({ action, onClose }) {
 
 function TrackAction({ action, onClose }) {
   const transportReady = hasMediaCardTransport();
-  const identity = action.media || { mediaType: 'tv', source: 'tmdb', mediaId: 'demo', title: action.title };
-  const variant = mediaCardVariant(identity);
-  const fallback = normalizeTrackForm(demoTrackFor(identity));
-  const [model, setModel] = useState(transportReady ? null : fallback);
-  const [values, setValues] = useState(() => (transportReady ? {} : initialTrackValues(fallback)));
-  const [tabs, setTabs] = useState(transportReady || variant ? [] : demoTrackTabs);
+  const identity = action?.media || null;
+  const [model, setModel] = useState(null);
+  const [values, setValues] = useState({});
+  const [tabs, setTabs] = useState([]);
   const [tracked, setTracked] = useState(false);
-  const [status, setStatus] = useState(transportReady ? 'loading' : 'ready');
+  const [status, setStatus] = useState('loading');
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
   const [errors, setErrors] = useState({});
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!transportReady) return undefined;
+    if (!transportReady || !identity) return undefined;
     let alive = true;
     setStatus('loading');
     setServerError('');
-    loadTrack(identity)
+    loadTrack(identity, { trackTime: true })
       .then(data => {
         if (!alive) return;
         const next = normalizeTrackForm(data.model);
@@ -681,32 +265,28 @@ function TrackAction({ action, onClose }) {
         setStatus('error');
       });
     return () => { alive = false; };
-  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId,
-    identity.seasonNumber, identity.episodeNumber, identity.albumId, identity.trackId]);
+  }, [attempt, transportReady, identity?.mediaType, identity?.source, identity?.mediaId,
+    identity?.seasonNumber, identity?.episodeNumber, identity?.albumId, identity?.trackId]);
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
     setErrors(current => ({ ...current, [name]: '' }));
   }
 
-  async function submit() {
+  async function submit(nextValues = values) {
     setBusy(true);
     setServerError('');
     try {
-      if (transportReady) {
-        await saveTrack(identity, model, values, tracked);
-        const refreshed = await loadTrack(identity);
-        setTracked(Boolean(refreshed.tracked));
-        setTabs(refreshed.tabs || []);
-      } else {
-        await delay(500);
-      }
+      await saveTrack(identity, model, nextValues, tracked);
+      const refreshed = await loadTrack(identity, { trackTime: true });
+      setTracked(Boolean(refreshed.tracked));
+      setTabs(refreshed.tabs || []);
       emitMediaCardChange({
         identity,
         source: 'track',
         tracked: true,
-        ...(values.status !== undefined ? { status: values.status } : {}),
-        ...(values.score !== undefined ? { score: values.score === '' ? null : Number(values.score) } : {}),
+        ...(nextValues.status !== undefined ? { status: nextValues.status } : {}),
+        ...(nextValues.score !== undefined ? { score: nextValues.score === '' ? null : Number(nextValues.score) } : {}),
       });
       onClose?.();
     } catch (error) {
@@ -720,8 +300,7 @@ function TrackAction({ action, onClose }) {
     setBusy(true);
     setServerError('');
     try {
-      if (transportReady) await deleteTrack(identity, model);
-      else await delay(400);
+      await deleteTrack(identity, model);
       emitMediaCardChange({ identity, source: 'track', tracked: false, status: null });
       onClose?.();
     } catch (error) {
@@ -746,8 +325,7 @@ function TrackAction({ action, onClose }) {
       tags: tab.tags.map(entry => (entry.id === tag.id ? { ...entry, pending: true, error: '' } : entry)),
     })));
     try {
-      if (transportReady) await setTags(identity, ids);
-      else await delay(200);
+      await setTags(identity, ids);
       setTabs(current => updateTab(current, 'tags', tab => ({
         ...tab,
         tags: tab.tags.map(entry => (entry.id === tag.id ? { ...entry, hasTag: !tag.hasTag, pending: false } : entry)),
@@ -761,10 +339,10 @@ function TrackAction({ action, onClose }) {
   }
 
   async function addTag(name) {
-    const created = transportReady ? await createTag(name) : { id: `demo-${Date.now()}`, name };
+    const created = await createTag(name);
     const tagTab = tabs.find(tab => tab.id === 'tags');
     const applied = (tagTab?.tags || []).filter(entry => entry.hasTag).map(entry => entry.id);
-    if (transportReady) await setTags(identity, [...applied, created.id]);
+    await setTags(identity, [...applied, created.id]);
     setTabs(current => updateTab(current, 'tags', tab => ({
       ...tab,
       tags: [...(tab.tags || []), { id: created.id, name: created.name, hasTag: true, pending: false, error: '' }],
@@ -773,14 +351,12 @@ function TrackAction({ action, onClose }) {
 
   async function saveArtworkUrl(imageUrl) {
     if (!imageUrl) return;
-    if (transportReady) await saveArtwork(identity, imageUrl);
-    else await delay(200);
+    await saveArtwork(identity, imageUrl);
     setTabs(current => updateTab(current, 'metadata', tab => ({ ...tab, imageUrl })));
   }
 
   async function toggleDiscover(hidden, itemId) {
-    if (transportReady) await setDiscoverHidden(itemId, hidden);
-    else await delay(200);
+    await setDiscoverHidden(itemId, hidden);
     setTabs(current => updateTab(current, 'discover', tab => ({ ...tab, hidden })));
     emitMediaCardChange({
       identity,
@@ -790,7 +366,13 @@ function TrackAction({ action, onClose }) {
     });
   }
 
-  return <TrackForm
+  if (!transportReady || !identity) {
+    return <SignInPrompt />;
+  }
+
+  return <TrackDialog
+    open
+    embedded
     model={model}
     values={values}
     errors={errors}
@@ -804,7 +386,7 @@ function TrackAction({ action, onClose }) {
     onChange={change}
     onRetry={() => setAttempt(current => current + 1)}
     onRetryTabs={retryTabs}
-    onDelete={remove}
+    onDelete={tracked ? remove : undefined}
     onClose={onClose}
     onSubmit={submit}
     onTagToggle={toggleTag}
@@ -821,9 +403,10 @@ function DiscoverAction({ action, onClose }) {
   const planning = vals.action === 'planning';
 
   useEffect(() => {
+    if (!transportReady) return undefined;
     let alive = true;
     setFailed('');
-    (transportReady ? runDiscoverAction(vals) : delay(350))
+    runDiscoverAction(vals)
       .then(() => {
         if (!alive) return;
         emitMediaCardChange({
@@ -842,6 +425,9 @@ function DiscoverAction({ action, onClose }) {
     return () => { alive = false; };
   }, [attempt, transportReady, planning, action]);
 
+  if (!transportReady) {
+    return <SignInPrompt />;
+  }
   if (failed) {
     return <View style={styles.hostStack}>
       <Text accessibilityRole="alert" style={styles.hostError}>{failed}</Text>
@@ -850,7 +436,7 @@ function DiscoverAction({ action, onClose }) {
     </View>;
   }
   return <Text accessibilityRole="status" accessibilityLiveRegion="polite" style={styles.hostBody}>
-    {planning ? `Adding “${vals.title || action.title}” to Planning…` : `Hiding “${vals.title || action.title}” from Discover…`}
+    {planning ? `Adding "${vals.title || action.title}" to Planning…` : `Hiding "${vals.title || action.title}" from Discover…`}
   </Text>;
 }
 
@@ -934,40 +520,122 @@ function applyMediaCardChange(model, change) {
   return next;
 }
 
+function renderRatingStars({ value: score, label, scaleMax, palette: colors, onSelect }) {
+  return <RatingStars scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={colors}
+    renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? colors.lit : colors.unlit }]}>★</Text>} />;
+}
+
+// One grid card. Memoized, with callbacks bound to its item through stable
+// handlers, so appending a page or toggling another card's selection skips it.
+const SlotCard = React.memo(function SlotCard({
+  item, model, cardWidth, readOnly, selectionMode, selected, dragging, dropTarget, handlers,
+}) {
+  const selection = useMemo(() => (selectionMode ? {
+    active: true,
+    selected,
+    label: `Select ${model.title}`,
+    toggle: () => handlers.toggle(item),
+  } : undefined), [selectionMode, selected, model.title, handlers, item]);
+  const onOpen = useCallback(() => handlers.open(item), [handlers, item]);
+  const onOpenLink = useCallback(href => handlers.openLink(item, href), [handlers, item]);
+  const onReorder = useCallback(step => handlers.reorder(item, step), [handlers, item]);
+  const onReorderDrag = useCallback(event => handlers.drag(item, event), [handlers, item]);
+  const onRate = useCallback(score => handlers.rate(item, score), [handlers, item]);
+  const onLayout = useCallback(event => handlers.layout(item, event), [handlers, item]);
+  const onAction = useCallback(action => handlers.runAction(action, model.title), [handlers, model.title]);
+  const canMenu = Boolean(model.actions?.items?.length && !readOnly && !selectionMode && !dragging);
+  const menuActions = useMemo(() => {
+    if (!canMenu) return [];
+    const canStatus = model.identity && ['movie', 'tv', 'season', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame'].includes(model.identity.mediaType)
+      && model.actions?.items?.some(action => action.modal === 'track');
+    const actions = (model.actions?.items || []).map((action, index) => ({
+      id: `action-${index}`, title: menuActionLabel(action), attributes: { disabled: Boolean(action.disabled) },
+    }));
+    if (canStatus) actions.push({ id: 'statuses', title: 'Update status',
+      subactions: ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped'].map(status => ({
+        id: `status-${status}`, title: status, state: model.statusChip?.status === status ? 'on' : 'off',
+      })) });
+    return actions;
+  }, [canMenu, model]);
+  const onPressMenu = useCallback(event => {
+    const id = event.nativeEvent.event;
+    if (id.startsWith('status-')) handlers.changeStatus({ ...item, model }, id.slice(7));
+    else if (id.startsWith('action-')) handlers.runAction(model.actions.items[Number(id.slice(7))], model.title);
+  }, [handlers, item, model]);
+  const card = <MediaCard model={model} labels={labels} palette={mediaCardPalette}
+    width={cardWidth}
+    onOpen={handlers.hasOpen() ? onOpen : undefined}
+    onOpenLink={handlers.hasLink() ? onOpenLink : undefined}
+    onAction={onAction}
+    readOnly={readOnly}
+    selection={selection}
+    onReorder={onReorder}
+    onReorderDrag={onReorderDrag}
+    dragging={dragging}
+    renderActionIcon={renderActionIcon}
+    onRate={onRate}
+    renderRating={renderRatingStars} />;
+  return <View onLayout={onLayout}
+    style={[dragging && styles.draggingCard, !dragging && dropTarget && styles.dropTarget]}>
+    {/* Native platforms use system menus; Expo web uses the shared dropdown. */}
+    {canMenu ? <NativeCardMenu actions={menuActions} palette={{ ...palette, overlay: 'rgba(0, 0, 0, 0.55)' }}
+      onPressAction={onPressMenu}>{card}</NativeCardMenu> : card}
+  </View>;
+});
+
+
 export default function MediaCardSlot({
+  items = [],
   onOpenDetail,
   onOpenLink,
   readOnly = false,
   selectionMode = false,
   selectedKeys = [],
   onToggleSelection,
+  gridLayout = 'lists',
+  mobileGridLayout = 'compact',
+  cardWidth: cardWidthProp,
+  gridGap: gridGapProp,
+  // Native Library: the grid becomes the page's scrolling list (a FlatList that
+  // mounts only rows near the screen), with the page above and below it as
+  // `header` and `footer`. Other surfaces keep the plain wrapping grid.
+  virtualized = false,
+  header = null,
+  footer = null,
+  onEndReached,
+  // The props Screen's ScrollView would have had (style, padding, safe area).
+  scrollProps,
 }) {
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
-  const [order, setOrder] = useState(() => demoItems.map(item => item.key));
+  const [sheetMounted, setSheetMounted] = useState(false);
+  const itemKeys = items.map(item => item.key);
+  const orderKey = itemKeys.join('|');
+  const [order, setOrder] = useState(itemKeys);
   const [changes, setChanges] = useState({});
   const [drag, setDrag] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [listWidth, setListWidth] = useState(0);
   const layouts = useRef({});
   const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
-  const cardWidth = Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns));
+  // The library page sizes cards like the web grid: three compact columns on a phone.
+  const library = gridLayout === 'library' ? libraryGridLayout(width, mobileGridLayout) : null;
+  const cardWidth = cardWidthProp || (library
+    ? library.width
+    : Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns)));
+  const gridGap = gridGapProp ?? (library ? library.gap : spacing.md);
+
+  useEffect(() => {
+    setOrder(itemKeys);
+    // Reset whenever the server row set changes; orderKey is the identity.
+  }, [orderKey]);
 
   useEffect(() => subscribeMediaCardChange(change => {
     const keys = [];
     if (change.identity) keys.push(identityKey(change.identity));
     if (Array.isArray(change.identities)) keys.push(...change.identities.map(identityKey));
     if (!keys.length) return;
-    if (change.source === 'discover'
-      && ['planning', 'dismiss', 'hide'].includes(change.action)) {
-      const removed = demoItems
-        .filter(item => discoverCandidateKeys.has(identityKey(item.model.identity))
-          && keys.includes(identityKey(item.model.identity)))
-        .map(item => item.key);
-      if (removed.length) {
-        setOrder(current => current.filter(key => !removed.includes(key)));
-      }
-    }
     setChanges(current => {
       const next = { ...current };
       keys.forEach(key => { next[key] = { ...(next[key] || {}), ...change }; });
@@ -996,14 +664,31 @@ export default function MediaCardSlot({
     AccessibilityInfo.announceForAccessibility?.(message);
   }
 
-  function runAction(action) {
+  function runAction(action, mediaTitle) {
     if (!action) return;
     if (action.kind === 'link') {
       setPendingAction(null);
       (onOpenLink || onOpenDetail)?.(action.href);
       return;
     }
-    setPendingAction(action);
+    if (['track', 'lists'].includes(action.modal)) setSheetMounted(true);
+    setPendingAction({ ...action, mediaTitle });
+  }
+
+  async function changeStatus(item, status) {
+    setActionError('');
+    try {
+      const identity = item.model.identity;
+      const tracking = await loadTrack(identity);
+      if (!tracking.tracked && identity.source === 'manual') throw new Error('Use the tracking dialog to add this manual item.');
+      await saveTrack(identity, tracking.model, { status }, tracking.tracked);
+      emitMediaCardChange({ identity, source: 'track', tracked: true, status });
+      announce(`Status changed to ${status}.`);
+    } catch (error) {
+      const message = error.message || 'Could not change status.';
+      setActionError(message);
+      announce(message);
+    }
   }
 
   async function reorder(item, step) {
@@ -1069,85 +754,150 @@ export default function MediaCardSlot({
     }
   }
 
-  const items = order.map(key => demoItems.find(item => item.key === key)).filter(Boolean);
+  // Card callbacks go through a ref to this render's functions, so the
+  // handlers object never changes and memoized cards skip unrelated renders.
+  const latest = useRef(null);
+  latest.current = { onOpenDetail, onOpenLink, onToggleSelection, runAction, changeStatus, reorder, handleReorderDrag, rate };
+  const handlers = useMemo(() => ({
+    hasOpen: () => !!latest.current.onOpenDetail,
+    hasLink: () => !!(latest.current.onOpenLink || latest.current.onOpenDetail),
+    open: item => latest.current.onOpenDetail?.(item.row ?? item.model),
+    openLink: (item, href) => (latest.current.onOpenLink
+      ? latest.current.onOpenLink(href)
+      : latest.current.onOpenDetail?.(item.row ?? item.model)),
+    runAction: (action, mediaTitle) => latest.current.runAction(action, mediaTitle),
+    changeStatus: (item, status) => latest.current.changeStatus(item, status),
+    toggle: item => latest.current.onToggleSelection?.(item.key),
+    reorder: (item, step) => latest.current.reorder(item, step),
+    drag: (item, event) => latest.current.handleReorderDrag(item, event),
+    rate: (item, score) => latest.current.rate(item, score),
+    layout: (item, event) => { layouts.current[item.key] = event.nativeEvent.layout; },
+  }), []);
+
+  const itemsByKey = useMemo(() => new Map(items.map(item => [item.key, item])), [items]);
+  const orderedItems = order
+    .map(key => itemsByKey.get(key))
+    .filter(Boolean);
+
+  function cardModel(item, index) {
+    const value = ratings[item.key];
+    let model = item.model;
+    if (value !== undefined) {
+      model = {
+        ...model,
+        rating: model.rating && {
+          ...model.rating,
+          value,
+          label: value == null ? null : String(value),
+        },
+      };
+    }
+    model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
+    if (model.actions?.ordering) {
+      model = {
+        ...model,
+        actions: {
+          ...model.actions,
+          ordering: {
+            ...model.actions.ordering,
+            position: index + 1,
+            count: orderedItems.length,
+          },
+        },
+      };
+    }
+    return model;
+  }
+
+  function renderCard(item, index) {
+    return <SlotCard key={item.key} item={item} model={cardModel(item, index)}
+      cardWidth={cardWidth} readOnly={readOnly} selectionMode={selectionMode}
+      selected={selectionMode && selectedKeys.includes(item.key)}
+      dragging={drag?.key === item.key}
+      dropTarget={!!drag && drag.key !== item.key && drag.targetIndex === index}
+      handlers={handlers} />;
+  }
+
+  const errorText = actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
+    style={styles.actionError}>{actionError}</Text> : null;
+  const host = <>
+    {sheetMounted && <AdaptivePresentationSheet isPresented={['track', 'lists'].includes(pendingAction?.modal)}
+      onDismiss={() => setPendingAction(null)} onClose={() => setPendingAction(null)}
+      title={pendingAction?.modal === 'track' ? 'Tracking' : 'Lists'} titleColor={formPalette.text}
+      containerColor={palette.sidebar}>
+      {pendingAction?.modal === 'track' ? <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <TrackAction key={pendingAction?.target || 'track'} action={pendingAction} onClose={() => setPendingAction(null)} />
+      </View> : pendingAction?.modal === 'lists' ? <ScrollView keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+        <ListsAction key={pendingAction?.target || 'lists'} action={pendingAction} onClose={() => setPendingAction(null)} />
+      </ScrollView> : null}
+    </AdaptivePresentationSheet>}
+    <MediaCardActionHost action={pendingAction} open={!!pendingAction && !['track', 'lists'].includes(pendingAction.modal)} labels={labels}
+      palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
+      {pendingAction && !['track', 'lists'].includes(pendingAction.modal) ? <ActionBody
+        key={pendingAction.target || pendingAction.title || 'closed'} action={pendingAction}
+        onClose={() => setPendingAction(null)} /> : null}
+    </MediaCardActionHost>
+  </>;
+
+  if (virtualized) {
+    // Native-only windowing: hundreds of mounted cards in a ScrollView is the
+    // known expensive case on phones, so only rows near the screen stay
+    // mounted. Web keeps its server-paged document scroll (find-in-page and
+    // anchors keep working, and its images already load lazily).
+    // The column count matches the wrapping grid at this width, so the layout
+    // is unchanged.
+    const content = StyleSheet.flatten(scrollProps?.contentContainerStyle) || {};
+    const side = key => content[key] ?? content.paddingHorizontal ?? content.padding ?? 0;
+    const available = (listWidth || width) - side('paddingLeft') - side('paddingRight');
+    const columns = Math.max(1, Math.floor((available + gridGap + 0.5) / (cardWidth + gridGap)));
+    return <>
+      <FlatList
+        key={`columns-${columns}`}
+        data={orderedItems}
+        keyExtractor={item => item.key}
+        numColumns={columns}
+        renderItem={({ item, index }) => renderCard(item, index)}
+        columnWrapperStyle={columns > 1 ? { gap: gridGap } : undefined}
+        ItemSeparatorComponent={() => <View style={{ height: gridGap }} />}
+        ListHeaderComponent={header}
+        ListFooterComponent={<>{errorText}{footer}</>}
+        {...scrollProps}
+        style={[styles.list, scrollProps?.style]}
+        contentContainerStyle={[scrollProps?.contentContainerStyle, styles.listContent]}
+        onLayout={event => setListWidth(event.nativeEvent.layout.width)}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.6}
+        initialNumToRender={columns * 5}
+        maxToRenderPerBatch={columns * 4}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        />
+      {host}
+    </>;
+  }
 
   return <>
-    <View style={styles.grid}>
-      {items.map((item, index) => {
-        const value = ratings[item.key];
-        let model = item.model;
-        if (value !== undefined) {
-          model = {
-            ...model,
-            rating: model.rating && {
-              ...model.rating,
-              value,
-              label: value == null ? null : String(value),
-            },
-          };
-        }
-        model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
-        if (model.actions?.ordering) {
-          model = {
-            ...model,
-            actions: {
-              ...model.actions,
-              ordering: {
-                ...model.actions.ordering,
-                position: index + 1,
-                count: items.length,
-              },
-            },
-          };
-        }
-        const selection = selectionMode ? {
-          active: true,
-          selected: selectedKeys.includes(item.key),
-          label: `Select ${model.title}`,
-          toggle: () => onToggleSelection?.(item.key),
-        } : undefined;
-        const isDragging = drag?.key === item.key;
-        return <View key={item.key}
-          onLayout={event => { layouts.current[item.key] = event.nativeEvent.layout; }}
-          style={[
-            isDragging && styles.draggingCard,
-            !isDragging && drag && drag.targetIndex === index && styles.dropTarget,
-          ]}>
-          <MediaCard model={model} labels={labels} palette={mediaCardPalette}
-            width={cardWidth} onOpen={onOpenDetail}
-            onOpenLink={onOpenLink || onOpenDetail}
-            onAction={runAction}
-            readOnly={readOnly}
-            selection={selection}
-            onReorder={step => reorder(item, step)}
-            onReorderDrag={event => handleReorderDrag(item, event)}
-            dragging={isDragging}
-            renderActionIcon={renderActionIcon}
-            onRate={score => rate(item, score)}
-            renderRating={({ value: score, label, scaleMax, palette, onSelect }) => <RatingStars
-              scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={palette}
-              renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />
-        </View>;
-      })}
+    <View style={[styles.grid, { gap: gridGap }]}>
+      {orderedItems.map((item, index) => renderCard(item, index))}
     </View>
-    {actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
-      style={styles.actionError}>{actionError}</Text> : null}
-    <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
-      palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
-      <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}
-        onClose={() => setPendingAction(null)} />
-    </MediaCardActionHost>
+    {errorText}
+    {host}
   </>;
 }
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  list: { flex: 1 },
+  // Rows are spaced by the grid gap, not the page's section gap.
+  listContent: { gap: 0, rowGap: 0 },
   draggingCard: { zIndex: 20, elevation: 8, opacity: 0.9 },
   dropTarget: { opacity: 0.72 },
   pickerStar: { fontSize: 20 },
-  actionGlyph: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
-  hostBody: { color: '#a1a1aa', fontSize: 13, lineHeight: 19 },
+  actionGlyph: { color: mediaCardPalette.chipText, fontSize: 15, fontWeight: '700' },
+  hostBody: { color: mediaCardPalette.textMuted, fontSize: 13, lineHeight: 19 },
   hostStack: { gap: spacing.sm },
-  hostError: { color: '#f87171', fontSize: 12, lineHeight: 17 },
-  actionError: { color: '#f87171', fontSize: 12, lineHeight: 17 },
+  hostError: { color: palette.danger, fontSize: 12, lineHeight: 17 },
+  actionError: { color: palette.danger, fontSize: 12, lineHeight: 17 },
+  signInTitle: { color: mediaCardPalette.text, fontSize: 15, fontWeight: '700' },
 });

@@ -168,6 +168,8 @@ The packaged container resolves the listener once at startup. It then:
 3. passes that same validated port to the normal Floppy entrypoint;
 4. starts the normal Floppy services when startup checks pass.
 
+While step 4 waits for the database snapshot and migrations (minutes on a release that migrates), a small standard-library placeholder holds the public port and answers every request, including `/health/`, with `503` and `Retry-After: 5`. A proxy in front gets a quick, retryable answer instead of a connection timeout. The placeholder exits just before Nginx starts, and also before the SQLite recovery page binds the same port. Nginx itself answers `502` from a not-yet-ready Gunicorn with the same `503` page.
+
 The container health check reads `/tmp/floppy-runtime/server-port`. It does not import Django or parse persistent configuration on every health probe.
 
 `EXPOSE 8000` remains in the image as default image metadata. It is not the runtime source of truth and it cannot represent a dynamic port.

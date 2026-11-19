@@ -3283,7 +3283,7 @@
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Hardcover API Key" %}</label>
             <input type="password"
                    name="hardcover_api_key"
-                   placeholder="{% translate "Optional — also settable in Providers > Hardcover > Connection" %}"
+                   placeholder="{% translate "Optional: also settable in Providers > Hardcover > Connection" %}"
                    class="w-full py-2 px-3 mb-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    :disabled="standardImportsDisabled()">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
@@ -3407,7 +3407,7 @@
 {% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "youtube" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, or the zip." %}</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, the zip, or the .tgz archive." %}</p>
           <form method="post"
                 action="{% url 'import_youtube_takeout' %}"
                 enctype="multipart/form-data">
@@ -3418,7 +3418,7 @@
                    :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="standardImportsDisabled()">
               <input name="youtube_takeout"
-                     accept=".json,.html,.zip"
+                     accept=".json,.html,.zip,.tgz,.tar.gz"
                      class="hidden"
                      type="file"
                      :disabled="standardImportsDisabled()"

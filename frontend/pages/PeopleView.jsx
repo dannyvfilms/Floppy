@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { Rail } from '../ui/Rail';
@@ -36,10 +36,39 @@ export const peopleLabels = {
   noCast: 'No cast available.',
   noCrew: 'No crew available.',
   noTitles: 'No titles available.',
+  showMore: 'Show more',
 };
 
 function countLabel(count, singular, plural) {
   return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
+}
+
+// The web's credit grid: auto-fill columns of at least 150 wide, 16 apart (two
+// on a phone), under a heading row with the title count at the right.
+const CREDIT_MIN_WIDTH = 150;
+const CREDIT_GAP = 16;
+
+function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid, palette, sectionStyle, moreLabel, loadingMore = false, onLoadMore }) {
+  const [width, setWidth] = useState(0);
+  const columns = Math.max(1, Math.floor((width + CREDIT_GAP) / (CREDIT_MIN_WIDTH + CREDIT_GAP)));
+  const cardWidth = width ? (width - CREDIT_GAP * (columns - 1)) / columns : 0;
+  return <View style={[styles.creditSection, sectionStyle]}>
+    <View style={styles.creditHeading}>
+      <Text accessibilityRole="header" style={[styles.sectionTitle, { color: palette.text || '#fafafa' }]}>{title}</Text>
+      <Text style={[styles.creditCount, { color: palette.textMuted || '#a1a1aa' }]}>{summary}</Text>
+    </View>
+    {items.length ? <View style={styles.creditGrid} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+      {cardWidth && renderGrid && items.every(entry => entry.card) ? renderGrid(items, cardWidth) : cardWidth ? items.map((entry, index) => <View key={`${entry?.id ?? ''}-${index}`} style={{ width: cardWidth }}>
+        {renderItem(entry)}
+      </View>) : null}
+    </View> : <View style={[styles.creditEmpty, { backgroundColor: palette.surface || '#27272a' }]}>
+      <Text style={[styles.creditEmptyText, { color: palette.textMuted || '#a1a1aa' }]}>{emptyLabel}</Text>
+    </View>}
+    {items.length && onLoadMore ? <View style={styles.creditMore}>
+      <Button label={moreLabel} tone="surface" palette={palette} busy={loadingMore}
+        disabled={loadingMore} onPress={onLoadMore} />
+    </View> : null}
+  </View>;
 }
 
 export function PeopleView({
@@ -58,6 +87,14 @@ export function PeopleView({
   galleryTitle = '',
   watchedTitle,
   creditsTitle,
+  creditsSummary,
+  // Credits arrive a page at a time: the full counts for the headings, and
+  // onLoadMore* (absent at the end of a list) to ask for the next page.
+  watchedTotal,
+  filmographyTotal,
+  onLoadMoreWatched,
+  onLoadMoreFilmography,
+  loadingMore = '',
   gameLengths,
   youtubeWatch,
   reading,
@@ -67,6 +104,7 @@ export function PeopleView({
   headingLevel = 1,
   sourcePlacement = 'facts',
   actionPalette,
+  actionSize,
   web = false,
   title,
   items = [],
@@ -74,7 +112,6 @@ export function PeopleView({
   onCollapsedChange,
   collapsible = false,
   viewAll,
-  railWidth = 176,
   castWidth = 132,
   loading = false,
   error = '',
@@ -83,10 +120,13 @@ export function PeopleView({
   onOpenWebsite,
   onViewHistory,
   onOpenCredit,
+  renderCreditGrid,
+  renderPersonCard,
   onOpenPerson,
   onPlayGallery,
   onOpenLightbox,
   onOpenExtra,
+  toolbar,
   children,
 }) {
   const copy = { ...peopleLabels, ...(labels || {}) };
@@ -115,6 +155,7 @@ export function PeopleView({
       showBiography={showBiography}
       canViewHistory={canViewHistory}
       actionPalette={actionPalette}
+      actionSize={actionSize}
       onOpenSource={onOpenSource}
       onViewHistory={onViewHistory} />;
 
@@ -138,20 +179,28 @@ export function PeopleView({
       <Text style={[styles.loadingText, { color: colors.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View> : null}
     {!loading && showHero ? hero : null}
-    {!loading && showCredits && watched.length ? <Rail items={watched}
+    {!loading && showCredits && toolbar ? toolbar : null}
+    {!loading && showCredits && (watched.length || kind !== 'studio') ? <CreditGrid items={watched}
+      renderGrid={renderCreditGrid}
       renderItem={entry => <CreditCard entry={entry} labels={labels} palette={colors} onOpen={onOpenCredit} />}
-      title={`${watchedHeading}${title ? ` · ${title}` : ''}`}
-      summary={countLabel(watched.length, 'title', 'titles')}
-      itemWidth={railWidth}
+      title={watchedHeading}
+      summary={countLabel(watchedTotal ?? watched.length, 'title', 'titles')}
+      moreLabel={copy.showMore}
+      loadingMore={loadingMore === 'watched'}
+      onLoadMore={onLoadMoreWatched}
       emptyLabel={isAuthor ? copy.noRead : copy.noWatched}
-      palette={railPalette} /> : null}
-    {!loading && showCredits && filmography.length ? <Rail items={filmography}
+      palette={colors} /> : null}
+    {!loading && showCredits ? <CreditGrid items={filmography}
+      sectionStyle={kind === 'studio' ? styles.studioCredits : undefined}
+      renderGrid={renderCreditGrid}
       renderItem={entry => <CreditCard entry={entry} labels={labels} palette={colors} onOpen={onOpenCredit} />}
-      title={`${creditsHeading}${title ? ` · ${title}` : ''}`}
-      summary={countLabel(filmography.length, 'title', 'titles')}
-      summaryInline="Most recent" itemWidth={railWidth}
-      emptyLabel={isAuthor ? copy.noBibliography : copy.noFilmography}
-      palette={railPalette} /> : null}
+      title={creditsHeading}
+      summary={creditsSummary || countLabel(filmographyTotal ?? filmography.length, 'title', 'titles')}
+      moreLabel={copy.showMore}
+      loadingMore={loadingMore === 'filmography'}
+      onLoadMore={onLoadMoreFilmography}
+      emptyLabel={kind === 'studio' ? copy.noTitles : isAuthor ? copy.noBibliography : copy.noFilmography}
+      palette={colors} /> : null}
     {!loading && showCredits && cast.length ? <Rail items={cast}
       renderItem={member => <PersonCard person={member} labels={labels} palette={colors} onOpen={onOpenPerson} />}
       title={`${copy.cast}${title ? ` · ${title}` : ''}`}
@@ -167,7 +216,7 @@ export function PeopleView({
       emptyLabel={copy.noCrew}
       palette={railPalette} /> : null}
     {!loading && showCast && !showCredits ? <Rail items={items}
-      renderItem={entry => <PersonCard person={entry} web={web} labels={labels} palette={colors}
+      renderItem={entry => renderPersonCard ? renderPersonCard(entry) : <PersonCard person={entry} web={web} labels={labels} palette={colors}
         onOpen={onOpenPerson} />}
       title={title || copy.cast}
       itemWidth={castWidth}
@@ -194,7 +243,15 @@ export function PeopleView({
 
 const styles = StyleSheet.create({
   root: { gap: 24, minWidth: 0 },
+  studioCredits: { marginTop: -24 },
   section: { gap: 10 },
+  creditSection: { gap: 16 },
+  creditHeading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  creditCount: { fontSize: 12, lineHeight: 16 },
+  creditGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: CREDIT_GAP, rowGap: CREDIT_GAP },
+  creditMore: { flexDirection: 'row', justifyContent: 'center' },
+  creditEmpty: { padding: 24, borderRadius: 8, alignItems: 'center' },
+  creditEmptyText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   sectionTitle: { fontSize: 20, lineHeight: 26, fontWeight: '700' },
   sectionCopy: { fontSize: 13, lineHeight: 19 },
   notice: { gap: 8, borderWidth: 1, borderRadius: 8, padding: 12, alignItems: 'flex-start' },

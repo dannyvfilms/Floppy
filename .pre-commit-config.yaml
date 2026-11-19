@@ -18,6 +18,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|uv\.lock|mcp_server/pyproject\.toml)$
+      - id: ui-assets
+        name: Verify generated React UI bundles
+        entry: npm run check:ui
+        language: system
+        pass_filenames: false
+        files: ^(frontend/|src/static/ui/|scripts/build_ui\.mjs$|package(-lock)?\.json$)
       - id: check-migrations
         name: check-migrations
         entry: uv run --no-sync python src/manage.py makemigrations --check

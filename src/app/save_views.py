@@ -9,6 +9,7 @@ import requests
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
+from django.db.models import prefetch_related_objects
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -55,6 +56,22 @@ from integrations.state.ratings import rating_edit
 logger = logging.getLogger(__name__)
 
 DETAILS_ROUTE_MIN_SEGMENTS = 2  # "details", "<source>", ... in the URL path
+
+
+def _prefetch_show_trees(shows):
+    """Load each show's seasons, episodes and calendar once for the response.
+
+    The save response reads progress, next episode and watch dates from every
+    season, several times over. Unprefetched, each read reloads all of the
+    show's episodes, which on a long show cost more than the save itself. This
+    is the detail page's prefetch; anything already loaded is left as it is.
+    """
+    shows = [show for show in shows if isinstance(show, TV)]
+    if shows:
+        lookups = BasicMedia.objects._apply_prefetch_related(
+            TV.objects.none(), MediaTypes.TV.value,
+        )._prefetch_related_lookups
+        prefetch_related_objects(shows, *lookups)
 
 
 @require_POST
@@ -371,6 +388,7 @@ def media_save(request):
             else media.item.title
         ) or "item"
         if is_htmx:
+            _prefetch_show_trees([media])
             fragment_context = (
                 f"{action_verb.lower()} save media_type={media_type} "
                 f"source={source} media_id={media_id} "
@@ -384,9 +402,12 @@ def media_save(request):
             # raised again anyway.
             response = render(
                 request,
-                "app/components/detail_track_action.html",
+                "app/components/detail_track_split.html"
+                if media_type == MediaTypes.BOARDGAME.value
+                else "app/components/detail_track_action.html",
                 {
                     "media": media.item,
+                    "media_type": media_type,
                     "current_instance": media,
                     "return_url": return_url,
                     "track_action_update": True,
@@ -402,6 +423,7 @@ def media_save(request):
                         "item",
                     ),
                 )
+                _prefetch_show_trees(user_medias)
                 play_stats, activity_subtitle = _build_detail_activity_state(
                     media_type,
                     {"max_progress": getattr(media, "max_progress", None)},
@@ -596,9 +618,12 @@ def media_save(request):
                 )
             response = render(
                 request,
-                "app/components/detail_track_action.html",
+                "app/components/detail_track_split.html"
+                if media_type == MediaTypes.BOARDGAME.value and shown_instance.pk
+                else "app/components/detail_track_action.html",
                 {
                     "media": media.item,
+                    "media_type": media_type,
                     "current_instance": shown_instance,
                     "return_url": return_url,
                     "track_open": "edit" if instance_id else "create",
@@ -655,8 +680,10 @@ def media_delete(request):
             "HX-Request",
         ):
             related_season._sync_status_after_episode_change()
-            cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-            cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+            cache_utils.clear_library_view_caches(
+                related_season.user_id,
+                media_types=(MediaTypes.EPISODE.value,),
+            )
             history_day_key = history_cache.history_day_key(
                 end_date or start_date or created_at,
             )
@@ -803,9 +830,9 @@ def media_rewatch(request):
         except RewatchAlreadyCompleteError as error:
             # htmx doesn't swap a non-2xx response, so without an explicit
             # trigger the button click would just silently do nothing.
-            response = HttpResponseBadRequest(str(error))
+            response = HttpResponseBadRequest(error.message)
             response["HX-Trigger"] = json.dumps(
-                {"showToast": {"message": str(error), "type": "error"}},
+                {"showToast": {"message": error.message, "type": "error"}},
             )
             return response
         if skipped_seasons:
@@ -824,13 +851,13 @@ def media_rewatch(request):
             messages.warning(
                 request,
                 gettext(
-                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                    "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
                 )
                 % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, media_types=(media_type,))
 
     redirect_response = helpers.redirect_back(request)
     if request.headers.get("HX-Request"):
@@ -1195,14 +1222,16 @@ def episode_save(request):
                 notes=form.cleaned_data.get("notes") or "",
             )
         except fork_services_episode.EpisodeWatchConflictError as error:
-            return HttpResponse(str(error), status=409)
+            return HttpResponse(error.code, status=409)
         episode = result.episode
     if episode_instance and hasattr(related_season, "_episode_stats_cache"):
         delattr(related_season, "_episode_stats_cache")
     if episode_instance:
         related_season._sync_status_after_episode_change()
-        cache_utils.clear_time_left_cache_for_user(related_season.user_id)
-        cache_utils.clear_media_list_cache_for_user(related_season.user_id)
+        cache_utils.clear_library_view_caches(
+            related_season.user_id,
+            media_types=(MediaTypes.EPISODE.value,),
+        )
 
     if request.headers.get("HX-Request"):
         episode_history = list(

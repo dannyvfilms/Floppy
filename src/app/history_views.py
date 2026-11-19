@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import math
 import time
 from collections import defaultdict
 from datetime import date, timedelta
@@ -88,7 +89,7 @@ def delete_history_record(request, media_type, history_id):
         )
         return HttpResponse("Record not found", status=404)
     except fork_services_history.HistoryDeletionError as e:
-        return HttpResponse(str(e), status=500)
+        return HttpResponse(e.message, status=500)
 
     if music_id and media_type.lower() == "music":
         from app.models import Music
@@ -126,7 +127,7 @@ def delete_history_record(request, media_type, history_id):
 
                 response = HttpResponse()
                 response.write(
-                    f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                    f'<p id="track-history-{music.id}" hx-swap-oob="true" '
                     'class="text-xs text-gray-400 mt-2 px-4">'
                     f"{history_text}</p>",
                 )
@@ -136,18 +137,18 @@ def delete_history_record(request, media_type, history_id):
                     else f"Listened {remaining_count} times"
                 )
                 response.write(
-                    f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                    f'<p id="modal-listen-count-{music.id}" hx-swap-oob="true" '
                     'class="text-sm text-gray-400 mt-1">'
                     f"{modal_text}</p>",
                 )
                 return response
             response = HttpResponse()
             response.write(
-                f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                f'<p id="track-history-{music.id}" hx-swap-oob="true" '
                 'class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>',
             )
             response.write(
-                f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                f'<p id="modal-listen-count-{music.id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
             )
         except Music.DoesNotExist:
@@ -190,7 +191,7 @@ def delete_history_record(request, media_type, history_id):
                     else f"Played {remaining_count} times"
                 )
                 response.write(
-                    f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                    f'<p id="modal-listen-count-{podcast.id}" hx-swap-oob="true" '
                     'class="text-sm text-gray-400 mt-1">'
                     f"{modal_text}</p>",
                 )
@@ -198,7 +199,7 @@ def delete_history_record(request, media_type, history_id):
                 return response
             response = HttpResponse()
             response.write(
-                f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                f'<p id="modal-listen-count-{podcast.id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not played yet</p>',
             )
             response["HX-Trigger"] = "history-refresh-start"
@@ -844,11 +845,11 @@ def _build_session_history_stats(history_days):
         )
 
     def format_minutes(minutes):
-        return helpers.minutes_to_hhmm(round(minutes)) if minutes is not None else "—"
+        return helpers.minutes_to_hhmm(round(minutes)) if minutes is not None else "-"
 
     def format_days(days):
         if days is None:
-            return "—"
+            return "-"
         rounded = round(days, 1)
         return f"{rounded:g} day{'s' if rounded != 1 else ''}"
 
@@ -861,7 +862,7 @@ def _build_session_history_stats(history_days):
         },
         {
             "label": gettext_noop("Average per active day"),
-            "value": format_minutes(total_minutes / len(dates)) if dates else "—",
+            "value": format_minutes(total_minutes / len(dates)) if dates else "-",
         },
         {"label": gettext_noop("Average gap"), "value": format_days(average_gap)},
         {
@@ -869,14 +870,34 @@ def _build_session_history_stats(history_days):
             "value": (
                 f"{longest_streak} day{'s' if longest_streak != 1 else ''}"
                 if longest_streak
-                else "—"
+                else "-"
             ),
         },
         {
             "label": gettext_noop("Most active weekday"),
-            "value": most_active_weekday or "—",
+            "value": most_active_weekday or "-",
         },
     ]
+
+
+def _activity_day_intensity(history_days):
+    """Describe each dated day's activity relative to its month's matching unit."""
+    days = {}
+    maxima = {}
+    for day in history_days:
+        if not day.get("date") or not day.get("entries"):
+            continue
+        key = day["date"].isoformat()
+        minutes = sum(max(0, entry.get("runtime_minutes") or 0) for entry in day["entries"])
+        measure = "minutes" if minutes else "entries"
+        value = minutes or len(day["entries"])
+        days[key] = {"measure": measure, "value": value}
+        group = (key[:7], measure)
+        maxima[group] = max(maxima.get(group, 0), value)
+    for key, activity in days.items():
+        maximum = maxima[(key[:7], activity["measure"])]
+        activity["level"] = min(3, max(1, math.ceil(activity["value"] * 3 / maximum)))
+    return days
 
 
 def _history_feed_sessions(history_days, user):
@@ -937,6 +958,7 @@ def activity_sessions_modal(request):
         if (annotated_day := _annotate_history_day_for_template(day))
     ]
     session_history_stats = _build_session_history_stats(history_days)
+    activity_intensity = _activity_day_intensity(history_days)
 
     marker_days = sorted(
         {day["date"].isoformat() for day in history_days if day.get("date")},
@@ -949,10 +971,36 @@ def activity_sessions_modal(request):
     visible_marker_days = sorted(
         {day["date"].isoformat() for day in visible_days if day.get("date")},
     )
+    calendar_props = {
+        "activityCalendar": True,
+        "activityIntensity": activity_intensity,
+        "selectableDays": visible_marker_days,
+        "initialMonth": newest_dated_day.strftime("%Y-%m"),
+        "weekStart": request.user.week_start_day or "monday",
+        "labels": {
+            "activity": _("View activity for"),
+            "activityIntensity": _("{activity} {date}, {level} {dots}, {value} {measure}"),
+            "dot": _("dot"),
+            "dots": _("dots"),
+            "minutes": _("minutes"),
+            "entries": _("entries"),
+            "previousMonth": _("Previous month"),
+            "nextMonth": _("Next month"),
+            "selectMonth": _("Select month"),
+            "previousYear": _("Previous year"),
+            "nextYear": _("Next year"),
+            "selectYear": _("Select year"),
+            "previousYears": _("Previous years"),
+            "nextYears": _("Next years"),
+            "year": _("Year"),
+            "back": _("Back"),
+        },
+    }
     if request.GET.get("format") == "json":
         return JsonResponse(
             {
                 "sessions": _history_feed_sessions(visible_days, request.user),
+                "activityIntensity": activity_intensity,
                 "stats": [
                     {"label": _(stat["label"]), "value": stat["value"]}
                     for stat in session_history_stats
@@ -966,6 +1014,8 @@ def activity_sessions_modal(request):
             "user": request.user,
             "history_days": visible_days,
             "marker_days": marker_days,
+            "activity_intensity": activity_intensity,
+            "activity_calendar_props": calendar_props,
             "visible_marker_days": visible_marker_days,
             "session_history_stats": session_history_stats,
             "initial_month": newest_dated_day.strftime("%Y-%m"),
@@ -1009,7 +1059,30 @@ def _prepare_history_day_page(day, user, filters, offset=0):
     return annotated_day
 
 
-HISTORY_EAGER_MONTH_DAYS = 5
+# About two screens of cards render with the page; later days wait as
+# placeholders and load as the reader scrolls near them. Whole days only. The
+# browser and Expo feeds share the same rule (frontend/ui/historyFirstView.js).
+HISTORY_FIRST_VIEW_ENTRIES = 36
+
+
+def _first_view_day_count(history_days, budget=HISTORY_FIRST_VIEW_ENTRIES):
+    """Return how many leading days render in the first response.
+
+    The first day always renders; each later day renders while the running
+    entry count still fits the budget, and every day after the first that does
+    not fit waits.
+    """
+    if not history_days:
+        return 0
+    total = len(history_days[0].get("entries") or [])
+    count = 1
+    for day in history_days[1:]:
+        entries = len(day.get("entries") or [])
+        if total + entries > budget:
+            break
+        total += entries
+        count += 1
+    return count
 
 
 def _history_day_fragment_query(request, offset):
@@ -1785,7 +1858,7 @@ def history(request):
             # several MB of cards, and the day fragment renders the same markup
             # (it takes the day from the request path, so date bounds and the
             # anniversary pick need no handling there).
-            for day in history_days[HISTORY_EAGER_MONTH_DAYS:]:
+            for day in history_days[_first_view_day_count(history_days):]:
                 day["lazy"] = True
                 day["lazy_query"] = _history_day_fragment_query(request, 0)
 

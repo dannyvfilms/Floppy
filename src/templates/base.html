@@ -37,7 +37,9 @@
     {% djdt_enabled as djdt_is_enabled %}
     {% if djdt_is_enabled %}
       <link rel="stylesheet" href="{% static 'debug_toolbar/css/toolbar.css' %}">
-      <script type="module" src="{% static 'debug_toolbar/js/toolbar.js' %}"></script>
+      <script type="module">
+        if (document.getElementById('djDebug')) import("{% static 'debug_toolbar/js/toolbar.js' %}");
+      </script>
     {% endif %}
 
     <script defer src="{% javascript_catalog_url %}"></script>
@@ -118,6 +120,7 @@
     <script defer src="{% static 'js/libraries/marked-12.0.2.min.js' %}"></script>
     <script type="module"
             src="{% static 'ui/markdown-islands.js' %}{% get_static_file_mtime 'ui/markdown-islands.js' %}"></script>
+    <script defer src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     <script defer
@@ -364,15 +367,12 @@
                   <span>{% trans "Settings" %}</span>
                 </a>
 
-                <form method="post" action="{% url 'account_logout' %}" class="w-full">
-                  {% csrf_token %}
-                  <button type="submit"
+                <a href="{% url 'account_logout' %}"
                           class="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors duration-200 text-sm cursor-pointer">
                     {% include "app/icons/logout.svg" with classes="w-5 h-5" %}
 
                     <span>{% trans "Logout" %}</span>
-                  </button>
-                </form>
+                </a>
               </div>
             </div>
             </div>
@@ -384,11 +384,11 @@
           {# Top bar #}
           <div class="app-topbar sticky top-0 z-50 pt-[var(--header-safe-top)] bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
             <div class="app-topbar__inner container mx-auto max-lg:max-w-none pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
-              {# Define search type from current media type (if it exists) or last search type #}
+              {# The type the user last picked or searched wins on every page; the page's own type is only the fallback #}
               {% if media_type == MediaTypes.SEASON.value %}
-                {% firstof MediaTypes.TV.value as search_type %}
+                {% firstof user.last_search_type MediaTypes.TV.value as search_type %}
               {% else %}
-                {% firstof media_type user.last_search_type as search_type %}
+                {% firstof user.last_search_type media_type as search_type %}
               {% endif %}
               {% shell_topbar_react as shell_topbar %}{% if shell_topbar.props %}{{ shell_topbar.props|json_script:shell_topbar.id }}{% endif %}<div data-shell-root data-props-id="{{ shell_topbar.id }}">
               <div class="flex items-center justify-between lg:justify-center gap-2 h-16 min-w-0">
@@ -839,7 +839,6 @@
     <script src="{% static 'js/matchFixReview.js' %}{% get_static_file_mtime 'js/matchFixReview.js' %}"></script>
     <script src="{% static 'js/bulkSelection.js' %}{% get_static_file_mtime 'js/bulkSelection.js' %}"></script>
     <script src="{% static 'js/libraryFilterState.js' %}{% get_static_file_mtime 'js/libraryFilterState.js' %}"></script>
-    <script src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
     {# Loaded globally so a boosted Statistics body swap cannot run Alpine before these define its controller (#1667). #}
     <script src="{% static 'js/stats-media-merge.js' %}{% get_static_file_mtime 'js/stats-media-merge.js' %}"></script>

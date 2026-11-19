@@ -75,7 +75,7 @@ def _resolve_detail_tag_implied_genres(
     return implied_genres
 
 
-def _build_detail_tag_sections(
+def build_detail_tag_sections(
     media_metadata,
     item,
     user,
@@ -83,7 +83,10 @@ def _build_detail_tag_sections(
     fallback_implied_genres=None,
     genre_list_media_type=None,
 ):
-    """Return grouped genre and tag preview sections for the media detail action row."""
+    """Return grouped genre and tag preview sections for the media detail action row.
+
+    Shared by the media, season and music detail pages and the detail API.
+    """
     sections = []
 
     genres = _resolve_detail_tag_genres(
@@ -279,7 +282,7 @@ def _render_tag_modal_response(
         "app/components/detail_tag_preview.html",
         {
             "preview_id": app_tags.component_id("tag-preview", item),
-            "detail_tag_sections": _build_detail_tag_sections(
+            "detail_tag_sections": build_detail_tag_sections(
                 {},
                 item,
                 request.user,
@@ -307,21 +310,13 @@ TAG_INDEX_LINKABLE_MEDIA_TYPES = {
 }
 
 
-@require_GET
-def tag_index(request):
-    """Render a page listing the user's tags with per-media-type usage counts."""
-    sort = request.GET.get("sort") or "name"
-
-    tags = list(
-        Tag.objects.filter(user=request.user).annotate(
-            item_count=Count("item_tags", distinct=True),
-        ),
-    )
+def tag_type_counts(user):
+    """Return ``{tag_id: {media_type: item count}}`` for the linkable types."""
     include_anime, _include_tv = metadata_resolution.anime_library_visibility(
-        request.user,
+        user,
     )
     type_counts = (
-        ItemTag.objects.filter(tag__user=request.user)
+        ItemTag.objects.filter(tag__user=user)
         .values("tag_id", "item__media_type", "item__library_media_type")
         .annotate(count=Count("id"))
         .order_by()
@@ -341,6 +336,20 @@ def tag_index(request):
             continue
         counts = counts_by_tag.setdefault(row["tag_id"], {})
         counts[media_type] = counts.get(media_type, 0) + row["count"]
+    return counts_by_tag
+
+
+@require_GET
+def tag_index(request):
+    """Render a page listing the user's tags with per-media-type usage counts."""
+    sort = request.GET.get("sort") or "name"
+
+    tags = list(
+        Tag.objects.filter(user=request.user).annotate(
+            item_count=Count("item_tags", distinct=True),
+        ),
+    )
+    counts_by_tag = tag_type_counts(request.user)
 
     # Every status plus "no status", so the list shows what the count counts:
     # rating-only and tagged-only items sit outside any status view.
@@ -518,7 +527,7 @@ def tag_item_toggle(request):
     else:
         ItemTag.objects.create(tag=tag, item=item)
         has_tag = True
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     preview_genres = _parse_detail_tag_preview_genres(
         request.POST.get("preview_genres_json"),
@@ -526,7 +535,7 @@ def tag_item_toggle(request):
     preview_implied_genres = _parse_detail_tag_preview_genres(
         request.POST.get("preview_implied_genres_json"),
     )
-    preview_sections = _build_detail_tag_sections(
+    preview_sections = build_detail_tag_sections(
         {},
         item,
         request.user,
@@ -579,7 +588,7 @@ def tag_bulk_toggle(request):
         )
     else:
         ItemTag.objects.filter(tag=tag, item_id__in=item_ids).delete()
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     return HttpResponse(status=204)
 
@@ -605,7 +614,7 @@ def tag_create(request):
                 ItemTag.objects.get_or_create(tag=tag, item=item)
             except Item.DoesNotExist:
                 pass
-        cache_utils.clear_media_list_cache_for_user(request.user.id)
+        cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     if item_id:
         try:
@@ -640,7 +649,7 @@ def tag_delete(request):
 
     tag = get_object_or_404(Tag, id=tag_id, user=request.user)
     tag.delete()
-    cache_utils.clear_media_list_cache_for_user(request.user.id)
+    cache_utils.clear_library_view_caches(request.user.id, cache_utils.TAGS)
 
     if item_id:
         try:

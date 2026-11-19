@@ -210,7 +210,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
             search.locator("#global-search").fill("breaking bad")
             search.get_by_role("button", name="Search", exact=True).click()
-            expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
+            expect(touch_page.get_by_role("heading", name="Online Results")).to_be_visible()
 
             card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
             overlay = card.locator(".media-card-overlay")
@@ -242,7 +242,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     card_box["x"] + card_box["width"],
                 )
 
-            touch_page.get_by_role("heading", name="Search Results").click()
+            touch_page.get_by_role("heading", name="Online Results").click()
             self.assertNotIn(
                 "media-card-revealed",
                 card.get_attribute("class") or "",
@@ -661,7 +661,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -712,7 +712,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
@@ -726,14 +726,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 "button", name="Add", exact=True,
             ).click()
         save_request.value.response()
-        self.page.goto(f"{self.live_server_url}/medialist/tv")
+        # List cards no longer print their status; the Completed filter shows it.
+        self.page.goto(f"{self.live_server_url}/medialist/tv?status=Completed")
+        expect(
+            self.page.get_by_role("button", name="Status: Completed", exact=True),
+        ).to_be_visible()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
-        expect(self.page.get_by_role("main")).to_contain_text("Completed")
 
     def test_season_completed(self):
         """Test the completed status of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -744,6 +747,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Add to tracker").click()
         track_form = self.page.locator("#track-season-1396-1")
         expect(track_form).to_contain_text("Score")
+        self.pick_track_status(self.shared_dialog(), "Completed")
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
@@ -751,8 +755,12 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 "button", name="Add", exact=True,
             ).click()
         save_request.value.response()
-        self.page.goto(f"{self.live_server_url}/medialist/season")
-        expect(self.page.get_by_role("main")).to_contain_text("Completed")
+        # List cards no longer print their status; the Completed filter shows it.
+        self.page.goto(f"{self.live_server_url}/medialist/season?status=Completed")
+        expect(
+            self.page.get_by_role("button", name="Status: Completed", exact=True),
+        ).to_be_visible()
+        expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
 
     def test_tv_manual(self):
         """Test the manual creation of a TV show."""
@@ -803,7 +811,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.locator('input[name="end_date"]').fill("2025-03-07")
         self.page.get_by_role("button", name="Create Entry").click()
         expect(self.page.locator("body")).to_contain_text(
-            "Friends S1E1 added successfully.",
+            "Friends S01E01 added successfully.",
         )
 
         # Check visibility
@@ -1236,29 +1244,29 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(session_modal).to_be_visible()
         expect(session_modal).to_contain_text("Active days")
 
-        calendar = session_modal.locator("[data-calendar-component]")
-        expect(calendar.locator("[data-calendar-cell]")).to_have_count(42)
-        expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).to_have_count(1)
-        expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_have_count(1)
-        expect(
-            calendar.locator('[data-calendar-cell="2026-03-01"]')
-        ).not_to_be_disabled()
-        expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_be_disabled()
-        expect(calendar.locator("span.absolute.bottom-1")).to_have_count(3)
+        # The activity calendar is the shared React date picker (inline), with
+        # one dot per activity level on each day that has plays.
+        calendar = session_modal.locator("[data-date-time-picker-root]")
 
-        active_day = calendar.locator('[data-calendar-cell="2026-03-01"]')
+        def day(key):
+            return calendar.locator(f'[data-testid="date-time-day-{key}"]')
+
+        expect(calendar.locator('[data-testid^="date-time-day-"]')).to_have_count(42)
+        expect(day("2026-03-01")).to_have_count(1)
+        expect(day("2026-03-05")).to_have_count(1)
+        expect(day("2026-03-01")).not_to_be_disabled()
+        expect(day("2026-03-05")).to_be_disabled()
+        expect(
+            calendar.locator('[data-testid^="date-time-day-"][aria-label^="View activity for"]'),
+        ).to_have_count(3)
+
+        active_day = day("2026-03-01")
         active_day.click()
-        self.assertIn(
-            "bg-[var(--color-accent)]",
-            active_day.get_attribute("class") or "",
-        )
-        adjacent_active_day = calendar.locator('[data-calendar-cell="2026-02-28"]')
+        expect(active_day).to_have_attribute("aria-selected", "true")
+        adjacent_active_day = day("2026-02-28")
         expect(adjacent_active_day).not_to_be_disabled()
         adjacent_active_day.click()
-        self.assertIn(
-            "bg-[var(--color-accent)]",
-            adjacent_active_day.get_attribute("class") or "",
-        )
+        expect(adjacent_active_day).to_have_attribute("aria-selected", "true")
 
         calendar.get_by_role("button", name="Select month").click()
         calendar.get_by_role("button", name="Select year").click()

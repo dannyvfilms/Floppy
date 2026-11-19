@@ -1,5 +1,6 @@
 import React, { useMemo, useRef } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Icon } from './Icon';
 
 const FALLBACK_TONES = {
   indigo: '#4f46e5',
@@ -24,6 +25,11 @@ function resolveTone(palette, tone) {
 }
 
 function ActionGlyph({ action, palette }) {
+  if (action.icon) {
+    return <Icon spec={action.icon} color={palette.actionText} size={16} style={[styles.glyph, { color: palette.actionText }]}>
+      {action.glyph || (action.title || '?').slice(0, 1).toUpperCase()}
+    </Icon>;
+  }
   return <Text accessible={false} style={[styles.glyph, { color: palette.actionText }]}>
     {action.glyph || (action.title || '?').slice(0, 1).toUpperCase()}
   </Text>;
@@ -127,6 +133,7 @@ export function MediaCardActions({
   labels = {},
   revealed = false,
   onOpen,
+  onLongPress,
   onAction,
   onReorder,
   onReorderDrag,
@@ -138,7 +145,7 @@ export function MediaCardActions({
   const ordering = actions.ordering;
   return <View style={[styles.overlay, style]}>
     <Pressable accessibilityRole="button" accessibilityLabel={labels.open || actions.title}
-      onPress={onOpen} style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
+      onPress={onOpen} onLongPress={onLongPress} style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
     <View style={styles.overlayBody}>
       {ordering
         ? <View style={styles.ordering}>

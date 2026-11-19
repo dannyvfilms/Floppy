@@ -12,22 +12,20 @@ User = get_user_model()
 
 @shared_task(name="Sync Smart Lists For Items")
 def sync_smart_lists_for_items_task(owner_id: int, item_ids: list) -> None:
-    """Sync smart-list membership for a set of items — runs in background after bulk media mutations."""
+    """Sync smart-list membership for a set of items — runs in background after bulk media mutations.
+
+    Each list is asked once which of the items match; a list that fails is
+    logged and the others still sync.
+    """
     from app.models import Item
-    from lists.smart_rules import sync_smart_lists_for_item
+    from lists.smart_rules import sync_smart_lists_for_items
 
     try:
         owner = User.objects.get(pk=owner_id)
     except User.DoesNotExist:
         return
-    items = list(Item.objects.filter(id__in=item_ids))
-    for item in items:
-        try:
-            sync_smart_lists_for_item(owner=owner, item=item)
-        except Exception:
-            logger.exception(
-                "Smart list sync failed for owner_id=%s item_id=%s", owner_id, item.id
-            )
+    # Ids of deleted items match nothing and have no rows, so they are no-ops.
+    sync_smart_lists_for_items(owner, [Item(id=int(item_id)) for item_id in item_ids])
 
 
 @shared_task(name="Sync Smart List Items")
@@ -51,8 +49,11 @@ def sync_smart_list_task(list_id: int) -> None:
 def schedule_smart_list_sync(custom_list, debounce_seconds=60):
     """Queue a background membership sync for a smart list, debounced.
 
-    Used on GET paths so list pages render the current membership without
-    blocking on the (write-heavy) sync; the result lands moments later.
+    Every reader of a smart list's items calls this: the web list page, Home
+    shelves, the lists API, CSV export and the public RSS and arr feeds. The
+    reader still answers from the stored rows, so a read never waits for the
+    (write-heavy) sync; the refreshed membership lands moments later. A queue
+    that cannot be reached is logged and the read is still served.
     """
     from django.core.cache import cache
 
@@ -61,7 +62,15 @@ def schedule_smart_list_sync(custom_list, debounce_seconds=60):
     lock_key = f"smart_list_sync_scheduled:{custom_list.id}"
     if not cache.add(lock_key, True, timeout=debounce_seconds):
         return False
-    sync_smart_list_task.delay(custom_list.id)
+    try:
+        sync_smart_list_task.delay(custom_list.id)
+    except Exception:
+        # Let the next read try again rather than waiting out the window.
+        cache.delete(lock_key)
+        logger.exception(
+            "Could not queue smart list sync for list_id=%s", custom_list.id
+        )
+        return False
     return True
 
 

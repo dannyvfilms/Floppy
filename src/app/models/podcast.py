@@ -129,12 +129,10 @@ class PodcastEpisode(models.Model):
         """Return duration as mm:ss or hh:mm:ss string."""
         if not self.duration:
             return None
-        hours = self.duration // 3600
-        minutes = (self.duration % 3600) // 60
-        seconds = self.duration % 60
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes}:{seconds:02d}"
+        # Imported here because app.helpers imports the models.
+        from app.helpers import seconds_to_clock
+
+        return seconds_to_clock(self.duration)
 
 
 class Podcast(Media):

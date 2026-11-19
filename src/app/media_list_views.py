@@ -41,7 +41,10 @@ from app.library_query.alphabet import (
     normalize_initial,
     query_other_initial,
 )
-from app.media_list_entry_grouping import entry_grouping_is_separate
+from app.media_list_entry_grouping import (
+    active_entry_grouping_mode,
+    entry_grouping_is_separate,
+)
 from app.media_list_filters import (
     apply_media_list_collection_filter,
     apply_media_list_progress_filter,
@@ -69,7 +72,11 @@ from app.services import metadata_resolution
 from app.stats_music import _country_name_from_code
 from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
-from app.tv_sort import _sort_tv_media_by_time_left
+from app.tv_sort import (
+    _sort_tv_media_by_time_left,
+    build_time_left_records,
+    is_caught_up_record,
+)
 from lists import smart_rules
 from users.models import (
     MediaSortChoices,
@@ -398,24 +405,21 @@ def _tracked_media_entries(entries):
     return tracked_entries
 
 
-def _serialize_time_left_order(entries):
+def _serialize_time_left_order(records):
     """Compact, cache-friendly representation of a time_left sorted list.
 
     Stores primary keys plus the display values computed during the sort so
-    cache hits can hydrate a single page without re-sorting the library.
+    any page can be hydrated without re-sorting the library.
     """
-    order = []
-    for entry in entries:
-        media = getattr(entry, "media", None)
-        order.append(
-            {
-                "media_pk": getattr(media, "pk", None),
-                "item_pk": entry.item_id,
-                "time_left_display": entry.__dict__.get("time_left_display"),
-                "episodes_left_display": entry.__dict__.get("episodes_left_display", 0),
-            }
-        )
-    return order
+    return [
+        {
+            "media_pk": record.media_pk,
+            "item_pk": record.item_pk,
+            "time_left_display": record.time_left_display,
+            "episodes_left_display": record.episodes_left_display,
+        }
+        for record in records
+    ]
 
 
 def _hydrate_time_left_page(user, order_slice):
@@ -1660,7 +1664,12 @@ def media_list(request, media_type):
     # One parser for the web list and the API, so a filter reaches both.
     initial = normalize_initial(request.GET.get("initial"))
     parsed_filters = replace(
-        parse_media_list_filters(request, strict=False), initial=initial
+        parse_media_list_filters(request, strict=False),
+        initial=initial,
+        # The web grouping path below owns drilldown and ordering. Keep the
+        # shared engine's alphabet scope identical to the ungrouped library.
+        group_by="item",
+        group="",
     )
     rating_filter = parsed_filters.rating
     collection_filter = parsed_filters.collection
@@ -2168,6 +2177,21 @@ def media_list(request, media_type):
 
     # Cache tracker-backed list results and filter summaries separately.
     _time_left_active = sort_filter == "time_left" and media_type == MediaTypes.TV.value
+    _time_left_record_by_entry = {}
+
+    def _time_left_records(entries):
+        """Ranking records for time-left entries, read once per request."""
+        missing = [
+            entry for entry in entries if id(entry) not in _time_left_record_by_entry
+        ]
+        for entry, record in zip(
+            missing,
+            build_time_left_records(request.user, missing),
+            strict=True,
+        ):
+            _time_left_record_by_entry[id(entry)] = record
+        return [_time_left_record_by_entry[id(entry)] for entry in entries]
+
     # Platform ordering is resolved from collection entries after the base query,
     # so cache only the database-backed sort orders.
     _use_media_list_cache = (
@@ -2199,50 +2223,23 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=tag_free_filters,
+                prefetch_graph=not _time_left_active,
             )
         ]
         if _include_untracked_entries:
             items.extend(_build_untracked_media_entries(tracked_item_ids))
         return apply_latest_status_filter(items, status_filter)
 
-    _status_cache_key = ",".join(sorted(status_filter))
-    _tag_cache_key = ",".join(sorted(tag_values))
-    _platform_cache_key = ",".join(sorted(platform_values))
+    # The keys come from the effective filters, so every filter reaches them.
+    _title_display = request.user.title_display_preference
     _media_list_cache_key = (
         cache_utils.build_media_list_cache_key(
             request.user.id,
-            media_type,
-            sort_filter,
-            direction,
-            _status_cache_key,
-            search_query,
-            rating_filter,
-            progress_filter,
-            collection_filter,
-            author_filter,
-            format_filter,
-            genre_filter,
-            implied_genre_filter,
-            year_filter,
-            release_filter,
-            source_filter,
-            language_filter,
-            country_filter,
-            _platform_cache_key,
-            platform_mode,
-            origin_filter,
-            _tag_cache_key,
-            tag_mode,
-            cache_variant,
-            provider_filter=provider_filter,
-            watch_provider_region=watch_provider_region,
-            media_status_filter=media_status_filter,
-            pinned_providers=",".join(
-                sorted(request.user.pinned_watch_providers or [])
-            ),
-            completed_date_from=completed_date_from,
-            completed_date_to=completed_date_to,
-            range_filters=range_cache_key,
+            sql_media_filters,
+            sort=sort_filter,
+            library_mode=cache_variant,
+            title_display=_title_display,
+            entry_grouping=active_entry_grouping_mode(),
         )
         if _use_media_list_cache
         else None
@@ -2250,43 +2247,13 @@ def media_list(request, media_type):
     _media_list_filter_cache_key = (
         cache_utils.build_media_list_filter_cache_key(
             request.user.id,
-            media_type,
-            _status_cache_key,
-            search_query,
-            progress_filter,
-            genre_filter,
-            implied_genre_filter,
-            year_filter,
-            release_filter,
-            source_filter,
-            language_filter,
-            country_filter,
-            _platform_cache_key,
-            platform_mode,
-            author_filter,
-            format_filter,
-            _tag_cache_key,
-            tag_mode,
-            cache_variant,
-            provider_filter=provider_filter,
-            watch_provider_region=watch_provider_region,
-            media_status_filter=media_status_filter,
-            pinned_providers=",".join(
-                sorted(request.user.pinned_watch_providers or [])
-            ),
-            completed_date_from=completed_date_from,
-            completed_date_to=completed_date_to,
+            sql_media_filters,
+            library_mode=cache_variant,
+            title_display=_title_display,
         )
         if (_use_media_list_cache or _time_left_active)
         else None
     )
-    # The alphabet follows the viewer's displayed title, including on warm caches.
-    if initial:
-        alphabet_variant = f":initial={initial}:title={request.user.title_display_preference}"
-        if _media_list_cache_key:
-            _media_list_cache_key += alphabet_variant
-        if _media_list_filter_cache_key:
-            _media_list_filter_cache_key += alphabet_variant
     _media_list_cached = (
         cache.get(_media_list_cache_key) if _media_list_cache_key else None
     )
@@ -2326,36 +2293,9 @@ def media_list(request, media_type):
     if _time_left_active:
         _time_left_cache_key = cache_utils.build_time_left_cache_key(
             request.user.id,
-            media_type,
-            _status_cache_key,
-            search_query,
-            direction,
-            rating_filter,
-            progress_filter,
-            collection_filter,
-            genre_filter,
-            year_filter,
-            release_filter,
-            source_filter,
-            language_filter,
-            country_filter,
-            _platform_cache_key,
-            platform_mode,
-            origin_filter,
-            _tag_cache_key,
-            tag_mode,
-            provider_filter=provider_filter,
-            watch_provider_region=watch_provider_region,
-            media_status_filter=media_status_filter,
-            pinned_providers=",".join(
-                sorted(request.user.pinned_watch_providers or [])
-            ),
-            completed_date_from=completed_date_from,
-            completed_date_to=completed_date_to,
-            range_filters=range_cache_key,
+            sql_media_filters,
+            title_display=_title_display,
         )
-        if initial:
-            _time_left_cache_key += alphabet_variant
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
             # Sentinel: skips the list build below; the page is hydrated
@@ -2562,6 +2502,7 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=list_sql_filters,
+                prefetch_graph=not _time_left_active,
             )
         )
 
@@ -2786,7 +2727,18 @@ def media_list(request, media_type):
         media_list = apply_collection_filter(
             media_list, collection_filter, request.user, media_type
         )
-        media_list = apply_progress_filter(media_list, progress_filter, media_type)
+        if not _time_left_active:
+            media_list = apply_progress_filter(media_list, progress_filter, media_type)
+        elif progress_filter != "all":
+            media_list = [
+                entry
+                for entry, record in zip(
+                    media_list, _time_left_records(media_list), strict=True
+                )
+                if entry.media is not None
+                and is_caught_up_record(record, entry.item)
+                == (progress_filter == "caught_up")
+            ]
         if media_type in AUTHOR_FILTER_MEDIA_TYPES:
             media_list = apply_author_filter(media_list, author_filter)
         if media_type in AUTHOR_MEDIA_TYPES:
@@ -3079,35 +3031,29 @@ def media_list(request, media_type):
                 media_page.object_list,
             )
         else:
-            logger.debug("DEBUG: Starting time_left sort for page %s (no cache)", page)
-
-            # media_list already has filters applied from above
-            logger.debug("DEBUG: Got %s media objects after filtering", len(media_list))
-
-            # Annotate max_progress first
-            BasicMedia.objects.annotate_max_progress(
-                _tracked_media_entries(media_list),
-                media_type,
+            # No cached order. media_list holds the filtered library as
+            # trackers with only their item; rank it from grouped facts, then
+            # hydrate this page exactly as a cache hit does.
+            _time_left_order = _serialize_time_left_order(
+                _sort_tv_media_by_time_left(
+                    _time_left_records(media_list),
+                    direction,
+                ),
             )
-
-            prefill_episode_runtime_index(media_list)
-
-            # Apply time_left sorting
-            media_list = _sort_tv_media_by_time_left(media_list, direction)
 
             # Cache the compact sort order for 5 minutes (300 seconds)
-            cache.set(
-                _time_left_cache_key,
-                _serialize_time_left_order(media_list),
-                300,
-            )
+            cache.set(_time_left_cache_key, _time_left_order, 300)
             cache_utils.register_time_left_cache_key(
                 request.user.id,
                 _time_left_cache_key,
             )
 
-            paginator = Paginator(media_list, items_per_page)
+            paginator = Paginator(_time_left_order, items_per_page)
             media_page = paginator.get_page(page)
+            media_page.object_list = _hydrate_time_left_page(
+                request.user,
+                media_page.object_list,
+            )
 
         BasicMedia.objects.annotate_max_progress(
             _tracked_media_entries(media_page.object_list),
@@ -3159,13 +3105,7 @@ def media_list(request, media_type):
                 continue
             parts = [video.channel] if video.channel else []
             if video.length_seconds:
-                minutes, seconds = divmod(video.length_seconds, 60)
-                hours, minutes = divmod(minutes, 60)
-                parts.append(
-                    f"{hours}:{minutes:02d}:{seconds:02d}"
-                    if hours
-                    else f"{minutes}:{seconds:02d}",
-                )
+                parts.append(helpers.seconds_to_clock(video.length_seconds))
             video.home_music_card = True
             video.card_subtitle_text = " · ".join(parts)
 

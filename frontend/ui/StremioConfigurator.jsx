@@ -20,11 +20,11 @@ const DEFAULT_PALETTE = {
 
 const DEFAULT_LABELS = {
   catalogs: 'Catalogs',
-  hint: 'Use the URL below — not the address of this page. It works in Stremio directly, or in an addon manager such as AIOStreams or AIOMetadata.',
+  hint: 'Use the URL below, not the address of this page. It works in Stremio directly, or in an addon manager such as AIOStreams or AIOMetadata.',
   copy: 'Copy URL',
   copied: 'Copied.',
   install: 'Install in Stremio',
-  noneSelected: 'Nothing selected — the default catalogs will be used.',
+  noneSelected: 'Nothing selected. The default catalogs will be used.',
   copyFailed: 'Could not copy the URL. Select it and copy it manually.',
   publishPrefix: 'Publish ',
   moveUpPrefix: 'Move ',

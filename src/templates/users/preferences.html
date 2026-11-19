@@ -167,44 +167,44 @@
                  x-transition:leave-end="transform opacity-0 scale-95"
                  class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
               <button type="button"
-                      @click="selectedValue = 'system_default'; selectedLabel = gettext('System default — Aug 12, 2025 / 12 Aug 2025'); open = false"
+                      @click="selectedValue = 'system_default'; selectedLabel = gettext('System default: Aug 12, 2025 / 12 Aug 2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "System default — Aug 12, 2025 / 12 Aug 2025" %}
+                {% translate "System default: Aug 12, 2025 / 12 Aug 2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'iso_8601'; selectedLabel = gettext('ISO 8601 — 2025-08-12'); open = false"
+                      @click="selectedValue = 'iso_8601'; selectedLabel = gettext('ISO 8601: 2025-08-12'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "ISO 8601 — 2025-08-12" %}
+                {% translate "ISO 8601: 2025-08-12" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'month_d_yyyy'; selectedLabel = gettext('Month D, YYYY — Aug 12, 2025'); open = false"
+                      @click="selectedValue = 'month_d_yyyy'; selectedLabel = gettext('Month D, YYYY: Aug 12, 2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "Month D, YYYY — Aug 12, 2025" %}
+                {% translate "Month D, YYYY: Aug 12, 2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'd_mon_yyyy'; selectedLabel = gettext('D Mon YYYY — 12 Aug 2025'); open = false"
+                      @click="selectedValue = 'd_mon_yyyy'; selectedLabel = gettext('D Mon YYYY: 12 Aug 2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "D Mon YYYY — 12 Aug 2025" %}
+                {% translate "D Mon YYYY: 12 Aug 2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'm_d_yyyy'; selectedLabel = gettext('M/D/YYYY — 08/12/2025'); open = false"
+                      @click="selectedValue = 'm_d_yyyy'; selectedLabel = gettext('M/D/YYYY: 08/12/2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "M/D/YYYY — 08/12/2025" %}
+                {% translate "M/D/YYYY: 08/12/2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'd_m_yyyy'; selectedLabel = gettext('D/M/YYYY — 12/08/2025'); open = false"
+                      @click="selectedValue = 'd_m_yyyy'; selectedLabel = gettext('D/M/YYYY: 12/08/2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "D/M/YYYY — 12/08/2025" %}
+                {% translate "D/M/YYYY: 12/08/2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'dd_mm_yyyy'; selectedLabel = gettext('DD.MM.YYYY — 12.08.2025'); open = false"
+                      @click="selectedValue = 'dd_mm_yyyy'; selectedLabel = gettext('DD.MM.YYYY: 12.08.2025'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "DD.MM.YYYY — 12.08.2025" %}
+                {% translate "DD.MM.YYYY: 12.08.2025" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'yyyy_mm_dd'; selectedLabel = gettext('YYYY/MM/DD — 2025/08/12'); open = false"
+                      @click="selectedValue = 'yyyy_mm_dd'; selectedLabel = gettext('YYYY/MM/DD: 2025/08/12'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "YYYY/MM/DD — 2025/08/12" %}
+                {% translate "YYYY/MM/DD: 2025/08/12" %}
               </button>
             </div>
             <input type="hidden" name="date_format" x-bind:value="selectedValue">
@@ -246,29 +246,29 @@
                  x-transition:leave-end="transform opacity-0 scale-95"
                  class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
               <button type="button"
-                      @click="selectedValue = 'system_default'; selectedLabel = gettext('System default — 6:45 PM / 18:45'); open = false"
+                      @click="selectedValue = 'system_default'; selectedLabel = gettext('System default: 6:45 PM / 18:45'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "System default — 6:45 PM / 18:45" %}
+                {% translate "System default: 6:45 PM / 18:45" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'h_mm_ampm'; selectedLabel = gettext('12-hour (h:mm AM/PM) — 6:45 PM'); open = false"
+                      @click="selectedValue = 'h_mm_ampm'; selectedLabel = gettext('12-hour (h:mm AM/PM): 6:45 PM'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "12-hour (h:mm AM/PM) — 6:45 PM" %}
+                {% translate "12-hour (h:mm AM/PM): 6:45 PM" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'hh_mm_ampm'; selectedLabel = gettext('12-hour, leading zero (hh:mm AM/PM) — 06:45 PM'); open = false"
+                      @click="selectedValue = 'hh_mm_ampm'; selectedLabel = gettext('12-hour, leading zero (hh:mm AM/PM): 06:45 PM'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM" %}
+                {% translate "12-hour, leading zero (hh:mm AM/PM): 06:45 PM" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'hh_mm'; selectedLabel = gettext('24-hour (HH:mm) — 18:45'); open = false"
+                      @click="selectedValue = 'hh_mm'; selectedLabel = gettext('24-hour (HH:mm): 18:45'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "24-hour (HH:mm) — 18:45" %}
+                {% translate "24-hour (HH:mm): 18:45" %}
               </button>
               <button type="button"
-                      @click="selectedValue = 'hh_mm_ss'; selectedLabel = gettext('24-hour with seconds (HH:mm:ss) — 18:45:00'); open = false"
+                      @click="selectedValue = 'hh_mm_ss'; selectedLabel = gettext('24-hour with seconds (HH:mm:ss): 18:45:00'); open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "24-hour with seconds (HH:mm:ss) — 18:45:00" %}
+                {% translate "24-hour with seconds (HH:mm:ss): 18:45:00" %}
               </button>
             </div>
             <input type="hidden" name="time_format" x-bind:value="selectedValue">
@@ -926,7 +926,7 @@
                     @click="open = !open"
                     @click.outside="open = false"
                     class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-              <span x-text="selectedValue === 'sessions' ? gettext('Sessions — new entry per play; exact history') : gettext('Repeats — update one entry; spreads time across range')"></span>
+              <span x-text="selectedValue === 'sessions' ? gettext('Sessions: new entry per play; exact history') : gettext('Repeats: update one entry; spreads time across range')"></span>
               <svg xmlns="http://www.w3.org/2000/svg"
                    width="24"
                    height="24"
@@ -951,12 +951,12 @@
               <button type="button"
                       @click="selectedValue = 'sessions'; selectedLabel = 'sessions'; open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "Sessions — new entry per play; exact history" %}
+                {% translate "Sessions: new entry per play; exact history" %}
               </button>
               <button type="button"
                       @click="selectedValue = 'repeats'; selectedLabel = 'repeats'; open = false"
                       class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                {% translate "Repeats — update one entry; spreads time across range" %}
+                {% translate "Repeats: update one entry; spreads time across range" %}
               </button>
             </div>
             <input type="hidden" name="game_logging_style" x-bind:value="selectedValue">

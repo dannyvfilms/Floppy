@@ -49,10 +49,15 @@ PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat -
 npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css --watch
 ```
 
-React UI assets are committed, so running the app does not require Node. When editing
-`frontend/`, install the locked dependencies with `npm ci --ignore-scripts`, run
-`npm run build:ui`, and reload the browser. Commit the generated `src/static/ui/`
-output with the source; `npm run check:ui` verifies it. Meaningful component redesigns
+React UI assets are committed, so running the app does not require Node. For
+frontend contributions, install the local hooks with
+`uv run --no-sync pre-commit install` (after `uv sync --locked`). Install the
+locked Node dependencies with `npm ci --ignore-scripts`. When editing `frontend/`,
+run `npm run build:ui`, stage the generated `src/static/ui/` files alongside
+the source, and run `npm run check:ui`. The pre-commit hook checks bundle integrity
+when frontend code, generated bundles, build scripts or npm dependencies change.
+The required CI lint check repeats this verification on every pull request, and
+on updates to `latest`. Meaningful component redesigns
 should include an incremental React port where bounded, following the
 [shared card and ownership pattern](docs/ui/settings-cards.md). Django routes and
 server permission checks remain authoritative; native verification is separate.

@@ -3,12 +3,22 @@
 import json
 import sqlite3
 import tempfile
+import unittest
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
 from config import sqlite_integrity as integrity
 from config import sqlite_sliced_check as sliced
+
+
+def _has_dbstat() -> bool:
+    """Return whether this SQLite build has the dbstat table the test reads."""
+    try:
+        sqlite3.connect(":memory:").execute("SELECT 1 FROM dbstat LIMIT 1")
+    except sqlite3.OperationalError:
+        return False
+    return True
 
 
 class SlicedCheckTests(TestCase):
@@ -71,6 +81,7 @@ class SlicedCheckTests(TestCase):
             state = sliced.run_slice(self.database)
         self.assertEqual(state["status"], "waiting-budget")
 
+    @unittest.skipUnless(_has_dbstat(), "This SQLite build has no dbstat table.")
     def test_damaged_overflow_chain_is_found_by_the_sweep(self):
         pages = sqlite3.connect(self.database)
         overflow = pages.execute(

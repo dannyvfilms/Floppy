@@ -126,6 +126,11 @@ def _pause_stale_media_for_type(user, media_type: str, weeks, now) -> int:
         model,
         fields=["status"],
     )
+    # bulk_update sends no save signal: refresh the library pages, Home and
+    # Statistics the way a save would (docs/architecture/view-caches.md).
+    from app import signals
+
+    signals._handle_media_cache_change(user.id, media_type, reason="auto_pause")
 
     logger.debug(
         "Paused %s stale %s item(s) for %s",

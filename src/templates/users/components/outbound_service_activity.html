@@ -17,7 +17,7 @@
       <summary class="cursor-pointer">{% translate "Recent results" %}</summary>
       <ul class="mt-2 space-y-1">
         {% for delivery in recent %}
-          <li>{{ delivery.item }}{% if delivery.get_operation_display %} ({{ delivery.get_operation_display }}){% endif %}: {{ delivery.get_status_display }}{% if delivery.last_error_message %} — {{ delivery.last_error_message }}{% endif %}</li>
+          <li>{{ delivery.item }}{% if delivery.get_operation_display %} ({{ delivery.get_operation_display }}){% endif %}: {{ delivery.get_status_display }}{% if delivery.last_error_message %} ({{ delivery.last_error_message }}){% endif %}</li>
         {% endfor %}
       </ul>
     </details>

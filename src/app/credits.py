@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -416,46 +416,43 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
     if has_people_payload:
         people_by_source_id = _upsert_people(person_source, cast_rows + crew_rows)
 
-        _replace_person_credits(
-            item,
-            (CreditRoleType.CAST.value, CreditRoleType.CREW.value),
-        )
+        role_types = (CreditRoleType.CAST.value, CreditRoleType.CREW.value)
         credits_to_create = []
+        for role_type, rows in zip(role_types, (cast_rows, crew_rows), strict=True):
+            for row in rows:
+                person = people_by_source_id.get(row["person_id"])
+                if not person:
+                    continue
+                credits_to_create.append(
+                    ItemPersonCredit(
+                        item=item,
+                        person=person,
+                        role_type=role_type,
+                        role=row["role"],
+                        department=row["department"],
+                        sort_order=row["sort_order"],
+                    ),
+                )
 
-        for row in cast_rows:
-            person = people_by_source_id.get(row["person_id"])
-            if not person:
-                continue
-            credits_to_create.append(
-                ItemPersonCredit(
-                    item=item,
-                    person=person,
-                    role_type=CreditRoleType.CAST.value,
-                    role=row["role"],
-                    department=row["department"],
-                    sort_order=row["sort_order"],
-                ),
-            )
-
-        for row in crew_rows:
-            person = people_by_source_id.get(row["person_id"])
-            if not person:
-                continue
-            credits_to_create.append(
-                ItemPersonCredit(
-                    item=item,
-                    person=person,
-                    role_type=CreditRoleType.CREW.value,
-                    role=row["role"],
-                    department=row["department"],
-                    sort_order=row["sort_order"],
-                ),
-            )
-
-        if credits_to_create:
-            ItemPersonCredit.objects.bulk_create(
-                credits_to_create, ignore_conflicts=True
-            )
+        # Saving a play syncs credits from metadata that is usually unchanged.
+        # Rewriting them anyway held SQLite's write lock for a delete and a
+        # re-insert of every row, so compare first and write only on a change.
+        wanted = {
+            (c.person_id, c.role_type, c.role, c.department, c.sort_order)
+            for c in credits_to_create
+        }
+        stored = set(
+            ItemPersonCredit.objects.filter(
+                item=item,
+                role_type__in=role_types,
+            ).values_list("person_id", "role_type", "role", "department", "sort_order"),
+        )
+        if wanted != stored:
+            _replace_person_credits(item, role_types)
+            if credits_to_create:
+                ItemPersonCredit.objects.bulk_create(
+                    credits_to_create, ignore_conflicts=True
+                )
 
     if has_studio_payload:
         studios_by_source_id = _bulk_upsert(
@@ -471,7 +468,6 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
             },
         )
 
-        ItemStudioCredit.objects.filter(item=item).delete()
         studio_links = []
         for row in studio_rows:
             studio = studios_by_source_id.get(row["studio_id"])
@@ -484,8 +480,20 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
                     sort_order=row["sort_order"],
                 ),
             )
-        if studio_links:
-            ItemStudioCredit.objects.bulk_create(studio_links, ignore_conflicts=True)
+        wanted_studios = {(link.studio_id, link.sort_order) for link in studio_links}
+        stored_studios = set(
+            ItemStudioCredit.objects.filter(item=item).values_list(
+                "studio_id",
+                "sort_order",
+            ),
+        )
+        if wanted_studios != stored_studios:
+            ItemStudioCredit.objects.filter(item=item).delete()
+            if studio_links:
+                ItemStudioCredit.objects.bulk_create(
+                    studio_links,
+                    ignore_conflicts=True,
+                )
 
 
 def _normalize_author_rows(rows):
@@ -549,9 +557,13 @@ def sync_item_author_credits(item, authors_full):
         ItemPersonCredit.objects.bulk_create(credits_to_create, ignore_conflicts=True)
 
 
-@transaction.atomic
 def upsert_person_profile(source, source_person_id, metadata):
-    """Create or update a local person profile from provider metadata."""
+    """Create or update a local person profile from provider metadata.
+
+    A person page calls this on every view, so it writes only when the
+    provider's profile differs from the stored row. An empty provider answer
+    (an outage) keeps the stored profile instead of blanking it.
+    """
     if (
         source not in Sources.values
         or not source_person_id
@@ -559,18 +571,34 @@ def upsert_person_profile(source, source_person_id, metadata):
     ):
         return None
 
-    person, _ = Person.objects.update_or_create(
-        source=source,
-        source_person_id=str(source_person_id),
-        defaults={
-            "name": _as_text(metadata.get("name")) or "Unknown Person",
-            "image": _as_text(metadata.get("image")),
-            "known_for_department": _as_text(metadata.get("known_for_department")),
-            "biography": _as_text(metadata.get("biography")),
-            "gender": _coerce_gender(metadata.get("gender")),
-            "birth_date": _coerce_iso_date(metadata.get("birth_date")),
-            "death_date": _coerce_iso_date(metadata.get("death_date")),
-            "place_of_birth": _as_text(metadata.get("place_of_birth")),
-        },
-    )
+    lookup = {"source": source, "source_person_id": str(source_person_id)}
+    person = Person.objects.filter(**lookup).first()
+    if not metadata:
+        return person
+
+    profile = {
+        "name": _as_text(metadata.get("name")) or "Unknown Person",
+        "image": _as_text(metadata.get("image")),
+        "known_for_department": _as_text(metadata.get("known_for_department")),
+        "biography": _as_text(metadata.get("biography")),
+        "gender": _coerce_gender(metadata.get("gender")),
+        "birth_date": _coerce_iso_date(metadata.get("birth_date")),
+        "death_date": _coerce_iso_date(metadata.get("death_date")),
+        "place_of_birth": _as_text(metadata.get("place_of_birth")),
+    }
+    if person is None:
+        try:
+            with transaction.atomic():
+                return Person.objects.create(**lookup, **profile)
+        except IntegrityError:
+            # Another request created the row first; update that one.
+            person = Person.objects.get(**lookup)
+
+    changed = [
+        field for field, value in profile.items() if getattr(person, field) != value
+    ]
+    if changed:
+        for field in changed:
+            setattr(person, field, profile[field])
+        person.save(update_fields=changed)
     return person

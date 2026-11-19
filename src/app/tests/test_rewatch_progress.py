@@ -263,6 +263,82 @@ class InferredRewatchTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIsNone(self.progress().rewatch_percent)
 
+    def test_show_pass_with_only_its_last_season_still_open_counts_every_season(self):
+        """Finished seasons close their flag; the pass still spans the show."""
+        self.seed((3, 3, 3))
+        for season in (1, 2):
+            for episode in (1, 2, 3):
+                self.play(season, episode)
+        self.play(3, 1)
+        Season.objects.filter(pk=self.seasons[3].pk).update(
+            rewatch_started_at=self.start - timedelta(days=1),
+        )
+        result = self.progress()
+        self.assertTrue(result.rewatch_run.explicit)
+        self.assertEqual(
+            (result.rewatch_watched, result.rewatch_total, result.rewatch_percent),
+            (7, 9, 78),
+        )
+
+    def test_duplicate_season_opener_continues_the_show_pass(self):
+        """Logging a season's first episode twice is not a new season restart."""
+        self.seed((3, 3, 3))
+        for season, episode in ((1, 1), (1, 2), (1, 3), (2, 1), (2, 1), (2, 2), (2, 3), (3, 1)):
+            self.play(season, episode)
+        inferred = self.progress()
+        self.assertEqual(len(inferred.rewatch_run.keys), 9)
+        self.assertEqual((inferred.rewatch_offset, inferred.rewatch_watched), (0, 7))
+        Season.objects.filter(pk=self.seasons[3].pk).update(
+            rewatch_started_at=self.start - timedelta(days=1),
+        )
+        explicit = self.progress()
+        self.assertTrue(explicit.rewatch_run.explicit)
+        self.assertEqual(
+            (explicit.rewatch_offset, explicit.rewatch_watched, explicit.rewatch_percent),
+            (0, 7, 78),
+        )
+
+    def test_season_restart_after_its_opener_ended_a_show_pass_still_counts(self):
+        """Replaying a season again after moving on is still a fresh restart."""
+        self.seed((3, 3, 3))
+        for season, episode in ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 1), (2, 2)):
+            self.play(season, episode)
+        result = self.progress()
+        self.assertEqual(result.rewatch_run.keys, ((2, 1), (2, 2), (2, 3)))
+
+    def test_open_season_after_an_earlier_replay_keeps_its_own_scope(self):
+        """A replay that began before the open pass is a different pass."""
+        self.seed((3, 3, 3))
+        for episode in (1, 2, 3):
+            self.play(1, episode)
+        self.play(3, 1)
+        Season.objects.filter(pk=self.seasons[3].pk).update(
+            rewatch_started_at=self.start + timedelta(minutes=3),
+        )
+        result = self.progress()
+        self.assertEqual(len(result.rewatch_run.keys), 3)
+        self.assertEqual(
+            (result.rewatch_watched, result.rewatch_total, result.rewatch_percent),
+            (1, 9, 11),
+        )
+
+    def test_refused_rewatch_shows_the_written_message(self):
+        from app.models.tv import RewatchAlreadyCompleteError
+
+        message = "Nothing is left to rewatch from that date."
+        with patch.object(
+            TV, "start_rewatch", side_effect=RewatchAlreadyCompleteError(message),
+        ):
+            response = self.client.post(reverse("media_rewatch"), {
+                "media_type": "tv", "instance_id": self.tv.pk, "action": "start",
+            })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content.decode(), message)
+        self.assertEqual(
+            json.loads(response["HX-Trigger"]),
+            {"showToast": {"message": message, "type": "error"}},
+        )
+
     def test_ending_explicit_pass_before_confirmation_suppresses_later_extension(self):
         self.seed()
         self.play(1, 1)

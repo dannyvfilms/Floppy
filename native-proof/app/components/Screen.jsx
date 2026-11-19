@@ -2,26 +2,41 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle }) {
-  const body = scroll
-    ? <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-    : <View style={[styles.content, contentStyle]}>{children}</View>;
-  return <View style={styles.screen}>
-    {chrome ? <View style={styles.header}>
+// `onScroll` and `onContentSizeChange` pass through to the scrolling body (Home
+// uses them to load shelves near the screen).
+// `renderScroll(scrollProps)`: a page whose list scrolls itself (the native
+// Library's windowed grid) draws the body with the props this ScrollView would
+// have had, so its padding, safe-area and side-rail handling are the same.
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle, scrollStyle, floating, artworkBleed = false, onScroll, onContentSizeChange, renderScroll }) {
+  const scrollProps = {
+    style: [artworkBleed ? styles.bleed : null, scrollStyle],
+    contentContainerStyle: [styles.content, contentStyle],
+    keyboardShouldPersistTaps: 'handled',
+  };
+  const body = renderScroll
+    ? renderScroll(scrollProps)
+    : scroll
+      ? <ScrollView {...scrollProps} onScroll={onScroll} scrollEventThrottle={onScroll ? 100 : undefined}
+        onContentSizeChange={onContentSizeChange}>{children}</ScrollView>
+      : <View style={[styles.content, contentStyle]}>{children}</View>;
+  return <View style={[styles.screen, artworkBleed && styles.bleed]}>
+    {chrome && (title || subtitle || onBack) ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>
-        <Text style={styles.backText}>Back</Text>
+        <Text style={[styles.backText, { color: palette.accent }]}>Back</Text>
       </Pressable> : null}
-      <View style={styles.heading}>
-        <Text role="heading" aria-level={1} style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-      </View>
+      {title || subtitle ? <View style={styles.heading}>
+        {title ? <Text role="heading" aria-level={1} style={[styles.title, { color: palette.text }]}>{title}</Text> : null}
+        {subtitle ? <Text style={[styles.subtitle, { color: palette.textMuted }]}>{subtitle}</Text> : null}
+      </View> : null}
     </View> : null}
     {body}
+    {floating || null}
   </View>;
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0 },
+  bleed: { overflow: 'visible' },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm },
   heading: { gap: 2 },
   title: { color: palette.text, fontSize: 28, fontWeight: '700' },
@@ -36,8 +51,8 @@ const styles = StyleSheet.create({
 
 export function Section({ title, copy, children }) {
   return <View style={styles.section}>
-    <Text style={styles.sectionTitle}>{title}</Text>
-    {copy ? <Text style={styles.sectionCopy}>{copy}</Text> : null}
+    <Text style={[styles.sectionTitle, { color: palette.text }]}>{title}</Text>
+    {copy ? <Text style={[styles.sectionCopy, { color: palette.textMuted }]}>{copy}</Text> : null}
     {children}
   </View>;
 }

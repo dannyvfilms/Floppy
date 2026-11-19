@@ -1103,3 +1103,45 @@ class DemoAccountCheckTests(TestCase):
     def test_demo_check_appears_in_the_report(self):
         results = preflight.run_checks(include_redis=False)
         self.assertIn("demo", {result.name for result in results})
+
+
+class StorageCheckTests(SimpleTestCase):
+    """A database on a spinning disk is reported, and never stops a start."""
+
+    def _sys_block(self, root: Path, device: int, rotational: str | None) -> Path:
+        node = root / "block" / f"{os.major(device)}:{os.minor(device)}"
+        (node / "queue").mkdir(parents=True)
+        if rotational is not None:
+            (node / "queue" / "rotational").write_text(rotational + "\n")
+        return root / "block"
+
+    def test_reads_the_device_that_holds_the_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = root / "db.sqlite3"
+            database.write_bytes(b"")
+            device = database.stat().st_dev
+            spinning = self._sys_block(root / "a", device, "1")
+            solid = self._sys_block(root / "b", device, "0")
+            self.assertIs(preflight._rotational(database, spinning), True)
+            self.assertIs(preflight._rotational(database, solid), False)
+            self.assertIsNone(preflight._rotational(database, root / "none"))
+            self.assertIsNone(preflight._rotational(root / "missing", spinning))
+
+    @override_settings(USING_SQLITE_DATABASE=True, FLOPPY_DB_PATH="/data/db.sqlite3")
+    def test_spinning_disk_warns_with_a_fix(self):
+        with mock.patch.object(preflight, "_rotational", return_value=True):
+            result = preflight.check_storage()
+        self.assertEqual(result.status, WARN)
+        self.assertFalse(result.failed)
+        self.assertIn("SSD", result.fix)
+
+    @override_settings(USING_SQLITE_DATABASE=True, FLOPPY_DB_PATH="/data/db.sqlite3")
+    def test_unknown_and_solid_state_are_ok(self):
+        for answer in (None, False):
+            with mock.patch.object(preflight, "_rotational", return_value=answer):
+                self.assertEqual(preflight.check_storage().status, OK)
+
+    @override_settings(USING_SQLITE_DATABASE=False)
+    def test_skipped_off_sqlite(self):
+        self.assertEqual(preflight.check_storage().status, SKIPPED)

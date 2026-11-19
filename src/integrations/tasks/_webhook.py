@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import requests
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.module_loading import import_string
@@ -15,6 +17,7 @@ from app import cache_safety, live_playback
 from app.log_safety import mapping_keys
 from app.providers import credentials
 from app.providers.services import ProviderAPIError
+from config.celery import FloppyTask
 from integrations import anime_mapping
 from integrations.models import PlexWebhookShare
 
@@ -325,13 +328,98 @@ def _queue_jellyfin_instant_push(user, payload):
     )
 
 
+# A message that kills its worker every time (too much memory, a crash in a
+# library) is handed back every time, because these tasks acknowledge late. Cap
+# how often one message may start so it cannot hold the interactive queue
+# forever. Four normal attempts (one plus three retries) fit well inside it.
+# Counted by Celery task id, which a redelivery and a retry both keep.
+MAX_WEBHOOK_STARTS = 8
+WEBHOOK_STARTS_TTL_SECONDS = 6 * 60 * 60
+
+# Options shared by every task whose broker message is the only copy of an
+# event the receiver already answered. The message is acknowledged only after
+# the task finishes, so a worker stopped or killed mid-task (deploy, restart,
+# out of memory) leaves it unacknowledged and the broker delivers it again.
+# Each task is repeat-safe (test_webhook_redelivery). Task-level only: imports
+# and rebuilds are long and not all repeat-safe. See webhook-delivery.md.
+REDELIVERED_TASK_OPTIONS = {
+    "acks_late": True,
+    "reject_on_worker_lost": True,
+}
+
+
+def _count_task_start(task_id):
+    """Return how many times this message has started, or None if unknown."""
+    if not task_id:
+        return None
+    key = f"webhook_starts:{task_id}"
+    try:
+        cache.add(key, 0, timeout=WEBHOOK_STARTS_TTL_SECONDS)
+        return cache.incr(key)
+    except Exception:
+        return None
+
+
+class _WebhookTask(FloppyTask):
+    """Caps redeliveries and logs an event that will not be tried again."""
+
+    def _log_fields(self, args, kwargs):
+        """Return (event id, provider, user id) without payload values."""
+        if self.name == "Process media server webhook":
+            provider, _payload, user_id, *_ = (*args, None, None, None)
+            return (
+                kwargs.get("event_id"),
+                kwargs.get("provider", provider),
+                kwargs.get("user_id", user_id),
+            )
+        # Stremio tasks: (payload or kind, user_id, ...) or (session_id,).
+        user_id = kwargs.get("user_id", args[1] if len(args) > 1 else None)
+        return self.request.id, "stremio", user_id
+
+    def __call__(self, *args, **kwargs):
+        """Drop a message that has started too many times, else run it."""
+        starts = _count_task_start(self.request.id)
+        if starts is not None and starts > MAX_WEBHOOK_STARTS:
+            event_id, provider, user_id = self._log_fields(args, kwargs)
+            logger.warning(
+                "webhook_failed event_id=%s provider=%s user_id=%s outcome=error "
+                "starts=%s error=TooManyDeliveries",
+                event_id,
+                provider,
+                user_id,
+                starts,
+            )
+            return None
+        return super().__call__(*args, **kwargs)
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Log one WARNING when the final attempt fails (no payload values)."""
+        event_id, provider, user_id = self._log_fields(args, kwargs)
+        logger.warning(
+            "webhook_failed event_id=%s provider=%s user_id=%s outcome=error "
+            "retries=%s error=%s",
+            event_id,
+            provider,
+            user_id,
+            self.request.retries,
+            type(exc).__name__,
+        )
+        super().on_failure(exc, task_id, args, kwargs, einfo)
+
+
 @shared_task(
     name="Process media server webhook",
+    base=_WebhookTask,
+    **REDELIVERED_TASK_OPTIONS,
     # A provider blip used to discard the scrobble outright, since the task
-    # re-raised with no retry configured (#521). Only provider/network errors are
-    # retried: a malformed payload will fail identically every time, and
-    # retrying it would just burn the worker.
-    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    # re-raised with no retry configured (#521). Only provider/network errors
+    # and the soft time limit are retried: a malformed payload will fail
+    # identically every time, and retrying it would just burn the worker.
+    autoretry_for=(
+        ProviderAPIError,
+        requests.exceptions.RequestException,
+        SoftTimeLimitExceeded,
+    ),
     max_retries=3,
     retry_backoff=True,
     retry_jitter=True,
@@ -367,9 +455,24 @@ def process_webhook(
     )
 
 
+def _schedule_verifier(session_id, countdown, revision):
+    """Queue the verifier for one session revision."""
+    verify_stremio_playback.apply_async(
+        args=[session_id],
+        kwargs={"revision": revision},
+        countdown=countdown,
+    )
+
+
 @shared_task(
     name="Process Stremio playback webhook",
-    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    base=_WebhookTask,
+    **REDELIVERED_TASK_OPTIONS,
+    autoretry_for=(
+        ProviderAPIError,
+        requests.exceptions.RequestException,
+        SoftTimeLimitExceeded,
+    ),
     max_retries=3,
     retry_backoff=True,
     retry_jitter=True,
@@ -389,13 +492,10 @@ def process_stremio_webhook(payload, user_id, queue_member=None):
 
     from integrations.stremio_playback import start_session
 
-    decision = start_session(payload, user_id)
-    if decision.status == "schedule":
-        verify_stremio_playback.apply_async(
-            args=[decision.session_id],
-            countdown=decision.countdown,
-        )
-    else:
+    # The first verifier is queued inside start_session, before the session is
+    # stored, so a worker lost in between still leaves one waiting.
+    decision = start_session(payload, user_id, schedule=_schedule_verifier)
+    if decision.status != "schedule":
         logger.info(
             "stremio_verify_start status=%s reason=%s user_id=%s media_id=%s",
             decision.status,
@@ -408,7 +508,13 @@ def process_stremio_webhook(payload, user_id, queue_member=None):
 
 @shared_task(
     name="Process Stremio tracker event",
-    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    base=_WebhookTask,
+    **REDELIVERED_TASK_OPTIONS,
+    autoretry_for=(
+        ProviderAPIError,
+        requests.exceptions.RequestException,
+        SoftTimeLimitExceeded,
+    ),
     max_retries=3,
     retry_backoff=True,
     retry_jitter=True,
@@ -451,21 +557,36 @@ def process_stremio_tracker_event(
 
 @shared_task(
     name="Verify Stremio playback completion",
+    base=_WebhookTask,
+    **REDELIVERED_TASK_OPTIONS,
+    # A retry is safe: the verifier carries the session revision it was queued
+    # for, and a claimed completion is handed back until its play is saved.
+    autoretry_for=(
+        ProviderAPIError,
+        requests.exceptions.RequestException,
+        SoftTimeLimitExceeded,
+    ),
+    max_retries=3,
+    retry_backoff=True,
+    retry_jitter=True,
     soft_time_limit=90,
     time_limit=120,
 )
-def verify_stremio_playback(session_id):
-    """Run one bounded observation and schedule only the requested successor."""
-    from integrations.stremio_playback import observe_session
+def verify_stremio_playback(session_id, revision=None):
+    """Run one bounded observation; its successor is queued before it is stored.
 
-    decision = observe_session(session_id)
-    if decision.status == "schedule":
-        verify_stremio_playback.apply_async(
-            args=[session_id],
-            countdown=decision.countdown,
-        )
-    elif decision.status == "complete":
+    ``revision`` is the session revision this verifier was queued for, so a
+    redelivered or duplicate verifier stops once the session has moved on.
+    Messages queued before it existed carry none and skip that check.
+    """
+    from integrations.stremio_playback import finish_completion, observe_session
+
+    decision = observe_session(
+        session_id, revision=revision, schedule=_schedule_verifier
+    )
+    if decision.status == "complete":
         _process_webhook("stremio", decision.payload, decision.user_id)
+        finish_completion(session_id)
     logger.info(
         "stremio_verify status=%s reason=%s session_id=%s",
         decision.status,

@@ -47,7 +47,7 @@ def format_jellyfin_push_message(push_counts: dict, warning_text: str = "") -> s
         parts.append(f"{skipped_unsupported} use an unsupported metadata source")
 
     if not parts:
-        message = "Nothing to sync — Jellyfin already matched Floppy's watched state."
+        message = "Nothing to sync. Jellyfin already matched Floppy's watched state."
     else:
         message = "Jellyfin sync: " + ", ".join(parts) + "."
 
@@ -179,7 +179,7 @@ class JellyfinPushSyncService:
         )
         if total_items == 0:
             self.warnings.append(
-                "Jellyfin returned no library items — check that the API key "
+                "Jellyfin returned no library items. Check that the API key "
                 "and user have library access.",
             )
 
@@ -243,7 +243,14 @@ class JellyfinPushSyncService:
             related_season__user=self.user,
         ).select_related("item", "related_season__related_tv__item")
 
+        # One decision per episode, not per play: an open rewatch must not
+        # unmark an episode an earlier finished play watched.
+        by_item = {}
         for episode in episodes:
+            first, watched = by_item.get(episode.item_id, (episode, False))
+            by_item[episode.item_id] = (first, watched or Episode.is_watch(episode))
+
+        for episode, watched in by_item.values():
             item = episode.item
             if not item:
                 continue
@@ -263,7 +270,6 @@ class JellyfinPushSyncService:
                 )
                 continue
 
-            watched = episode.end_date is not None and not episode.dropped
             self._apply_state(client, jf_item, watched=watched)
 
     def _apply_state(

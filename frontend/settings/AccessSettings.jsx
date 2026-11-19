@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { TextField } from '../ui/TextField';
@@ -7,6 +7,8 @@ import { ToggleChip } from '../ui/ToggleChip';
 import { Chip } from './Chip';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SettingsCard } from './SettingsCard';
+import { Icon } from '../ui/Icon';
+import { actionIcons } from '../ui/actionIcons';
 
 const defaultPalette = {
   background: '#18181b',
@@ -40,9 +42,9 @@ const defaultButtonPalette = {
 };
 
 const defaultLabels = {
-  accountTokenTitle: 'API token',
+  accountTokenTitle: 'API Token',
   accountTokenBadge: 'Full access',
-  accountTokenDescription: 'This token authenticates webhook requests from your media servers. For apps and API clients, create a scoped app token instead.',
+  accountTokenDescription: 'This token authenticates webhook requests from your media servers. It has full access to your account, so for apps and API clients create an app token below instead, those can be limited and revoked one at a time.',
   copy: 'Copy',
   regenerate: 'Regenerate',
   regenerateTitle: 'Regenerate the API token?',
@@ -114,6 +116,10 @@ function TokenMeta({ createdAt, lastUsedAt, expiresAt, expired, palette, labels 
 }
 
 export function AccessTokenCard({
+  sessionRequired = false,
+  icon,
+  tokenSlot,
+  labels: suppliedLabels,
   maskedToken = '••••••••••••',
   busy = false,
   error,
@@ -125,7 +131,7 @@ export function AccessTokenCard({
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
-  const labels = defaultLabels;
+  const labels = { ...defaultLabels, ...suppliedLabels };
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
 
@@ -139,24 +145,28 @@ export function AccessTokenCard({
     }
   }
 
-  return <SettingsCard title={labels.accountTokenTitle} badge={labels.accountTokenBadge} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.accountTokenDescription}</Text>
-    <View style={[styles.secretRow, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.secret, { color: colors.textSecondary }]}>{maskedToken}</Text>
+  return <SettingsCard title={labels.accountTokenTitle} icon={icon} badge={colors.pageCards ? undefined : labels.accountTokenBadge} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20 }]}>{labels.accountTokenDescription}</Text>
+    {sessionRequired ? <Text style={[styles.copy, { color: colors.textMuted }]}>Sign in with your username and password to manage this.</Text> : <>
+    <View style={[styles.secretRow, { backgroundColor: colors.surfaceDim || colors.surfaceStrong, borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 12 }]}>
+      {tokenSlot || <Text style={[styles.secret, { color: colors.textSecondary }]}>{maskedToken}</Text>}
       <Button label={labels.copy} tone="surface" onPress={onCopy} palette={buttons} />
     </View>
-    <Text style={[styles.warning, { color: colors.warning }]}>Regenerating invalidates the previous token and every feed link that uses it.</Text>
+    <Text style={[styles.warning, { color: colors.warning }]}>{colors.pageCards ? 'Regenerating will invalidate the previous token' : 'Regenerating invalidates the previous token and every feed link that uses it.'}</Text>
     <StatusLine busy={busy} error={error} success={success} palette={colors} />
-    <Button label={labels.regenerate} tone="danger-solid" busy={busy} disabled={busy}
+    <Button label={labels.regenerate} tone={colors.pageCards ? 'primary' : 'danger-solid'} busy={busy} disabled={busy}
       onPress={() => { setConfirmError(''); setConfirming(true); }} palette={buttons} />
     <ConfirmDialog visible={confirming} title={labels.regenerateTitle} message={labels.regenerateCopy}
       warning="This cannot be undone." confirmLabel={labels.regenerate} busy={busy}
       error={confirmError} palette={colors} buttonPalette={buttons}
       onCancel={() => setConfirming(false)} onConfirm={regenerate} />
+    </>}
   </SettingsCard>;
 }
 
 export function AppTokensCard({
+  icon,
+  secretSlot,
   model = {},
   busy = false,
   error,
@@ -180,6 +190,7 @@ export function AppTokensCard({
   const [confirmError, setConfirmError] = useState('');
   const [formError, setFormError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
 
   function toggleScope(value, active) {
     setSelectedScopes(current => active ? [...current, value] : current.filter(item => item !== value));
@@ -200,6 +211,7 @@ export function AppTokensCard({
       await onCreate?.({ name: name.trim(), expiresInDays, scopes: selectedScopes });
       setName('');
       setExpiresInDays('');
+      setFormOpen(false);
     } catch (failure) {
       setFormError(failure?.message || 'Could not create the token.');
     } finally {
@@ -217,13 +229,13 @@ export function AppTokensCard({
     }
   }
 
-  return <SettingsCard title={labels.appTokensTitle} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.appTokensDescription}</Text>
+  return <SettingsCard title={labels.appTokensTitle} icon={icon} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20 }]}>{labels.appTokensDescription}</Text>
     {model.oneTimeSecret ? <View style={[styles.oneTime, { backgroundColor: colors.surfaceStrong, borderColor: colors.accent }]}>
       <Text style={[styles.rowTitle, { color: colors.text }]}>{labels.appTokenCreated}: {model.oneTimeSecret.name}</Text>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.appTokenCopy}</Text>
       <View style={styles.secretRow}>
-        <Text style={[styles.secret, { color: colors.textSecondary }]}>{model.oneTimeSecret.preview || 'flp_new…'}</Text>
+        {secretSlot || <Text style={[styles.secret, { color: colors.textSecondary }]}>{model.oneTimeSecret.preview || 'flp_new…'}</Text>}
         <Button label={labels.copySecret} tone="surface" onPress={onCopySecret} palette={buttons} />
       </View>
     </View> : null}
@@ -243,26 +255,34 @@ export function AppTokensCard({
         <Button label={labels.revoke} tone="ghost-danger" disabled={Boolean(busy)}
           onPress={() => { setConfirmError(''); setPending(token); }} palette={buttons} />
       </View>
-    </View>) : <View style={[styles.empty, { borderColor: colors.border }]}>
-      <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.noAppTokens}</Text>
+    </View>) : <View style={[styles.empty, { borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 0, alignItems: 'flex-start' }]}>
+      <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20 }]}>{labels.noAppTokens}</Text>
     </View>}
-    <View style={[styles.form, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.createToken}</Text>
+    {model.sessionRequired ? <Text style={[styles.copy, { color: colors.textMuted }]}>Sign in with your username and password to manage this.</Text> :
+    <View style={[styles.form, { backgroundColor: colors.surfaceDim || colors.surfaceStrong, borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 16 }]}>
+      {model.collapsible ? <Pressable accessibilityRole="button" accessibilityLabel="Create an app token" aria-expanded={formOpen}
+        onPress={() => setFormOpen(value => !value)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={formOpen ? { transform: [{ rotate: '90deg' }] } : undefined}><Icon spec={actionIcons.chevronRight} color={colors.textMuted} size={12} /></View>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Create an app token</Text>
+      </Pressable> : <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.createToken}</Text>}
+      {!model.collapsible || formOpen ? <View style={{ gap: 10 }}>
       <TextField label={labels.name} name="name" value={name} placeholder={labels.namePlaceholder}
         maxLength={255} palette={colors} onChangeText={setName} />
       <SelectField label={labels.expires} name="expires_in_days" value={expiresInDays}
+        iconChevron={Boolean(colors.pageCards)}
         options={expiry} palette={colors} onChange={event => setExpiresInDays(event.target.value)} />
       <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.permissions}</Text>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.presetHint}</Text>
       <View style={styles.toggleList}>{scopes.map(scope => <View key={scope.value} style={styles.scopeRow}>
         <ToggleChip label={scope.value} help={scope.description} value={selectedScopes.includes(scope.value)}
-          offLabel="Off" onLabel="On" palette={colors}
+          checkbox={Boolean(colors.pageCards)} offLabel="Off" onLabel="On" palette={{ ...colors, fontFamily: colors.pageCards ? 'monospace' : colors.fontFamily }}
           onChange={active => toggleScope(scope.value, active)} />
       </View>)}</View>
       {formError ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{formError}</Text> : null}
       <Button label={creating ? labels.creatingToken : labels.createToken} busy={creating}
         disabled={creating || Boolean(busy)} onPress={create} palette={buttons} />
-    </View>
+      </View> : null}
+    </View>}
     <ConfirmDialog visible={Boolean(pending)} title={labels.revokeTitle} message={labels.revokeCopy}
       warning={pending ? `${pending.name} stops working immediately.` : undefined}
       confirmLabel={labels.revoke} busy={Boolean(busy)} error={confirmError}
@@ -272,6 +292,10 @@ export function AppTokensCard({
 }
 
 export function CatalogGrantsCard({
+  sessionRequired = false,
+  oneTimeSecret,
+  secretSlot,
+  onCopySecret,
   grants = [],
   busy = false,
   error,
@@ -321,6 +345,14 @@ export function CatalogGrantsCard({
 
   return <SettingsCard title={labels.catalogTitle} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.catalogDescription}</Text>
+    {oneTimeSecret ? <View style={[styles.oneTime, { backgroundColor: colors.surfaceDim || colors.surfaceStrong, borderColor: colors.accent }]}>
+      <Text style={[styles.rowTitle, { color: colors.text }]}>Install credential created: {oneTimeSecret.name}</Text>
+      <Text style={[styles.copy, { color: colors.textMuted }]}>Copy this credential before leaving this page.</Text>
+      <View style={styles.secretRow}>
+        {secretSlot}
+        <Button label={labels.copySecret} tone="surface" onPress={onCopySecret} palette={buttons} />
+      </View>
+    </View> : null}
     <StatusLine busy={busy} error={error} success={success} palette={colors} />
     {grants.length ? grants.map(grant => <View key={grant.id} style={[styles.rowCard, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
       <View style={styles.rowHeading}>
@@ -334,6 +366,7 @@ export function CatalogGrantsCard({
     </View>) : <View style={[styles.empty, { borderColor: colors.border }]}>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.noGrants}</Text>
     </View>}
+    {sessionRequired ? <Text style={[styles.copy, { color: colors.textMuted }]}>Sign in with your username and password to manage this.</Text> :
     <View style={[styles.form, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
       <TextField label={labels.installName} name="grant_name" value={name} placeholder={labels.installPlaceholder}
         maxLength={255} palette={colors} onChangeText={setName} />
@@ -342,7 +375,7 @@ export function CatalogGrantsCard({
       {formError ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{formError}</Text> : null}
       <Button label={creating ? labels.creatingInstall : labels.createInstall} busy={creating}
         disabled={creating || Boolean(busy)} onPress={create} palette={buttons} />
-    </View>
+    </View>}
     <ConfirmDialog visible={Boolean(pending)} title={labels.revokeTitle} message={labels.revokeCopy}
       warning={pending ? `${pending.name} stops working immediately.` : undefined}
       confirmLabel={labels.revoke} busy={Boolean(busy)} error={confirmError}
@@ -352,6 +385,8 @@ export function CatalogGrantsCard({
 }
 
 export function AuthorizedApplicationsCard({
+  separateHeader = false,
+  labels: suppliedLabels,
   applications = [],
   busy = false,
   error,
@@ -362,7 +397,7 @@ export function AuthorizedApplicationsCard({
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
-  const labels = defaultLabels;
+  const labels = { ...defaultLabels, ...suppliedLabels };
   const [pending, setPending] = useState(null);
   const [confirmError, setConfirmError] = useState('');
 
@@ -376,11 +411,10 @@ export function AuthorizedApplicationsCard({
     }
   }
 
-  return <SettingsCard title={labels.oauthTitle} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.oauthDescription}</Text>
+  const content = <>
     <StatusLine busy={busy} error={error} success={success} palette={colors} />
     {applications.length ? applications.map(application => <View key={application.id}
-      style={[styles.rowCard, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+      style={[styles.rowCard, { backgroundColor: separateHeader ? colors.surface : colors.surfaceStrong, borderColor: colors.border }, separateHeader && { borderWidth: 0, padding: 24 }]}>
       <View style={styles.rowHeading}>
         <View style={styles.rowBody}>
           <View style={styles.chipRow}>
@@ -398,15 +432,22 @@ export function AuthorizedApplicationsCard({
         <Button label={labels.oauthRevoke} tone="ghost-danger" disabled={busy}
           onPress={() => { setConfirmError(''); setPending(application); }} palette={buttons} />
       </View>
-    </View>) : <View style={[styles.empty, { borderColor: colors.border }]}>
-      <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.noApplications}</Text>
+    </View>) : <View style={[styles.empty, { borderColor: colors.border }, separateHeader && { borderWidth: 0, padding: 24, alignItems: 'flex-start', backgroundColor: colors.surface }]}>
+      <Text style={[styles.copy, { color: colors.textMuted }, separateHeader && { fontSize: 14, lineHeight: 20 }]}>{labels.noApplications}</Text>
     </View>}
     <ConfirmDialog visible={Boolean(pending)} title={labels.oauthRevokeTitle} message={labels.oauthRevokeCopy}
       warning={pending ? `${pending.name} loses access immediately.` : undefined}
       confirmLabel={labels.oauthRevoke} busy={busy} error={confirmError}
       palette={colors} buttonPalette={buttons}
       onCancel={() => setPending(null)} onConfirm={revoke} />
-  </SettingsCard>;
+  </>;
+  return <View style={separateHeader ? { gap: 24 } : undefined}>
+    <SettingsCard title={labels.oauthTitle} contentGap={separateHeader ? 8 : undefined} palette={colors}>
+      <Text style={[styles.copy, { color: colors.textMuted }, separateHeader && { fontSize: 14, lineHeight: 20 }]}>{labels.oauthDescription}</Text>
+      {!separateHeader ? content : null}
+    </SettingsCard>
+    {separateHeader ? content : null}
+  </View>;
 }
 
 const styles = StyleSheet.create({

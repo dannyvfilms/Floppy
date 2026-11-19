@@ -39,6 +39,7 @@ export function CollectionView({
   onRetry,
   onFilterChange,
   onOpenCopy,
+  onOpenItem,
   onLoadMore,
   onLoadMoreGroup,
   renderCard,
@@ -75,6 +76,7 @@ export function CollectionView({
       tableColumns={tableColumns}
       onFilterChange={onFilterChange}
       onOpenCopy={onOpenCopy}
+      onOpenItem={onOpenItem}
       onLoadMore={onLoadMore}
       onLoadMoreGroup={onLoadMoreGroup}
       renderCard={renderCard} />}

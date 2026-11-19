@@ -203,7 +203,14 @@ class SafariRailBrowserTests(TestCase):
         self.assertAlmostEqual(
             backdrop["x"] + backdrop["width"] / 2, original["x"] + original["width"] / 2
         )
-        page.evaluate("document.documentElement.removeAttribute('data-safari-rail')")
+        # Leave the emulated Safari rail environment through a supported state
+        # change so its observers cannot re-enable the flag between assertions.
+        page.evaluate("""() => {
+          Object.defineProperty(navigator, 'standalone', {value: true});
+          window.dispatchEvent(new Event('resize'));
+        }""")
+        expect(rail).to_have_count(0)
+        self.assertFalse(page.evaluate("document.documentElement.hasAttribute('data-safari-rail')"))
         self.assertEqual(page.locator(".detail-mobile-hero").bounding_box(), original)
         self.assertEqual(page.locator(".detail-mobile-hero__logo").bounding_box(), logo)
         self.assertEqual(

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 from lists.models import CustomList, CustomListItem
 
 
@@ -67,6 +67,30 @@ class ListDetailFilterTests(TestCase):
         response = self.client.get(self.url)
 
         self.assertEqual(self._item_ids(response), {untracked.id})
+
+    def test_game_group_parameters_do_not_filter_or_reorder_a_list(self):
+        """Library drilldown parameters leave custom-list membership and ties alone."""
+        for index, (title, group) in enumerate((("Alpha", "one"), ("Zulu", "two"))):
+            item = Item.objects.create(
+                media_id=f"list-group-{index}", source=Sources.MANUAL.value,
+                media_type=MediaTypes.GAME.value, title=title,
+                provider_franchise_id=group, provider_franchise_name=group,
+                provider_collection_id=group, provider_collection_name=group,
+            )
+            Game.objects.bulk_create([
+                Game(item=item, user=self.user, score=8, status=Status.COMPLETED.value),
+            ])
+            CustomListItem.objects.create(custom_list=self.custom_list, item=item)
+        params = {"sort": "score", "direction": "desc"}
+        flat = self.client.get(self.url, params)
+        expected = [item.id for item in flat.context["items"]]
+        for group_by in ("series", "franchise"):
+            with self.subTest(group_by=group_by):
+                response = self.client.get(
+                    self.url, {**params, "group_by": group_by, "group": "id:one"},
+                )
+                self.assertEqual([item.id for item in response.context["items"]], expected)
+                self.assertEqual(response.context["filtered_items_count"], 2)
 
     def test_next_page_keeps_the_filter(self):
         """Infinite scroll asks for page 2 with the same filters; it must honour them."""

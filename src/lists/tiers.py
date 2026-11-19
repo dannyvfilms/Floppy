@@ -9,6 +9,8 @@ Unranked.
 import re
 from decimal import Decimal
 
+from app.public_errors import PublicMessageError
+
 MAX_TIERS = 12
 # A tier board shows every item on one page; past this it says so.
 TIER_BOARD_LIMIT = 300
@@ -27,31 +29,35 @@ DEFAULT_TIERS = (
 )
 
 
+class TierError(PublicMessageError, ValueError):
+    """Submitted tiers are not valid. The message is written for the person."""
+
+
 def resolve_tiers(custom_list):
     """Return the list's tiers in order, falling back to the defaults."""
     return list(custom_list.tiers or DEFAULT_TIERS)
 
 
 def clean_tiers(raw):
-    """Return validated tiers from submitted data, or raise ``ValueError``."""
+    """Return validated tiers from submitted data, or raise ``TierError``."""
     if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_TIERS:
         msg = f"Provide between 1 and {MAX_TIERS} tiers."
-        raise ValueError(msg)
+        raise TierError(msg)
     cleaned = []
     seen = set()
     for entry in raw:
         if not isinstance(entry, dict):
             msg = "Each tier must be an object."
-            raise ValueError(msg)  # noqa: TRY004
+            raise TierError(msg)
         tier_id = str(entry.get("id") or "")
         name = str(entry.get("name") or "").strip()[:MAX_NAME_LENGTH]
         color = str(entry.get("color") or "")
         if not TIER_ID_PATTERN.match(tier_id) or tier_id in seen:
             msg = "Each tier needs a unique id."
-            raise ValueError(msg)
+            raise TierError(msg)
         if not name or not COLOR_PATTERN.match(color):
             msg = "Each tier needs a name and a #rrggbb colour."
-            raise ValueError(msg)
+            raise TierError(msg)
         seen.add(tier_id)
         cleaned.append({"id": tier_id, "name": name, "color": color.lower()})
     return cleaned

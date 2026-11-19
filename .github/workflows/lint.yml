@@ -2,6 +2,8 @@ name: Lint
 
 on:
   pull_request:
+  push:
+    branches: [latest]
   workflow_call:
   workflow_dispatch:
 
@@ -43,6 +45,9 @@ jobs:
       - name: Ruff
         run: uv run --no-sync ruff check src mcp_server
 
+      - name: Code map points at existing files
+        run: python3 scripts/check_code_map.py
+
       - name: Dependency vulnerabilities
         run: scripts/audit_dependencies.sh
 
@@ -52,16 +57,22 @@ jobs:
       - name: Verify committed UI bundles
         run: npm run check:ui
 
-      - name: Verify UI architecture and validator regressions
+      - name: Verify UI architecture
         env:
           UI_ARCH_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
-        run: |
-          npm run check:ui-architecture
-          npm run test:ui-architecture
+        run: npm run check:ui-architecture
 
       - name: Install isolated Expo proof dependencies
         working-directory: native-proof
         run: npm ci --ignore-scripts
+
+      # Every *.test.mjs in the repository: the web logic and render tests in
+      # scripts/ and the Expo app's transport tests in native-proof/app/.
+      # scripts/check_js_tests.py fails first if a test file is in no list.
+      - name: JavaScript tests
+        env:
+          UI_ARCH_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: npm run test:js
 
       - name: Export Expo platform bundles
         working-directory: native-proof
@@ -69,9 +80,11 @@ jobs:
           CI: "1"
         run: npm run export -- --platform all
 
+      # Both npm audits allow only the dated exceptions in
+      # .github/npm-audit-exceptions.json; an expired one fails again.
       - name: Audit Expo proof dependencies
         working-directory: native-proof
-        run: npm audit --ignore-scripts --audit-level=high
+        run: node ../scripts/npm_audit_gate.mjs --audit-level=high
 
       - name: Audit frontend build dependencies
-        run: npm audit --ignore-scripts
+        run: node scripts/npm_audit_gate.mjs

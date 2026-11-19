@@ -9,6 +9,7 @@ from django.db.models import Case, DateTimeField, Value, When
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -20,11 +21,11 @@ from app.activity_builders import (
     attach_unwatched_ratings,
 )
 from app.detail_builders import (
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_series_graph_data,
     _build_series_graph_from_raw,
     _build_trakt_popularity_context,
+    build_detail_link_sections,
 )
 from app.detail_related import drop_recommendations_if_hidden
 from app.log_safety import exception_summary
@@ -48,9 +49,9 @@ from app.providers import manual, services, tmdb
 from app.services import metadata_resolution
 from app.services import trakt_popularity as trakt_popularity_service
 from app.tag_views import (
-    _build_detail_tag_sections,
     _detail_request_url,
     _resolve_detail_tag_genres,
+    build_detail_tag_sections,
 )
 from app.view_constants import (
     DETAIL_CAROUSEL_FRAGMENT,
@@ -63,6 +64,19 @@ logger = logging.getLogger(__name__)
 
 MIN_PLAUSIBLE_YEAR = 1900
 UNKNOWN_RELEASE_YEAR = 9999
+
+
+def _season_show_url(source, media_id, title, parent_media_type):
+    """Return the parent show page a season's title logo links to."""
+    return reverse(
+        "media_details",
+        kwargs={
+            "source": source,
+            "media_type": parent_media_type or MediaTypes.TV.value,
+            "media_id": media_id,
+            "title": title,
+        },
+    )
 
 
 @login_not_required
@@ -81,6 +95,19 @@ def season_details(
         # string, not whitespace, so input.css's #detail-carousel-wrap:not(:empty)
         # rule (a whitespace-only text node still counts as a child for :empty)
         # correctly falls back to the non-carousel layout.
+        # Match the shell's parent detection so the logo opens the same page
+        # as the text title it replaces.
+        if (
+            parent_media_type is None
+            and getattr(request.user, "anime_enabled", False)
+            and Item.objects.filter(
+                media_id=media_id,
+                source=source,
+                media_type=MediaTypes.TV.value,
+                library_media_type=MediaTypes.ANIME.value,
+            ).exists()
+        ):
+            parent_media_type = MediaTypes.ANIME.value
         html = render_to_string(
             "app/components/detail_carousel_fragment.html",
             {
@@ -89,6 +116,9 @@ def season_details(
                     source,
                     media_id,
                     season_number=season_number,
+                ),
+                "carousel_logo_url": _season_show_url(
+                    source, media_id, title, parent_media_type
                 ),
             },
             request=request,
@@ -613,25 +643,10 @@ def season_details(
             )
 
         if episodes_to_update or release_datetime_updates:
-            # Invalidate time_left + media_list cache for all users
-            from app.cache_utils import (
-                clear_media_list_cache_for_user,
-                clear_time_left_cache_for_user,
-            )
+            # Every user tracking this show sees the new runtimes and air dates.
+            from app.cache_utils import EPISODE_DETAILS, clear_show_view_caches
 
-            # Get all users who track this show
-            tracking_users = (
-                BasicMedia.objects.filter(
-                    item__media_id=media_id,
-                    item__source=source,
-                    item__media_type__in=[MediaTypes.TV.value, MediaTypes.SEASON.value],
-                )
-                .values_list("user_id", flat=True)
-                .distinct()
-            )
-            for user_id in tracking_users:
-                clear_time_left_cache_for_user(user_id)
-                clear_media_list_cache_for_user(user_id)
+            clear_show_view_caches(media_id, source, EPISODE_DETAILS)
 
         # bulk_create() above doesn't fire Item's post_save signal, so
         # explicitly (and only once for the whole season, not once per
@@ -1069,13 +1084,13 @@ def season_details(
             if request.user.is_authenticated
             else None
         ),
-        "detail_link_sections": _build_detail_link_sections(
+        "detail_link_sections": build_detail_link_sections(
             season_metadata,
             MediaTypes.SEASON.value,
             source,
             source,
         ),
-        "detail_tag_sections": _build_detail_tag_sections(
+        "detail_tag_sections": build_detail_tag_sections(
             season_metadata,
             season_item,
             request.user,
@@ -1106,6 +1121,9 @@ def season_details(
         "carousel_supported": carousel_supported,
         "initial_carousel": initial_carousel,
         "detail_carousel_fragment_url": detail_carousel_fragment_url,
+        "carousel_logo_url": _season_show_url(
+            source, media_id, title, parent_media_type
+        ),
         **_build_detail_person_rows(season_metadata),
     }
     logger.info(

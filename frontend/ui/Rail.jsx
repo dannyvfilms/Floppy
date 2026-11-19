@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   hiddenControl: { opacity: 0 },
   arrow: { fontSize: 20, lineHeight: 20 },
   chevron: { fontSize: 16, lineHeight: 16 },
-  scroller: { paddingBottom: 12, paddingRight: 8, alignItems: 'flex-start' },
+  scroller: { paddingBottom: 8, paddingRight: 8, alignItems: 'flex-start' },
   item: { flexShrink: 0 },
   loading: { width: 56, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', gap: 4 },
   loadingText: { fontSize: 10 },

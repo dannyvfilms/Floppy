@@ -867,8 +867,7 @@ msgstr "%(value_1)s: %(value_2)s"
 
 #: app/save_views.py:716
 #, python-format
-msgid ""
-"%(value_1)s %(value_2)s already fully watched from that date — left as is."
+msgid "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
 msgstr ""
 "%(value_1)s %(value_2)s ab diesem Datum bereits vollständig angesehen – "
 "unverändert gelassen."
@@ -1340,8 +1339,8 @@ msgid "Login"
 msgstr "Anmelden"
 
 #: templates/account/login.html:13
-msgid "Welcome to Floppy — set up your account to get started"
-msgstr "Willkommen bei Floppy — richte dein Konto ein, um loszulegen"
+msgid "Welcome to Floppy: set up your account to get started"
+msgstr "Willkommen bei Floppy: richte dein Konto ein, um loszulegen"
 
 #: templates/account/login.html:15
 msgid "Sign in to your account"
@@ -1388,8 +1387,8 @@ msgid "Register"
 msgstr "Registrieren"
 
 #: templates/account/signup.html:12
-msgid "Welcome to Floppy — create your first account"
-msgstr "Willkommen bei Floppy — erstelle dein erstes Konto"
+msgid "Welcome to Floppy: create your first account"
+msgstr "Willkommen bei Floppy: erstelle dein erstes Konto"
 
 #: templates/account/signup.html:32
 msgid "Create Account"
@@ -7546,11 +7545,7 @@ msgid "Cache Management"
 msgstr "Zwischenspeicher verwalten"
 
 #: templates/users/advanced.html:109
-msgid ""
-"Floppy caches computed pages (History, Statistics, Discover) and provider "
-"search results so they load fast. If one looks stale or wrong, clearing it "
-"forces a rebuild from your actual data — nothing about your library, watch "
-"history, ratings, or lists is touched by any of these."
+msgid "Floppy caches computed pages (History, Statistics, Discover) and provider search results so they load fast. If one looks stale or wrong, clearing it forces a rebuild from your actual data. Nothing about your library, watch history, ratings, or lists is touched by any of these."
 msgstr ""
 "Floppy speichert berechnete Seiten (Verlauf, Statistiken und Entdecken) "
 "sowie Suchergebnisse zwischen, damit sie schnell laden. Wenn etwas veraltet "
@@ -7563,7 +7558,7 @@ msgid "Search Cache"
 msgstr "Such-Zwischenspeicher"
 
 #: templates/users/advanced.html:118
-msgid "Provider search results — shared instance-wide"
+msgid "Provider search results (shared instance-wide)"
 msgstr "Suchergebnisse der Datenanbieter – gemeinsam für diese Instanz"
 
 #: templates/users/advanced.html:127
@@ -7571,7 +7566,7 @@ msgid "History Cache"
 msgstr "Verlaufs-Zwischenspeicher"
 
 #: templates/users/advanced.html:128
-msgid "Your cached History page — just you"
+msgid "Your cached History page (just you)"
 msgstr "Zwischengespeicherte Verlaufsseite – nur für dein Konto"
 
 #: templates/users/advanced.html:137
@@ -7579,7 +7574,7 @@ msgid "Statistics Cache"
 msgstr "Statistik-Zwischenspeicher"
 
 #: templates/users/advanced.html:138
-msgid "Your cached Statistics page — just you"
+msgid "Your cached Statistics page (just you)"
 msgstr "Zwischengespeicherte Statistikseite – nur für dein Konto"
 
 #: templates/users/advanced.html:147
@@ -7587,7 +7582,7 @@ msgid "Discover Cache"
 msgstr "Entdecken-Zwischenspeicher"
 
 #: templates/users/advanced.html:148
-msgid "Your recommendation rows & taste profile — just you"
+msgid "Your recommendation rows & taste profile (just you)"
 msgstr "Empfehlungsreihen und Geschmacksprofil – nur für dein Konto"
 
 #: templates/users/advanced.html:159 templates/users/advanced.html:346
@@ -7599,7 +7594,7 @@ msgid "Clear Search Cache?"
 msgstr "Such-Zwischenspeicher leeren?"
 
 #: templates/users/advanced.html:208
-msgid "This is the one shared cache here — clearing it affects"
+msgid "This is the one shared cache here. Clearing it affects"
 msgstr "Dieser Zwischenspeicher wird gemeinsam verwendet. Das Leeren betrifft"
 
 #: templates/users/advanced.html:209 templates/users/advanced.html:326
@@ -7611,8 +7606,7 @@ msgid "on this Floppy instance, not just you."
 msgstr "dieser Floppy-Instanz, nicht nur dich."
 
 #: templates/users/advanced.html:212
-msgid ""
-"No data is lost — this only affects search/lookup results, not your library."
+msgid "No data is lost. This only affects search/lookup results, not your library."
 msgstr ""
 "Es gehen keine Daten verloren. Betroffen sind nur Such- und "
 "Abfrageergebnisse, nicht deine Bibliothek."
@@ -7639,9 +7633,7 @@ msgid "Only affects your own account."
 msgstr "Betrifft nur dein eigenes Konto."
 
 #: templates/users/advanced.html:240
-msgid ""
-"Your watch history itself is not touched — this only clears the cached, day-"
-"by-day rendering of it."
+msgid "Your watch history itself is not touched. This only clears the cached, day-by-day rendering of it."
 msgstr ""
 "Dein Verlauf bleibt erhalten. Nur seine zwischengespeicherte Darstellung "
 "nach Tagen wird gelöscht."
@@ -7663,15 +7655,13 @@ msgid "Clear Statistics Cache?"
 msgstr "Statistik-Zwischenspeicher leeren?"
 
 #: templates/users/advanced.html:266
-msgid "No underlying data is touched — only the cached charts/totals."
+msgid "No underlying data is touched, only the cached charts/totals."
 msgstr ""
 "Die zugrunde liegenden Daten bleiben erhalten. Nur zwischengespeicherte "
 "Diagramme und Summen werden gelöscht."
 
 #: templates/users/advanced.html:268
-msgid ""
-"Unlike History, Statistics rebuilds in the background rather than on your "
-"next page load — expect placeholder"
+msgid "Unlike History, Statistics rebuilds in the background rather than on your next page load. Expect placeholder"
 msgstr ""
 "Anders als der Verlauf werden die Statistiken im Hintergrund neu aufgebaut. "
 "Bis dahin erscheinen Platzhalter"
@@ -7689,9 +7679,7 @@ msgid "Clear Discover Cache?"
 msgstr "Entdecken-Zwischenspeicher leeren?"
 
 #: templates/users/advanced.html:296
-msgid ""
-"Your recommendation rows and taste profile get recomputed from scratch — "
-"rows may look different or take a moment to repopulate."
+msgid "Your recommendation rows and taste profile get recomputed from scratch. Rows may look different or take a moment to repopulate."
 msgstr ""
 "Deine Empfehlungsreihen und dein Geschmacksprofil werden vollständig neu "
 "berechnet. Die Reihen können danach anders aussehen oder kurz zum Laden "
@@ -7742,17 +7730,13 @@ msgid "Your Statistics page will show placeholder"
 msgstr "Auf deiner Statistikseite erscheinen Platzhalter"
 
 #: templates/users/advanced.html:331
-msgid ""
-"values until a background task finishes rebuilding it — this is the slowest "
-"of the four to recover."
+msgid "values until a background task finishes rebuilding it. This is the slowest of the four to recover."
 msgstr ""
 "bis die Neuberechnung im Hintergrund abgeschlossen ist. Dieser Vorgang "
 "dauert von den vier am längsten."
 
 #: templates/users/advanced.html:334
-msgid ""
-"No watch history, ratings, lists, or tracked media is deleted by any of this"
-" — only cached, computed views of it."
+msgid "No watch history, ratings, lists, or tracked media is deleted by any of this, only cached, computed views of it."
 msgstr ""
 "Es werden weder Verlaufseinträge, Bewertungen, Listen noch erfasste Medien "
 "gelöscht – nur deren zwischengespeicherte Ansichten."
@@ -8419,11 +8403,7 @@ msgid "Export - Floppy"
 msgstr "Export – Floppy"
 
 #: templates/users/export_data.html:22
-msgid ""
-"Export your media, ratings, and lists as CSV, or create a recurring export "
-"schedule and download the initial CSV immediately. This is a data export, "
-"not a database backup — it does not restore your account, integrations, or "
-"preferences, and it cannot replace a damaged database file."
+msgid "Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup. It does not restore your account, integrations, or preferences, and it cannot replace a damaged database file."
 msgstr ""
 "Exportiere deine Medien, Bewertungen und Listen als CSV oder richte "
 "regelmäßige Exporte ein und lade die erste CSV-Datei sofort herunter. Dies "
@@ -8443,7 +8423,7 @@ msgstr[0] "Aktuell ist dort %(count)s Datei vorhanden."
 msgstr[1] "Aktuell sind dort %(count)s Dateien vorhanden."
 
 #: templates/users/export_data.html:31 templates/users/export_data.html:42
-msgid "Not mounted to the host — add"
+msgid "Not mounted to the host. Add"
 msgstr "Nicht mit dem Host verbunden – ergänze"
 
 #: templates/users/export_data.html:31 templates/users/export_data.html:42
@@ -8476,7 +8456,7 @@ msgstr[1] ""
 "zur Wiederherstellung, wenn die Datenbank selbst beschädigt ist."
 
 #: templates/users/export_data.html:46
-msgid "Disabled — set"
+msgid "Disabled. Set"
 msgstr "Deaktiviert – setze"
 
 #: templates/users/export_data.html:46
@@ -10173,9 +10153,7 @@ msgstr ""
 "Wiedergabe)."
 
 #: templates/users/integrations.html:360
-msgid ""
-"Playback Reporting's API isn't reachable with this key — using the current-"
-"watched-state backfill instead (one event per item)."
+msgid "Playback Reporting's API isn't reachable with this key, so Floppy is using the current-watched-state backfill instead (one event per item)."
 msgstr ""
 "Die Playback Reporting-API ist mit diesem Schlüssel nicht erreichbar. "
 "Stattdessen wird der aktuelle Gesehen-Status übernommen (ein Ereignis pro "
@@ -10607,7 +10585,7 @@ msgid "Tip: open the Kodi web interface at"
 msgstr "Tipp: Öffne die Kodi-Weboberfläche unter"
 
 #: templates/users/integrations.html:1045
-msgid "to configure the add-on — easier than using the remote."
+msgid "to configure the add-on, which is easier than using the remote."
 msgstr ""
 "um das Add-on einzurichten – das geht leichter als mit der Fernbedienung."
 
@@ -11149,9 +11127,7 @@ msgid "Importing…"
 msgstr "Import läuft …"
 
 #: templates/users/onboarding/import_status.html:40
-msgid ""
-"No services connected yet — you can connect one anytime from Settings > "
-"Import."
+msgid "No services connected yet. You can connect one anytime from Settings > Import."
 msgstr ""
 "Noch keine Dienste verbunden. Du kannst jederzeit unter Einstellungen > "
 "Daten importieren einen hinzufügen."
@@ -11240,8 +11216,7 @@ msgstr[0] "Noch %(count)s Dienst zu verbinden."
 msgstr[1] "Noch %(count)s Dienste zu verbinden."
 
 #: templates/users/onboarding/service_setup.html:11
-msgid ""
-"Connect right here — once it's done, you'll automatically see the next one."
+msgid "Connect right here. Once it's done, you'll automatically see the next one."
 msgstr ""
 "Stelle die Verbindung hier her. Danach wird automatisch der nächste Dienst "
 "angezeigt."
@@ -11256,9 +11231,7 @@ msgstr ""
 "nächsten Dienst hierher zurück."
 
 #: templates/users/onboarding/service_setup.html:17
-msgid ""
-"Don't have it handy? Skip it — you can always connect it later from Settings"
-" > Import."
+msgid "Don't have it handy? Skip it. You can always connect it later from Settings > Import."
 msgstr ""
 "Du hast die Daten gerade nicht zur Hand? Überspringe den Dienst und verbinde"
 " ihn später unter Einstellungen > Daten importieren."
@@ -11298,9 +11271,7 @@ msgid "Do you use any of these apps for %(value1)s?"
 msgstr "Nutzt du eine dieser Apps für %(value1)s?"
 
 #: templates/users/onboarding/services.html:14
-msgid ""
-"Pick any that apply — we'll walk you through connecting them next. Skip this"
-" if you don't use any."
+msgid "Pick any that apply. We'll walk you through connecting them next. Skip this if you don't use any."
 msgstr ""
 "Wähle die passenden Apps aus. Anschließend helfen wir dir beim Verbinden. "
 "Überspringe diesen Schritt, wenn du keine davon nutzt."
@@ -11312,9 +11283,7 @@ msgstr "Schritt %(step_number)s von %(step_total)s"
 
 #: templates/users/onboarding/services.html:33
 #, python-format
-msgid ""
-"No dedicated services yet for %(value1)s — you can always bring in existing "
-"data with a backup/CSV import later."
+msgid "No dedicated services yet for %(value1)s. You can always bring in existing data with a backup or CSV import later."
 msgstr ""
 "Für %(value1)s gibt es noch keine eigenen Dienste. Du kannst vorhandene "
 "Daten später jederzeit über eine Sicherung oder einen CSV-Import übernehmen."
@@ -11345,9 +11314,7 @@ msgstr ""
 "fortsetzen."
 
 #: templates/users/onboarding/services_summary.html:26
-msgid ""
-"You didn't pick any services to connect — that's fine, you can add them "
-"anytime from Settings > Import."
+msgid "You didn't pick any services to connect. That's fine, you can add them anytime from Settings > Import."
 msgstr ""
 "Du hast keine Dienste ausgewählt. Du kannst sie jederzeit unter "
 "Einstellungen > Daten importieren hinzufügen."
@@ -11458,36 +11425,36 @@ msgid "How dates appear."
 msgstr "Darstellung von Datumsangaben."
 
 #: templates/users/preferences.html:172
-msgid "System default — Aug 12, 2025 / 12 Aug 2025"
-msgstr "Systemstandard — 12. Aug. 2025"
+msgid "System default: Aug 12, 2025 / 12 Aug 2025"
+msgstr "Systemstandard: 12. Aug. 2025"
 
 #: templates/users/preferences.html:177
-msgid "ISO 8601 — 2025-08-12"
-msgstr "ISO 8601 — 2025-08-12"
+msgid "ISO 8601: 2025-08-12"
+msgstr "ISO 8601: 2025-08-12"
 
 #: templates/users/preferences.html:182
-msgid "Month D, YYYY — Aug 12, 2025"
-msgstr "Monat T, JJJJ — Aug 12, 2025"
+msgid "Month D, YYYY: Aug 12, 2025"
+msgstr "Monat T, JJJJ: Aug 12, 2025"
 
 #: templates/users/preferences.html:187
-msgid "D Mon YYYY — 12 Aug 2025"
-msgstr "T Mon JJJJ — 12 Aug 2025"
+msgid "D Mon YYYY: 12 Aug 2025"
+msgstr "T Mon JJJJ: 12 Aug 2025"
 
 #: templates/users/preferences.html:192
-msgid "M/D/YYYY — 08/12/2025"
-msgstr "M/T/JJJJ — 08/12/2025"
+msgid "M/D/YYYY: 08/12/2025"
+msgstr "M/T/JJJJ: 08/12/2025"
 
 #: templates/users/preferences.html:197
-msgid "D/M/YYYY — 12/08/2025"
-msgstr "T/M/JJJJ — 12/08/2025"
+msgid "D/M/YYYY: 12/08/2025"
+msgstr "T/M/JJJJ: 12/08/2025"
 
 #: templates/users/preferences.html:202
-msgid "DD.MM.YYYY — 12.08.2025"
-msgstr "TT.MM.JJJJ — 12.08.2025"
+msgid "DD.MM.YYYY: 12.08.2025"
+msgstr "TT.MM.JJJJ: 12.08.2025"
 
 #: templates/users/preferences.html:207
-msgid "YYYY/MM/DD — 2025/08/12"
-msgstr "JJJJ/MM/TT — 2025/08/12"
+msgid "YYYY/MM/DD: 2025/08/12"
+msgstr "JJJJ/MM/TT: 2025/08/12"
 
 #: templates/users/preferences.html:217
 msgid "Time Format"
@@ -11498,24 +11465,24 @@ msgid "How times appear."
 msgstr "Darstellung von Uhrzeiten."
 
 #: templates/users/preferences.html:251
-msgid "System default — 6:45 PM / 18:45"
-msgstr "Systemstandard — 18:45"
+msgid "System default: 6:45 PM / 18:45"
+msgstr "Systemstandard: 18:45"
 
 #: templates/users/preferences.html:256
-msgid "12-hour (h:mm AM/PM) — 6:45 PM"
-msgstr "12 Stunden (h:mm AM/PM) — 6:45 PM"
+msgid "12-hour (h:mm AM/PM): 6:45 PM"
+msgstr "12 Stunden (h:mm AM/PM): 6:45 PM"
 
 #: templates/users/preferences.html:261
-msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
-msgstr "12 Stunden, führende Null (hh:mm AM/PM) — 06:45 PM"
+msgid "12-hour, leading zero (hh:mm AM/PM): 06:45 PM"
+msgstr "12 Stunden, führende Null (hh:mm AM/PM): 06:45 PM"
 
 #: templates/users/preferences.html:266
-msgid "24-hour (HH:mm) — 18:45"
-msgstr "24 Stunden (HH:mm) — 18:45"
+msgid "24-hour (HH:mm): 18:45"
+msgstr "24 Stunden (HH:mm): 18:45"
 
 #: templates/users/preferences.html:271
-msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
-msgstr "24 Stunden mit Sekunden (HH:mm:ss) — 18:45:00"
+msgid "24-hour with seconds (HH:mm:ss): 18:45:00"
+msgstr "24 Stunden mit Sekunden (HH:mm:ss): 18:45:00"
 
 #: templates/users/preferences.html:281
 msgid "Mobile Grid"
@@ -11694,14 +11661,12 @@ msgid "Game history style."
 msgstr "Darstellung des Spielverlaufs."
 
 #: templates/users/preferences.html:1090
-msgid "Sessions — new entry per play; exact history"
-msgstr "Sitzungen — neuer Eintrag je Spielsitzung; genauer Verlauf"
+msgid "Sessions: new entry per play; exact history"
+msgstr "Sitzungen: neuer Eintrag je Spielsitzung; genauer Verlauf"
 
 #: templates/users/preferences.html:1095
-msgid "Repeats — update one entry; spreads time across range"
-msgstr ""
-"Wiederholungen — einen Eintrag aktualisieren; Zeit über den Zeitraum "
-"verteilen"
+msgid "Repeats: update one entry; spreads time across range"
+msgstr "Wiederholungen: einen Eintrag aktualisieren; Zeit über den Zeitraum verteilen"
 
 #: templates/users/preferences.html:1105
 msgid "Progress Format"
@@ -11849,9 +11814,7 @@ msgid "Coming Soon"
 msgstr "Demnächst"
 
 #: templates/users/rss.html:95
-msgid ""
-"rows for the Movie/TV/Anime media types). This feed uses your account's API "
-"token — regenerating it from"
+msgid "rows for the Movie/TV/Anime media types). This feed uses your account's API token. Regenerating it from"
 msgstr ""
 "Reihen für Filme, Serien und Anime). Dieser Feed verwendet den API-Token "
 "deines Kontos. Wird er neu erstellt unter"

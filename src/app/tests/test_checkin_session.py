@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db.models import Sum
 from django.test import TestCase
 from django.urls import reverse
 
@@ -281,6 +282,83 @@ class BoardGameSessionTests(SessionTestCase):
 
     def plays(self):
         return BoardGame.objects.get(pk=self.earlier.pk).progress
+
+    def sessions_mode(self):
+        self.user.game_logging_style = "sessions"
+        self.user.save(update_fields=["game_logging_style"])
+
+    def test_exact_plays_are_individual_completed_entries(self):
+        self.sessions_mode()
+        checkin_session.log_play(self.user, "igdb", "1942")
+        checkin_session.log_play(self.user, "igdb", "1942")
+        entries = list(BoardGame.objects.exclude(pk=self.earlier.pk))
+        self.assertEqual(len(entries), 2)
+        for entry in entries:
+            self.assertEqual(entry.progress, 1)
+            self.assertEqual(entry.status, Status.COMPLETED.value)
+            self.assertIsNotNone(entry.start_date)
+            self.assertEqual(entry.start_date, entry.end_date)
+        self.assertEqual(self.plays(), 0)
+        self.assertEqual(BoardGame.objects.filter(item=self.item, user=self.user).aggregate(total=Sum("progress"))["total"], 2)
+        from app.history_cache import _build_game_entries
+
+        history = _build_game_entries([], entries, "sessions", False, True, None)
+        self.assertEqual({entry["instance_id"] for entry in history}, {entry.id for entry in entries})
+
+    def test_exact_checkin_completes_its_own_entry_after_preference_change(self):
+        self.sessions_mode()
+        self.start()
+        entry = BoardGame.objects.exclude(pk=self.earlier.pk).get()
+        self.assertIsNotNone(entry.start_date)
+        self.assertIsNone(entry.end_date)
+        self.user.game_logging_style = "repeats"
+        checkin_session.stop(self.user, "igdb", "boardgame", "1942")
+        entry.refresh_from_db()
+        self.assertEqual(entry.progress, 1)
+        self.assertEqual(entry.status, Status.COMPLETED.value)
+        self.assertIsNotNone(entry.end_date)
+        self.assertEqual(self.plays(), 0)
+
+    def test_repeats_checkin_keeps_its_mode_after_preference_change(self):
+        self.start()
+        self.sessions_mode()
+        checkin_session.stop(self.user, "igdb", "boardgame", "1942")
+        self.assertEqual(self.plays(), 1)
+        self.assertEqual(BoardGame.objects.count(), 1)
+
+    def test_exact_cancel_removes_unedited_entry_and_timeout_does_not_complete_it(self):
+        self.sessions_mode()
+        self.start()
+        checkin_session.cancel(self.user, "igdb", "boardgame", "1942")
+        self.assertEqual(BoardGame.objects.count(), 1)
+        self.start()
+        with self.at(4 * HOUR + 1):
+            self.assertEqual(self.phase(), checkin_session.PHASE_IDLE)
+        entry = BoardGame.objects.exclude(pk=self.earlier.pk).get()
+        self.assertEqual(entry.progress, 0)
+        self.assertIsNone(entry.end_date)
+
+    def test_native_api_records_exact_plays_and_returns_actions(self):
+        self.sessions_mode()
+        self.client.force_login(self.user)
+        url = reverse("api_media_checkin", kwargs={
+            "media_type": "boardgame", "source": "igdb", "media_id": "1942",
+        })
+        response = self.client.post(url, {"action": "log_play"}, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([a["key"] for a in response.json()["actions"]], ["log_play", "start", "edit"])
+        self.assertEqual(BoardGame.objects.exclude(pk=self.earlier.pk).get().progress, 1)
+
+    def test_another_user_cannot_log_or_stop_this_session(self):
+        self.sessions_mode()
+        self.start()
+        other = get_user_model().objects.create_user(username="other-session")
+        with self.assertRaises(checkin.CheckInError):
+            checkin_session.log_play(other, "igdb", "1942")
+        with self.assertRaises(checkin.CheckInError):
+            checkin_session.stop(other, "igdb", "boardgame", "1942")
+        self.assertEqual(BoardGame.objects.filter(user=other).count(), 0)
+        self.assertEqual(self.phase(), checkin_session.PHASE_SESSION)
 
     def test_log_a_play_adds_one_to_the_latest_entry(self):
         checkin_session.log_play(self.user, "igdb", "1942")

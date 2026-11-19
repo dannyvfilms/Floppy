@@ -7,23 +7,23 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from integrations import stremio_events, stremio_tracker, views
+from integrations import stremio_events, stremio_tracker, stremio_views
 
 User = get_user_model()
 
 
 class ManifestDeclaresEventResourcesTests(TestCase):
     def test_player_and_library_are_declared(self):
-        self.assertIn("player", views.STREMIO_ADDON_MANIFEST["resources"])
-        self.assertIn("library", views.STREMIO_ADDON_MANIFEST["resources"])
+        self.assertIn("player", stremio_views.STREMIO_ADDON_MANIFEST["resources"])
+        self.assertIn("library", stremio_views.STREMIO_ADDON_MANIFEST["resources"])
 
     def test_existing_resources_are_retained(self):
         for resource in ("catalog", "meta", "subtitles"):
-            self.assertIn(resource, views.STREMIO_ADDON_MANIFEST["resources"])
+            self.assertIn(resource, stremio_views.STREMIO_ADDON_MANIFEST["resources"])
 
     def test_version_was_bumped(self):
         """A client may hold the old manifest, so the version must change."""
-        self.assertNotEqual(views.STREMIO_ADDON_MANIFEST["version"], "1.2.0")
+        self.assertNotEqual(stremio_views.STREMIO_ADDON_MANIFEST["version"], "1.2.0")
 
 
 class PlayerRouteTests(TestCase):
@@ -122,7 +122,7 @@ class QueuedRouteTests(TestCase):
             with self.subTest(route=route):
                 with (
                     patch.object(
-                        views.tasks.process_stremio_tracker_event,
+                        stremio_views.tasks.process_stremio_tracker_event,
                         "delay",
                     ) as delay,
                     patch.object(stremio_tracker, "record_player_event") as p,
@@ -145,7 +145,7 @@ class QueuedRouteTests(TestCase):
 
     def test_a_dispatch_failure_is_accepted(self):
         with patch.object(
-            views.tasks.process_stremio_tracker_event,
+            stremio_views.tasks.process_stremio_tracker_event,
             "delay",
             side_effect=RuntimeError("broker down"),
         ):
@@ -257,7 +257,7 @@ class SubtitlesVideoExtrasTests(TestCase):
         if extra is not None:
             kwargs["extra"] = extra
         url = reverse("stremio_addon_subtitles", kwargs=kwargs)
-        with patch.object(views.stremio_queue, "reserve_pending", return_value="throttled"):
+        with patch.object(stremio_views.stremio_queue, "reserve_pending", return_value="throttled"):
             return self.client.get(url)
 
     def test_the_route_still_resolves_without_an_extra(self):
@@ -271,7 +271,7 @@ class SubtitlesVideoExtrasTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_the_log_reports_which_release_extras_arrived(self):
-        with self.assertLogs("integrations.views", level="INFO") as captured:
+        with self.assertLogs("integrations.stremio_views", level="INFO") as captured:
             self._get(extra="videoHash=abc123&videoSize=12345&filename=Show.S01E01.mkv")
 
         line = next(
@@ -283,7 +283,7 @@ class SubtitlesVideoExtrasTests(TestCase):
 
     def test_a_client_that_sends_nothing_is_reported_as_sending_nothing(self):
         """Absence is the answer too, so it must be visible rather than silent."""
-        with self.assertLogs("integrations.views", level="INFO") as captured:
+        with self.assertLogs("integrations.stremio_views", level="INFO") as captured:
             self._get()
 
         line = next(
@@ -340,3 +340,24 @@ class PlayerResourceGateTests(TestCase):
         self.assertNotIn("player", resources)
         self.assertNotIn("library", resources)
         self.assertIn("subtitles", resources)
+
+
+class CatalogSkipTests(TestCase):
+    """A malformed catalog extra answers with the parser's fixed text."""
+
+    def test_bad_skip_is_rejected_with_the_written_message(self):
+        user = User.objects.create_user(username="catalog", password="x")
+        url = reverse(
+            "stremio_addon_catalog",
+            kwargs={
+                "token": user.token,
+                "media_type": "movie",
+                "catalog_id": "floppy-watchlist-movies",
+                "extra": "skip=abc",
+            },
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(), {"error": "skip must be a non-negative integer"}
+        )

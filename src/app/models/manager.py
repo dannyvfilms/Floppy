@@ -610,12 +610,18 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         *,
         list_sql_filters=None,
         needs_watch_providers=False,
+        prefetch_graph=True,
     ):
         """Get a media list by type with filtering and sorting.
 
         Pages are served by ``app.library_query``; this full-list form remains
         for the surfaces whose unit is not one item (separate-entry mode, TV's
         time-left grouping).
+
+        ``prefetch_graph=False`` returns the same rows in the same order with
+        only their item attached. It is for a caller that reads tracking
+        state from ``app.tv_show_facts`` instead of the season, episode and
+        event graph; any reader of that graph on such a row queries per row.
         """
         model = apps.get_model(app_label="app", model_name=media_type)
         direction = self.resolve_direction(sort_filter, direction)
@@ -690,7 +696,10 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         queryset = queryset.select_related("item").defer(
             *_media_list_deferred_item_fields(needs_watch_providers=needs_watch_providers),
         )
-        queryset = self._apply_prefetch_related(queryset, media_type, list_mode=True)
+        if prefetch_graph:
+            queryset = self._apply_prefetch_related(
+                queryset, media_type, list_mode=True
+            )
 
         requires_presort_aggregation = sort_filter in (
             "progress",
@@ -1097,17 +1106,25 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         *,
         compact_episodes=False,
         light_rows=False,
+        defer_item_fields=(),
     ):
         """Apply appropriate prefetch_related based on media type.
 
         list_mode=True narrows the episode queryset to only the fields required
         for list-view progress/date calculations, avoiding the cost of
         materializing full Item objects for every episode.
+
+        defer_item_fields names Item columns to leave out of the season and
+        episode items this prefetches (Statistics caches these rows).
         """
         TV = apps.get_model("app", "TV")
         Season = apps.get_model("app", "Season")
         Episode = apps.get_model("app", "Episode")
         episode_qs = Episode.objects.select_related("item")
+        if defer_item_fields:
+            episode_qs = episode_qs.defer(
+                *(f"item__{field}" for field in defer_item_fields)
+            )
         if compact_episodes and (queryset.model == TV or media_type == MediaTypes.SEASON.value):
             # Window sorting runs over every watch. Joining the catalogue here
             # copies its wide JSON/text columns into every intermediate row.
@@ -1121,7 +1138,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             partition = [F("related_season_id"), F("item_id")]
             aggregates = {
                 "_card_total_count": Count("pk"),
-                "_card_completed_count": Count("pk", filter=Q(status=Status.COMPLETED.value)),
+                "_card_completed_count": Count("pk", filter=Episode.watch_q()),
                 "_card_dropped_count": Count("pk", filter=Q(status=Status.DROPPED.value)),
                 "_card_first_end": Min("end_date"),
                 "_card_last_end": Max("end_date"),
@@ -1152,6 +1169,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "id",
                     "end_date",
                     "status",
+                    "dropped",
                     "created_at",
                     "related_season_id",
                     "item_id",
@@ -1184,6 +1202,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                         "id",
                         "end_date",
                         "status",
+                        "dropped",
                         "created_at",
                         "related_season_id",
                         "item__id",
@@ -1203,6 +1222,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "seasons",
                     queryset=Season.objects.select_related("item").defer(
                         *(("item__watch_providers",) if list_mode else ()),
+                        *(f"item__{field}" for field in defer_item_fields),
                     ),
                 ),
                 Prefetch(
@@ -1374,14 +1394,12 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         today = timezone.localdate(now)
         show_keys = {}
         seasons_by_show = {}
-        catalogue_query = Q(pk__in=[])
         for media in medias:
             seasons = {season.item.season_number: season for season in media.seasons.all()}
             seasons_by_show[id(media)] = seasons
             item = next(iter(seasons.values())).item if seasons else media.item
             key = (item.media_id, item.source, media.active_episode_order_id)
             show_keys[id(media)] = key
-            catalogue_query |= Q(media_id=key[0], source=key[1], episode_order_id=key[2])
         calendar = self._season_events_by_show(
             [(key[0], key[1]) for key in show_keys.values()],
         )
@@ -1392,30 +1410,41 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     continue
                 coordinate = (event.item.season_number, event.content_number)
                 records[key][coordinate] = {"air_date": event.datetime, "title": ""}
-        for item in Item.objects.filter(
-            catalogue_query,
-            media_type=MediaTypes.EPISODE.value,
-            library_media_type=MediaTypes.EPISODE.value,
-            season_number__gt=0,
-            episode_number__isnull=False,
-        ).only(
-            "media_id",
-            "source",
-            "episode_order_id",
-            "season_number",
-            "episode_number",
-            "title",
-            "release_datetime",
-        ):
-            key = (item.media_id, item.source, item.episode_order_id)
-            record = records[key].setdefault(
-                (item.season_number, item.episode_number),
-                {"air_date": None},
-            )
-            record["title"] = item.title
-            date = item.release_datetime
-            if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
-                record["air_date"] = min(filter(None, (record["air_date"], date)))
+        # The catalogue is read by provider identity, in the form the episode
+        # index serves, and as columns: one condition per show made SQLite
+        # weigh every show against every episode row, and a model per episode
+        # is the largest thing a ranked shelf would otherwise build.
+        wanted = set(show_keys.values())
+        media_ids = sorted({key[0] for key in wanted})
+        for start in range(0, len(media_ids), 500):
+            for media_id, source, order_id, season_number, episode_number, title, date in (
+                Item.objects.filter(
+                    media_id__in=media_ids[start : start + 500],
+                    source__in={key[1] for key in wanted},
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=MediaTypes.EPISODE.value,
+                    season_number__gt=0,
+                    episode_number__isnull=False,
+                ).values_list(
+                    "media_id",
+                    "source",
+                    "episode_order_id",
+                    "season_number",
+                    "episode_number",
+                    "title",
+                    "release_datetime",
+                )
+            ):
+                key = (media_id, source, order_id)
+                if key not in wanted:
+                    continue
+                record = records[key].setdefault(
+                    (season_number, episode_number),
+                    {"air_date": None},
+                )
+                record["title"] = title
+                if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
+                    record["air_date"] = min(filter(None, (record["air_date"], date)))
         for media in medias:
             key = show_keys[id(media)]
             seasons = seasons_by_show[id(media)]
@@ -2581,7 +2610,37 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if not tv_list:
             return
 
-        media_keys = {(tv.item.media_id, tv.item.source) for tv in tv_list}
+        released_by_show = self.released_episode_breakdowns(
+            {(tv.item.media_id, tv.item.source) for tv in tv_list},
+            current_datetime,
+        )
+
+        for tv in tv_list:
+            breakdown = released_by_show.get((tv.item.media_id, tv.item.source), {})
+            tv.released_episode_breakdown = breakdown
+            dropped_season_numbers = (
+                {
+                    season.item.season_number
+                    for season in tv.seasons.all()
+                    if season.status == Status.DROPPED.value
+                    and season.item.season_number != 0
+                }
+                if breakdown and tv.pk is not None
+                else set()
+            )
+            tv.max_progress = self.released_max_progress(
+                tv.item,
+                breakdown,
+                dropped_season_numbers,
+            )
+
+    def released_episode_breakdowns(self, media_keys, current_datetime=None):
+        """Return ``{(media_id, source): {season_number: released_count}}``.
+
+        Two grouped queries for all the shows, whatever their number. Specials
+        (season 0) are not counted. A show with nothing released is absent.
+        """
+        current_datetime = current_datetime or timezone.now()
         media_ids = {media_id for media_id, _ in media_keys}
         media_sources = {source for _, source in media_keys}
 
@@ -2650,38 +2709,31 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 released_by_show[key].get(season_number, 0) + released_count
             )
 
-        for tv in tv_list:
-            key = (tv.item.media_id, tv.item.source)
-            breakdown = released_by_show.get(key, {})
-            tv.released_episode_breakdown = breakdown
-            if breakdown:
-                dropped_season_numbers = (
-                    {
-                        season.item.season_number
-                        for season in tv.seasons.all()
-                        if season.status == Status.DROPPED.value
-                        and season.item.season_number != 0
-                    }
-                    if tv.pk is not None
-                    else set()
-                )
-                effective_count = sum(
-                    count
-                    for season_num, count in breakdown.items()
-                    if season_num not in dropped_season_numbers
-                )
-                tv.max_progress = effective_count or None
-            else:
-                tv.max_progress = None
-                if tv.item.source == Sources.MANUAL.value:
-                    from app import custom_metadata
+        return released_by_show
 
-                    details = custom_metadata.build_manual_detail_payload(tv.item)
-                    tv.max_progress = custom_metadata.manual_max_progress(
-                        tv.item,
-                        details,
-                        fallback_max_progress=None,
-                    )
+    def released_max_progress(self, item, breakdown, dropped_season_numbers):
+        """Return a show's released episode count outside its dropped seasons.
+
+        ``None`` when nothing is released, except for a manual show, which
+        states its own episode count.
+        """
+        if breakdown:
+            effective_count = sum(
+                count
+                for season_num, count in breakdown.items()
+                if season_num not in dropped_season_numbers
+            )
+            return effective_count or None
+        if item.source == Sources.MANUAL.value:
+            from app import custom_metadata
+
+            details = custom_metadata.build_manual_detail_payload(item)
+            return custom_metadata.manual_max_progress(
+                item,
+                details,
+                fallback_max_progress=None,
+            )
+        return None
 
     def _annotate_season_metadata_max_progress(self, season_list, current_datetime):
         """Annotate seasons with the provider's episode count.
@@ -3152,6 +3204,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
+        # No max_progress: nothing reads it on an episode, and annotating
+        # evaluates the queryset, which loaded every watch of the season even
+        # when the caller then narrowed it to one page of episode numbers.
         queryset = self.filter_media_prefetch(
             user,
             media_id,
@@ -3159,6 +3214,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             source,
             season_number=season_number,
             library_media_type=library_media_type,
+            annotate_progress=False,
         )
 
         if episode_numbers is not None:

@@ -5,11 +5,13 @@ from django.utils.timezone import now
 from rest_framework import serializers
 
 from app import helpers as app_helpers
+from app.artwork_sizes import card_image_url
 from app.backdrops import cached_backdrop_or_warm  # FORK: horizontal artwork
 from app.helpers import build_provider_ids
 from app.history_entry_builders import _serialize_show
 from app.models import (
     TV,
+    AlbumTracker,
     Anime,
     BasicMedia,
     BoardGame,
@@ -26,8 +28,10 @@ from app.models import (
     Music,  # FORK: fork-only media type
     Podcast,  # FORK: fork-only media type
     PodcastPlay,
+    PodcastShowTracker,
     Season,
     Status,
+    Video,  # FORK: fork-only media type
 )
 from app.templatetags.app_tags import media_url
 from events.models import Event
@@ -136,6 +140,7 @@ class ItemSerializer(serializers.ModelSerializer):
     media_id = serializers.SerializerMethodField()
     url = serializers.SerializerMethodField()
     ids = serializers.SerializerMethodField()
+    card_image = serializers.SerializerMethodField()
 
     def get_media_id(self, obj):
         """Return media_id preserving alphanumeric provider IDs."""
@@ -156,6 +161,10 @@ class ItemSerializer(serializers.ModelSerializer):
     def get_ids(self, obj):
         """Return the item's resolved external provider ids."""
         return build_provider_ids(obj)
+
+    def get_card_image(self, obj):
+        """Return ``image`` at the provider size a media card shows."""
+        return card_image_url(getattr(obj, "image", "") or "")
 
     class Meta:  # noqa: D106
         model = Item
@@ -404,18 +413,24 @@ class CompleteMediaSerializer(serializers.Serializer):
         # FORK: look up already-synced episode Items (e.g. IMDb ratings) for
         # untracked episodes instead of always building an ephemeral in-memory
         # Item, one batched query for the whole season rather than per-episode.
+        # A watched episode brings its own Item, so only the others are read.
+        existing_items = filter_item_bucket(
+            Item.objects.filter(
+                media_id=str(media_metadata.get("media_id") or ""),
+                source=media_metadata.get("source"),
+                media_type=MediaTypes.EPISODE.value,
+                season_number=media_metadata.get("season_number"),
+            ),
+            MediaTypes.EPISODE.value,
+            library_media_type=library_media_type,
+        )
+        if episodes_by_number:
+            existing_items = existing_items.exclude(
+                episode_number__in=list(episodes_by_number),
+            )
         existing_items_by_episode = {
             existing_item.episode_number: existing_item
-            for existing_item in filter_item_bucket(
-                Item.objects.filter(
-                    media_id=str(media_metadata.get("media_id") or ""),
-                    source=media_metadata.get("source"),
-                    media_type=MediaTypes.EPISODE.value,
-                    season_number=media_metadata.get("season_number"),
-                ),
-                MediaTypes.EPISODE.value,
-                library_media_type=library_media_type,
-            )
+            for existing_item in existing_items
         }
         serializer = EpisodeSerializer(
             context={
@@ -551,6 +566,12 @@ class CompleteMediaSerializer(serializers.Serializer):
             "cast": media_metadata.get("cast") or [],
             "crew": media_metadata.get("crew") or [],
             "details": details,
+            # FORK: the linked studio list the web Studios card shows (details.studios is trimmed).
+            "studios": [
+                {"id": str(studio.get("studio_id") or studio.get("id") or ""), "name": name}
+                for studio in media_metadata.get("studios_full") or []
+                if (name := (studio.get("name") or "").strip())
+            ],
             "related": related,
             "item_id": ItemIdField().to_representation(temp_media),
             "parent_id": ParentIdField().to_representation(temp_media),
@@ -896,6 +917,9 @@ class ListSerializer(serializers.Serializer):
                         homogeneous=False,
                     ),
                 }
+                list_added = self.context.get("list_added_by_item_id", {})
+                for entry in items["results"]:
+                    entry["list_date_added"] = list_added.get(entry.get("id"))
             else:
                 items = items_context
 
@@ -923,7 +947,26 @@ class ListSerializer(serializers.Serializer):
             "is_unlisted": instance.is_unlisted,
             "public_slug": instance.public_slug,
             "allow_recommendations": instance.allow_recommendations,
+            "is_smart": instance.is_smart,
+            "tags": list(instance.tags or []),
+            "include_notes": instance.include_notes,
         }
+
+        completed_counts = (self.context or {}).get("completed_counts")
+        if completed_counts is not None:
+            # Same figure the web lists page prints: titles completed / titles.
+            completed = completed_counts.get(instance.id, 0)
+            response["completed_count"] = completed
+            response["completion_percent"] = (
+                round(completed / item_count * 100) if item_count else None
+            )
+
+        breakdown = (self.context or {}).get("media_type_breakdown")
+        if breakdown is not None:
+            # The web's media-type breakdown popover (pie chart button).
+            response["media_type_breakdown"] = [
+                {**entry, "label": str(entry["label"])} for entry in breakdown
+            ]
 
         if include_items:
             response["items"] = items
@@ -931,8 +974,21 @@ class ListSerializer(serializers.Serializer):
         return response
 
 
+def _music_identity(instance):
+    """Return the artist, album and track ids of a music row, else nothing."""
+    if getattr(instance, "item", None) is None or instance.item.media_type != "music":
+        return {}
+    return {
+        "artist_id": getattr(instance, "artist_id", None),
+        "album_id": getattr(instance, "album_id", None),
+        "track_id": getattr(instance, "track_id", None),
+    }
+
+
 class MediaSerializer(serializers.ModelSerializer):
     """Serializer used for media items."""
+
+    entry_id = serializers.IntegerField(read_only=True, required=False, help_text="Tracker row identity when separate_entries=1.")
 
     # Declared so OpenAPI generation documents the real wire format (see
     # api.schema.StatusFieldExtension) instead of the model field's string-label
@@ -951,6 +1007,7 @@ class MediaSerializer(serializers.ModelSerializer):
             "next_episode_by_item_id",
             {},
         )
+        tags_by_item_id = (self.context or {}).get("tags_by_item_id")
         if item is not None and item.id in next_episode_by_item_id:
             next_episode = next_episode_by_item_id[item.id]
         elif item is not None:
@@ -978,7 +1035,7 @@ class MediaSerializer(serializers.ModelSerializer):
 
         return {
             "id": item.id if item is not None else None,
-            "consumption_id": instance.id,
+            "consumption_id": None if isinstance(instance, (PodcastShowTracker, AlbumTracker)) else instance.id,
             "item": _ITEM_SERIALIZER.to_representation(item)
             if item is not None
             else None,
@@ -1023,6 +1080,15 @@ class MediaSerializer(serializers.ModelSerializer):
             "lists": lists,
             "next_episode": next_episode,
             "show": _serialize_show(show),
+            # FORK: lets a native client open the artist/album/track page of
+            # a music row without a second lookup.
+            **_music_identity(instance),
+            # FORK: the viewer's tag names, only where the list view batched them.
+            **(
+                {"tags": tags_by_item_id.get(item.id, [])}
+                if tags_by_item_id is not None and item is not None
+                else {}
+            ),
         }
 
 
@@ -1151,8 +1217,12 @@ serializer_map = {
     Movie: MediaSerializer,
     Music: MediaSerializer,  # FORK
     Podcast: MediaSerializer,  # FORK
+    PodcastShowTracker: MediaSerializer,
+    AlbumTracker: MediaSerializer,
     Season: MediaSerializer,
     TV: MediaSerializer,
+    # A list can hold a YouTube video; without this its list JSON answered 500.
+    Video: MediaSerializer,
 }
 
 

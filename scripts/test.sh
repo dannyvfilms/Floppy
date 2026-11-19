@@ -22,10 +22,18 @@
 #   scripts/test.sh --affected --include-slow
 #                                         Same selection. A full fallback keeps
 #                                         @tag("slow"), matching CI.
+#   scripts/test.sh --shards N [label ...]
+#                                         N independent serial processes, each
+#                                         running one FLOPPY_TEST_SHARD=i/N
+#                                         slice by test module. No labels means
+#                                         the fast suite. Logs in .floppy/shards.
 #   scripts/test.sh --affected-record     Record the map: the CI suite (slow
 #                                         included, network excluded) under
 #                                         coverage, written to
 #                                         .floppy/affected.coverage.
+#
+# Real-migration runs reuse a saved migrated database when no migration input
+# changed; FLOPPY_TEST_DB_TEMPLATE=0 forces a replay.
 #
 # Extra manage.py test flags (e.g. -v 2, --failfast) pass through after the mode.
 set -euo pipefail
@@ -60,6 +68,19 @@ if [ "${FLOPPY_TEST_FAST_DB:-}" = "1" ]; then
   echo "[test.sh] FLOPPY_TEST_FAST_DB=1: schema built from models, migrations NOT replayed." >&2
 fi
 
+# Reuse the migrated SQLite test database while every migration input is
+# unchanged (src/config/test_db_template.py). The runner prints one "[test-db]"
+# line saying whether it replayed or restored. On by default locally. In CI
+# only the jobs that set it use it (app-tests.yml); everything else replays.
+# FLOPPY_TEST_DB_TEMPLATE=0 turns it off anywhere.
+if [ -z "${FLOPPY_TEST_DB_TEMPLATE:-}" ]; then
+  if [ -n "${CI:-}" ]; then
+    export FLOPPY_TEST_DB_TEMPLATE=0
+  else
+    export FLOPPY_TEST_DB_TEMPLATE=1
+  fi
+fi
+
 case "${1:-}" in
   --full)
     shift
@@ -75,6 +96,58 @@ case "${1:-}" in
     exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
       "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
+  --shards)
+    # N separate serial processes, each FLOPPY_TEST_SHARD=i/N, not Django's
+    # --parallel pool (docs/architecture/test-suite-cost.md, "Cause 3").
+    shift
+    count="${1:-}"
+    if ! [[ "$count" =~ ^[1-9][0-9]*$ ]]; then
+      echo "[test.sh] --shards needs a positive count, e.g. --shards 4 integrations" >&2
+      exit 2
+    fi
+    shift
+    if [ "${FLOPPY_TEST_PARALLEL:-1}" != "1" ]; then
+      echo "[test.sh] --shards runs serial processes; unset FLOPPY_TEST_PARALLEL." >&2
+      exit 2
+    fi
+    if [ "$#" -eq 0 ]; then
+      # Same selection as the default fast suite.
+      args=("${APPS[@]}" --exclude-tag slow --exclude-tag network)
+    else
+      args=("$@" --exclude-tag network)
+    fi
+    logs=".floppy/shards"
+    mkdir -p "$logs"
+    pids=()
+    for ((i = 1; i <= count; i++)); do
+      rm -f "$logs/$i.log"
+      shard_env=(FLOPPY_TEST_SHARD="$i/$count" FLOPPY_TEST_PARALLEL=1)
+      if [ -n "${FLOPPY_TEST_ACCOUNTING_DIR:-}" ]; then
+        rm -rf "$FLOPPY_TEST_ACCOUNTING_DIR/shard-$i"
+        shard_env+=(FLOPPY_TEST_ACCOUNTING_DIR="$FLOPPY_TEST_ACCOUNTING_DIR/shard-$i")
+      fi
+      env "${shard_env[@]}" "${RUNNER[@]}" src/manage.py test --buffer "${args[@]}" \
+        >"$logs/$i.log" 2>&1 &
+      pids+=("$!")
+    done
+    failed=0
+    for ((i = 1; i <= count; i++)); do
+      status=0
+      wait "${pids[$((i - 1))]}" || status=$?
+      echo "=== shard $i/$count: exit $status (full log: $logs/$i.log) ==="
+      # Bounded: the summary lines, or the end of a failure.
+      if [ "$status" -eq 0 ]; then
+        grep -E '^\[test-(shard|db)\]|^Ran [0-9]+ tests|^OK' "$logs/$i.log" || true
+      else
+        tail -n 60 "$logs/$i.log"
+        failed=1
+      fi
+    done
+    if [ "$failed" -ne 0 ]; then
+      echo "[test.sh] at least one shard failed" >&2
+    fi
+    exit "$failed"
+    ;;
   --affected-record)
     shift
     mkdir -p .floppy
@@ -82,7 +155,8 @@ case "${1:-}" in
     # A failing test still executed lines. Keep the map, then propagate the
     # suite's exit status.
     set +e
-    env COVERAGE_CORE=ctrace "${RUNNER[@]}" -m coverage run \
+    # Record against a real replay, so the map never depends on a saved database.
+    env COVERAGE_CORE=ctrace FLOPPY_TEST_DB_TEMPLATE=0 "${RUNNER[@]}" -m coverage run \
       src/manage.py test "${APPS[@]}" --parallel "$@" --exclude-tag network
     status=$?
     set -e

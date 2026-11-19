@@ -1,6 +1,7 @@
 """Connect a personal TMDb account and approve rating-only outbound sync."""
 
 import secrets
+from http import HTTPStatus
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -8,12 +9,14 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
+from integrations import pending_auth
 from integrations.imports.helpers import encrypt
 from integrations.models import (
     CAPABILITY_RATING_PUSH,
@@ -98,11 +101,12 @@ def tmdb_connect(request):
                 request, "TMDb returned an expired authorization token. Try again."
             )
             return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
-        request.session["tmdb_auth"] = {
+        pending_auth.put("tmdb_auth", request.user.pk, {
             "request_token": token,
             "expires_at": expires.timestamp(),
             "user_id": request.user.pk,
-        }
+            "return_to": request.POST.get("next"),
+        })
     except AdapterError as error:
         messages.error(request, str(error))
         return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
@@ -112,11 +116,19 @@ def tmdb_connect(request):
     )
 
 
+def _back(expected):
+    """Finish the callback: the native app when it started the flow, else the card."""
+    target = (expected or {}).get("return_to")
+    if pending_auth.is_native_return(target):
+        return HttpResponse(status=HTTPStatus.FOUND, headers={"Location": target})
+    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+
+
 @login_required
 @require_GET
 def tmdb_callback(request):
     """Exchange only the token issued for this authenticated browser session."""
-    expected = request.session.pop("tmdb_auth", None)
+    expected = pending_auth.take("tmdb_auth", request.user.pk)
     token = request.GET.get("request_token", "")
     if (
         not expected
@@ -132,7 +144,7 @@ def tmdb_callback(request):
             request,
             "TMDb authorization was denied, expired or did not match this session.",
         )
-        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+        return _back(expected)
     client = TMDbClient(request.user)
     try:
         result = client.request(
@@ -141,15 +153,15 @@ def tmdb_callback(request):
         session_id = result.get("session_id")
         if not isinstance(session_id, str) or not session_id:
             messages.error(request, "TMDb returned an invalid session.")
-            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+            return _back(expected)
         client.session_id = session_id
         account = client.request("GET", "account")
         if not isinstance(account.get("id"), int) or account["id"] <= 0:
             messages.error(request, "TMDb could not verify the account identity.")
-            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+            return _back(expected)
     except AdapterError as error:
         messages.error(request, str(error))
-        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+        return _back(expected)
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=request.user.pk)
         _stop_bindings(request.user)
@@ -177,7 +189,7 @@ def tmdb_callback(request):
     messages.success(
         request, "TMDb connected. Enable rating sync to send future rating edits."
     )
-    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
+    return _back(expected)
 
 
 @login_required
@@ -222,7 +234,7 @@ def tmdb_disconnect(request):
         account = TMDbAccount.objects.filter(user=request.user).first()
         session_id = account.session_id if account else ""
         TMDbAccount.objects.filter(user=request.user).delete()
-        request.session.pop("tmdb_auth", None)
+        pending_auth.clear("tmdb_auth", request.user.pk)
     if session_id:
         try:
             TMDbClient(request.user).request(

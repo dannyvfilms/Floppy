@@ -168,6 +168,7 @@ class CacheClearButtonsTests(TestCase):
         response = self.client.get(reverse("advanced"))
 
         self.assertContains(response, "Cache Management")
+        self.assertContains(response, "Provider search results (shared instance-wide)")
         for key in ("search", "history", "statistics", "discover", "all"):
             self.assertContains(response, f"openConfirm('{key}')")
         self.assertContains(response, "Clear All Caches")

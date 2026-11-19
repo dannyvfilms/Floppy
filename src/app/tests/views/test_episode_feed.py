@@ -11,6 +11,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from app import cache_utils
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 from app.tests.card_props import card_model, card_models, card_text, corner_chip
 from events.models import Event
@@ -464,6 +465,60 @@ class EpisodeFeedTests(TestCase):
         self.assertEqual(
             [card.img["alt"] for card in cards], ["Z two left", "A two left"]
         )
+
+    def _membership_scans(self):
+        """Patch in a spy that records each Up Next membership scan (a full-library rank)."""
+        real = home_screen.LibraryQueryExecutor.ranked_ids
+        scans = []
+
+        def spy(executor):
+            if executor.query.filters.progress == "not_caught_up":
+                scans.append(executor)
+            return real(executor)
+
+        patcher = patch.object(
+            home_screen.LibraryQueryExecutor, "ranked_ids", autospec=True, side_effect=spy
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return scans
+
+    def test_section_expiry_does_not_rescan_up_next_membership(self):
+        """The 60 s section expiry must not re-rank the whole library (it did, each time)."""
+        self._show("Cached once", watched=1)
+        scans = self._membership_scans()
+        self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertEqual(len(scans), 1)
+        cache.delete(
+            cache_utils.build_home_row_cache_key(self.user.id, self.row.pk, 14)
+        )
+        response = self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertContains(response, "Cached once")
+        self.assertEqual(len(scans), 1)
+
+    def test_watching_an_episode_clears_cached_up_next_membership(self):
+        """Cached membership must follow user writes, not wait out its lifetime."""
+        tv, _ = self._show("Last episode", watched=2)
+        scans = self._membership_scans()
+        self.assertContains(
+            self.client.get(reverse("home_row_fragment", args=[self.row.pk])),
+            "Last episode",
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                reverse("episode_save"),
+                {
+                    "media_id": tv.item.media_id,
+                    "source": tv.item.source,
+                    "season_number": 1,
+                    "episode_number": 3,
+                    "end_date": timezone.localtime().strftime("%Y-%m-%dT%H:%M:%S"),
+                    "watch_operation_id": uuid4(),
+                },
+            )
+        scans_before = len(scans)
+        self.client.get(reverse("home_row_fragment", args=[self.row.pk]))
+        self.assertGreater(len(scans), scans_before)
 
     def test_undated_sort_uses_episode_dates_without_calendar_events(self):
         self._show("Alpha older", watched=3, days_ago=30)

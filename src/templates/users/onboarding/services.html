@@ -11,7 +11,7 @@
 
 {% block step_explanation %}
   <p>{% blocktranslate with value1=current_media_type|media_type_readable_plural|lower %}Do you use any of these apps for {{ value1 }}?{% endblocktranslate %}</p>
-  <p>{% translate "Pick any that apply — we'll walk you through connecting them next. Skip this if you don't use any." %}</p>
+  <p>{% translate "Pick any that apply. We'll walk you through connecting them next. Skip this if you don't use any." %}</p>
   <p class="text-xs">{% blocktranslate %}Step {{ step_number }} of {{ step_total }}{% endblocktranslate %}</p>
 {% endblock step_explanation %}
 
@@ -30,7 +30,7 @@
         </label>
       {% empty %}
         <p class="text-sm text-[var(--color-text-muted)] sm:col-span-2">
-          {% blocktranslate with value1=current_media_type|media_type_readable_plural|lower %}No dedicated services yet for {{ value1 }} — you can always bring in existing data with a backup/CSV import later.{% endblocktranslate %}
+          {% blocktranslate with value1=current_media_type|media_type_readable_plural|lower %}No dedicated services yet for {{ value1 }}. You can always bring in existing data with a backup or CSV import later.{% endblocktranslate %}
         </p>
       {% endfor %}
     </div>

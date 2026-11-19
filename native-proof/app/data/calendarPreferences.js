@@ -1,14 +1,13 @@
 import { File, Paths } from 'expo-file-system';
 
-const PREFERENCES_FILE = 'floppy-calendar-preferences.json';
-
-function preferencesFile() {
-  return new File(Paths.document, PREFERENCES_FILE);
+// One file per account so two people on a device keep their own filters.
+function preferencesFile(userId) {
+  return new File(Paths.document, `floppy-calendar-preferences-${userId || 'device'}.json`);
 }
 
-export async function readCalendarPreferences() {
+export async function readCalendarPreferences(userId) {
   try {
-    const file = preferencesFile();
+    const file = preferencesFile(userId);
     if (!file.exists) {
       return null;
     }
@@ -19,9 +18,9 @@ export async function readCalendarPreferences() {
   }
 }
 
-export async function writeCalendarPreferences(preferences) {
+export async function writeCalendarPreferences(preferences, userId) {
   try {
-    const file = preferencesFile();
+    const file = preferencesFile(userId);
     if (!file.exists) {
       file.create({ intermediates: true });
     }

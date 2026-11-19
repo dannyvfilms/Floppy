@@ -1697,6 +1697,15 @@ html.light .theme-toggle-icon-moon {
       "synopsis";
   }
 
+  /* Web waits for the hero artwork before revealing its already-laid-out
+     controls; native coordinates its header data and image loading instead. */
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__title,
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__actions,
+  .detail-carousel-grid.detail-hero-waiting .detail-carousel-grid__chips,
+  .detail-carousel-grid.detail-hero-waiting .detail-mobile-hero {
+    visibility: hidden;
+  }
+
   .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__poster,
   .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__poster {
     display: none;
@@ -1788,7 +1797,7 @@ html.light .theme-toggle-icon-moon {
     display: inline;
   }
 
-  .detail-carousel-grid:has(.detail-mobile-hero):has(.detail-activity-mobile-meta) .detail-mobile-meta {
+  .detail-carousel-grid:has(.detail-mobile-hero):has([data-detail-activity-subtitle-root]) .detail-mobile-meta {
     display: none;
   }
 
@@ -1825,6 +1834,15 @@ html.light .theme-toggle-icon-moon {
     position: absolute;
     inset: 0;
     overflow: hidden;
+  }
+
+  .detail-mobile-hero__backdrop [data-detail-backdrop-root] {
+    position: absolute;
+    inset: 0;
+  }
+
+  .detail-mobile-hero__backdrop:has([data-detail-backdrop-root][data-ready]) > img {
+    visibility: hidden;
   }
 
   .detail-mobile-hero__blur {
@@ -2035,6 +2053,22 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-mobile-hero {
     height: calc(140vw - 4rem - var(--header-safe-top));
+  }
+}
+
+/* The web hero retains its server shell; the shared backdrop supplies the
+   measured fade endpoint so the logo and activity line can meet there. */
+@media (max-width: 767.98px) {
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) {
+    grid-template-rows: max(0px, calc(var(--hero-content-line) - var(--hero-pad-y) - var(--hero-title-offset, 5.25rem) + 0.25rem)) auto;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) .detail-carousel-grid__title {
+    padding-top: 3.25rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo):has([data-detail-backdrop-root][data-ready]) .detail-mobile-hero__logo {
+    top: calc(var(--hero-content-line) - 0.25rem);
   }
 }
 
@@ -2697,6 +2731,16 @@ html.light .theme-toggle-icon-moon {
     filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
   }
 
+  /* A season's logo stands in for its title, so it links to the show like the
+     title does. The link takes the logo's box so the clickable area matches. */
+  .detail-carousel-overview-logo-link {
+    display: block;
+    width: min(40%, 32rem);
+  }
+
+  .detail-carousel-overview-logo-link > .detail-carousel-overview-logo {
+    width: 100%;
+  }
 
   .detail-carousel-strip-wrap {
     grid-area: strip;
@@ -3240,6 +3284,12 @@ html.light .theme-toggle-icon-moon {
 }
 
 /* https://tailwindcss.com/docs/upgrade-guide#hover-styles-on-mobile */
+/* Device poses (docs/architecture/device-poses.md). The web has no hinge, so a pose is the window's size: one small
+   screen is closed, a window with room for two screens is open. Same thresholds as frontend/ui/devicePose.js. */
+@custom-variant pose-closed (@media (max-width: 599.98px), (max-height: 599.98px));
+@custom-variant pose-open (@media (min-width: 600px) and (min-height: 600px));
+@custom-variant pose-vertical (@media (orientation: portrait));
+@custom-variant pose-horizontal (@media (orientation: landscape));
 @custom-variant hover-tap (&:hover);
 @custom-variant parent-hover-tap (.hover-tap:hover &);
 
@@ -3323,6 +3373,26 @@ html.light .theme-toggle-icon-moon {
 
 .media-card .media-status-chip {
   z-index: 6;
+}
+
+/* Desktop has room for the expanded status; touch cards keep their compact badge. */
+.media-quick-status { display: none; }
+@media (hover: hover) and (pointer: fine) and (min-width: 601px) {
+  .media-quick-status-original { display: none; }
+  .media-quick-status { display: block; position: absolute; top: 8px; left: 8px; z-index: 31; }
+  .media-quick-status-button { display: flex; align-items: center; gap: 0; height: 24px; padding: 4px 8px;
+    color: white; background: rgba(17, 24, 39, .9); border-radius: 6px; box-shadow: 0 4px 6px #0004; }
+  .media-quick-status-icon { flex: none; width: 16px; height: 16px; line-height: 16px; }
+  .media-quick-status-label { display: block; max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap;
+    font-size: 12px; transition: max-width .2s ease, opacity .2s ease, margin .2s ease; }
+  .media-quick-status-active .media-quick-status-label { max-width: 130px; opacity: 1; margin-left: 6px; }
+  .media-card-visual [data-next-episode="true"] { transition: opacity .2s ease; }
+  .media-quick-status-active [data-next-episode="true"] { opacity: 0; pointer-events: none; }
+}
+.media-quick-status-error { position: absolute; z-index: 32; top: 36px; left: 8px; right: 8px;
+  padding: 4px; color: white; background: #991b1b; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .media-quick-status-label, .media-card-visual [data-next-episode="true"] { transition: none; }
 }
 
 .media-card-next-episode-compact {

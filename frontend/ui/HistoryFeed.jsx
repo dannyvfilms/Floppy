@@ -1,12 +1,16 @@
 import { Modal, ModalCloseButton } from './Modal';
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { actionIcons } from './actionIcons';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
+import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
+import { libraryGridLayout } from './mediaCardSizing';
 import { RatingStars } from './RatingStars';
 import { RefreshNotice } from './RefreshNotice';
+import { SelectField } from './SelectField';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -50,11 +54,16 @@ const DEFAULT_LABELS = {
   nextMonth: 'Go to next month',
   currentMonth: 'Go to current month',
   filters: 'Filter history',
+  filterTitle: 'Filter History',
   hideFilters: 'Hide filters',
   clearFilters: 'Clear filters',
   saveView: 'Save view',
+  saveViewName: 'Name this view',
   apply: 'Apply',
   allTypes: 'All types',
+  editTracking: 'Edit tracking',
+  addToLists: 'Add to custom lists',
+  viewYourActivity: 'View your activity history',
   mediaType: 'Media type',
   viewMode: 'View mode',
   activity: 'Activity (watched)',
@@ -220,11 +229,6 @@ function mediaTypeLabel(options, value) {
   return match ? match.label : value;
 }
 
-function truncatedNote(note, expanded) {
-  if (!note) return '';
-  return expanded || note.length <= 140 ? note : `${note.slice(0, 140).trimEnd()}…`;
-}
-
 function minutesFromRuntime(value) {
   if (typeof value === 'number') return value;
   const match = /^(?:(\d+)h)?\s*(?:(\d+)min)?$/.exec(String(value || '').trim());
@@ -240,26 +244,42 @@ function durationLabel(minutes) {
   return rest ? `${hours}h ${rest}min` : `${hours}h`;
 }
 
-function rowModel(entry, labels) {
+const SQUARE_TYPES = new Set(['music', 'podcast']);
+
+// The compact poster card the web feed renders for each entry. Activity, edit
+// and delete reveal as the card's own action buttons, like the web hover row.
+function cardModel(entry, copy, webActions) {
   const parts = [];
   if (entry.verb) parts.push({ text: entry.verb, link: true });
-  if (entry.when) parts.push({ text: `${parts.length ? ' · ' : ''}${entry.when}`, muted: true });
-  if (entry.runtime) parts.push({ text: ` · ${entry.runtime}`, muted: true });
-  const lines = parts.length ? [{ join: 'plain', parts }] : [];
+  if (entry.when) parts.push({ text: `${parts.length ? ' ' : ''}${entry.when}`, muted: true });
+  const items = [];
+  if (webActions) {
+    // The web card's overlay: Edit tracking, Add to custom lists, View your
+    // activity history. Delete stays in the edit and activity dialogs.
+    if (entry.canEdit) items.push({ key: 'edit', title: copy.editTracking, icon: actionIcons.edit, glyph: 'E', tone: 'indigo' });
+    if (entry.item) items.push({ key: 'lists', title: copy.addToLists, icon: actionIcons.listAdd, glyph: 'L', tone: 'emerald' });
+    if (entry.canViewActivity !== false) items.push({ key: 'activity', title: copy.viewYourActivity, icon: actionIcons.history, glyph: 'H', tone: 'amber' });
+  } else {
+    if (entry.canViewActivity !== false) items.push({ key: 'activity', title: copy.viewActivity, icon: actionIcons.history, glyph: 'H', tone: 'amber' });
+    if (entry.canEdit) items.push({ key: 'edit', title: copy.edit, icon: actionIcons.edit, glyph: 'E', tone: 'indigo' });
+    if (entry.canDelete) items.push({ key: 'delete', title: copy.delete, icon: actionIcons.trash, glyph: 'D', tone: 'rose' });
+  }
   return {
-    layout: 'row',
     mediaType: entry.mediaType,
+    shape: entry.mediaType === 'video' ? 'landscape' : SQUARE_TYPES.has(entry.mediaType) ? 'square' : 'poster',
+    video: entry.mediaType === 'video',
     href: entry.href || '',
     image: entry.image || { src: null, fallback: '', source: 'primary' },
     title: entry.title,
     altTitle: entry.altTitle || null,
-    matched: entry.subtitle ? { text: entry.subtitle, title: entry.subtitle } : null,
+    statusChip: entry.status ? { kind: 'status-native', status: entry.status, label: entry.status } : null,
+    cornerChips: entry.runtime ? [{ kind: 'runtime-top', text: entry.runtime }] : [],
     titleLinks: [],
-    cornerChips: [],
     progressBar: null,
     scoreText: entry.score == null ? null : String(entry.score),
-    lines,
-    actions: null,
+    matched: entry.subtitle ? { text: entry.subtitle, title: entry.subtitle } : null,
+    lines: parts.length ? [{ join: 'plain', parts }] : [],
+    actions: items.length ? { items } : null,
   };
 }
 
@@ -277,42 +297,77 @@ export function HistoryDaySummary({ day, mode = 'activity', labels, palette }) {
   return <Text accessibilityLabel={text} style={[styles.daySummary, { color: colors.textMuted }]}>{text}</Text>;
 }
 
-export function HistoryEntryRow({
+export function HistoryEntryCard({
   entry,
   labels,
   palette,
-  first = false,
+  width,
   onOpen,
   onOpenActivity,
   onEdit,
   onDelete,
+  onAddToList,
+  webActions = false,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const note = entry.note || '';
-  const longNote = note.length > 140;
-  return <View style={[styles.entry, !first && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-    <MediaCard
-      model={rowModel(entry, copy)}
-      labels={copy}
-      palette={colors.mediaCard}
-      width={240}
-      onOpen={onOpen ? () => onOpen(entry) : undefined} />
-    {note ? <View style={styles.noteWrap}>
-      <Text style={[styles.note, { color: colors.textSecondary }]}>{truncatedNote(note, noteOpen)}</Text>
-      {longNote ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: noteOpen }}
-        onPress={() => setNoteOpen(current => !current)} style={styles.noteToggle}>
-        <Text style={[styles.noteToggleText, { color: colors.link }]}>{noteOpen ? copy.showLess : copy.showMore}</Text>
-      </Pressable> : null}
-    </View> : null}
-    <View style={styles.entryActions}>
-      {entry.canViewActivity !== false ? <Button label={copy.viewActivity} size="sm" tone="surface"
-        onPress={() => onOpenActivity?.(entry)} palette={buttonPalette(colors)} /> : null}
-      {entry.canEdit ? <Button label={copy.edit} size="sm" onPress={() => onEdit?.(entry)} palette={buttonPalette(colors)} /> : null}
-      {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger" onPress={() => onDelete?.(entry)} palette={buttonPalette(colors)} /> : null}
-    </View>
+  function act(action) {
+    if (action.key === 'lists') onAddToList?.(entry);
+    else if (action.key === 'activity') onOpenActivity?.(entry);
+    else if (action.key === 'edit') onEdit?.(entry);
+    else if (action.key === 'delete') onDelete?.(entry);
+  }
+  return <MediaCard
+    model={cardModel(entry, copy, webActions)}
+    labels={copy}
+    palette={colors.mediaCard}
+    width={width}
+    onOpen={onOpen ? () => onOpen(entry) : undefined}
+    onAction={act}
+    renderActionIcon={action => (action.icon
+      ? <Icon spec={action.icon} color={colors.accentContrast} size={16} /> : null)} />;
+}
+
+function DayGrid({ entries, layout, ...cardProps }) {
+  if (!entries.length) return null;
+  return <View style={[styles.grid, { gap: layout.gap }]}>
+    {entries.map(entry => <HistoryEntryCard key={entry.key} entry={entry} width={layout.width} {...cardProps} />)}
   </View>;
+}
+
+// A waiting day loads itself once the platform reports it on or near the
+// screen. `watchDay(key, node, onChange)` is the same contract Home uses for
+// its rows (frontend/ui/homeRowWatcher.web.js, native-proof homeRowWatcherCore):
+// it calls `onChange('visible' | 'near' | 'far')` and returns a stop function.
+// One automatic request per day; a failed day keeps its Retry button.
+function useWaitingDayRef(day, watchDay, onLoadDay) {
+  const latest = useRef({ day, onLoadDay });
+  latest.current = { day, onLoadDay };
+  const stop = useRef(null);
+  const requested = useRef(false);
+  // A day that has loaded and later waits again (a new filter on the same
+  // month) may load itself again.
+  if (!day.lazy) requested.current = false;
+  const key = day.key;
+  const ref = useCallback(node => {
+    if (stop.current) {
+      stop.current();
+      stop.current = null;
+    }
+    if (!node || typeof watchDay !== 'function') return;
+    stop.current = watchDay(key, node, level => {
+      if (level === 'far' || requested.current) return;
+      const current = latest.current.day;
+      if (!current?.lazy || current.loading || current.error) return;
+      requested.current = true;
+      latest.current.onLoadDay?.(current);
+    }) || null;
+  }, [watchDay, key]);
+  useEffect(() => () => {
+    if (stop.current) stop.current();
+    stop.current = null;
+  }, []);
+  return ref;
 }
 
 export function HistoryDayGroup({
@@ -324,13 +379,23 @@ export function HistoryDayGroup({
   onOpenActivity,
   onEditEntry,
   onDeleteEntry,
+  onAddToList,
+  webActions = false,
   onLoadMore,
   onLoadDay,
   onRetryDay,
+  watchDay,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const entries = day.entries || [];
+  const waitingRef = useWaitingDayRef(day, watchDay, onLoadDay);
+  const { width: viewportWidth } = useWindowDimensions();
+  const layout = libraryGridLayout(viewportWidth);
+  const gridProps = {
+    labels: copy, palette: colors, layout, onOpen: onOpenEntry, onOpenActivity,
+    onEdit: onEditEntry, onDelete: onDeleteEntry, onAddToList, webActions,
+  };
   return <View style={styles.dayGroup}>
     <View style={[styles.dayHeader, { borderBottomColor: colors.border }]}>
       <View style={styles.dayDate}>
@@ -339,7 +404,7 @@ export function HistoryDayGroup({
       </View>
       <HistoryDaySummary day={day} mode={mode} labels={copy} palette={colors} />
     </View>
-    {day.lazy ? <View style={[styles.lazyDay, { borderColor: colors.border }]}>
+    {day.lazy ? <View ref={waitingRef} style={[styles.lazyDay, { borderColor: colors.border }]}>
       {day.error ? <>
         <Text style={[styles.lazyText, { color: colors.danger }]}>{copy.loadDayError}</Text>
         <Button label={copy.retryDay} size="sm" tone="surface" palette={buttonPalette(colors)}
@@ -352,9 +417,10 @@ export function HistoryDayGroup({
           disabled={day.loading} busy={day.loading} onPress={() => onLoadDay?.(day)} />
       </>}
     </View> : <>
-      {entries.map((entry, index) => <HistoryEntryRow key={entry.key} entry={entry} labels={copy}
-        palette={colors} first={index === 0} onOpen={onOpenEntry} onOpenActivity={onOpenActivity}
-        onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
+      <DayGrid entries={entries.filter(entry => !SQUARE_TYPES.has(entry.mediaType) && entry.mediaType !== 'video')}
+        {...gridProps} />
+      <DayGrid entries={entries.filter(entry => SQUARE_TYPES.has(entry.mediaType))} {...gridProps} />
+      <DayGrid entries={entries.filter(entry => entry.mediaType === 'video')} {...gridProps} />
       {day.hasMore ? <View style={styles.loadMore}>
         <Button label={day.remaining ? `${copy.loadMore} (${day.remaining})` : copy.loadMore}
           size="sm" tone="surface" palette={buttonPalette(colors)} disabled={day.loadingMore}
@@ -397,6 +463,7 @@ export function HistoryFilterPanel({
   onApply,
   onClear,
   onSaveView,
+  variant = 'chips',
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
@@ -409,6 +476,8 @@ export function HistoryFilterPanel({
     mode: filters.mode || 'activity',
   });
   const [state, setState] = useState(initial);
+  const [naming, setNaming] = useState(false);
+  const [viewName, setViewName] = useState('');
   const mediaTypes = options.mediaTypes?.length ? options.mediaTypes : DEFAULT_MEDIA_TYPES;
 
   useEffect(() => {
@@ -437,7 +506,7 @@ export function HistoryFilterPanel({
     tone={selected ? 'indigo' : 'outline'} palette={chipPalette(colors)} onPress={onPress}
     accessibilityLabel={label} />;
 
-  return <View style={[styles.filterPanel, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+  return <View style={styles.filterPanel}>
     <Text style={[styles.filterHeading, { color: colors.text }]}>{copy.dateRange}</Text>
     <View style={styles.rangeRow}>
       <View style={styles.rangeField}>
@@ -453,6 +522,25 @@ export function HistoryFilterPanel({
           onChange={next => setState(current => ({ ...current, to: next }))} />
       </View>
     </View>
+    {variant === 'select' ? <>
+      {/* The web's dropdowns: one choice each, "All" clears it. */}
+      <SelectField label={copy.mediaType} name="mediaType" palette={colors}
+        options={[{ value: '', label: copy.allTypes }, ...mediaTypes.map(item => ({ value: item.value, label: item.label }))]}
+        value={state.mediaTypes[0] || ''}
+        onChange={event => setState(current => ({ ...current, mediaTypes: event.target.value ? [event.target.value] : [] }))} />
+      <SelectField label={copy.viewMode} name="mode" palette={colors}
+        options={[{ value: 'activity', label: copy.activity }, { value: 'release', label: copy.release }]}
+        value={state.mode}
+        onChange={event => setState(current => ({ ...current, mode: event.target.value }))} />
+      <SelectField label={copy.genre} name="genre" palette={colors}
+        options={[{ value: '', label: copy.allGenres }, ...(options.genres || []).map(genre => ({ value: genre, label: genre }))]}
+        value={state.genres[0] || ''}
+        onChange={event => setState(current => ({ ...current, genres: event.target.value ? [event.target.value] : [] }))} />
+      <SelectField label={copy.impliedGenre} name="impliedGenre" palette={colors}
+        options={[{ value: '', label: copy.allImpliedGenres }, ...(options.impliedGenres || []).map(genre => ({ value: genre, label: genre }))]}
+        value={state.impliedGenres[0] || ''}
+        onChange={event => setState(current => ({ ...current, impliedGenres: event.target.value ? [event.target.value] : [] }))} />
+    </> : <>
     <Text style={[styles.filterHeading, { color: colors.text }]}>{copy.mediaType}</Text>
     <View style={styles.chipRow}>
       {mediaTypes.map(item => chip(item.label, state.mediaTypes.includes(item.value),
@@ -477,14 +565,28 @@ export function HistoryFilterPanel({
           () => toggleImpliedGenre(genre), `implied-${genre}`))}
       </View>
     </> : null}
+    </>}
     <View style={styles.filterActions}>
       <Button label={copy.clearFilters} size="sm" tone="surface" palette={buttonPalette(colors)}
         onPress={() => { onClear?.(); }} />
       {onSaveView ? <Button label={copy.saveView} size="sm" tone="surface" palette={buttonPalette(colors)}
-        onPress={() => { onSaveView(state); }} /> : null}
+        onPress={() => setNaming(current => !current)} /> : null}
       <Button label={copy.apply} size="sm" palette={buttonPalette(colors)}
         onPress={() => { onApply?.(state); }} />
     </View>
+    {naming && onSaveView ? <View style={styles.saveViewRow}>
+      <TextInput value={viewName} onChangeText={setViewName} placeholder={copy.saveViewName}
+        accessibilityLabel={copy.saveViewName} placeholderTextColor={colors.textMuted}
+        maxLength={100}
+        style={[styles.saveViewInput, { color: colors.text, borderColor: colors.border }]} />
+      <Button label={copy.save} size="sm" palette={buttonPalette(colors)}
+        disabled={!viewName.trim()}
+        onPress={() => {
+          onSaveView(state, viewName.trim());
+          setNaming(false);
+          setViewName('');
+        }} />
+    </View> : null}
   </View>;
 }
 
@@ -510,16 +612,16 @@ export function HistoryState({ kind = 'empty', labels, palette, onRetry, onPress
   </View>;
 }
 
-function DialogShell({ title, closeLabel, onClose, colors, children }) {
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-    <View style={styles.dialogBackdrop}>
+function DialogShell({ title, closeLabel, onClose, colors, sheet = false, children }) {
+  return <Modal visible transparent animationType={sheet ? 'slide' : 'fade'} onRequestClose={onClose}>
+    <View style={[styles.dialogBackdrop, sheet && styles.sheetBackdrop]}>
       <View accessibilityViewIsModal role="dialog" accessibilityLabel={title}
-        style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }, sheet && styles.sheet]}>
         <View style={styles.dialogHeader}>
           <Text accessibilityRole="header" style={[styles.dialogTitle, { color: colors.text }]}>{title}</Text>
           <ModalCloseButton accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
             style={styles.dialogClose}>
-            <Text style={[styles.dialogCloseText, { color: colors.textMuted }]}>✕</Text>
+            <Icon spec={actionIcons.x} size={18} color={colors.textMuted} />
           </ModalCloseButton>
         </View>
         {children}
@@ -552,6 +654,20 @@ function ScoreStars({ entry, copy, colors, onSelect }) {
   </View>;
 }
 
+export function HistoryActivityCalendar({ sessions, activityIntensity, selectedDay, onSelectDay, palette }) {
+  const dates = sessions.map(session => session.date).filter(Boolean);
+  return <View>
+    <Text style={{ color: palette.text }}>Select a day to view its activity.</Text>
+    <DateTimePicker inline value={selectedDay} initialViewDate={sessions[0]?.date}
+      markerDays={dates} selectableDays={dates} activityIntensity={activityIntensity}
+      palette={palette} onChange={onSelectDay} />
+    {selectedDay ? sessions.filter(session => session.date === selectedDay).map((session, index) =>
+      <Text key={session.key || index} style={{ color: palette.text }}>
+        {[session.when, session.label, session.runtime].filter(Boolean).join(' · ')}
+      </Text>) : null}
+  </View>;
+}
+
 export function HistoryActivityDialog({
   entry,
   labels,
@@ -574,10 +690,10 @@ export function HistoryActivityDialog({
   const totalMinutes = sessions.reduce((sum, session) => sum + minutesFromRuntime(session.runtimeMinutes ?? session.runtime), 0);
   const stats = [
     { label: copy.sessions, value: String(sessions.length) },
-    { label: copy.trackedTime, value: durationLabel(totalMinutes) || '—' },
-    { label: copy.firstSession, value: sessions[0]?.when || sessions[0]?.date || '—' },
-    { label: copy.lastSession, value: sessions[sessions.length - 1]?.when || sessions[sessions.length - 1]?.date || '—' },
-    { label: copy.averageSession, value: durationLabel(Math.round(totalMinutes / Math.max(sessions.length, 1))) || '—' },
+    { label: copy.trackedTime, value: durationLabel(totalMinutes) || 'None' },
+    { label: copy.firstSession, value: sessions[0]?.when || sessions[0]?.date || 'None' },
+    { label: copy.lastSession, value: sessions[sessions.length - 1]?.when || sessions[sessions.length - 1]?.date || 'None' },
+    { label: copy.averageSession, value: durationLabel(Math.round(totalMinutes / Math.max(sessions.length, 1))) || 'None' },
   ];
   return <DialogShell title={copy.activityHistory} closeLabel={copy.close} onClose={onClose} colors={colors}>
     <ScrollView contentContainerStyle={styles.dialogBody} style={styles.dialogScroll}>
@@ -594,6 +710,8 @@ export function HistoryActivityDialog({
         <View style={styles.dayPickerRow}>
           <View style={styles.dayPickerField}>
             <DateTimePicker value={selectedDay} trackTime={false} markerDays={markerDays}
+              activityIntensity={entry.activityIntensity}
+              selectableDays={markerDays}
               labels={{ field: copy.jumpToDay }} palette={dateTimePalette(colors)}
               onChange={next => setSelectedDay(next || '')} />
           </View>
@@ -642,6 +760,7 @@ export function HistoryEditDialog({ entry, labels, palette, onClose, onSave, onD
     setStatus(entry?.status || '');
   }, [entry?.key]);
   if (!entry) return null;
+  const hasField = name => !entry.editFields || entry.editFields.includes(name);
   return <DialogShell title={copy.editHistory} closeLabel={copy.close} onClose={onClose} colors={colors}>
     <ScrollView contentContainerStyle={styles.dialogBody} style={styles.dialogScroll}>
       <View style={styles.dialogItem}>
@@ -653,8 +772,8 @@ export function HistoryEditDialog({ entry, labels, palette, onClose, onSave, onD
         <DateTimePicker value={value} trackTime labels={{ field: copy.editDate }}
           palette={dateTimePalette(colors)} onChange={next => setValue(next)} />
       </View>
-      <ScoreStars entry={{ ...entry, score }} copy={copy} colors={colors} onSelect={setScore} />
-      <View>
+      {hasField('score') ? <ScoreStars entry={{ ...entry, score }} copy={copy} colors={colors} onSelect={setScore} /> : null}
+      {hasField('status') ? <View>
         <Text style={[styles.dialogLabel, { color: colors.textMuted }]}>{copy.status}</Text>
         <View style={styles.chipRow}>
           {EDIT_STATUSES.map(item => <Badge key={item} label={item} size="sm"
@@ -662,7 +781,7 @@ export function HistoryEditDialog({ entry, labels, palette, onClose, onSave, onD
             accessibilityLabel={item}
             onPress={() => setStatus(current => current === item ? '' : item)} />)}
         </View>
-      </View>
+      </View> : null}
       <View style={styles.dialogActions}>
         {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger"
           palette={buttonPalette(colors)} onPress={() => onDelete?.(entry)} /> : null}
@@ -694,6 +813,33 @@ export function HistoryDeleteDialog({ entry, labels, palette, onClose, onConfirm
   </DialogShell>;
 }
 
+function MonthButton({ label, icon, trailing = false, disabled, colors, onPress, accessibilityLabel }) {
+  const tint = disabled ? colors.textMuted : colors.text;
+  const glyph = <Icon spec={icon} color={tint} size={14} />;
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || label}
+    accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed, hovered }) => [styles.monthButton, {
+      backgroundColor: disabled ? colors.surfaceMuted : pressed || hovered ? colors.surfaceStrong : colors.surface,
+    }]}>
+    {trailing ? null : glyph}
+    <Text style={[styles.monthButtonText, { color: tint }]}>{label}</Text>
+    {trailing ? glyph : null}
+  </Pressable>;
+}
+
+// The round filter button the web pins to the bottom right of History.
+export function HistoryFilterFab({ count = 0, label, onPress, palette }) {
+  const copy = mergeLabels({ filters: label });
+  const colors = mergePalette(palette);
+  return <Pressable accessibilityRole="button" accessibilityLabel={copy.filters} onPress={onPress}
+    style={[styles.fab, { backgroundColor: colors.accentStrong }]}>
+    <Icon spec={actionIcons.funnel} color={colors.accentContrast} size={20} />
+    {count > 0 ? <View style={[styles.fabBadge, { backgroundColor: colors.danger }]}>
+      <Text style={[styles.fabBadgeText, { color: colors.accentContrast }]}>{String(count)}</Text>
+    </View> : null}
+  </Pressable>;
+}
+
 export function HistoryFeed({
   model = {},
   labels,
@@ -713,68 +859,69 @@ export function HistoryFeed({
   onRetry,
   onRetryDay,
   onRefresh,
-  onDismissRefresh,
+  filtersOpen: controlledOpen,
+  onFiltersOpenChange,
+  filterVariant = 'chips',
+  webActions = false,
+  onAddToList,
+  watchDay,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [refreshDismissed, setRefreshDismissed] = useState(false);
-  useEffect(() => { if (model.refreshing) setRefreshDismissed(false); }, [model.refreshing]);
+  const { width: viewportWidth } = useWindowDimensions();
+  const [ownOpen, setOwnOpen] = useState(false);
+  const filtersOpen = controlledOpen ?? ownOpen;
+  const setFiltersOpen = onFiltersOpenChange || setOwnOpen;
+  // The web template hides the year jumps below 24rem.
+  const showYears = viewportWidth >= 384;
   const mode = model.mode || 'activity';
   const days = model.days || [];
   const nav = model.nav || {};
   const filters = model.filters || {};
   const options = model.options || {};
   const activeCount = filters.activeCount ?? 0;
-  const showRefresh = chrome && model.refreshing && !refreshDismissed;
+  // A background refresh shows as a small spinner by the month, not a banner.
+  const showRefresh = chrome && model.refreshing && days.length > 0;
 
   return <View style={styles.feed}>
-    {showRefresh ? <RefreshNotice state="loading" message={copy.refreshing}
-      labels={{ dismiss: copy.dismiss }} palette={colors}
-      background={colors.surfaceStrong} border={colors.border} color={colors.text}
-      onDismiss={() => { setRefreshDismissed(true); onDismissRefresh?.(); }} /> : null}
     {chrome && model.refreshError ? <RefreshNotice state="error" message={copy.refreshFailed}
       labels={{ retry: copy.retryRefresh }} palette={colors} background={colors.surface}
       border={colors.danger} color={colors.text} onRetry={() => onRefresh?.()} /> : null}
 
     {chrome && nav.monthLabel ? <View style={styles.monthNav}>
       <View style={styles.monthNavSide}>
-        {nav.previousYear ? <Button label={nav.previousYear.label || copy.previousYear} size="sm" tone="surface"
-          palette={buttonPalette(colors)} disabled={nav.previousYear.disabled}
+        {showYears && nav.previousYear ? <MonthButton label={nav.previousYear.label || copy.previousYear}
+          icon={actionIcons.chevronsLeft} colors={colors} disabled={nav.previousYear.disabled}
+          accessibilityLabel={copy.previousYear}
           onPress={() => onNavigate?.({ kind: 'year', direction: -1, url: nav.previousYear.url })} /> : null}
-        {nav.previousMonth ? <Button label={nav.previousMonth.label || copy.previousMonth} size="sm" tone="surface"
-          palette={buttonPalette(colors)} disabled={nav.previousMonth.disabled}
+        {nav.previousMonth ? <MonthButton label={nav.previousMonth.label || copy.previousMonth}
+          icon={actionIcons.chevronLeft} colors={colors} disabled={nav.previousMonth.disabled}
           onPress={() => onNavigate?.({ kind: 'month', direction: -1, url: nav.previousMonth.url })} /> : null}
       </View>
-      <Text accessibilityRole="header" style={[styles.monthLabel, { color: colors.text }]}>{nav.monthLabel}</Text>
+      <View style={styles.monthTitle}>
+        <Text accessibilityRole="header" numberOfLines={1} style={[styles.monthLabel, { color: colors.text }]}>{nav.monthLabel}</Text>
+        {showRefresh ? <ActivityIndicator size="small" color={colors.textMuted} accessibilityLabel={copy.refreshing} /> : null}
+      </View>
       <View style={styles.monthNavSide}>
-        {nav.nextMonth ? <Button label={nav.nextMonth.label || copy.nextMonth} size="sm" tone="surface"
-          palette={buttonPalette(colors)} disabled={nav.nextMonth.disabled}
+        {nav.nextMonth ? <MonthButton label={nav.nextMonth.label || copy.nextMonth} trailing
+          icon={actionIcons.chevronRight} colors={colors} disabled={nav.nextMonth.disabled}
           onPress={() => onNavigate?.({ kind: 'month', direction: 1, url: nav.nextMonth.url })} /> : null}
-        {nav.currentMonth ? <Button label={nav.currentMonth.label || copy.currentMonth} size="sm" tone="surface"
-          palette={buttonPalette(colors)} disabled={nav.currentMonth.disabled}
+        {showYears && nav.currentMonth ? <MonthButton label={nav.currentMonth.label || copy.currentMonth} trailing
+          icon={actionIcons.chevronsRight} colors={colors} disabled={nav.currentMonth.disabled}
+          accessibilityLabel={copy.currentMonth}
           onPress={() => onNavigate?.({ kind: 'current', url: nav.currentMonth.url })} /> : null}
       </View>
     </View> : null}
 
-    {chrome ? <View style={styles.toolbar}>
-      <Button label={filtersOpen ? copy.hideFilters : copy.filters} size="sm" tone="surface"
-        palette={buttonPalette(colors)} onPress={() => {
-          if (!filtersOpen) onRequestOptions?.();
-          setFiltersOpen(current => !current);
-        }} />
-      {activeCount > 0 ? <Badge label={String(activeCount)} size="sm" tone="indigo"
-        palette={chipPalette(colors)} accessibilityLabel={`${copy.filters}: ${activeCount}`} /> : null}
-      <Badge label={mode === 'release' ? copy.release : copy.activity} size="sm" tone="outline"
-        palette={chipPalette(colors)} />
-      {filters.rangeLabel ? <Text style={[styles.toolbarText, { color: colors.textMuted }]}>{filters.rangeLabel}</Text> : null}
-      {filters.mediaTypes?.length ? <Text style={[styles.toolbarText, { color: colors.textMuted }]}>
-        {filters.mediaTypes.map(value => mediaTypeLabel(options.mediaTypes, value)).join(', ')}
-      </Text> : null}
-    </View> : null}
-
-    {chrome && filtersOpen ? <HistoryFilterPanel filters={filters} options={options} labels={copy}
-      palette={colors} onApply={onApplyFilters} onClear={onClearFilters} onSaveView={onSaveView} /> : null}
+    {chrome && filtersOpen ? <DialogShell title={copy.filterTitle} closeLabel={copy.close} sheet
+      onClose={() => setFiltersOpen(false)} colors={colors}>
+      <ScrollView style={styles.dialogScroll} contentContainerStyle={styles.dialogBody}>
+        <HistoryFilterPanel filters={filters} options={options} labels={copy}
+          palette={colors} variant={filterVariant}
+          onApply={state => { setFiltersOpen(false); onApplyFilters?.(state); }}
+          onClear={() => { setFiltersOpen(false); onClearFilters?.(); }} onSaveView={onSaveView} />
+      </ScrollView>
+    </DialogShell> : null}
 
     {chrome && model.summary?.length ? <HistoryActivitySummary stats={model.summary} labels={copy} palette={colors} /> : null}
 
@@ -788,8 +935,9 @@ export function HistoryFeed({
 
     {days.map(day => <HistoryDayGroup key={day.key} day={day} mode={mode} labels={copy}
       palette={colors} onOpenEntry={onOpenEntry} onOpenActivity={onOpenActivity}
+      webActions={webActions} onAddToList={onAddToList}
       onEditEntry={onEditEntry} onDeleteEntry={onDeleteEntry} onLoadMore={onLoadMore}
-      onLoadDay={onLoadDay} onRetryDay={onRetryDay} />)}
+      onLoadDay={onLoadDay} onRetryDay={onRetryDay} watchDay={watchDay} />)}
 
     {chrome && model.pagination && model.pagination.pageCount > 1 ? <View style={styles.pagination}>
       <Button label={copy.previousPage} size="sm" tone="surface" palette={buttonPalette(colors)}
@@ -815,13 +963,17 @@ export function HistoryFeed({
 
 const styles = StyleSheet.create({
   feed: { gap: 16 },
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  monthNavSide: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  monthLabel: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '600' },
-  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  toolbarText: { fontSize: 12 },
-  filterPanel: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
-  filterHeading: { fontSize: 13, fontWeight: '600' },
+  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 },
+  monthNavSide: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  monthButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 },
+  monthButtonText: { fontSize: 14 },
+  monthTitle: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  monthLabel: { flexShrink: 1, textAlign: 'center', fontSize: 16, fontWeight: '600' },
+  fab: { position: 'absolute', right: 24, bottom: 24, width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: 'black', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  fabBadge: { position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  fabBadgeText: { fontSize: 12, fontWeight: '700' },
+  filterPanel: { gap: 12 },
+  filterHeading: { fontSize: 14, fontWeight: '500' },
   filterLabel: { fontSize: 11, marginBottom: 2 },
   rangeRow: { flexDirection: 'row', gap: 12 },
   rangeField: { flex: 1, minWidth: 0 },
@@ -831,19 +983,16 @@ const styles = StyleSheet.create({
   summaryItem: { minWidth: 96, flexGrow: 1 },
   summaryValue: { fontSize: 16, fontWeight: '600' },
   summaryLabel: { fontSize: 11, marginTop: 2 },
-  dayGroup: { gap: 8 },
-  dayHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, borderBottomWidth: 1, paddingBottom: 8 },
+  dayGroup: { gap: 16 },
+  dayHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, borderBottomWidth: 1, paddingBottom: 12 },
   dayDate: { flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', flex: 1 },
-  weekday: { fontSize: 18, fontWeight: '600' },
-  dateLabel: { fontSize: 18 },
+  weekday: { fontSize: 20, fontWeight: '600' },
+  dateLabel: { fontSize: 20 },
   dateLabelOnly: { fontWeight: '600' },
-  daySummary: { fontSize: 12 },
-  entry: { paddingVertical: 6 },
-  noteWrap: { paddingHorizontal: 12, gap: 2 },
-  note: { fontSize: 12, lineHeight: 18 },
-  noteToggle: { alignSelf: 'flex-start', paddingVertical: 2 },
-  noteToggleText: { fontSize: 12, fontWeight: '600' },
-  entryActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 4 },
+  daySummary: { fontSize: 14 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  saveViewRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  saveViewInput: { flex: 1, minWidth: 140, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13 },
   lazyDay: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', gap: 8, paddingVertical: 20 },
   lazyText: { fontSize: 12 },
   loadMore: { alignItems: 'center', paddingTop: 4 },
@@ -857,6 +1006,8 @@ const styles = StyleSheet.create({
   pageLabel: { fontSize: 12 },
   dialogBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 520, maxHeight: '90%', borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
+  sheetBackdrop: { padding: 0, justifyContent: 'flex-end', alignItems: 'stretch' },
+  sheet: { maxWidth: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 0, padding: 24, gap: 20 },
   dialogHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dialogTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
   dialogClose: { padding: 4 },

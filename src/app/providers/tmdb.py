@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 
 from app import backdrops, helpers
+from app.helpers import coerce_int as _coerce_int
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services
@@ -970,6 +971,34 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     return episode_images
 
 
+def _store_fetched_episode_counts(media_id, tv_data, seasons):
+    """Keep stored episode counts in step with payloads just fetched.
+
+    `seasons` maps "season/<number>" to its payload. See
+    `metadata_utils.store_provider_episode_count`.
+    """
+    from app import metadata_utils
+
+    for season_key, season_data in seasons.items():
+        season_number = season_key.removeprefix("season/")
+        episodes = season_data.get("episodes")
+        if season_number.isdecimal() and isinstance(episodes, list):
+            metadata_utils.store_provider_episode_count(
+                media_id,
+                Sources.TMDB.value,
+                len(episodes),
+                season_number=int(season_number),
+            )
+    if tv_data:
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TMDB.value,
+            metadata_utils.extract_item_metadata_values(tv_data)[
+                "provider_episode_count"
+            ],
+        )
+
+
 def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *, missing_seasons=None):
     """Fetch uncached seasons from API and cache them."""
     url = f"{base_url}/tv/{media_id}"
@@ -1121,6 +1150,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *,
                 fetched_tv_data,
             )
 
+    _store_fetched_episode_counts(media_id, fetched_tv_data, result_data)
     return result_data, fetched_tv_data
 
 
@@ -2083,16 +2113,6 @@ def get_score(score):
         return None
 
     return round(score, 1)
-
-
-def _coerce_int(value) -> int | None:
-    """Return a numeric int when possible."""
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def get_related(related_medias, media_type, parent_response=None, tv_media_id=None):

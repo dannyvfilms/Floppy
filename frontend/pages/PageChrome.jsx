@@ -32,16 +32,18 @@ export function PageHeading({
   actions,
   palette,
   titleLevel = 1,
+  titleStyle,
+  countStyle,
 }) {
   const colors = mergePalette(palette);
   const countText = count == null ? '' : `${count}${countLabel ? ` ${countLabel}` : ''}`;
   return <View style={styles.heading}>
     <View style={styles.headingText}>
       <View style={styles.titleRow}>
-        <Text role="heading" aria-level={titleLevel} style={[styles.title, { color: colors.text }]}>
+        <Text role="heading" aria-level={titleLevel} style={[styles.title, { color: colors.text }, titleStyle]}>
           {title}
         </Text>
-        {countText ? <View style={[styles.count, { backgroundColor: colors.surface }]}>
+        {countText ? <View style={[styles.count, { backgroundColor: colors.surface }, countStyle]}>
           <Text style={[styles.countText, { color: colors.textSecondary }]}>{countText}</Text>
         </View> : null}
       </View>

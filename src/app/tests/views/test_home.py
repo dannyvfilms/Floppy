@@ -99,6 +99,17 @@ class HomeViewTests(TestCase):
         row = self._get_first_row(response, media_type)
         return next(entry for entry in row["items"] if entry.item.media_id == media_id)
 
+    def test_deferred_row_placeholders_wait_for_the_island_instead_of_loading_twice(self):
+        """The React island loads each row; placeholders must not also fetch on page load."""
+        response = self.client.get(reverse("home"))
+        content = response.content.decode()
+        if "data-home-row-slot" not in content:
+            self.skipTest("fixture has no deferred rows")
+        self.assertNotRegex(content, r"<div data-home-row-slot[^>]*hx-trigger=\"load")
+        self.assertIn('hx-trigger="floppy:home-row-fallback"', content)
+        # The fallback fires only when the island never mounted.
+        self.assertIn("reactMounted === 'true'", content)
+
     def setUp(self):
         """Create a user and log in."""
         self.credentials = {"username": "test", "password": "12345"}
@@ -1131,6 +1142,45 @@ class HomeArtworkPollTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"every 30s", response.content)
         self.assertIn(b"load delay:1s", response.content)
+
+    def _build_cover_row(self):
+        from unittest import mock
+
+        from django.core.cache import cache
+
+        from app import home_artwork
+        from users import home_screen
+        from users.models import HomeScreenRow
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        row = HomeScreenRow.objects.create(user=self.user, media_type="music", row_type="library_query")
+        with mock.patch.object(
+            home_screen, "_build_row_section", return_value={"row_id": row.id, "poll_for_covers": True}
+        ):
+            home_screen._cached_row_section(self.user, row, "music", 14)
+        return row, home_artwork
+
+    def test_first_poll_after_a_build_does_not_rebuild_unchanged_rows(self):
+        """The page just built these rows; with no new cover the poll must not redo them."""
+        from unittest import mock
+
+        row, home_artwork = self._build_cover_row()
+        with mock.patch("users.home_screen.build_home_page_groups") as rebuild:
+            rows, poll_ids, _pending = home_artwork.refresh_home_artwork(self.user, {row.id}, 0)
+        rebuild.assert_not_called()
+        self.assertEqual((rows, poll_ids), ([], [row.id]))
+
+    def test_a_cover_that_arrived_since_the_build_still_rebuilds(self):
+        from unittest import mock
+
+        row, home_artwork = self._build_cover_row()
+        with (
+            mock.patch.object(home_artwork, "artwork_cover_fingerprint", return_value=(0, 0, 99)),
+            mock.patch("users.home_screen.build_home_page_groups", return_value=[]) as rebuild,
+        ):
+            home_artwork.refresh_home_artwork(self.user, {row.id}, 0)
+        rebuild.assert_called_once()
 
     def test_rows_return_as_oob_swaps_and_poller_stops_when_covered(self):
         # A music-family row with artwork present should not keep polling.

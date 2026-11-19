@@ -17,6 +17,7 @@ from app import (
     view_constants,
 )
 from app import statistics as stats
+from app.helpers import coerce_list as _coerce_list
 from app.models import (
     Album,
     Artist,
@@ -60,14 +61,6 @@ def _coerce_text(value) -> str:
     if isinstance(value, str):
         return value
     return str(value)
-
-
-def _coerce_list(value) -> list:
-    if isinstance(value, list):
-        return value
-    if value in (None, ""):
-        return []
-    return [value]
 
 
 def _parse_release_date_str(release_date_value):

@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActivityList } from '../ui/controls/ActivityList';
 import { Button } from '../ui/Button';
 import { Chip } from '../settings/Chip';
 import { Dialog } from '../ui/controls/Dialog';
 import { Form, useForm } from '../ui/controls/Form';
 import { SettingsCard } from '../settings/SettingsCard';
+import { Icon } from '../ui/Icon';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -104,17 +105,31 @@ function progressPercent(current, total) {
   return Math.max(0, Math.min(100, Math.round((Number(current) / Number(total)) * 100)));
 }
 
-function Section({ title, description, colors, children }) {
-  return <SettingsCard title={title} palette={colors}>
-    {description ? <Text style={[styles.description, { color: colors.textMuted }]}>{description}</Text> : null}
+function Section({ title, description, colors, children, headingLevel, icon }) {
+  return <SettingsCard title={title} palette={colors} headingLevel={headingLevel}
+    icon={icon ? <Icon spec={icon} color={colors.link || colors.accent} size={24} /> : null}>
+    {description ? <Text style={[styles.description, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20, marginBottom: 4 }]}>{description}</Text> : null}
     {children}
   </SettingsCard>;
 }
 
+function Source({ row, colors }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+    {row.sourceLogo ? <Image source={{ uri: row.sourceLogo }} accessibilityLabel="" style={{ width: 24, height: 24 }} resizeMode="contain" /> : null}
+    <Text style={[styles.rowTitle, { color: colors.text }, colors.pageCards && { fontSize: 16, lineHeight: 24, fontWeight: '500' }]}>{row.sourceLabel || row.source}</Text>
+  </View>;
+}
+
 // The universal Form owns transport, so its buttons ask the form context to
 // submit instead of relying on browser submit semantics.
-function SubmitButton({ label, tone, palette }) {
+function SubmitButton({ label, tone, palette, textOnly = false }) {
   const form = useForm();
+  if (textOnly) return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ disabled: form.isSubmitting, busy: form.isSubmitting }} disabled={form.isSubmitting}
+    onPress={() => form.submit()} style={{ alignSelf: 'flex-start' }}>
+    <Text style={{ color: palette['ghost-danger']?.text || palette['danger-solid']?.background,
+      fontSize: 12, lineHeight: 16 }}>{label}</Text>
+  </Pressable>;
   return <Button label={label} tone={tone} palette={palette}
     busy={form.isSubmitting} disabled={form.isSubmitting}
     onPress={() => form.submit()} />;
@@ -144,6 +159,9 @@ export function ProviderActivityView({
   onSubmit,
   onConfirm,
   onRetry,
+  showSources = false,
+  headingLevel,
+  icons = {},
 }) {
   const colors = { ...DEFAULT_PALETTE, ...palette };
   const buttons = { ...DEFAULT_BUTTON_PALETTE, ...buttonPalette };
@@ -244,8 +262,12 @@ export function ProviderActivityView({
   const cleanup = data?.cleanup || [];
   const paging = page > 1 || Boolean(data?.hasMore);
   const pagingLocked = openDetails.size > 0;
+  const List = colors.pageCards ? View : ActivityList;
+  const listProps = colors.pageCards ? { role: 'list', style: { gap: 12 } } : { palette: colors };
+  const nativeRow = colors.pageCards ? { paddingVertical: 16, paddingHorizontal: 16, gap: 4, backgroundColor: colors.surfaceStrong, borderRadius: colors.radius } : null;
+  const nativeEmpty = colors.pageCards ? { padding: 24, gap: 4, backgroundColor: colors.surfaceStrong, borderRadius: colors.radius, alignItems: 'center' } : { gap: 4 };
 
-  return <View testID="provider-activity" style={styles.container}>
+  return <View testID="provider-activity" style={[styles.container, colors.pageCards && { gap: 24 }]}>
     {error ? <View accessibilityRole="alert" style={[styles.alert, { borderColor: colors.danger }]}>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>{copy.loadError}</Text>
       <Button label={copy.retry} tone="surface" onPress={retryLoad} palette={buttons} />
@@ -255,11 +277,12 @@ export function ProviderActivityView({
     </Text> : null}
 
     {data ? <>
-      <Section title={copy.schedulesTitle} colors={colors}>
-        {schedules.length ? <ActivityList palette={colors}>
+      <Section title={copy.schedulesTitle} description={copy.schedulesCopy} colors={colors} headingLevel={headingLevel} icon={icons.schedules}>
+        {schedules.length ? <List {...listProps}>
           {schedules.map((schedule, index) => <View key={schedule.id}
-            style={[styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            style={[styles.row, nativeRow, !colors.pageCards && index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
             <View style={styles.rowHeading}>
+              {showSources ? <Source row={schedule} colors={colors} /> : null}
               <Text style={[styles.rowTitle, { color: colors.text }]}>{schedule.schedule}</Text>
               <Form key={schedule.name} action={schedule.action} csrf={model.csrf} returnTo={model.next}
                 defaultValues={{ task_name: schedule.name }}
@@ -271,18 +294,22 @@ export function ProviderActivityView({
               {copy.username}: {schedule.username}
             </Text> : null}
             <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.mode}: {schedule.mode}</Text>
-            <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.lastImport}: {schedule.lastRun || '—'}</Text>
-            <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.nextImport}: {schedule.nextRun || '—'}</Text>
+            <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.lastImport}: {schedule.lastRun || '-'}</Text>
+            <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.nextImport}: {schedule.nextRun || '-'}</Text>
           </View>)}
-        </ActivityList> : <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.noSchedules}</Text>}
+        </List> : <View style={nativeEmpty}>
+          <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20, textAlign: 'center' }]}>{copy.noSchedules}</Text>
+          {copy.noSchedulesHint ? <Text style={[styles.meta, { color: colors.textMuted }, colors.pageCards && { lineHeight: 16, textAlign: 'center' }]}>{copy.noSchedulesHint}</Text> : null}
+        </View>}
       </Section>
 
-      <Section title={copy.historyTitle} description={copy.historyWindow} colors={colors}>
-        {results.length ? <ActivityList palette={colors}>
+      <Section title={copy.historyTitle} description={copy.historyWindow} colors={colors} headingLevel={headingLevel} icon={icons.history}>
+        {results.length ? <List {...listProps}>
           {results.map((result, index) => <View key={result.id}
-            style={[styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            style={[styles.row, nativeRow, !colors.pageCards && index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
             <View style={styles.rowHeading}>
               <Chip label={result.statusLabel} palette={chipPalette(colors, statusTone(result.status))} />
+              {showSources ? <Source row={result} colors={colors} /> : null}
               <Text style={[styles.meta, { color: colors.textSecondary }]}>{result.date}</Text>
             </View>
             {result.summary ? <Text style={[styles.copy, { color: colors.textSecondary }]}>{result.summary}</Text> : null}
@@ -309,7 +336,10 @@ export function ProviderActivityView({
                 tone="surface" onPress={() => openDetail(result)} palette={buttons} />
             </View> : null}
           </View>)}
-        </ActivityList> : <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.noHistory}</Text>}
+        </List> : <View style={nativeEmpty}>
+          <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20, textAlign: 'center' }]}>{copy.noHistory}</Text>
+          {copy.noHistoryHint ? <Text style={[styles.meta, { color: colors.textMuted }, colors.pageCards && { lineHeight: 16, textAlign: 'center' }]}>{copy.noHistoryHint}</Text> : null}
+        </View>}
         {copied === 'error' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>
           {copy.copyError}
         </Text> : null}
@@ -322,39 +352,52 @@ export function ProviderActivityView({
         </View> : null}
       </Section>
 
-      {runs.length ? <Section title={copy.runsTitle} description={copy.runsWindow} colors={colors}>
-        <ActivityList palette={colors}>
+      {runs.length ? <Section title={copy.runsTitle} description={copy.runsWindow} colors={colors} headingLevel={headingLevel} icon={icons.runs}>
+        <List {...listProps}>
           {runs.map((run, index) => <View key={run.id}
-            style={[styles.row, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-            <View style={styles.rowHeading}>
-              <Chip label={run.statusLabel} palette={chipPalette(colors, statusTone(run.status))} />
-              <Text style={[styles.meta, { color: colors.textSecondary }]}>{run.date}</Text>
+            style={[styles.row, nativeRow, colors.pageCards && { gap: 0 }, !colors.pageCards && index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            <View style={colors.pageCards ? { gap: 8, marginBottom: 8 } : undefined}>
+            <View style={[styles.rowHeading, colors.pageCards && { justifyContent: 'flex-start', gap: 12 }]}>
+              {colors.pageCards && run.status === 'completed' ? <Text style={{ color: colors.importRunCompletedText,
+                backgroundColor: colors.importRunCompletedBackground, paddingHorizontal: 8, paddingVertical: 4,
+                fontSize: 12, lineHeight: 16, borderRadius: colors.radius }}>{run.statusLabel}</Text>
+                : <Chip label={run.statusLabel} palette={chipPalette(colors, statusTone(run.status))} />}
+              {showSources ? <Source row={run} colors={colors} /> : null}
+              {!colors.pageCards ? <Text style={[styles.meta, { color: colors.textSecondary }]}>{run.date}</Text> : null}
             </View>
-            <Text style={[styles.copy, { color: colors.textMuted }]}>
+            {colors.pageCards ? <Text style={[styles.meta, { color: colors.textMuted, lineHeight: 16 }]}>{run.date}</Text> : null}
+            </View>
+            <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && { fontSize: 14, lineHeight: 20, color: colors.textSecondary }]}>
               {copy.created}: {run.created} · {copy.updated}: {run.updated} · {copy.skipped}: {run.skipped} · {copy.failed}: {run.failed}
               {run.remaining != null ? ` · ${copy.remaining}: ${run.remaining}` : ''}
             </Text>
-            <Form action={run.action} csrf={model.csrf} returnTo={model.next}
+            <View style={colors.pageCards ? { marginTop: 8 } : undefined}><Form action={run.action} csrf={model.csrf} returnTo={model.next}
               confirm={run.status === 'running' ? copy.cancelConfirm : copy.removeItemsConfirm}
               onSubmit={onSubmit} onConfirm={onConfirm}>
               <SubmitButton label={run.status === 'running' ? copy.cancelImport : copy.undoImport}
-                tone="danger-solid" palette={buttons} />
-            </Form>
+                tone="danger-solid" palette={buttons} textOnly={Boolean(colors.pageCards)} />
+            </Form></View>
           </View>)}
-        </ActivityList>
+        </List>
       </Section> : null}
 
-      {cleanup.length ? <Section title={copy.cleanupTitle} description={copy.cleanupWindow} colors={colors}>
-        <ActivityList palette={colors}>
-          {cleanup.map((row, index) => <View key={row.mediaType}
-            style={[styles.cleanupRow, index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-            <Text style={[styles.copy, { color: colors.textSecondary }]}>{row.mediaLabel} · {row.count}</Text>
+      {cleanup.length ? <Section title={copy.cleanupTitle} description={copy.cleanupWindow} colors={colors} headingLevel={headingLevel} icon={icons.cleanup}>
+        <List {...listProps}>
+          {cleanup.map((row, index) => <View key={`${row.source || ''}-${row.mediaType}`}
+            style={[styles.cleanupRow, nativeRow, colors.pageCards && { gap: 12 }, !colors.pageCards && index > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            {colors.pageCards ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 }}>
+              {showSources ? <Source row={row} colors={colors} /> : null}
+              <Text style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 20 }}>{row.mediaLabel} · {row.count} {row.count === 1 ? 'item' : 'items'}</Text>
+            </View> : <>
+              {showSources ? <Source row={row} colors={colors} /> : null}
+              <Text style={[styles.copy, { color: colors.textSecondary }]}>{row.mediaLabel} · {row.count}</Text>
+            </>}
             <Form action={row.action} csrf={model.csrf} returnTo={model.next}
-              confirm={copy.deleteAllConfirm} onSubmit={onSubmit} onConfirm={onConfirm}>
-              <SubmitButton label={copy.deleteAll} tone="danger-solid" palette={buttons} />
+              confirm={row.confirm || copy.deleteAllConfirm} onSubmit={onSubmit} onConfirm={onConfirm}>
+              <SubmitButton label={copy.deleteAll} tone="danger-solid" palette={buttons} textOnly={Boolean(colors.pageCards)} />
             </Form>
           </View>)}
-        </ActivityList>
+        </List>
       </Section> : null}
     </> : null}
 

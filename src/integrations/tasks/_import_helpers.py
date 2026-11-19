@@ -24,6 +24,8 @@ IMPORT_COUNT_METRIC_KEYS = frozenset(
         "rejected",
         "updated",
         "skipped",
+        # Rows the upstream reported exactly as before: looked at, not written.
+        "unchanged",
         "baseline",
         "skipped_ignored",
         "skipped_missing_ids",
@@ -81,10 +83,17 @@ STREMIO_IMPORT_TIME_LIMIT = 30 * 60
 WETRAKR_IMPORT_SOFT_TIME_LIMIT = 90 * 60
 WETRAKR_IMPORT_TIME_LIMIT = 120 * 60
 
+# YouTube Takeout can contain a large history that takes hours to parse and
+# write. Keep this exception task-specific so other imports retain the global
+# worker bound.
+YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT = 4 * 60 * 60
+YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT = YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT + 5 * 60
+
 # ImportRun.source -> hard limit, for sources that outlive the global one.
 SOURCE_TIME_LIMITS = {
     "stremio": STREMIO_IMPORT_TIME_LIMIT,
     "wetrakr": WETRAKR_IMPORT_TIME_LIMIT,
+    "youtube_takeout": YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
 }
 
 
@@ -234,6 +243,7 @@ def format_import_message(imported_counts, warning_messages=None):
         ("created", "created"),
         ("updated", "updated"),
         ("skipped", "skipped (unchanged)"),
+        ("unchanged", "unchanged"),
         ("baseline", "starting playtimes remembered"),
         ("skipped_missing_ids", "skipped (missing IDs)"),
         ("skipped_existing", "skipped (existing)"),

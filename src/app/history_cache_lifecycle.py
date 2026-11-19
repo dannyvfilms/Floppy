@@ -1,15 +1,18 @@
 """Cache lifecycle management: invalidation and background-task scheduling."""
 
 import logging
+import uuid
 from collections.abc import Iterable
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils import timezone
 
 from app.history_cache_utils import (
     HISTORY_COVERAGE_REPAIR_LOCK_TTL,
     HISTORY_COVERAGE_REPAIR_PREFIX,
+    HISTORY_LOGGING_STYLES,
     HISTORY_REFRESH_LOCK_MAX_AGE,
     _bump_history_era,
     _cache_key,
@@ -17,12 +20,40 @@ from app.history_cache_utils import (
     _day_cache_key,
     _day_key_from_value,
     _normalize_logging_style,
+    _refresh_dedupe_key,
     _refresh_lock_key,
+    _refresh_rerun_key,
     _typed_history_index_registry_key,
+    history_coverage_styles,
 )
-from app.log_safety import stable_hmac
 
 logger = logging.getLogger(__name__)
+
+
+def history_rebuild_styles(user_id: int, logging_styles=None):
+    """Split invalidated styles into ``(rebuild, drop)``.
+
+    Only the style the user reads is rebuilt (``history_coverage_styles``).
+    The other is dropped, so it is rebuilt on demand from rows and never
+    served from before the write.
+    """
+    styles = tuple(
+        dict.fromkeys(
+            _normalize_logging_style(style)
+            for style in logging_styles or HISTORY_LOGGING_STYLES
+        ),
+    )
+    user = (
+        get_user_model()
+        .objects.filter(pk=user_id)
+        .only("id", "game_logging_style")
+        .first()
+    )
+    keep = history_coverage_styles(user)
+    return (
+        tuple(style for style in styles if style in keep),
+        tuple(style for style in styles if style not in keep),
+    )
 
 
 def _clean_refresh_lock(lock_key: str):
@@ -136,14 +167,32 @@ def invalidate_history_days(
 
     Day-scoped invalidations keep the existing payloads readable by default and
     schedule a targeted rebuild. Hard deletes are reserved for explicit force
-    operations such as cache-version busts.
+    operations such as cache-version busts, and for a style that is not
+    rebuilt (see ``history_rebuild_styles``): its changed days and its index
+    are deleted, so its next read rebuilds them from rows.
+
+    Returns the styles that are rebuilt.
     """
-    logging_styles = logging_styles or ("sessions", "repeats")
     normalized_keys = []
     for value in day_keys or []:
         day_key = _day_key_from_value(value)
         if day_key:
             normalized_keys.append(day_key)
+    logging_styles, dropped_styles = history_rebuild_styles(user_id, logging_styles)
+
+    for logging_style in dropped_styles:
+        _delete_history_cache_entries(
+            user_id, logging_style, normalized_keys, reason
+        )
+        logger.info(
+            "history_day_invalidate user_id=%s logging_style=%s dates=%s "
+            "reason=%s deleted=%s rebuild=false",
+            user_id,
+            logging_style,
+            len(normalized_keys),
+            reason or "unspecified",
+            bool(normalized_keys),
+        )
 
     for style in logging_styles:
         logging_style = _normalize_logging_style(style)
@@ -191,6 +240,7 @@ def invalidate_history_days(
                 scheduled,
                 reason or "unspecified",
             )
+    return logging_styles
 
 
 def invalidate_history_cache(
@@ -216,7 +266,7 @@ def invalidate_history_cache(
         )
         return
 
-    logging_styles = logging_styles or ("sessions", "repeats")
+    logging_styles = logging_styles or HISTORY_LOGGING_STYLES
     for style in logging_styles:
         logging_style = _normalize_logging_style(style)
         refresh_lock = _clean_refresh_lock(_refresh_lock_key(user_id, logging_style))
@@ -232,8 +282,10 @@ def invalidate_history_cache(
     # Schedule refresh after invalidating all cache
     # This ensures cache is rebuilt and page doesn't get stuck
     if force:
-        for style in logging_styles:
-            logging_style = _normalize_logging_style(style)
+        # Everything was deleted, so a style left unscheduled is simply
+        # rebuilt on its next read.
+        rebuild_styles, _dropped = history_rebuild_styles(user_id, logging_styles)
+        for logging_style in rebuild_styles:
             scheduled = schedule_history_refresh(
                 user_id,
                 logging_style,
@@ -275,16 +327,7 @@ def schedule_history_refresh(
         day_key = _day_key_from_value(value)
         if day_key:
             normalized_day_keys.append(day_key)
-    if normalized_day_keys:
-        dedupe_seed = ",".join(normalized_day_keys)
-        dedupe_hash = stable_hmac(
-            dedupe_seed,
-            namespace="history_refresh_days",
-            length=10,
-        )
-        dedupe_key = f"{lock_key}_days_{dedupe_hash}"
-    else:
-        dedupe_key = lock_key
+    dedupe_key = _refresh_dedupe_key(user_id, logging_style, normalized_day_keys)
     # Keep TTL close to the frontend polling timeout so locks don't appear "stuck"
     # while still covering normal task execution time.
     lock_ttl = 120  # Matches CacheUpdater timeout window
@@ -294,6 +337,10 @@ def schedule_history_refresh(
         # Store dedupe_key in payload so we can delete it when task completes
         lock_payload["dedupe_key"] = dedupe_key
     if debounce_seconds and not cache.add(dedupe_key, lock_payload, debounce_seconds):
+        # A refresh of these days is queued or running. If it has already
+        # read its rows, this change is not in them: leave a marker the
+        # refresh checks when it finishes, so it queues one more pass.
+        cache.set(_refresh_rerun_key(dedupe_key), uuid.uuid4().hex, lock_ttl)
         return False
 
     # Extend the lock TTL to cover the full task duration

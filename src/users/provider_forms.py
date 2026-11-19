@@ -21,6 +21,15 @@ def build(request, slug, tab, context):
     """Return {form key: model} for the integration forms a provider tab shows."""
     user = request.user
     forms = {}
+    if slug in {"plex", "jellyfin", "emby", "kodi", "stremio"}:
+        # The web shows this as a standalone card on the tracking tab; it is
+        # an option form for clients that render forms from data.
+        forms["group_scrobbled_anime"] = _form(
+            request, "group-scrobbled-anime", "update_group_scrobbled_anime", [{
+                "name": "enabled", "type": "toggle", "onValue": "true",
+                "label": _("Track scrobbled anime per episode"), "value": bool(user.group_scrobbled_anime),
+                "help": _("When a media server or scrobbler reports an episode of an anime you track as a MAL entry, or you mark that entry completed, convert it to per-episode tracking so each watched episode shows as watched. This is the same conversion as marking an episode by hand. MAL sync keeps working after the conversion."),
+            }], submit="Save")
     if slug == "plex":
         forms["plex_usernames"] = _form(request, "plex-usernames", "update_plex_usernames", [{
             "name": "plex_usernames", "type": "text", "label": _("Plex Usernames"), "value": user.plex_usernames,

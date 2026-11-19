@@ -99,7 +99,7 @@
       {% elif seerr_requests %}
         {% for request in seerr_requests %}
           <p class="flex items-center gap-2 text-sm">
-            <span class="text-[var(--color-text-secondary)]">{{ request.by|default:"—" }}</span>
+            <span class="text-[var(--color-text-secondary)]">{{ request.by|default:"-" }}</span>
             <span class="text-xs text-[var(--color-text-muted)]">{{ request.when|date:"M j, Y" }}</span>
             <span class="ml-auto flex">{% badge request.status "sm" "outline" %}</span>
           </p>

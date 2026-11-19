@@ -14,16 +14,21 @@ from rest_framework.response import Response
 from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.fork_services_movie import resolve_or_create_movie
-from app.history_cache_utils import normalize_history_media_type_tokens
+from app.history_cache_utils import (
+    UnsupportedHistoryMediaTypeError,
+    normalize_history_media_type_tokens,
+)
 from app.models import BasicMedia, Episode, ItemTag, MediaTypes, Movie, Sources, Tag
 from app.providers import services
 from app.services import metadata_resolution
+from app.tag_views import tag_type_counts
 from app.tasks_bulk_plays import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
 from integrations.state.ratings import rating_edit
 
 from . import fork_helpers
 from .contract_serializers import DetailErrorSerializer
+from .errors import failure_response
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
     apply_episode_score,
@@ -277,9 +282,8 @@ class MediaMovieWatchView(drf_views.APIView):
         try:
             movie = resolve_or_create_movie(request.user, media_id, source)
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve movie.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve movie.", e, status=HTTP.NOT_FOUND
             )
 
         play, created = movie.watch(end_date, external_id=external_id)
@@ -414,10 +418,17 @@ class TagsView(drf_views.APIView):
         tags = Tag.objects.filter(user=request.user).annotate(
             item_count=Count("item_tags"),
         )
-        return Response(
-            {"results": [_serialize_tag(tag, tag.item_count) for tag in tags]},
-            status=HTTP.OK,
-        )
+        # FORK: per-media-type counts, the same ones the web Tags page shows.
+        counts_by_tag = tag_type_counts(request.user)
+        results = []
+        for tag in tags:
+            payload = _serialize_tag(tag, tag.item_count)
+            payload["type_breakdown"] = [
+                {"media_type": media_type, "count": count}
+                for media_type, count in counts_by_tag.get(tag.id, {}).items()
+            ]
+            results.append(payload)
+        return Response({"results": results}, status=HTTP.OK)
 
     def post(self, request):
         """Create a tag (names are unique per user, case-insensitive)."""
@@ -613,9 +624,9 @@ class HistoryView(drf_views.APIView):
                 normalized_media_types = normalize_history_media_type_tokens(
                     raw_media_types,
                 )
-            except ValueError as exc:
+            except UnsupportedHistoryMediaTypeError as exc:
                 return Response(
-                    {"detail": str(exc)},
+                    {"detail": exc.message},
                     status=HTTP.BAD_REQUEST,
                 )
             filters["media_type"] = ",".join(sorted(normalized_media_types))
@@ -711,7 +722,7 @@ class HistoryRecordView(drf_views.APIView):
             )
         except fork_services_history.HistoryDeletionError as e:
             return Response(
-                {"detail": str(e)},
+                {"detail": e.message},
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
         return Response(status=HTTP.NO_CONTENT)

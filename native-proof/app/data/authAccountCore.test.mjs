@@ -25,7 +25,7 @@ test('account reads and writes use the native JSON contract', async () => {
   assert.equal(account.mode, 'server');
 
   await account.load();
-  assert.equal(fixture.calls[0].path, '/settings/account/');
+  assert.equal(fixture.calls[0].path, '/settings/account');
   assert.equal(fixture.calls[0].options.method, 'GET');
   assert.equal(fixture.calls[0].options.headers['X-Floppy-Client'], 'native');
   assert.equal(fixture.calls[0].options.headers.Accept, 'application/json');
@@ -72,4 +72,17 @@ test('account transport refuses to run without a session', async () => {
   const account = createAccountTransport();
   assert.equal(account.mode, 'local');
   await assert.rejects(() => account.load(), error => error.code === AUTH_ERROR_CODES.SIGNED_OUT);
+});
+
+test('a token sign-in reaches the account through the API, a session through the page', async () => {
+  const token = authFixture(() => ({ ok: true }));
+  token.auth.getState = () => ({ authType: 'token' });
+  await createAccountTransport({ auth: token.auth }).load();
+  assert.equal(token.calls[0].path, '/api/v1/user/account/');
+  assert.equal(token.calls[0].options.headers['X-Floppy-Client'], 'native');
+
+  const session = authFixture(() => ({ ok: true }));
+  session.auth.getState = () => ({ authType: 'session' });
+  await createAccountTransport({ auth: session.auth }).load();
+  assert.equal(session.calls[0].path, '/settings/account');
 });

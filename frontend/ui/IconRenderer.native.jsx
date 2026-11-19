@@ -4,13 +4,17 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, {
   Circle,
+  Defs,
   Ellipse,
   G,
   Line,
+  LinearGradient,
   Path,
   Polygon,
   Polyline,
   Rect,
+  RadialGradient,
+  Stop,
 } from 'react-native-svg';
 
 // Icons arrive as parsed shapes from the server, never as markup. This is the
@@ -26,6 +30,10 @@ const TAGS = {
   polygon: Polygon,
   ellipse: Ellipse,
   g: G,
+  defs: Defs,
+  linearGradient: LinearGradient,
+  radialGradient: RadialGradient,
+  stop: Stop,
 };
 
 const ATTRS = {
@@ -36,6 +44,8 @@ const ATTRS = {
   'stroke-dashoffset': 'strokeDashoffset',
   'fill-rule': 'fillRule',
   'clip-rule': 'clipRule',
+  'stop-color': 'stopColor',
+  'stop-opacity': 'stopOpacity',
 };
 
 function convert(node, color) {

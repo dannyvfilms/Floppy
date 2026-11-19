@@ -10,12 +10,16 @@ Plays follow the same rule as the plays API: one per video and day, keyed
 doubles a play.
 """
 
+import gzip
 import json
 import logging
 import re
+import tarfile
+import tempfile
 import zipfile
 from collections import defaultdict
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 from pathlib import PurePosixPath
 from urllib.parse import parse_qs, urlparse
 
@@ -38,6 +42,13 @@ HISTORY_FILE_PREFIX = "watch-history"
 MAX_TITLE_LENGTH = 255
 MAX_CHANNEL_LENGTH = 255
 PLAY_BATCH_SIZE = 500
+MAX_HISTORY_FILE_BYTES = 512 * 1024 * 1024
+MAX_TGZ_ARCHIVE_BYTES = 1024 * 1024 * 1024
+MAX_TGZ_UNCOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_TGZ_MEMBERS = 10_000
+TGZ_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
+TGZ_READ_CHUNK_BYTES = 1024 * 1024
+HTML_STREAM_CHUNK_SIZE = 64 * 1024
 
 
 def video_id_from_url(url):
@@ -147,7 +158,7 @@ def entry_from_record(record):
 
 
 def load_records(file):
-    """Read the history list from uploaded JSON, HTML, or a Takeout zip."""
+    """Read the history list from uploaded JSON, HTML, ZIP, or TGZ."""
     try:
         magic = file.read(2)
         file.seek(0)
@@ -156,9 +167,18 @@ def load_records(file):
         raise MediaImportError(msg) from error
 
     # A zip is opened from the file itself, so a large export is not held in memory.
-    raw = _history_from_zip(file) if magic == b"PK" else file.read()
+    if magic == b"PK":
+        raw = _history_from_zip(file)
+    elif magic == b"\x1f\x8b":
+        raw = _history_from_tgz(file)
+    else:
+        raw = file.read(MAX_HISTORY_FILE_BYTES + 1)
+        if len(raw) > MAX_HISTORY_FILE_BYTES:
+            msg = "The YouTube watch history file is too large."
+            raise MediaImportError(msg)
     try:
         content = raw.decode("utf-8-sig")
+        del raw
         if content.lstrip().lower().startswith(("<html", "<!doctype html")):
             return _records_from_html(content)
         records = json.loads(content)
@@ -171,44 +191,135 @@ def load_records(file):
     return records
 
 
+class _OuterCellHTMLParser(HTMLParser):
+    """Buffer one Takeout outer-cell fragment at a time from streamed HTML."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self._parts = None
+        self._div_depth = 0
+        self._ready = []
+
+    def handle_starttag(self, tag, attrs):
+        """Start buffering at an outer-cell div and retain markup inside it."""
+        start_tag = self.get_starttag_text() or f"<{tag}>"
+        if self._parts is None:
+            classes = (dict(attrs).get("class", "") or "").split()
+            if tag == "div" and "outer-cell" in classes:
+                self._parts = [start_tag]
+                self._div_depth = 1
+            return
+        self._parts.append(start_tag)
+        if tag == "div":
+            self._div_depth += 1
+
+    def handle_startendtag(self, tag, attrs):
+        """Retain self-closing markup within the current card."""
+        if self._parts is not None:
+            self._parts.append(self.get_starttag_text() or f"<{tag}/>")
+
+    def handle_endtag(self, tag):
+        """Finish a card when its outermost div closes."""
+        if self._parts is None:
+            return
+        self._parts.append(f"</{tag}>")
+        if tag == "div":
+            self._div_depth -= 1
+            if self._div_depth == 0:
+                self._ready.append("".join(self._parts))
+                self._parts = None
+
+    def handle_data(self, data):
+        """Retain text for the per-card parser."""
+        if self._parts is not None:
+            self._parts.append(data)
+
+    def handle_entityref(self, name):
+        """Retain named entities without changing their HTML meaning."""
+        if self._parts is not None:
+            self._parts.append(f"&{name};")
+
+    def handle_charref(self, name):
+        """Retain numeric entities without changing their HTML meaning."""
+        if self._parts is not None:
+            self._parts.append(f"&#{name};")
+
+    def handle_comment(self, data):
+        """Retain comments inside a card, if any."""
+        if self._parts is not None:
+            self._parts.append(f"<!--{data}-->")
+
+    def take_cards(self):
+        """Return completed card fragments and release their temporary storage."""
+        cards, self._ready = self._ready, []
+        return cards
+
+    def finish(self):
+        """Flush the final incomplete card as HTML parsers do at end-of-file."""
+        super().close()
+        if self._parts is not None:
+            self._ready.append("".join(self._parts))
+            self._parts = None
+        return self.take_cards()
+
+
+def _record_from_html_card(card):
+    """Convert one parsed Takeout HTML card into a JSON-shaped record."""
+    header = card.select_one(".header-cell")
+    cell = card.select_one(
+        ".content-cell.mdl-typography--body-1:not(.mdl-typography--text-right)"
+    )
+    if not header or not cell:
+        return None
+    links = cell.find_all("a")
+    lines = cell.get_text("|", strip=True).split("|")
+    when = next((line for line in reversed(lines) if parse_time(line)), "")
+    if links and video_id_from_url(links[0].get("href")) and not when:
+        msg = "Could not read a YouTube watch timestamp in the HTML file."
+        raise MediaImportError(msg)
+    return {
+        "header": header.get_text(strip=True),
+        "title": links[0].get_text(strip=True) if links else "",
+        "titleUrl": links[0].get("href") if links else "",
+        "subtitles": [{"name": links[1].get_text(strip=True)}]
+        if len(links) > 1
+        else [],
+        "time": when,
+        "details": _html_details(card),
+    }
+
+
 def _records_from_html(content):
-    """Convert Google My Activity cards to the JSON record shape."""
+    """Convert Takeout HTML to records without building a document-sized tree."""
     from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(content, "html.parser")
-    cards = soup.select(".outer-cell")
-    if not cards:
+    parser = _OuterCellHTMLParser()
+    records = []
+    cards_seen = 0
+
+    def process_card(fragment):
+        nonlocal cards_seen
+        cards_seen += 1
+        if cards_seen % 5000 == 0:
+            logger.info("YouTube Takeout: read %s HTML cards", cards_seen)
+            import_progress.report(cards_seen, None, "Reading YouTube history")
+        card = BeautifulSoup(fragment, "html.parser").select_one(".outer-cell")
+        if card is None:
+            return
+        record = _record_from_html_card(card)
+        if record is not None:
+            records.append(record)
+
+    for offset in range(0, len(content), HTML_STREAM_CHUNK_SIZE):
+        parser.feed(content[offset : offset + HTML_STREAM_CHUNK_SIZE])
+        for fragment in parser.take_cards():
+            process_card(fragment)
+    for fragment in parser.finish():
+        process_card(fragment)
+
+    if not cards_seen:
         msg = "This isn't a YouTube watch history HTML file."
         raise MediaImportError(msg)
-    records = []
-    for index, card in enumerate(cards, start=1):
-        if index % 5000 == 0:
-            logger.info("YouTube Takeout: reading HTML card %s of %s", index, len(cards))
-            import_progress.report(index, len(cards), "Reading YouTube history")
-        header = card.select_one(".header-cell")
-        cell = card.select_one(
-            ".content-cell.mdl-typography--body-1:not(.mdl-typography--text-right)"
-        )
-        if not header or not cell:
-            continue
-        links = cell.find_all("a")
-        lines = cell.get_text("|", strip=True).split("|")
-        when = next((line for line in reversed(lines) if parse_time(line)), "")
-        if links and video_id_from_url(links[0].get("href")) and not when:
-            msg = "Could not read a YouTube watch timestamp in the HTML file."
-            raise MediaImportError(msg)
-        records.append(
-            {
-                "header": header.get_text(strip=True),
-                "title": links[0].get_text(strip=True) if links else "",
-                "titleUrl": links[0].get("href") if links else "",
-                "subtitles": [{"name": links[1].get_text(strip=True)}]
-                if len(links) > 1
-                else [],
-                "time": when,
-                "details": _html_details(card),
-            }
-        )
     return records
 
 
@@ -225,15 +336,98 @@ def _history_from_zip(file):
             if not names:
                 msg = "No watch-history.json or watch-history.html in this zip."
                 raise MediaImportError(msg)
-            return archive.read(
-                min(
-                    names,
-                    key=lambda name: (not name.lower().endswith(".json"), len(name)),
-                )
+            name = min(
+                names,
+                key=lambda name: (not name.lower().endswith(".json"), len(name)),
             )
+            info = archive.getinfo(name)
+            if info.file_size > MAX_HISTORY_FILE_BYTES:
+                msg = "The YouTube watch history file is too large."
+                raise MediaImportError(msg)
+            return archive.read(info)
     except zipfile.BadZipFile as error:
         msg = "This zip can't be opened."
         raise MediaImportError(msg) from error
+
+
+def _history_from_tgz(file):
+    """Read a matching history member from a gzip-compressed Takeout tar."""
+    try:
+        file.seek(0, 2)
+        archive_size = file.tell()
+        file.seek(0)
+        if archive_size > MAX_TGZ_ARCHIVE_BYTES:
+            msg = "This tgz archive is too large."
+            raise MediaImportError(msg)
+
+        # Bound gzip expansion before tarfile parses headers or caches members.
+        # SpooledTemporaryFile keeps ordinary exports in memory and rolls larger
+        # archives to disk, with a hard cap on total decompressed bytes.
+        with (
+            gzip.GzipFile(fileobj=file, mode="rb") as compressed,
+            tempfile.SpooledTemporaryFile(
+                max_size=TGZ_SPOOL_MEMORY_BYTES,
+            ) as expanded,
+        ):
+            expanded_size = 0
+            while chunk := compressed.read(TGZ_READ_CHUNK_BYTES):
+                expanded_size += len(chunk)
+                if expanded_size > MAX_TGZ_UNCOMPRESSED_BYTES:
+                    msg = "This tgz archive is too large after decompression."
+                    raise MediaImportError(msg)
+                expanded.write(chunk)
+
+            expanded.seek(0)
+            with tarfile.open(fileobj=expanded, mode="r|") as archive:
+                member_count = 0
+                selected = None
+                selected_key = None
+                selected_size = None
+                for member in archive:
+                    member_count += 1
+                    if member_count > MAX_TGZ_MEMBERS:
+                        msg = "This tgz archive contains too many files."
+                        raise MediaImportError(msg)
+                    if not (
+                        member.isfile()
+                        and PurePosixPath(member.name).name.startswith(
+                            HISTORY_FILE_PREFIX
+                        )
+                        and member.name.lower().endswith((".json", ".html"))
+                    ):
+                        continue
+
+                    key = (
+                        not member.name.lower().endswith(".json"),
+                        len(member.name),
+                    )
+                    if selected_key is not None and key >= selected_key:
+                        continue
+                    selected_key = key
+                    selected_size = member.size
+                    selected = None
+                    if member.size > MAX_HISTORY_FILE_BYTES:
+                        continue
+                    stream = archive.extractfile(member)
+                    if stream is None:
+                        msg = "The YouTube watch history file can't be read."
+                        raise MediaImportError(msg)
+                    selected = stream.read(MAX_HISTORY_FILE_BYTES + 1)
+
+        if selected_key is None:
+            msg = "No watch-history.json or watch-history.html in this tgz."
+            raise MediaImportError(msg)
+        if selected_size > MAX_HISTORY_FILE_BYTES or selected is None:
+            msg = "The YouTube watch history file is too large."
+            raise MediaImportError(msg)
+        if len(selected) > MAX_HISTORY_FILE_BYTES:
+            msg = "The YouTube watch history file is too large."
+            raise MediaImportError(msg)
+    except (tarfile.ReadError, tarfile.CompressionError, EOFError, OSError) as error:
+        msg = "This tgz can't be opened."
+        raise MediaImportError(msg) from error
+    else:
+        return selected
 
 
 def importer(file, user, mode):

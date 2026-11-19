@@ -10,7 +10,7 @@
         <h2 class="text-xl font-semibold">{% translate "Export Data" %}</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-2 text-sm">
-        {% translate "Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup — it does not restore your account, integrations, or preferences, and it cannot replace a damaged database file." %}
+        {% translate "Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup. It does not restore your account, integrations, or preferences, and it cannot replace a damaged database file." %}
       </p>
       {{ backup_panel|json_script:"backup-status-props" }}
       <div data-backup-status-root data-props-id="backup-status-props" x-ignore hx-disable>
@@ -21,7 +21,7 @@
             <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=backup_status.file_count %}{{ count }} file there now.{% plural %}{{ count }} files there now.{% endblocktranslate %}</span>
           {% else %}
             <br>
-            <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
+            <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host. Add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
           {% endif %}
         </p>
         <p class="mb-5 text-sm">
@@ -33,11 +33,11 @@
                 <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=db_snapshot_status.file_count %}{{ count }} snapshot there now. This is the file to restore from if the database itself is damaged.{% plural %}{{ count }} snapshots there now. This is the file to restore from if the database itself is damaged.{% endblocktranslate %}</span>
               {% else %}
                 <br>
-                <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
+                <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host. Add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
               {% endif %}
             {% else %}
               <br>
-              <span class="text-xs text-[var(--color-warning-text)]">{% translate "Disabled — set" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> {% translate "to turn it back on." %}</span>
+              <span class="text-xs text-[var(--color-warning-text)]">{% translate "Disabled. Set" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> {% translate "to turn it back on." %}</span>
             {% endif %}
           {% else %}
             {% translate "PostgreSQL database backups are not managed by Floppy. Configure and test pg_dump/pg_restore separately." %}

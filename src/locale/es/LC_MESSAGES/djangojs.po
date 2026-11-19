@@ -863,56 +863,56 @@ msgid "Colorful"
 msgstr "Colorido"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:7
-msgid "System default — Aug 12, 2025 / 12 Aug 2025"
-msgstr "Predeterminado del sistema — 12 ago 2025 / 12 ago 2025"
+msgid "System default: Aug 12, 2025 / 12 Aug 2025"
+msgstr "Predeterminado del sistema: 12 ago 2025 / 12 ago 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:8
-msgid "ISO 8601 — 2025-08-12"
-msgstr "ISO 8601 — 2025-08-12"
+msgid "ISO 8601: 2025-08-12"
+msgstr "ISO 8601: 2025-08-12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:9
-msgid "Month D, YYYY — Aug 12, 2025"
-msgstr "Mes D, AAAA — 12 ago 2025"
+msgid "Month D, YYYY: Aug 12, 2025"
+msgstr "Mes D, AAAA: 12 ago 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:10
-msgid "D Mon YYYY — 12 Aug 2025"
-msgstr "D mes AAAA — 12 ago 2025"
+msgid "D Mon YYYY: 12 Aug 2025"
+msgstr "D mes AAAA: 12 ago 2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:11
-msgid "M/D/YYYY — 08/12/2025"
-msgstr "M/D/AAAA — 08/12/2025"
+msgid "M/D/YYYY: 08/12/2025"
+msgstr "M/D/AAAA: 08/12/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:12
-msgid "D/M/YYYY — 12/08/2025"
-msgstr "D/M/AAAA — 12/08/2025"
+msgid "D/M/YYYY: 12/08/2025"
+msgstr "D/M/AAAA: 12/08/2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:13
-msgid "DD.MM.YYYY — 12.08.2025"
-msgstr "DD.MM.AAAA — 12.08.2025"
+msgid "DD.MM.YYYY: 12.08.2025"
+msgstr "DD.MM.AAAA: 12.08.2025"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:14
-msgid "YYYY/MM/DD — 2025/08/12"
-msgstr "AAAA/MM/DD — 2025/08/12"
+msgid "YYYY/MM/DD: 2025/08/12"
+msgstr "AAAA/MM/DD: 2025/08/12"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:15
-msgid "System default — 6:45 PM / 18:45"
-msgstr "Predeterminado del sistema — 18:45 / 18:45"
+msgid "System default: 6:45 PM / 18:45"
+msgstr "Predeterminado del sistema: 18:45 / 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:16
-msgid "12-hour (h:mm AM/PM) — 6:45 PM"
-msgstr "12 horas (h:mm a. m./p. m.) — 6:45 p. m."
+msgid "12-hour (h:mm AM/PM): 6:45 PM"
+msgstr "12 horas (h:mm a. m./p. m.): 6:45 p. m."
 
 #: inline_translation_extraction/templates/users/preferences.html.js:17
-msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
-msgstr "12 horas, con cero inicial (hh:mm a. m./p. m.) — 06:45 p. m."
+msgid "12-hour, leading zero (hh:mm AM/PM): 06:45 PM"
+msgstr "12 horas, con cero inicial (hh:mm a. m./p. m.): 06:45 p. m."
 
 #: inline_translation_extraction/templates/users/preferences.html.js:18
-msgid "24-hour (HH:mm) — 18:45"
-msgstr "24 horas (HH:mm) — 18:45"
+msgid "24-hour (HH:mm): 18:45"
+msgstr "24 horas (HH:mm): 18:45"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:19
-msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
-msgstr "24 horas con segundos (HH:mm:ss) — 18:45:00"
+msgid "24-hour with seconds (HH:mm:ss): 18:45:00"
+msgstr "24 horas con segundos (HH:mm:ss): 18:45:00"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:20
 msgid "Comfortable (2 columns)"
@@ -988,13 +988,12 @@ msgid "Both"
 msgstr "Ambos"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:39
-msgid "Sessions — new entry per play; exact history"
-msgstr "Sesiones — una entrada nueva por reproducción; historial exacto"
+msgid "Sessions: new entry per play; exact history"
+msgstr "Sesiones: una entrada nueva por reproducción; historial exacto"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:40
-msgid "Repeats — update one entry; spreads time across range"
-msgstr ""
-"Repeticiones — actualizar una entrada; distribuir el tiempo en el intervalo"
+msgid "Repeats: update one entry; spreads time across range"
+msgstr "Repeticiones: actualizar una entrada; distribuir el tiempo en el intervalo"
 
 #: inline_translation_extraction/templates/users/preferences.html.js:41
 msgid "Pages/Issues/Chapters"

@@ -136,4 +136,19 @@
 
 {% block js %}
   {% include "app/components/_scrollable_row_js.html" %}
+  <script>
+    // The React island fetches every deferred row. Loading them here as well
+    // doubled each row's request and, while the cache was cold, its build. Only
+    // fall back to the server placeholders if the island never mounted (a
+    // failed or stale bundle). Web-only: native clients have no HTMX placeholders.
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var root = document.querySelector('[data-home-root]');
+        if (!root || root.dataset.reactMounted === 'true' || !window.htmx) return;
+        document.querySelectorAll('[data-home-row-slot]').forEach(function (slot, index) {
+          setTimeout(function () { htmx.trigger(slot, 'floppy:home-row-fallback'); }, index * 120);
+        });
+      }, 2500);
+    });
+  </script>
 {% endblock js %}
