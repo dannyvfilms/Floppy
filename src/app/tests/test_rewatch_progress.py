@@ -280,6 +280,32 @@ class InferredRewatchTests(TestCase):
             (7, 9, 78),
         )
 
+    def test_duplicate_season_opener_continues_the_show_pass(self):
+        """Logging a season's first episode twice is not a new season restart."""
+        self.seed((3, 3, 3))
+        for season, episode in ((1, 1), (1, 2), (1, 3), (2, 1), (2, 1), (2, 2), (2, 3), (3, 1)):
+            self.play(season, episode)
+        inferred = self.progress()
+        self.assertEqual(len(inferred.rewatch_run.keys), 9)
+        self.assertEqual((inferred.rewatch_offset, inferred.rewatch_watched), (0, 7))
+        Season.objects.filter(pk=self.seasons[3].pk).update(
+            rewatch_started_at=self.start - timedelta(days=1),
+        )
+        explicit = self.progress()
+        self.assertTrue(explicit.rewatch_run.explicit)
+        self.assertEqual(
+            (explicit.rewatch_offset, explicit.rewatch_watched, explicit.rewatch_percent),
+            (0, 7, 78),
+        )
+
+    def test_season_restart_after_its_opener_ended_a_show_pass_still_counts(self):
+        """Replaying a season again after moving on is still a fresh restart."""
+        self.seed((3, 3, 3))
+        for season, episode in ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 1), (2, 2)):
+            self.play(season, episode)
+        result = self.progress()
+        self.assertEqual(result.rewatch_run.keys, ((2, 1), (2, 2), (2, 3)))
+
     def test_open_season_after_an_earlier_replay_keeps_its_own_scope(self):
         """A replay that began before the open pass is a different pass."""
         self.seed((3, 3, 3))
