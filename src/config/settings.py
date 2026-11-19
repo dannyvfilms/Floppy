@@ -2104,6 +2104,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Sweep pending watched state deliveries",
         "schedule": 60,
     },
+    # The start-up warm is not enough on a host whose other workloads churn the
+    # OS page cache: the database file drops out and a Home row or game page then
+    # costs seconds of random reads (the stall in a 16 s game detail request).
+    # Re-reading what is already cached is cheap, and touching it again keeps it
+    # in the active list so streaming I/O from other containers does not evict it.
+    "warm_database_page_cache": {
+        "task": "Warm database page cache",
+        "schedule": 60 * 10,
+        "options": {"expire_seconds": 60 * 10},
+    },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,
@@ -2132,10 +2142,6 @@ CELERY_BEAT_SCHEDULE = {
     "optimize_database_statistics": {
         "task": "Optimize database planner statistics",
         "schedule": 60 * 60 * 24,
-    },
-    "warm_database_page_cache": {
-        "task": "Warm database page cache",
-        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",

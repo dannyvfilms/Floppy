@@ -18,9 +18,15 @@ class Video(Media):
     watch_url = models.URLField(max_length=500, blank=True, default="")
     length_seconds = models.PositiveIntegerField(default=0)
 
-    class Meta:
-        """One row per user and item."""
+    class Meta(Media.Meta):
+        """One row per user and item.
 
+        Inherits Media's indexes: without them a status or date filter reads all of
+        a user's videos (tens of thousands of wide rows, a seek each on a cold disk).
+        Ordering stays off, as before, so existing queries are unchanged.
+        """
+
+        ordering = []
         unique_together = ("item", "user")
 
     def upsert_play(self, external_id, progress_seconds, end_date=None):
