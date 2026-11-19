@@ -2339,9 +2339,9 @@ class MusicRelationsReactPropsTests(SimpleTestCase):
 
 
 class MusicRelationGridTemplateTests(SimpleTestCase):
-    """The relation grid keeps its server fallback and mounts shared cards."""
+    """The relation grid mounts shared cards over a poster-and-title first paint."""
 
-    def test_grid_mounts_with_server_fallback(self):
+    def test_grid_mounts_over_the_shared_shell(self):
         member = SimpleNamespace(id=7, name="Grid Member", image="")
         html = render_to_string(
             "app/components/artist_relation_grid.html",
@@ -2359,8 +2359,8 @@ class MusicRelationGridTemplateTests(SimpleTestCase):
 
         self.assertIn("data-music-relations-root", html)
         self.assertIn("Grid Member", html)
-        self.assertIn("Drums", html)
-        self.assertIn("Former", html)
+        self.assertIn("media-card-title", html)
+        self.assertIn("Drums", html)  # in the props the card reads
 
 
 class MusicAlbumsReactPropsTests(SimpleTestCase):
@@ -2418,9 +2418,9 @@ class MusicAlbumsReactPropsTests(SimpleTestCase):
 
 
 class MusicAlbumGridTemplateTests(SimpleTestCase):
-    """The discography grid keeps its server fallback and mounts shared cards."""
+    """The discography grid mounts shared cards over a poster-and-title first paint."""
 
-    def test_grid_mounts_with_server_fallback(self):
+    def test_grid_mounts_over_the_shared_shell(self):
         artist = SimpleNamespace(id=3, name="Mira Vale")
         album = SimpleNamespace(
             id=11,
@@ -2439,4 +2439,5 @@ class MusicAlbumGridTemplateTests(SimpleTestCase):
 
         self.assertIn("data-music-albums-root", html)
         self.assertIn("Grid Album", html)
-        self.assertIn('data-media-type="music"', html)
+        self.assertIn("media-card-title", html)
+        self.assertNotIn("search-result-card-square", html)

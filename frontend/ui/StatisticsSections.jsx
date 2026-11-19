@@ -1,7 +1,6 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { MediaCard } from './MediaCard';
+import { rankedRowModel } from './cardModels';
 import { StatisticsState } from './StatisticsSummary';
 import { StatisticsHoursChart } from './StatisticsCharts';
 
@@ -434,45 +435,10 @@ function OverviewPanel({ panel, palette, onSelectItem }) {
       </View>
       : <ScrollView style={styles.overviewPanelScroll} showsVerticalScrollIndicator={false}>
         <View accessibilityLabel={summary}>
-          {items.map((item, index) => {
-            const body = <View style={styles.overviewRow}>
-              <Text style={[styles.overviewRank, { color: palette.textMuted }]}>{item.rank || index + 1}</Text>
-              {item.image
-                ? <Image source={{ uri: item.image }} accessible accessibilityRole="image"
-                  accessibilityLabel={item.title}
-                  style={[styles.overviewThumb, panel.roundImages && styles.overviewThumbRound,
-                    { backgroundColor: palette.surface }]} />
-                : <View style={[styles.overviewThumb, panel.roundImages && styles.overviewThumbRound,
-                  { backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center' }]}>
-                  <Text style={[styles.overviewInitial, { color: palette.textMuted }]}>
-                    {text(item.title).slice(0, 1).toUpperCase() || '?'}
-                  </Text>
-                </View>}
-              <View style={styles.overviewCopy}>
-                <Text numberOfLines={1} style={[styles.overviewTitle, { color: palette.text }]}>{item.title}</Text>
-                {item.value
-                  ? <Text style={[styles.overviewMeta, { color: palette.textMuted }]}>
-                    <Text style={{ color: palette.ratingStar }}>{'\u2605'} </Text>{item.value}
-                  </Text>
-                  : item.subtitle
-                    ? <Text numberOfLines={1} style={[styles.overviewMeta, { color: palette.textMuted }]}>{item.subtitle}</Text>
-                    : null}
-              </View>
-            </View>;
-            if (onSelectItem && (item.href || item.onPress)) {
-              return <Pressable key={`${item.key || item.title}:${index}`}
-                accessibilityRole={item.href ? 'link' : 'button'}
-                accessibilityLabel={`${item.title}, ${item.subtitle || item.value || ''}`.trim()}
-                onPress={() => onSelectItem(item)}
-                style={({ pressed }) => pressed && styles.pressed}>
-                {body}
-              </Pressable>;
-            }
-            return <View key={`${item.key || item.title}:${index}`} accessible
-              accessibilityLabel={`${item.title}, ${item.subtitle || item.value || ''}`.trim()}>
-              {body}
-            </View>;
-          })}
+          {items.map((item, index) => <MediaCard key={`${item.key || item.title}:${index}`} variant="grid"
+            model={rankedRowModel(item, index, { round: Boolean(panel.roundImages) })}
+            palette={{ ...palette, card: palette.surfaceStrong }}
+            onOpen={onSelectItem && (item.href || item.onPress) ? () => onSelectItem(item) : undefined} />)}
         </View>
       </ScrollView>}
   </View>;
@@ -670,21 +636,6 @@ const styles = StyleSheet.create({
   overviewPanelEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 32 },
   overviewPanelEmptyText: { fontSize: 14, lineHeight: 20 },
   overviewPanelScroll: { maxHeight: 240 },
-  overviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 4,
-    marginHorizontal: -4,
-    borderRadius: 6,
-  },
-  overviewRank: { width: 16, fontSize: 14, lineHeight: 20, fontWeight: '500' },
-  overviewThumb: { width: 40, height: 40, borderRadius: 6 },
-  overviewThumbRound: { borderRadius: 20 },
-  overviewInitial: { fontSize: 14, fontWeight: '700' },
-  overviewCopy: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
-  overviewTitle: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
-  overviewMeta: { fontSize: 12, lineHeight: 16 },
   panelGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'stretch' },
   panelGridStacked: { flexDirection: 'column' },
   panelCell: { flexGrow: 1, flexBasis: '45%', minWidth: 240 },

@@ -10,8 +10,8 @@ native build is needed. Use the no-auth preview routes (they render the real sha
 components without signing in):
 
 ```bash
-# 1. Start Metro once for the preview route, from native-proof/
-cd native-proof
+# 1. Start Metro once for the preview route, from expo/
+cd expo
 EXPO_PUBLIC_SEARCH_PREVIEW=1 npx expo start --port 8091      # add --ios or --android to open it
 
 # 2. Boot devices if none are running (first Expo Go open installs it automatically)
@@ -31,7 +31,7 @@ Tips:
 - Run `scripts/native_shots.sh before-<x>` on the merge base and `after-<x>` on your change.
   Look at the images before you report anything.
 - Another route is another env var (`EXPO_PUBLIC_RAIL_PREVIEW=1`) or a new preview route in
-  `native-proof/app/routes/`. Restart Metro when you change the variable.
+  `expo/app/routes/`. Restart Metro when you change the variable.
 - The first open can time out while Expo Go installs and bundles; open it again.
 - Capture light and dark: `xcrun simctl ui booted appearance dark`, and
   `adb shell cmd uimode night yes` on Android.
@@ -52,14 +52,14 @@ Expo account can use it when they have no Mac. Hosted builds and tests draw on t
 EAS plan, and the hosted Simulator service is a waitlisted preview that is not on the free
 tier; check expo.dev/pricing first.
 
-- `native-proof/eas.json`: a `native-preview` profile that builds the search preview as an iOS
+- `expo/eas.json`: a `native-preview` profile that builds the search preview as an iOS
   Simulator build and an Android APK.
-- `native-proof/.maestro/search-preview.yaml`: a Maestro flow that launches the build, checks the
+- `expo/.maestro/search-preview.yaml`: a Maestro flow that launches the build, checks the
   screen and takes a screenshot (`maestro test .maestro/search-preview.yaml` also works
   locally against a build installed on a running simulator).
 
 ```bash
-cd native-proof
+cd expo
 npx eas-cli login && npx eas-cli init       # first time only
 npx eas-cli build --profile native-preview --platform ios      # or android
 ```

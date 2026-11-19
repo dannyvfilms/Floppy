@@ -13,7 +13,9 @@ import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { MediaCard } from './MediaCard';
 import { actionIcons } from './actionIcons';
+import { creditCardModel, personCardModel } from './cardModels';
 
 // Shared person, studio, credit, gallery and medium-extra presentation. Values
 // arrive already shaped by the server or feature adapter; these components
@@ -259,76 +261,21 @@ export function StudioHero({
   </View>;
 }
 
-export function PersonCard({ person = {}, labels, palette, onOpen, web = false }) {
-  const copy = mergeLabels(labels);
-  const colors = mergePalette(palette);
-  const name = person.name || 'Unknown Person';
-  const subtitle = person.subtitle || person.role;
-  const [hovered, setHovered] = useState(false);
-  const overlay = web ? null : { backgroundColor: 'rgba(0, 0, 0, 0.58)' };
-  const shade = web ? {
-    backgroundImage: 'linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)',
-  } : null;
-  // The server sends the lines the user's card settings enable, each marked
-  // dormant (visible at rest) or hover-only. Without them, fall back to the
-  // role at rest and any extra lines on hover.
-  const metaLines = person.cardLines
-    ? person.cardLines.map(line => ({ text: line.text, visible: !!(line.dormant || person.subtitleAlways) }))
-    : [
-      ...(subtitle ? [{ text: subtitle, visible: false }] : []),
-      ...(person.lines || []).map(text => ({ text, visible: false })),
-    ];
-  const body = <>
-    <Artwork uri={person.imageUrl} fallback={person.imageFallback} title={name} palette={colors}>
-      {person.episodeCount ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
-        <Text style={[styles.cornerChipText, { color: colors.chipText }]}>
-          {person.episodeCount} {plural(person.episodeCount, 'ep', 'eps')}
-        </Text>
-      </View> : null}
-    </Artwork>
-    {shade ? <View style={[styles.cardShade, shade]} /> : null}
-    <View style={[styles.cardBody, styles.cardBodyOverlay, overlay]}>
-      <View style={styles.cardTitleRow}>
-        <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
-      </View>
-      {metaLines.length ? <View style={styles.cardMetaStack}>
-        {metaLines.map((line, index) => <View key={index}
-          style={[styles.cardMetaWrap, (!web || hovered || line.visible) ? styles.cardMetaVisible : styles.cardMetaHidden]}>
-          <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{line.text}</Text>
-        </View>)}
-      </View> : null}
-    </View>
-  </>;
-  if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}
-    onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>{body}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={subtitle ? `${name}, ${subtitle}` : name}
-    onPress={() => onOpen(person)} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)}
-    style={({ pressed }) => [styles.cardShell,
-      { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}>{body}</Pressable>;
+// People and credits are media cards fed through `cardModels.js`; nothing here draws a poster.
+function peoplePalette(colors) {
+  return { ...colors, card: colors.surface };
 }
 
-export function CreditCard({ entry = {}, labels, palette, onOpen }) {
+export function PersonCard({ person = {}, palette, onOpen }) {
   const colors = mergePalette(palette);
-  const roleLine = entry.role || entry.roleLine;
-  const meta = [entry.year, entry.mediaTypeLabel].filter(Boolean).join(' · ');
-  const body = <>
-    <Artwork uri={entry.imageUrl} fallback={entry.imageFallback} title={entry.title} palette={colors}>
-      {entry.watchedRuntimeLabel ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
-        <Text style={[styles.cornerChipText, { color: colors.chipText }]}>{entry.watchedRuntimeLabel}</Text>
-      </View> : entry.voteAverage ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
-        <Text style={[styles.cornerChipText, { color: colors.star }]}>★ {Number(entry.voteAverage).toFixed(1)}</Text>
-      </View> : null}
-    </Artwork>
-    <View style={[styles.cardBody, { backgroundColor: colors.surface }]}>
-      <Text numberOfLines={2} style={[styles.cardTitle, { color: entry.watched ? colors.link : colors.text }]}>{entry.title}</Text>
-      {roleLine ? <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textSecondary }]}>{roleLine}</Text> : null}
-      {meta ? <Text numberOfLines={1} style={[styles.cardMeta, { color: colors.textMuted }]}>{meta}</Text> : null}
-    </View>
-  </>;
-  if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}>{body}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={roleLine ? `${entry.title}, ${roleLine}` : entry.title}
-    onPress={() => onOpen(entry)} style={({ pressed }) => [styles.cardShell,
-      { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}>{body}</Pressable>;
+  return <MediaCard variant="grid" model={personCardModel(person)} palette={peoplePalette(colors)} width="100%"
+    onOpen={onOpen ? () => onOpen(person) : undefined} />;
+}
+
+export function CreditCard({ entry = {}, palette, onOpen }) {
+  const colors = mergePalette(palette);
+  return <MediaCard variant="grid" model={creditCardModel(entry)} palette={peoplePalette(colors)} width="100%"
+    onOpen={onOpen ? () => onOpen(entry) : undefined} />;
 }
 
 export function MediaGallery({ items = [], labels, palette, onPlay, onOpenLightbox }) {
@@ -570,19 +517,10 @@ const styles = StyleSheet.create({
   artwork: { width: '100%', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   artworkRounded: { borderRadius: 10 },
   artworkPlaceholder: { fontSize: 12, textAlign: 'center', paddingHorizontal: 12 },
-  cardShell: { borderRadius: 10, overflow: 'hidden', width: '100%', position: 'relative' },
-  cardBody: { padding: 12 },
-  cardBodyOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10 },
-  cardShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 92, zIndex: 9 },
-  cardTitleRow: { minWidth: 0 },
   cardTitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   cardCopy: { fontSize: 12, lineHeight: 16 },
   cardMeta: { fontSize: 11, lineHeight: 15 },
-  cardMetaStack: {},
 cardMetaWrap: { overflow: 'hidden' },
-  cardMetaVisible: { maxHeight: 40, marginTop: 4, opacity: 1 },
-  cardMetaHidden: { maxHeight: 0, marginTop: 0, opacity: 0 },
-  cornerChip: { position: 'absolute', top: 8, right: 8, zIndex: 2, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   cornerChipText: { fontSize: 11, fontWeight: '600' },
   gallery: { gap: 10 },
   galleryPreview: { aspectRatio: 16 / 9, borderRadius: 10, overflow: 'hidden', position: 'relative' },

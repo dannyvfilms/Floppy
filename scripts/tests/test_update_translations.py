@@ -107,7 +107,7 @@ class InlineExtractionTests(unittest.TestCase):
             js_command = next(
                 call.args[0] for call in run.call_args_list if "djangojs" in call.args[0]
             )
-            for path in ("static/ui/*", "static/native-proof/*", "static/js/libraries/*"):
+            for path in ("static/ui/*", "static/expo/*", "static/js/libraries/*"):
                 self.assertIn(f"--ignore={path}", js_command)
 
     @unittest.skipUnless(

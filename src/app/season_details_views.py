@@ -9,6 +9,7 @@ from django.db.models import Case, DateTimeField, Value, When
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -65,6 +66,19 @@ MIN_PLAUSIBLE_YEAR = 1900
 UNKNOWN_RELEASE_YEAR = 9999
 
 
+def _season_show_url(source, media_id, title, parent_media_type):
+    """Return the parent show page a season's title logo links to."""
+    return reverse(
+        "media_details",
+        kwargs={
+            "source": source,
+            "media_type": parent_media_type or MediaTypes.TV.value,
+            "media_id": media_id,
+            "title": title,
+        },
+    )
+
+
 @login_not_required
 @require_GET
 def season_details(
@@ -81,6 +95,19 @@ def season_details(
         # string, not whitespace, so input.css's #detail-carousel-wrap:not(:empty)
         # rule (a whitespace-only text node still counts as a child for :empty)
         # correctly falls back to the non-carousel layout.
+        # Match the shell's parent detection so the logo opens the same page
+        # as the text title it replaces.
+        if (
+            parent_media_type is None
+            and getattr(request.user, "anime_enabled", False)
+            and Item.objects.filter(
+                media_id=media_id,
+                source=source,
+                media_type=MediaTypes.TV.value,
+                library_media_type=MediaTypes.ANIME.value,
+            ).exists()
+        ):
+            parent_media_type = MediaTypes.ANIME.value
         html = render_to_string(
             "app/components/detail_carousel_fragment.html",
             {
@@ -89,6 +116,9 @@ def season_details(
                     source,
                     media_id,
                     season_number=season_number,
+                ),
+                "carousel_logo_url": _season_show_url(
+                    source, media_id, title, parent_media_type
                 ),
             },
             request=request,
@@ -1091,6 +1121,9 @@ def season_details(
         "carousel_supported": carousel_supported,
         "initial_carousel": initial_carousel,
         "detail_carousel_fragment_url": detail_carousel_fragment_url,
+        "carousel_logo_url": _season_show_url(
+            source, media_id, title, parent_media_type
+        ),
         **_build_detail_person_rows(season_metadata),
     }
     logger.info(

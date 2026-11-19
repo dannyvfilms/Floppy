@@ -1,6 +1,6 @@
 """Recorded server answers the Expo app's transport tests read (assignment 78).
 
-Each recording under ``native-proof/app/data/__recorded__/`` is the real JSON
+Each recording under ``expo/app/data/__recorded__/`` is the real JSON
 one endpoint returns for the sample library (``catalogue_fixtures``), in one
 state the native screen cares about (tracked, untracked, empty). The
 JavaScript transport tests feed these files through the real readers and
@@ -10,7 +10,7 @@ drops a field the app reads fails there.
 This test regenerates every recording in memory and fails when a committed
 file differs, the way ``npm run check:ui`` fails on a stale bundle. Changing
 the shape of one of these endpoints therefore changes a file under
-``native-proof/`` in the same pull request. Refresh, then read the diff:
+``expo/`` in the same pull request. Refresh, then read the diff:
 
     FLOPPY_RECORD_NATIVE=1 scripts/test.sh api.tests.test_native_recordings
 
@@ -43,7 +43,7 @@ from users.models import User
 
 RECORDED_DIR = (
     Path(__file__).resolve().parents[3]
-    / "native-proof"
+    / "expo"
     / "app"
     / "data"
     / "__recorded__"

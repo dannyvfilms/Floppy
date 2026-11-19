@@ -125,7 +125,7 @@ def write_inline_sources(source_root, destination):
 JS_IGNORED_PATHS = (
     "static/js/libraries/*",
     "static/ui/*",
-    "static/native-proof/*",
+    "static/expo/*",
 )
 
 

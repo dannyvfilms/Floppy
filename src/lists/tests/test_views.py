@@ -210,7 +210,8 @@ class ListsViewTests(TestCase):
         fetch.assert_called_once()
         self.assertContains(response, f'src="{cover}"')
         self.assertNotContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
+            response,
+            '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]),
         )
 
     def test_cover_cache_changes_with_first_item_or_artwork(self):
@@ -222,15 +223,11 @@ class ListsViewTests(TestCase):
         self.item1.image = "https://example.com/replacement.jpg"
         self.item1.save(update_fields=["image"])
         response = self.client.get(reverse("lists"))
-        self.assertContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
-        )
+        self.assertContains(response, '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]))
         self.list1.items.clear()
         self.list1.items.add(self.item2)
         response = self.client.get(reverse("lists"))
-        self.assertContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
-        )
+        self.assertContains(response, '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]))
 
     def test_cached_cover_still_checks_visibility(self):
         """A resolved private cover does not make the fragment public."""
@@ -496,7 +493,7 @@ class ListsViewTests(TestCase):
         self,
         mock_update_preference,
     ):
-        """List cards expose Settings and pinning through an options menu."""
+        """List cards expose Settings and pinning as the shared card's hover buttons."""
         mock_update_preference.return_value = "name"
         self.client.login(**self.credentials)
 
@@ -509,15 +506,16 @@ class ListsViewTests(TestCase):
 
         response = self.client.get(reverse("lists"))
 
-        self.assertContains(response, 'aria-label="Options for ')
-        self.assertContains(response, "Settings")
+        self.assertNotContains(response, 'aria-label="Options for ')
+        self.assertContains(response, '"title": "Settings"')
+        self.assertContains(response, '"modal": "list"')
         self.assertNotContains(response, 'title="Edit list"')
         self.assertNotContains(response, reverse("list_add_item", args=[self.list1.id]))
         self.assertNotContains(
             response,
             f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
         )
-        self.assertContains(response, "Pin to sidebar")
+        self.assertContains(response, '"kind": "pin"')
 
     @patch.object(get_user_model(), "update_preference")
     def test_lists_view_marks_only_smart_lists_with_badge(
@@ -529,7 +527,7 @@ class ListsViewTests(TestCase):
         self.client.login(**self.credentials)
 
         response = self.client.get(reverse("lists"))
-        self.assertNotContains(response, 'aria-label="Smart List"')
+        self.assertNotContains(response, '"position": "bottom-right"')
 
         CustomList.objects.create(
             name="Smart List",
@@ -538,7 +536,7 @@ class ListsViewTests(TestCase):
         )
 
         response = self.client.get(reverse("lists"))
-        self.assertContains(response, 'aria-label="Smart List"', count=1)
+        self.assertContains(response, '"position": "bottom-right"', count=1)
 
 
 class ListDetailViewTests(TestCase):

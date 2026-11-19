@@ -1,6 +1,9 @@
 # Expo ↔ PWA parity audit
 
-Scope: `native-proof/` (Expo) versus the Django/React PWA.
+Scope: `expo/` (Expo) versus the Django/React PWA.
+
+For live per-page and per-component progress, including the owner's sign-offs, run the
+[Expo build dashboard](expo-dashboard.md).
 
 ## Current readiness
 
