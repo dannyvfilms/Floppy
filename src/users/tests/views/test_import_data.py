@@ -277,6 +277,54 @@ class ImportDataViewTests(TestCase):
             reverse("bulk_delete_by_import_source", args=["movie", "simkl"]),
         )
 
+    def test_bulk_delete_by_source_stays_on_provider_and_clears_stale_runs(self):
+        """Delete all returns to the provider Activity tab and drops the dead undo."""
+        from app.models import Game, Item, MediaTypes, Sources
+        from integrations.models import ImportRun
+
+        steam_run = ImportRun.objects.create(
+            user=self.user, source="steam", status=ImportRun.Status.COMPLETED
+        )
+        other_run = ImportRun.objects.create(
+            user=self.user, source="trakt", status=ImportRun.Status.COMPLETED
+        )
+        items = Item.objects.bulk_create(
+            Item(
+                media_id=f"steam-bulk-{index}",
+                source=Sources.IGDB.value,
+                media_type=MediaTypes.GAME.value,
+                title=f"Steam Bulk {index}",
+            )
+            for index in range(1275)
+        )
+        Game.objects.bulk_create(
+            Game(item=item, user=self.user, status=Status.COMPLETED.value, import_run=steam_run)
+            for item in items
+        )
+
+        activity = self.client.get(
+            reverse("import_data_activity") + "?source=steam", HTTP_HX_REQUEST="true"
+        )
+        provider_url = reverse("provider_detail", args=["steam"]) + "?tab=activity"
+        self.assertContains(
+            activity, f'name="next" value="{provider_url}"', status_code=286
+        )
+
+        import time
+
+        started = time.monotonic()
+        response = self.client.post(
+            reverse("bulk_delete_by_import_source", args=["game", "steam"]),
+            {"next": provider_url},
+        )
+        # ~12 s before the per-row refreshes were batched; guards the regression.
+        self.assertLess(time.monotonic() - started, 9)
+
+        self.assertRedirects(response, provider_url, fetch_redirect_response=False)
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+        self.assertFalse(ImportRun.objects.filter(pk=steam_run.pk).exists())
+        self.assertTrue(ImportRun.objects.filter(pk=other_run.pk).exists())
+
     def test_import_data_activity_media_summary_query_count_is_flat(self):
         """Media summary should not issue one COUNT query per import source (N+1 guard)."""
         from django.db import connection
