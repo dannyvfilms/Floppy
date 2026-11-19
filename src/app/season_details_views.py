@@ -1059,6 +1059,7 @@ def season_details(
             MediaTypes.SEASON.value,
             source,
             source,
+            item=season_item,
         ),
         "detail_tag_sections": build_detail_tag_sections(
             season_metadata,
