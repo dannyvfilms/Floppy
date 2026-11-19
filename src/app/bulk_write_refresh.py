@@ -566,6 +566,21 @@ BULK_WRITE_SITES = {
         TV,
     ): (IMPORTER),
     (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._flush_media_batch",
+        UNKNOWN,
+    ): (IMPORTER),
+    (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._restore_episode_order_history",
+        UNKNOWN,
+    ): _not_tracking("an EpisodeOrderChange audit timestamp"),
+    (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._restore_tracker_created_at",
+        UNKNOWN,
+    ): IMPORTER,
+    (
         "integrations/imports/youtube_takeout.py",
         "YouTubeTakeoutImporter._add_plays",
         "VideoPlay",
