@@ -139,6 +139,8 @@ class Scan:
         if not spec.startswith('.'):
             return None
         base = os.path.normpath(os.path.join(os.path.dirname(frm), spec))
+        if SRC_EXT.search(base) and self.src.isfile(base):  # an explicit extension names that exact file (how .native wrappers import their shared base)
+            return base
         stem = SRC_EXT.sub('', base) if SRC_EXT.search(base) and self.src.isfile(base) else base
         exts = EXTS_N if plat == 'n' else EXTS_W
         for e in exts:
