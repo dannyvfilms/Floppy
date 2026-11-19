@@ -4,6 +4,10 @@ export function shouldRevealMediaCardActions(actions, revealed) {
   return Boolean(actions?.items?.length && !actions.clickable && !revealed);
 }
 
+export function shouldRevealPersonCardRole(tapToReveal, hiddenLines, revealed) {
+  return Boolean(tapToReveal && hiddenLines && !revealed);
+}
+
 // Dormant lines are visible at rest; hover lines wait for card reveal.
 export function shouldShowMediaCardLine(model, line, revealed) {
   return !model.hoverMetadata || revealed || Boolean(line?.dormant);

@@ -290,6 +290,7 @@ class Person(models.Model):
     )
     birth_date = models.DateField(null=True, blank=True)
     death_date = models.DateField(null=True, blank=True)
+    profile_dates_checked_at = models.DateTimeField(null=True, blank=True)
     place_of_birth = models.CharField(max_length=255, blank=True, default="")
 
     # Profile backfill bookkeeping. IMDB's public dataset carries neither image

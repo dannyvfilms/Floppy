@@ -29,6 +29,9 @@
   "detail_links": {
     "cast_row": {
       "card_width_class": "w-44",
+      "credit_event_date": "2020-01-01",
+      "credit_event_label": "release",
+      "credit_event_media_type": "movie",
       "items": [
         {
           "image": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
@@ -48,6 +51,9 @@
     },
     "crew_row": {
       "card_width_class": "w-44",
+      "credit_event_date": "2020-01-01",
+      "credit_event_label": "release",
+      "credit_event_media_type": "movie",
       "items": [],
       "loaded_count": 0,
       "row_id": "detail-crew",
@@ -147,6 +153,9 @@
   "people": {
     "cast": [
       {
+        "agePending": true,
+        "ageUrl": "/person/tmdb/9400101/credit-facts/?media_type=movie&event_label=release&event_date=2020-01-01",
+        "cardId": "people-card-tmdb-9400101",
         "cardLines": [
           {
             "dormant": false,
@@ -160,6 +169,7 @@
         "lines": [],
         "name": "Sample Person",
         "personId": "9400101",
+        "showCreditAge": true,
         "slug": "sample-person",
         "source": "tmdb",
         "subtitle": "Lead",

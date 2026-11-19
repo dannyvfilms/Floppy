@@ -751,14 +751,18 @@ Status: `Partial / coexisting`
 
 ## PEOPLE
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
 The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
 
+Shared `PeopleView`/`PersonCard` expose event-age labels behind the Cards preference. Episode cast/crew rails retain the shared Home `MediaCard` surface and include the same preference-controlled event-age line; the lazy age lookup stays in the web adapter. Detail cast/crew rows supply event-date metadata while retaining the current season and recommendation card surfaces. Web capture remains pending; iOS and Android runtime are not verified. The rebase integration also carries the enabled age label through the responsive `MediaCard` renderer rather than falling back to the legacy Person card.
+
 - `src/templates/app/components/detail_carousel_fragment.html` (also the detail-page title logo; on a season page it links to the show because it hides the title link; `Legacy` until the web detail hero migrates)
 - `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
+
+Posthumous labels show event age and `Died YYYY` on separate lines without a separator; both card variants allow two lines. Provider birth/death dates and successful-empty lookup state are persisted on `Person`.
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
@@ -774,6 +778,8 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
+- `src/app/media_card_model.py`, `src/app/people_views.py`, `src/app/detail_builders.py`
+- `frontend/settings/CreditAgeSetting.jsx` (preference control; browser native select remains template-owned)
 
 ## TAGS
 

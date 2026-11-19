@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -587,12 +588,20 @@ def upsert_person_profile(source, source_person_id, metadata):
         "place_of_birth": _as_text(metadata.get("place_of_birth")),
     }
     if person is None:
+        profile["profile_dates_checked_at"] = timezone.now()
         try:
             with transaction.atomic():
                 return Person.objects.create(**lookup, **profile)
         except IntegrityError:
             # Another request created the row first; update that one.
             person = Person.objects.get(**lookup)
+
+    profile_dates_changed = any(
+        getattr(person, field) != profile[field]
+        for field in ("birth_date", "death_date")
+    )
+    if person.profile_dates_checked_at is None or profile_dates_changed:
+        profile["profile_dates_checked_at"] = timezone.now()
 
     changed = [
         field for field, value in profile.items() if getattr(person, field) != value

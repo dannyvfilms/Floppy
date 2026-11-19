@@ -112,14 +112,17 @@ def _default_field_ids(media_type):
 def default_profile(media_type):
     """Return the profile that reproduces today's card for ``media_type``."""
     fields = list(_default_field_ids(media_type))
+    options = {
+        "rating": {"hide_zero": False, "show": True},
+        "title": default_title_options(),
+    }
+    if media_type == PERSON:
+        options["show_credit_age"] = True
     return {
         "display": DISPLAY_HOVER,
         "fields": fields,
         "lines": _lines_from_fields(fields, DISPLAY_HOVER, {}),
-        "options": {
-            "rating": {"hide_zero": False, "show": True},
-            "title": default_title_options(),
-        },
+        "options": options,
     }
 
 
@@ -377,6 +380,8 @@ def _clean_options(options, allowed):
         },
         "title": _clean_title_options(options),
     }
+    if "role" in allowed:
+        cleaned["show_credit_age"] = options.get("show_credit_age") is not False
     rating_display = _known_field_display(rating.get("display"))
     if rating_display is not None:
         cleaned["rating"]["display"] = rating_display
@@ -430,6 +435,11 @@ def _legacy_hide_zero(user):
 def subtitle_display(user, media_type):
     """Return ``hover`` or ``always`` for this type."""
     return resolve_profile(user, media_type)["display"]
+
+
+def show_credit_age(user):
+    """Return whether credit cards include the person's event-age line."""
+    return resolve_profile(user, PERSON)["options"].get("show_credit_age", True)
 
 
 def show_progress_field(user, media_type):

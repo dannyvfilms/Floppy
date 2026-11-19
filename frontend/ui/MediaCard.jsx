@@ -183,6 +183,10 @@ function ProgressBar({ bar, palette }) {
 function Line({ line, palette }) {
   const [expanded, setExpanded] = useState(false);
   if (!line || !line.parts?.length) return null;
+  if (line.variant === 'credit-age') {
+    return <Text numberOfLines={line.clamp ? 2 : undefined}
+      style={[styles.creditAge, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
+  }
   if (line.variant === 'provenance') {
     return <Text accessibilityLabel={line.tooltip} numberOfLines={1}
       style={[styles.provenance, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
@@ -221,7 +225,7 @@ function Title({ model, palette, onOpen, onOpenLink, onLongPress }) {
   }
   const text = <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>{model.title}</Text>;
   if (!onOpen) return <View style={styles.titleColumn}>{text}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpen} onLongPress={onLongPress}
+  return <Pressable accessibilityRole="link" accessibilityLabel={model.accessibilityLabel || model.title} onPress={onOpen} onLongPress={onLongPress}
     style={styles.titleColumn}>{text}</Pressable>;
 }
 
@@ -527,6 +531,7 @@ const styles = StyleSheet.create({
   altText: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   line: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   provenance: { fontSize: 10, lineHeight: 14, marginTop: 1 },
+  creditAge: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   matched: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   score: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   chip: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6,
