@@ -377,8 +377,8 @@
         {% endif %}
 
         {% if media.related.seasons %}
-          <div {% detail_section_attrs user detail_family "content" "seasons" %}>
-            {% include "app/components/seasons_grid.html" %}
+          <div class="mb-3" {% detail_section_attrs user detail_family "content" "seasons" %}>
+            {% include "app/components/_scrollable_row.html" with row=seasons_row grid_template="app/components/detail_seasons_row.html" collapse_key="detail-seasons-open" rails_mount=True %}
           </div>
         {% endif %}
 
@@ -524,7 +524,7 @@
         {% endif %}
 
         {% if cast_row.total %}
-          <section class="mb-8" {% detail_section_attrs user detail_family "content" "cast" %}>
+          <section class="mb-3" {% detail_section_attrs user detail_family "content" "cast" %}>
             {% people_cast row=cast_row source=media.source collapse_key="detail-cast-open" %}
               {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
             {% endpeople_cast %}
@@ -532,7 +532,7 @@
         {% endif %}
 
         {% if crew_row.total %}
-          <section class="mb-8" {% detail_section_attrs user detail_family "content" "crew" %}>
+          <section class="mb-3" {% detail_section_attrs user detail_family "content" "crew" %}>
             {% people_cast row=crew_row source=media.source collapse_key="detail-crew-open" %}
               {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
             {% endpeople_cast %}
@@ -540,7 +540,7 @@
         {% endif %}
 
         {% if media.related.recommendations %}
-          <section class="mb-8" {% detail_section_attrs user detail_family "content" "recommendations" %}>
+          <section class="mb-3" {% detail_section_attrs user detail_family "content" "recommendations" %}>
             {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" rails_mount=True %}
           </section>
         {% endif %}

@@ -211,7 +211,6 @@ def importer(file, user, mode):
 
     export_importer = TraktExportImporter(archive, user, mode)
     imported_counts, messages = export_importer.import_data()
-
     lists_created, list_warnings = import_trakt_lists_from_export(user, archive)
     if lists_created:
         imported_counts["lists"] = lists_created

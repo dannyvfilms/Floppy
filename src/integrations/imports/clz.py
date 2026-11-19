@@ -428,7 +428,7 @@ def _text(value):
     return str(value).strip()
 
 
-def _parse_date(text):
+def _parse_clz_date(text):
     """Return a timezone-aware datetime for a CLZ date, or None."""
     candidate = _text(text).split("T")[0]
     if not candidate:
@@ -762,7 +762,7 @@ class CLZImporter:
             {column: record.get(column) for column in self._custom_columns},
             item.media_type,
         )
-        collected_at = _parse_date(self._get(record, "purchase date"))
+        collected_at = _parse_clz_date(self._get(record, "purchase date"))
         record_id, derived = self._record_identity(record)
         if self._get(record, "clz native"):
             # A re-export reorders records, so a position would orphan every

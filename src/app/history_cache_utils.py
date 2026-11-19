@@ -11,13 +11,15 @@ from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 
+from app.log_safety import stable_hmac
 from app.models import MediaTypes, Music
+from app.public_errors import PublicMessageError
 from app.stats_utils import _coerce_genre_list
 
 logger = logging.getLogger(__name__)
 
 
-class UnsupportedHistoryMediaTypeError(ValueError):
+class UnsupportedHistoryMediaTypeError(PublicMessageError, ValueError):
     """Raised when a history API media-type filter is unknown."""
 
     def __init__(self, token):
@@ -58,7 +60,7 @@ def _coerce_timedelta(value, default):
         return default
 
 
-HISTORY_CACHE_VERSION = 26
+HISTORY_CACHE_VERSION = 28
 HISTORY_INDEX_PREFIX = f"history_index_v{HISTORY_CACHE_VERSION}"
 HISTORY_DAY_PREFIX = f"history_day_v{HISTORY_CACHE_VERSION}"
 HISTORY_CACHE_PREFIX = HISTORY_INDEX_PREFIX
@@ -145,6 +147,38 @@ HISTORY_COVERAGE_REPAIR_LOCK_TTL = getattr(
     "HISTORY_COVERAGE_REPAIR_LOCK_TTL",
     60 * 30,
 )
+HISTORY_COVERAGE_WINDOW_DAYS = getattr(settings, "HISTORY_COVERAGE_WINDOW_DAYS", 62)
+HISTORY_COVERAGE_BOTH_STYLES = getattr(
+    settings, "HISTORY_COVERAGE_BOTH_STYLES", False
+)
+
+
+def history_coverage_day_keys(index_day_keys):
+    """Return the indexed days whose payloads are built ahead of a visit.
+
+    The days of the last ``HISTORY_COVERAGE_WINDOW_DAYS`` (the month view's
+    current and previous month), and never fewer than one page, so a user who
+    has been away still finds their latest page warm. Everything older is
+    built when a page asks for it. ``index_day_keys`` is newest first.
+    """
+    keys = list(index_day_keys or [])
+    if HISTORY_COVERAGE_WINDOW_DAYS <= 0:
+        return keys
+    cutoff = timezone.localdate() - timedelta(days=HISTORY_COVERAGE_WINDOW_DAYS)
+    cutoff_key = cutoff.strftime("%Y%m%d")
+    recent = sum(1 for key in keys if str(key) >= cutoff_key)
+    return keys[: max(recent, HISTORY_DAYS_PER_PAGE)]
+
+
+def history_coverage_styles(user):
+    """Return the logging styles whose day payloads are built ahead of a visit.
+
+    Only the style the user reads, unless the operator asked for both. The
+    other style is still invalidated on every write; it is built on demand.
+    """
+    if HISTORY_COVERAGE_BOTH_STYLES or user is None:
+        return HISTORY_LOGGING_STYLES
+    return (_normalize_logging_style(None, user),)
 
 DAY_KEY_LENGTH = 8  # length of a YYYYMMDD day key string
 
@@ -322,6 +356,43 @@ def _refresh_lock_key(user_id: int, logging_style: str) -> str:
     return f"{HISTORY_REFRESH_LOCK_PREFIX}_{user_id}_{logging_style or 'repeats'}"
 
 
+def _refresh_dedupe_key(user_id: int, logging_style: str, day_keys=None) -> str:
+    """Return the key that dedupes refreshes of one set of days.
+
+    ``day_keys`` must already be normalized; the scheduler and the task derive
+    the same key from the same list. No days means an index-only refresh.
+    """
+    lock_key = _refresh_lock_key(user_id, logging_style)
+    if not day_keys:
+        return lock_key
+    dedupe_hash = stable_hmac(
+        ",".join(day_keys),
+        namespace="history_refresh_days",
+        length=10,
+    )
+    return f"{lock_key}_days_{dedupe_hash}"
+
+
+def _refresh_rerun_key(dedupe_key: str) -> str:
+    """Return the marker a deduped request leaves for the running refresh."""
+    return f"{dedupe_key}_rerun"
+
+
+def _release_refresh_locks(user_id: int, logging_style: str, dedupe_key: str) -> None:
+    """Release a refresh's own dedupe key, and the style lock if it is still its own.
+
+    A later request for other days overwrites the style lock with its own
+    payload while it waits; deleting it here would release that request's lock.
+    """
+    lock_key = _refresh_lock_key(user_id, logging_style)
+    if dedupe_key != lock_key:
+        cache.delete(dedupe_key)
+    refresh_lock = cache.get(lock_key)
+    owner = refresh_lock.get("dedupe_key") if isinstance(refresh_lock, dict) else None
+    if owner in (None, dedupe_key):
+        cache.delete(lock_key)
+
+
 def _coverage_repair_key(user_id: int, logging_style: str) -> str:
     return f"{HISTORY_COVERAGE_REPAIR_PREFIX}_{user_id}_{logging_style or 'repeats'}"
 
@@ -394,8 +465,11 @@ def history_day_keys_for_range(start_dt, end_dt):
 # ── Logging style ─────────────────────────────────────────────────────────────
 
 
+HISTORY_LOGGING_STYLES = ("sessions", "repeats")
+
+
 def _normalize_logging_style(logging_style, user=None):
-    if logging_style in ("sessions", "repeats"):
+    if logging_style in HISTORY_LOGGING_STYLES:
         return logging_style
     if user is not None:
         return getattr(user, "game_logging_style", "repeats")

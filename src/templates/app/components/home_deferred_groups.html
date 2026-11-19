@@ -2,7 +2,9 @@
 {% comment %}
   Deferred Home groups. Each row is a placeholder that fetches itself, so
   rows appear as their own data becomes ready while configured order stays
-  fixed. Empty rows remove their placeholder; _scrollable_row_js.html hides
+  fixed. The React island (data-home-root) loads these rows itself; the
+  placeholder only loads its own row when the island has not mounted (see
+  home.html), so a row is fetched once, not by both loaders. Empty rows remove their placeholder; _scrollable_row_js.html hides
   a group once all of its rows resolved to empty.
 
   Context: deferred_groups, user
@@ -18,13 +20,12 @@
     {% endif %}
     <div class="space-y-3">
       {% for row_id in group.row_ids %}
-        {% widthratio forloop.counter0 1 120 as row_delay %}
         <div data-home-row-slot
              data-home-row-error-label="{% translate "Unable to load this row." %}"
              class="space-y-2 animate-pulse"
              aria-busy="true"
              hx-get="{% url 'home_row_fragment' row_id %}"
-             hx-trigger="load delay:{{ row_delay }}ms"
+             hx-trigger="floppy:home-row-fallback"
              hx-swap="outerHTML">
           <div class="h-6 w-40 bg-gray-700 rounded"></div>
           <div class="flex gap-4 overflow-hidden">

@@ -44,6 +44,8 @@ class FilterValues:
     status_match: str = STATUS_MATCH_LATEST
     search: str = ""
     initial: str = ""
+    game_group_by: str = "item"
+    game_group: str = ""
     rating: str = "all"
     rating_min: str = ""
     rating_max: str = ""
@@ -122,6 +124,7 @@ class LibraryQuery:
     sort_list_id: int | None = None
     union_list_ids: tuple[int, ...] = ()
     include_collection_only: bool = False
+    include_podcast_shows: bool = False
     dedupe_cross_provider: bool = True
     routing: str = ROUTING_LIBRARY
     provider_region: str = ""

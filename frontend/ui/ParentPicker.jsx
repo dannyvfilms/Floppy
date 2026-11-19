@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Spinner } from './Spinner';
+import { SearchIcon } from './Icon';
 
 const defaultPalette = {
   text: '#fafafa',
@@ -38,14 +39,13 @@ export function ParentPicker({
   onQueryChange,
   onSelect,
   onRetry,
+  plain = false,
+  resultsID,
   testID,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const copy = { ...defaultLabels, ...labels };
-  return <View style={[styles.parent, { backgroundColor: palette.surface, borderColor: palette.border }]} testID={testID}>
-    {title ? <Text role="heading" aria-level={3} style={[styles.parentTitle, { color: palette.text }]}>{title}</Text> : null}
-    {description ? <Text style={[styles.description, { color: palette.textMuted }]}>{description}</Text> : null}
-    {onQueryChange ? <TextInput
+  const input = <TextInput
       accessibilityLabel={title || copy.placeholder}
       value={query}
       onChangeText={onQueryChange}
@@ -55,13 +55,20 @@ export function ParentPicker({
       autoCorrect={false}
       autoCapitalize="none"
       returnKeyType="search"
-      style={[styles.input, {
+      style={[styles.input, plain && styles.plainInput, {
         color: palette.text,
         backgroundColor: palette.surfaceStrong,
-        borderColor: palette.border,
+        borderColor: plain ? palette.fieldBorder || palette.border : palette.border,
         borderRadius: palette.radius,
       }]}
-    /> : null}
+    />;
+  return <View style={plain ? styles.parentPlain : [styles.parent, { backgroundColor: palette.surface, borderColor: palette.border }]} testID={testID}>
+    {title ? <Text role={plain ? undefined : 'heading'} aria-level={plain ? undefined : 3} style={[styles.parentTitle, plain && styles.plainTitle, { color: plain ? palette.textSecondary : palette.text }]}>{title}</Text> : null}
+    {description ? <Text style={[styles.description, { color: palette.textMuted }]}>{description}</Text> : null}
+    {onQueryChange ? (plain ? <View style={styles.plainInputWrap}>
+      <View style={styles.searchIcon}><SearchIcon color={palette.textMuted} size={16} /></View>{input}
+    </View> : input) : null}
+    <View nativeID={resultsID} style={plain && [styles.plainResults, state !== 'idle' && { backgroundColor: palette.surfaceStrong, borderColor: palette.border, borderWidth: 1, borderRadius: 6 }]}>
     {state === 'loading' ? <View style={styles.stateRow}>
       <Spinner size={16} color={palette.accent} />
       <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: palette.textMuted }]}>{copy.loading}</Text>
@@ -81,24 +88,33 @@ export function ParentPicker({
         accessibilityLabel={[row.title, row.subtitle].filter(Boolean).join(', ')}
         accessibilityState={{ selected }}
         onPress={() => onSelect?.(row)}
-        style={({ pressed }) => [styles.parentRow, {
+        style={({ pressed }) => [styles.parentRow, plain && styles.plainRow, {
           borderColor: palette.border,
           borderTopWidth: index === 0 ? 0 : 1,
           backgroundColor: pressed ? palette.surfaceStrong : 'transparent',
         }]}>
         <View style={styles.rowText}>
-          <Text style={[styles.parentRowTitle, { color: palette.text }]}>{row.title}</Text>
+          <Text style={[styles.parentRowTitle, plain && styles.plainRowTitle, { color: palette.text }]}>{row.title}</Text>
           {row.subtitle ? <Text style={[styles.parentRowSubtitle, { color: palette.textMuted }]}>{row.subtitle}</Text> : null}
         </View>
         {selected ? <Text style={[styles.selected, { color: palette.accent }]}>{copy.selected}</Text> : null}
       </Pressable>;
     }) : <Text style={[styles.stateText, { color: palette.textMuted }]}>{copy.empty}</Text>) : null}
+    </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
   parent: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
+  parentPlain: { position: 'relative', zIndex: 10 },
+  plainResults: { position: 'absolute', top: '100%', marginTop: 4, left: 0, right: 0, zIndex: 10 },
+  plainRow: { paddingHorizontal: 16 },
+  plainRowTitle: { fontWeight: '400' },
   parentTitle: { fontSize: 15, fontWeight: '600' },
+  plainTitle: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
+  plainInputWrap: { justifyContent: 'center' },
+  plainInput: { minHeight: 42, paddingLeft: 36, fontSize: 16 },
+  searchIcon: { position: 'absolute', left: 10, zIndex: 1 },
   description: { fontSize: 12, lineHeight: 17 },
   input: { borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
   parentRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },

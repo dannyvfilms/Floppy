@@ -181,17 +181,39 @@ def resolve_rewatch(tv, seasons, *, include_explicit=True, include_candidates=Fa
                 (season.number, episode["number"])
                 for season in open_seasons for episode in season.counted
             )
+            started = min(season.tracker.rewatch_started_at for season in open_seasons)
+            completed = {
+                (season.number, episode["number"])
+                for season in open_seasons
+                for episode in season.episodes if episode["rewatched"]
+            }
+            # A season closes its flag when it finishes, so a show-wide pass
+            # leaves only its later seasons open. Recover the earlier ones from
+            # history when one unbroken replay started inside this pass.
+            history = _inferred_run(seasons, keys, tracked)
+            if (
+                history is not None
+                and set(explicit_keys) <= set(history.keys)
+                and history.anchor >= started
+            ):
+                explicit_keys = history.keys
+                completed |= history.completed
             return RewatchRun(
                 explicit_keys,
-                min(season.tracker.rewatch_started_at for season in open_seasons),
-                open_seasons[0].number if len(open_seasons) == 1 else None,
+                started,
+                explicit_keys[0][0] if len({key[0] for key in explicit_keys}) == 1 else None,
                 explicit=True,
-                explicit_completed={
-                    (season.number, episode["number"])
-                    for season in open_seasons
-                    for episode in season.episodes if episode["rewatched"]
-                },
+                explicit_completed=completed,
             )
+    run = _inferred_run(seasons, keys, tracked, include_candidates=include_candidates)
+    if run is None or len(run.completed) == len(run.keys):
+        return None
+    cancellations = RewatchCancellation.objects.filter(tv=tv, order_key=tracking_order_key(tv))
+    return None if _cancelled(run, cancellations) else run
+
+
+def _inferred_run(seasons, keys, tracked, *, include_candidates=False):
+    """Replay this show's completed plays into its latest rewatch run, if any."""
     if not keys or any(season.catalogue_missing for season in seasons if not season.is_specials):
         return None
     rows = (
@@ -204,11 +226,7 @@ def resolve_rewatch(tv, seasons, *, include_explicit=True, include_candidates=Fa
         .values_list("pk", "item__season_number", "item__episode_number", "end_date")
         .iterator(chunk_size=1000)
     )
-    run = _infer_runs(keys, rows, include_candidates=include_candidates)
-    if run is None or len(run.completed) == len(run.keys):
-        return None
-    cancellations = RewatchCancellation.objects.filter(tv=tv, order_key=tracking_order_key(tv))
-    return None if _cancelled(run, cancellations) else run
+    return _infer_runs(keys, rows, include_candidates=include_candidates)
 
 
 def cancel_run(tv, run):

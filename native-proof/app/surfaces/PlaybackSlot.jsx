@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { CheckInState, PlaybackCard } from '../../../frontend/ui/PlaybackCard';
+import { PlaybackCard } from '../../../frontend/ui/PlaybackCard';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { createPlaybackTransport } from '../data/playbackTransport';
-import { Note } from '../components/Note';
 import { palette, playbackPalette, spacing } from '../theme';
 import { playbackCardWidth } from '../../../frontend/ui/mediaCardSizing';
 import { createSettingsTransport } from '../data/settingsTransport';
@@ -12,8 +11,8 @@ export const surface = {
   id: 'PLAYBACK',
   status: 'ported',
   title: 'Now Playing and check-in',
-  where: 'Home playback card and detail check-in state',
-  note: 'The Home row loads every active card from the session-only /api/v1/playback/home-cards/ endpoint and falls back to the older read-only single-card route. It uses the shared Lists MediaCard at 16:9, spanning three regular cards in compact mobile layout, two in comfortable mobile layout, and two on desktop. Manual check-ins offer Pause/Stop; check-in sessions offer Stop/Cancel. The detail check-in state below still uses local demo state; wiring it to the server is outstanding.',
+  where: 'Home playback card',
+  note: 'The Home row loads every active card from the session-only /api/v1/playback/home-cards/ endpoint and falls back to the older read-only single-card route. It uses the shared Lists MediaCard at 16:9, spanning three regular cards in compact mobile layout, two in comfortable mobile layout, and two on desktop. Manual check-ins offer Pause/Stop; check-in sessions offer Stop/Cancel.',
 };
 
 const labels = {
@@ -132,45 +131,6 @@ export default function PlaybackSlot({ onOpenDetail }) {
       })}
     </ScrollView>
     {message ? <Text style={styles.copy}>{message}</Text> : null}
-  </View>;
-}
-
-const startedAt = Math.floor(Date.now() / 1000) - 754;
-
-export function CheckInStateSlot() {
-  const [state, setState] = useState({ phase: 'active', message: '' });
-  const actions = state.phase === 'active'
-    ? [{ key: 'pause', label: 'Pause' }, { key: 'cancel', label: 'Cancel check-in' }, { key: 'edit', label: 'Edit' }]
-    : [{ key: 'resume', label: 'Resume S02E05' }, { key: 'edit', label: 'Edit' }];
-
-  function act(action) {
-    if (action.key === 'cancel') {
-      setState({ phase: 'idle', message: 'Check-in cancelled.' });
-      return;
-    }
-    if (action.key === 'pause') {
-      setState({ phase: 'paused', message: 'Check-in paused; the saved position stays.' });
-      return;
-    }
-    if (action.key === 'resume') {
-      setState({ phase: 'active', message: 'Check-in resumed.' });
-      return;
-    }
-    setState(current => ({ ...current, message: 'The shared tracking dialog opens for this entry.' }));
-  }
-
-  if (state.phase === 'idle') {
-    return <Note surface={{ ...surface, title: 'Check-in idle', note: state.message }} />;
-  }
-
-  return <View style={styles.root}>
-    <CheckInState model={{
-      phase: state.phase,
-      code: 'S02E05',
-      title: 'The Quiet Orbit',
-      startedAtSeconds: startedAt,
-    }} actions={actions} labels={labels} palette={playbackPalette} onAction={act} />
-    {state.message ? <Text style={styles.copy}>{state.message}</Text> : null}
   </View>;
 }
 

@@ -1,6 +1,8 @@
 import { getActiveAuthSession } from './authSession.js';
 import {
   calendarModelFromPayload,
+  calendarOptionsFromEvents,
+  calendarOptionsFromLinks,
   createLocalCalendarActions,
   createRemoteCalendarActions,
 } from './calendarTransportCore.js';
@@ -16,4 +18,4 @@ export function createCalendarTransport(options = {}) {
   return createLocalCalendarActions('Sign in to Floppy to refresh calendar data on the server.');
 }
 
-export { calendarModelFromPayload, calendarQuery } from './calendarTransportCore.js';
+export { calendarModelFromPayload, calendarOptionsFromEvents, calendarOptionsFromLinks, calendarQuery } from './calendarTransportCore.js';

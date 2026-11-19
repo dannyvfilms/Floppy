@@ -5,13 +5,13 @@ from unittest.mock import patch
 import redis
 import requests
 from django.core.cache import cache
-from django.test import SimpleTestCase, tag
+from django.test import TestCase, tag
 
 from app.models import MediaTypes, Sources
 from app.providers import services, tmdb
 
 
-class AbsentSeasonTests(SimpleTestCase):
+class AbsentSeasonTests(TestCase):
     def setUp(self):
         cache.clear()
         self.addCleanup(cache.clear)

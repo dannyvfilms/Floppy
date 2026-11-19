@@ -170,7 +170,7 @@ def _build_share_view_name(media_type, normalized_rules):
         with contextlib.suppress(ValueError):
             parts.append(f"sorted by {MediaSortChoices(sort_value).label}")
 
-    return " — ".join(parts)
+    return "; ".join(parts)
 
 
 @login_required
@@ -547,7 +547,7 @@ def _list_item_toggle_error_response(*, busy=False, as_json=False):
     else:
         status = 500
         message = (
-            "Couldn't update this list — please try again. If it "
+            "Couldn't update this list. Please try again. If it "
             "keeps happening, file a bug report from "
             "Settings > Advanced."
         )

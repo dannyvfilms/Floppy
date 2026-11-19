@@ -13,6 +13,8 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import helpers
+from app.helpers import coerce_int as _coerce_int
+from app.helpers import coerce_list as _coerce_list
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services, tmdb
 
@@ -148,15 +150,6 @@ def _unwrap_data(payload: Any):
     if isinstance(payload, dict) and "data" in payload:
         return payload.get("data")
     return payload
-
-
-def _coerce_list(value) -> list:
-    """Normalize a scalar-or-list response into a list."""
-    if isinstance(value, list):
-        return value
-    if value in (None, ""):
-        return []
-    return [value]
 
 
 def _coerce_episode_count(series_data) -> int | None:
@@ -376,7 +369,7 @@ def _request(path: str, *, params=None, retry: bool = True, user=None):
         handle_error(error, user)
 
 
-def _parse_date(value):
+def _parse_tvdb_datetime(value):
     """Return a timezone-aware datetime for known TVDB date strings."""
     if not value:
         return None
@@ -809,16 +802,6 @@ def _coerce_float(value) -> float | None:
         return None
 
 
-def _coerce_int(value) -> int | None:
-    """Return a numeric int when possible."""
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _get_rating_pair(row: dict | None) -> tuple[float | None, int | None]:
     """Return a normalized TVDB rating and vote count pair."""
     row = row or {}
@@ -938,7 +921,7 @@ def _season_related_entry(
     last_air = None
     if episode_rows:
         air_dates = [
-            air for air in (_parse_date(ep.get("aired")) for ep in episode_rows) if air
+            air for air in (_parse_tvdb_datetime(ep.get("aired")) for ep in episode_rows) if air
         ]
         if air_dates:
             first_air = min(air_dates)
@@ -1012,10 +995,10 @@ def _build_series_metadata(series_data: dict, *, media_type: str, language: str 
     episode_runtime = series_data.get("averageRuntime") or series_data.get("runtime")
     details = {
         "format": "TV",
-        "first_air_date": _parse_date(
+        "first_air_date": _parse_tvdb_datetime(
             series_data.get("firstAired") or series_data.get("first_air_time"),
         ),
-        "last_air_date": _parse_date(series_data.get("lastAired")),
+        "last_air_date": _parse_tvdb_datetime(series_data.get("lastAired")),
         "status": (series_data.get("status") or {}).get("name")
         if isinstance(series_data.get("status"), dict)
         else series_data.get("status"),
@@ -1085,7 +1068,7 @@ def _person_filmography_entries(characters, language: str | None = None):
             or "Unknown Title"
         )
         year = None
-        first_aired = _parse_date(
+        first_aired = _parse_tvdb_datetime(
             series_row.get("firstAired") or character.get("year"),
         )
         if first_aired:
@@ -1221,9 +1204,9 @@ def _normalize_episode_rows(
             episode, "episodes", language, preloaded_translation=preloaded,
         )
         air_date = (
-            _parse_date(episode.get("aired"))
-            or _parse_date(episode.get("firstAired"))
-            or _parse_date(episode.get("airDate"))
+            _parse_tvdb_datetime(episode.get("aired"))
+            or _parse_tvdb_datetime(episode.get("firstAired"))
+            or _parse_tvdb_datetime(episode.get("airDate"))
         )
         normalized.append(
             {
@@ -1395,6 +1378,20 @@ def tv(media_id, *, routed_media_type=MediaTypes.TV.value, language=None):
     return data
 
 
+def _store_fetched_season_episode_count(media_id, season_number, season_metadata):
+    """Keep the stored season episode count in step with a payload just fetched."""
+    from app import metadata_utils
+
+    episodes = season_metadata.get("episodes")
+    if isinstance(episodes, list):
+        metadata_utils.store_provider_episode_count(
+            media_id,
+            Sources.TVDB.value,
+            len(episodes),
+            season_number=season_number,
+        )
+
+
 def tv_with_seasons(
     media_id, season_numbers, *, routed_media_type=MediaTypes.TV.value, language=None
 ):
@@ -1447,6 +1444,11 @@ def tv_with_seasons(
                 cache_key,
                 season_metadata,
                 timeout=TVDB_METADATA_CACHE_TIMEOUT,
+            )
+            _store_fetched_season_episode_count(
+                media_id,
+                season_number,
+                season_metadata,
             )
         season_payloads[f"season/{season_number}"] = season_metadata
 
@@ -1564,7 +1566,7 @@ def get_episode_airstamp_map(tvdb_id):
             or row.get("episodeNumber")
             or row.get("airedEpisodeNumber")
         )
-        air_date = _parse_date(
+        air_date = _parse_tvdb_datetime(
             row.get("aired") or row.get("firstAired") or row.get("airDate")
         )
         if season_number is None or episode_number is None or air_date is None:

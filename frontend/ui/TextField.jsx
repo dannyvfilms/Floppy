@@ -19,6 +19,7 @@ const keyboardTypes = {
   url: 'url',
   tel: 'phone-pad',
   number: 'number-pad',
+  decimal: 'decimal-pad',
 };
 
 /**
@@ -37,6 +38,7 @@ export function TextField({
   type = 'text',
   placeholder,
   help,
+  helpAfter = false,
   error,
   required = false,
   disabled = false,
@@ -49,6 +51,9 @@ export function TextField({
   trailingWidth = 44,
   size = 'default',
   testID,
+  onSubmitEditing,
+  inputStyle,
+  labelStyle,
 }) {
   const colors = useMemo(() => ({ ...defaultPalette, ...palette }), [palette]);
   const large = size === 'lg';
@@ -59,10 +64,10 @@ export function TextField({
   };
   return <View style={[styles.field, large && styles.fieldLarge]} testID={testID}>
     {!labelHidden ? <View style={styles.labelRow}>
-      <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, large && styles.labelLarge, { color: colors.textMuted }]}>{label}</Text>
+      <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, large && styles.labelLarge, { color: colors.textMuted }, labelStyle]}>{label}</Text>
       {maskedPreview ? <Text style={[styles.masked, { color: colors.textMuted }]}>{maskedPreview}</Text> : null}
     </View> : null}
-    {help ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
+    {help && !helpAfter ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     <View style={styles.inputWrap}>
       <TextInput
         accessibilityLabel={accessibilityLabel || label}
@@ -76,6 +81,7 @@ export function TextField({
         maxLength={maxLength}
         nativeID={id}
         onChangeText={change}
+        onSubmitEditing={onSubmitEditing}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         multiline={false}
@@ -83,14 +89,15 @@ export function TextField({
         secureTextEntry={secure}
         value={value ?? ''}
         style={[styles.input, large && styles.inputLarge, trailing ? { paddingRight: trailingWidth } : null, {
-          borderColor: error ? colors.danger : colors.border,
+          borderColor: error ? colors.danger : colors.fieldBorder || colors.border,
           backgroundColor: colors.inputBackground || colors.surface,
           color: colors.textSecondary,
           opacity: disabled ? 0.5 : 1,
-        }]}
+        }, inputStyle]}
       />
       {trailing ? <View style={styles.trailingWrap}>{trailing}</View> : null}
     </View>
+    {help && helpAfter ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
   </View>;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 // One Calendar composition for web and Expo. It owns the page heading, the
 // empty note, the month section, the calendar-links heading/copy order and the
@@ -15,6 +15,7 @@ export const calendarLabels = {
   linksTitle: 'Calendar links',
   linksCopy: 'Add this link to any calendar app to see upcoming releases there.',
   loading: 'Loading calendar…',
+  retry: 'Try again',
 };
 
 export function CalendarView({
@@ -28,6 +29,7 @@ export function CalendarView({
   palette = {},
   chrome = true,
   loading = false,
+  onRetry,
   sections = ['calendar', 'links'],
   header,
   footer,
@@ -50,6 +52,10 @@ export function CalendarView({
         : calendar)
       : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: palette.textMuted || '#a1a1aa' }]}>{notice}</Text> : null}
+    {notice && onRetry ? <Pressable accessibilityRole="button" accessibilityLabel={copy.retry}
+      onPress={onRetry} style={styles.retry}>
+      <Text style={[styles.retryText, { color: palette.link || '#818cf8' }]}>{copy.retry}</Text>
+    </Pressable> : null}
     {show('links') && links ? <View style={styles.section}>
       {copy.linksTitle ? <Text accessibilityRole="header" style={[styles.sectionTitle, { color: palette.text || '#fafafa' }]}>{copy.linksTitle}</Text> : null}
       {copy.linksCopy ? <Text style={[styles.subtitle, { color: palette.textMuted || '#a1a1aa' }]}>{copy.linksCopy}</Text> : null}
@@ -67,4 +73,6 @@ const styles = StyleSheet.create({
   section: { gap: 8 },
   sectionTitle: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
   notice: { fontSize: 12, lineHeight: 17 },
+  retry: { alignSelf: 'flex-start', paddingVertical: 4 },
+  retryText: { fontSize: 13, fontWeight: '600' },
 });

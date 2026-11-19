@@ -2,8 +2,12 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.core.cache import cache
+from django.test import override_settings
+
+from app.discover import tab_cache
 from app.discover.schemas import CandidateItem, RowResult
-from app.models import CollectionEntry, DiscoverFeedback, MediaTypes, Sources
+from app.models import CollectionEntry, DiscoverFeedback, Item, MediaTypes, Sources
 from app.providers import services
 
 from .base import FloppyApiTestCase
@@ -76,6 +80,62 @@ class DiscoverTests(FloppyApiTestCase):
         self.assertEqual(payload["media_type"], MediaTypes.MOVIE.value)
         self.assertEqual(payload["rows"], [])
 
+    def test_rows_carry_loading_media_options_and_match_wording(self):
+        """Rows expose the rebuild flag, the server's media chips and match labels."""
+        row = RowResult(
+            key="top_picks_for_you",
+            title="Top Picks For You",
+            mission="Taste",
+            why="why",
+            source="tmdb",
+            items=[],
+        )
+        with patch(
+            "api.fork_views_discover._discover_response_rows",
+            return_value=[row],
+        ):
+            payload = self.call_api(
+                "get",
+                "api_discover",
+                params={"media_type": MediaTypes.MOVIE.value},
+                headers=self.auth_headers,
+            ).json()
+        self.assertIn("loading", payload)
+        self.assertEqual(payload["media_options"][0]["value"], "all")
+        self.assertEqual(payload["media_options"][-1]["value"], "hidden")
+        self.assertEqual(payload["rows"][0]["match_label"], "Taste match")
+
+    def test_status_reports_rebuild_state(self):
+        """GET discover/status answers with the cache flags the web polls."""
+        response = self.call_api(
+            "get",
+            "api_discover_status",
+            params={"media_type": MediaTypes.MOVIE.value},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()
+        for key in ("exists", "is_stale", "is_refreshing", "recently_built"):
+            self.assertIn(key, payload)
+
+    def test_hidden_entries_carry_artwork_and_identity(self):
+        """Hidden entries return image, source and media id for their cards."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.call_api(
+            "post",
+            "api_discover_hidden",
+            payload={"item_id": item.id, "action": "hide"},
+            headers=self.auth_headers,
+        )
+        entry = self.call_api(
+            "get",
+            "api_discover_hidden",
+            headers=self.auth_headers,
+        ).json()["results"][0]
+        self.assertEqual(entry["media_id"], str(item.media_id))
+        self.assertEqual(entry["source"], item.source)
+        self.assertIn("image", entry)
+
     @patch("api.fork_views_discover.discover_tab_cache.schedule_tab_refresh")
     def test_refresh_queues_rebuild(self, mock_schedule):
         """POST discover/refresh returns 202 and schedules a rebuild."""
@@ -133,6 +193,47 @@ class DiscoverTests(FloppyApiTestCase):
         self.assertFalse(
             DiscoverFeedback.objects.filter(user=self.user1, item=item).exists(),
         )
+
+    def test_hide_by_identity_creates_untracked_item(self):
+        """POST discover/hidden with an identity hides an untracked candidate."""
+        hidden = self.call_api(
+            "post",
+            "api_discover_hidden",
+            payload={
+                "action": "hide",
+                "source": "tmdb",
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "discover-hide-identity",
+                "title": "Dismissed film",
+                "image": "https://example.com/art.jpg",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(hidden.status_code, HTTP.OK)
+        item = Item.objects.get(
+            source="tmdb",
+            media_type=MediaTypes.MOVIE.value,
+            media_id="discover-hide-identity",
+        )
+        self.assertEqual(item.title, "Dismissed film")
+        self.assertTrue(
+            DiscoverFeedback.objects.filter(user=self.user1, item=item).exists(),
+        )
+
+    def test_hide_rejects_unknown_media_type(self):
+        """An identity hide with a bad media_type is a 400."""
+        rejected = self.call_api(
+            "post",
+            "api_discover_hidden",
+            payload={
+                "action": "hide",
+                "source": "tmdb",
+                "media_type": "not-a-type",
+                "media_id": "whatever",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(rejected.status_code, HTTP.BAD_REQUEST)
 
     def test_invalid_action_rejected(self):
         """Unknown hidden actions return 400."""
@@ -388,6 +489,19 @@ class RecommendationsTests(FloppyApiTestCase):
         self.assertEqual(results[0]["ids"], {"tmdb": "701", "imdb": "tt0111161"})
         self.assertEqual(results[1]["ids"], {"imdb": "tt9999999", "tmdb": "9001"})
         mock_metadata.assert_called_once()
+
+    @override_settings(DISCOVER_EAGER_REBUILD_DAYS=3)
+    def test_a_call_counts_as_using_discover(self):
+        """A plugin reading picks keeps the user's Discover rebuilding after writes."""
+        cache.clear()
+        self.assertFalse(tab_cache.recently_used(self.user1.id))
+
+        # The tab is cold: the request queues its build and returns no picks.
+        with patch("app.discover.tab_cache.schedule_tab_refresh", return_value=True):
+            response = self._get({"media_type": MediaTypes.MOVIE.value})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertTrue(tab_cache.recently_used(self.user1.id))
 
     def test_tv_ids_include_tvdb(self):
         """TV picks carry the TVDB id a media-server plugin matches on."""

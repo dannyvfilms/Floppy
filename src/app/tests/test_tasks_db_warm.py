@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from django.test import SimpleTestCase, override_settings
 
@@ -31,3 +32,39 @@ class WarmDatabasePageCacheTests(SimpleTestCase):
     def test_missing_file_skips(self):
         with override_settings(DATABASES=self._databases("/nonexistent/db.sqlite3")):
             self.assertEqual(warm_database_page_cache()["reason"], "missing")
+
+
+class WarmOnWorkerStartTests(SimpleTestCase):
+    """A restart is when the cache is coldest, so the worker warms at once."""
+
+    def test_background_worker_queues_a_warm(self):
+        from config import celery
+
+        with (
+            mock.patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": "background"}),
+            mock.patch.object(celery.app, "send_task") as send_task,
+        ):
+            celery._warm_database_on_start()
+        send_task.assert_called_once_with(
+            "Warm database page cache",
+            ignore_result=True,
+        )
+
+    def test_interactive_worker_does_not(self):
+        from config import celery
+
+        with (
+            mock.patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": "interactive"}),
+            mock.patch.object(celery.app, "send_task") as send_task,
+        ):
+            celery._warm_database_on_start()
+        send_task.assert_not_called()
+
+    def test_a_broker_error_does_not_stop_the_worker(self):
+        from config import celery
+
+        with (
+            mock.patch.dict("os.environ", {"FLOPPY_PROCESS_ROLE": "background"}),
+            mock.patch.object(celery.app, "send_task", side_effect=OSError("down")),
+        ):
+            celery._warm_database_on_start()

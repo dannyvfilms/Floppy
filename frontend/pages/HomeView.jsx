@@ -26,6 +26,8 @@ export function HomeView({
   onRetry,
   onOpenCard,
   onOpenLink,
+  onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   renderCard,
@@ -34,6 +36,9 @@ export function HomeView({
   renderActionIcon,
   railComponent,
   onLoadRow,
+  watchRow,
+  rowHeights,
+  progressHeight,
   onLoadMore,
   onSortRow,
   onRefreshCovers,
@@ -50,7 +55,7 @@ export function HomeView({
     {loading ? <View accessibilityLiveRegion="polite" style={styles.loading}>
       <ActivityIndicator color={palette.accent || '#6366f1'} />
       <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
-    </View> : <HomeShelves
+    </View> : error && !groups.length && !deferredGroups.length ? null : <HomeShelves
       groups={groups}
       deferredGroups={deferredGroups}
       showMediaTypeHeaders={showMediaTypeHeaders}
@@ -60,6 +65,8 @@ export function HomeView({
       itemWidth={itemWidth}
       onOpenCard={onOpenCard}
       onOpenLink={onOpenLink}
+      onOpenRowTitle={onOpenRowTitle}
+      canOpenRowTitle={canOpenRowTitle}
       onAction={onAction}
       onRate={onRate}
       renderCard={renderCard}
@@ -68,6 +75,9 @@ export function HomeView({
       renderActionIcon={renderActionIcon}
       railComponent={railComponent}
       onLoadRow={onLoadRow}
+      watchRow={watchRow}
+      rowHeights={rowHeights}
+      progressHeight={progressHeight}
       onLoadMore={onLoadMore}
       onSortRow={onSortRow}
       onRefreshCovers={onRefreshCovers}

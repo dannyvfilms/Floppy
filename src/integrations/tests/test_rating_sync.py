@@ -15,6 +15,7 @@ from django.utils import timezone
 from app.log_safety import redact_secrets
 from app.models import TV, Episode, Item, Movie, Season, Status
 from app.services.episode_scores import rate_episode
+from integrations import pending_auth
 from integrations.imports.helpers import decrypt, encrypt
 from integrations.models import (
     CAPABILITY_RATING_PUSH,
@@ -589,14 +590,12 @@ class ConnectionTests(RatingSyncTestCase):
 
     def authorization(self, **overrides):
         """Store a pending authorization just as the start view does."""
-        session = self.client.session
-        session["tmdb_auth"] = {
+        pending_auth.put("tmdb_auth", self.user.pk, {
             "request_token": "approved-token",
             "user_id": self.user.pk,
             "expires_at": (timezone.now() + timedelta(minutes=30)).timestamp(),
             **overrides,
-        }
-        session.save()
+        })
 
     def callback(self, **overrides):
         """Return to the real callback route."""
@@ -625,7 +624,7 @@ class ConnectionTests(RatingSyncTestCase):
                 "https://www.themoviedb.org/authenticate/request-123?"
             )
         )
-        self.assertEqual(self.client.session["tmdb_auth"]["user_id"], self.user.pk)
+        self.assertEqual(pending_auth.get("tmdb_auth", self.user.pk)["user_id"], self.user.pk)
 
     def test_start_accepts_tmdb_utc_expiry_format(self):
         expiry = (timezone.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -636,7 +635,7 @@ class ConnectionTests(RatingSyncTestCase):
         ):
             response = self.client.post(reverse("tmdb_connect"))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(self.client.session["tmdb_auth"]["request_token"], "utc-token")
+        self.assertEqual(pending_auth.get("tmdb_auth", self.user.pk)["request_token"], "utc-token")
 
     def test_invalid_or_expired_provider_expiry_does_not_start_authorization(self):
         for expiry in [
@@ -656,7 +655,7 @@ class ConnectionTests(RatingSyncTestCase):
             ):
                 response = self.client.post(reverse("tmdb_connect"))
             self.assertEqual(response.url, reverse("provider_detail", args=["tmdb"]) + "?tab=connection")
-            self.assertNotIn("tmdb_auth", self.client.session)
+            self.assertIsNone(pending_auth.get("tmdb_auth", self.user.pk))
 
     def test_callback_encrypts_session_and_does_not_enable_sync(self):
         self.authorization()
@@ -674,7 +673,7 @@ class ConnectionTests(RatingSyncTestCase):
         self.assertEqual(decrypt(self.account.session_id), "new-private-session")
         self.assertEqual(self.account.account_id, "43")
         self.assertFalse(self.user.sync_bindings.filter(status="active").exists())
-        self.assertNotIn("tmdb_auth", self.client.session)
+        self.assertIsNone(pending_auth.get("tmdb_auth", self.user.pk))
 
     def test_mismatched_expired_denied_and_other_user_tokens_do_not_exchange(self):
         scenarios = [

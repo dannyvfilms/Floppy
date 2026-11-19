@@ -79,6 +79,25 @@ class BaseWebhookProcessor:
         """Record this run's structured outcome for the worker's log line."""
         self.outcome = outcome
 
+    def _event_now(self):
+        """Return when this event happened, to the minute, for a new play.
+
+        Inside the worker that is the HTTP receipt time, not the processing
+        time: a redelivered or backlogged event runs late, and dating its play
+        by the clock would put it outside the duplicate-play window of the
+        original and save a second play (see webhook-delivery.md,
+        "Redelivery"). Outside the worker there is no receipt time.
+        """
+        event_ts = getattr(self, "_event_ts", None)
+        if event_ts is not None:
+            try:
+                moment = datetime.fromtimestamp(event_ts, tz=UTC)
+            except (OverflowError, OSError, TypeError, ValueError):
+                moment = None
+            if moment is not None:
+                return moment.replace(second=0, microsecond=0)
+        return timezone.now().replace(second=0, microsecond=0)
+
     def _get_played_at(self, payload):
         """Extract played-at timestamp if provided by the payload."""
         metadata = payload.get("Metadata", {}) or {}
@@ -1642,10 +1661,7 @@ class BaseWebhookProcessor:
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
-        now = self._get_played_at(payload) or timezone.now().replace(
-            second=0,
-            microsecond=0,
-        )
+        now = self._get_played_at(payload) or self._event_now()
 
         # Play never writes, so the row is created at stop/scrobble. Now Playing
         # saw the play start; use that as the start date (#1482).
@@ -2140,9 +2156,7 @@ class BaseWebhookProcessor:
                 user,
                 targets,
                 watched_at=(
-                    self._get_played_at(payload) or timezone.now().replace(
-                        second=0, microsecond=0,
-                    )
+                    self._get_played_at(payload) or self._event_now()
                 ) if self._is_played(payload) else None,
                 unplayed=self._is_unplayed(payload),
             )
@@ -2639,10 +2653,7 @@ class BaseWebhookProcessor:
         )
 
         if self._is_played(payload):
-            now = self._get_played_at(payload) or timezone.now().replace(
-                second=0,
-                microsecond=0,
-            )
+            now = self._get_played_at(payload) or self._event_now()
             # Check for duplicate episode records: webhooks are sometimes
             # triggered multiple times (#689), and the same play may already
             # have been recorded by a Trakt or Plex history import (#642).
@@ -2829,7 +2840,7 @@ class BaseWebhookProcessor:
                 return True
             episode_number = max(episode_number, current_instance.progress or 0)
 
-        now = timezone.now().replace(second=0, microsecond=0)
+        now = self._event_now()
         is_completed = episode_number == anime_metadata["max_progress"]
         status = Status.COMPLETED.value if is_completed else Status.IN_PROGRESS.value
 

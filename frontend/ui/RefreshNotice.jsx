@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 const DEFAULT_PALETTE = {
   surface: '#27272a',
@@ -91,7 +93,7 @@ export function RefreshNotice({
       palette={buttonPalette(colors)} onPress={onRetry} /> : null}
     {onDismiss ? <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
       onPress={onDismiss} style={styles.dismiss}>
-      <Text style={[styles.dismissText, { color: textColor }]}>✕</Text>
+      <Icon spec={actionIcons.x} size={16} color={textColor} />
     </Pressable> : null}
     {children}
   </View>;

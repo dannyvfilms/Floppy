@@ -8,8 +8,8 @@ from lists.models import CustomList
 from .base import FloppyApiTestCase
 
 
-class ListWriteBindingTests(FloppyApiTestCase):
-    """A bound token writes only the lists it names."""
+class _BindingFixtures(FloppyApiTestCase):
+    """Two manual lists, one smart list and a token factory."""
 
     def setUp(self):
         """Create two lists and a token bound to one of them."""
@@ -38,6 +38,10 @@ class ListWriteBindingTests(FloppyApiTestCase):
         token.writable_list_ids = writable_list_ids
         token.save(update_fields=["writable_list_ids"])
         return {"HTTP_X_API_KEY": secret}
+
+
+class ListWriteBindingTests(_BindingFixtures):
+    """A bound token writes only the lists it names."""
 
     def rename(self, list_id, headers):
         """Attempt to rename a list."""
@@ -145,3 +149,73 @@ class ListWriteBindingTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+
+class BulkListAddBindingTests(_BindingFixtures):
+    """Bulk add-to-list names its list in the path; the same rules apply."""
+
+    def bulk_add(self, list_id, headers):
+        """Add one movie to a list through the bulk route."""
+        return self.client.post(
+            f"/api/v1/lists/{list_id}/items/bulk/",
+            {"item_ids": [self.items_by_type["movie"][0].id]},
+            format="json",
+            **headers,
+        )
+
+    def test_a_token_without_lists_scope_is_refused(self):
+        _token, secret = IntegrationToken.generate(
+            user=self.user1,
+            name="scrobbler",
+            scopes=["watchlist:read", "watchlist:write"],
+        )
+        response = self.bulk_add(self.other_list.id, {"HTTP_X_API_KEY": secret})
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.assertFalse(self.other_list.items.exists())
+
+    def test_a_token_bound_to_another_list_is_refused(self):
+        response = self.bulk_add(
+            self.other_list.id,
+            self.token_for([self.bound_list.id]),
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.assertFalse(self.other_list.items.exists())
+
+    def test_a_token_bound_to_that_list_may_add(self):
+        response = self.bulk_add(
+            self.bound_list.id,
+            self.token_for([self.bound_list.id]),
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertTrue(self.bound_list.items.exists())
+
+    def test_the_session_user_may_add(self):
+        response = self.bulk_add(self.other_list.id, self.auth_headers)
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertTrue(self.other_list.items.exists())
+
+
+class SmartFlagTokenTests(_BindingFixtures):
+    """A scoped token must not convert a list between manual and smart."""
+
+    def test_a_token_may_not_make_a_manual_list_smart(self):
+        response = self.client.patch(
+            f"/api/v1/lists/{self.bound_list.id}/",
+            {"is_smart": True},
+            format="json",
+            **self.token_for([self.bound_list.id]),
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.bound_list.refresh_from_db()
+        self.assertFalse(self.bound_list.is_smart)
+
+    def test_the_account_credential_may_still_make_a_list_smart(self):
+        response = self.client.patch(
+            f"/api/v1/lists/{self.bound_list.id}/",
+            {"is_smart": True},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.bound_list.refresh_from_db()
+        self.assertTrue(self.bound_list.is_smart)

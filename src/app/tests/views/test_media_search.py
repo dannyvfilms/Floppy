@@ -1092,3 +1092,50 @@ class AllScopeIsbnSearchTests(TestCase):
         )
         self.assertEqual(books["results"][0]["item"], owned)
         self.assertEqual(books["total"], 2)
+
+
+class ProviderResultSetsTests(TestCase):
+    """One provider failing is reported by label; anything else still raises."""
+
+    def setUp(self):
+        """Build a request for a signed-in user."""
+        from django.test import RequestFactory
+
+        self.request = RequestFactory().get("/search")
+        self.request.user = get_user_model().objects.create_user("sets", password="12345")
+
+    def _sets(self, side_effect):
+        from app.search_views import _provider_result_sets
+
+        sources = [Sources.TMDB.value, Sources.TVDB.value]
+        with (
+            patch("app.providers.services.search", side_effect=side_effect),
+            patch(
+                "app.search_views.helpers.enrich_items_with_user_data",
+                side_effect=lambda _request, results, **_kwargs: results,
+            ),
+        ):
+            return _provider_result_sets(
+                self.request, MediaTypes.TV.value, "query", sources, 1
+            )
+
+    def test_provider_failure_is_reported_once_per_provider(self):
+        def fake(_media_type, _query, _page, source, **_kwargs):
+            if source == Sources.TVDB.value:
+                raise services.ProviderAPIError(source, Exception("secret"))
+            return {"results": [{"media_id": "1", "title": "Hit"}]}
+
+        sets, unavailable = self._sets(fake)
+        self.assertEqual([entry["source"] for entry in sets], [Sources.TMDB.value])
+        self.assertEqual(
+            unavailable,
+            [metadata_resolution.metadata_provider_label(Sources.TVDB.value)],
+        )
+
+    def test_unconfigured_provider_is_skipped_and_other_errors_raise(self):
+        def unconfigured(_media_type, _query, _page, source, **_kwargs):
+            raise services.ProviderNotConfiguredError(source, "Add a key.")
+
+        self.assertEqual(self._sets(unconfigured), ([], []))
+        with self.assertRaises(RuntimeError):
+            self._sets(RuntimeError("unexpected"))

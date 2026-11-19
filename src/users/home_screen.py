@@ -7,6 +7,7 @@ import hashlib
 import json
 import random
 import secrets
+import time
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
+from app.artwork_sizes import card_image_url
 from app.helpers import progress_activity
 from app.library_query import FilterValues, LibraryQuery, LibraryQueryExecutor, SortSpec
 from app.library_query.adapters import (
@@ -1794,6 +1796,7 @@ def _music_shell_items_bulk(
                     media_id=mid,
                     source=Sources.MANUAL.value,
                     media_type=MediaTypes.MUSIC.value,
+                    library_media_type=MediaTypes.MUSIC.value,
                     title=specs_map[mid][1],
                     image=specs_map[mid][2] or settings.IMG_NONE,
                 )
@@ -1813,6 +1816,7 @@ def _music_shell_items_bulk(
                 media_id=mid,
                 source=Sources.MANUAL.value,
                 media_type=MediaTypes.MUSIC.value,
+                library_media_type=MediaTypes.MUSIC.value,
                 title=specs_map[mid][1],
                 image=specs_map[mid][2] or settings.IMG_NONE,
             )
@@ -2176,6 +2180,7 @@ def _podcast_show_shell_items_bulk(
             media_id=show.podcast_uuid,
             source=show.source,
             media_type=MediaTypes.PODCAST.value,
+            library_media_type=MediaTypes.PODCAST.value,
             title=show.title,
             image=show.image or settings.IMG_NONE,
         )
@@ -3072,12 +3077,14 @@ for _definition in (
         batch_values=_episode_feed_sort_values,
         direction_in_value=True,
         needs=_MEDIA_AND_MAX,
+        tv_facts=True,
     ),
     SortDef(
         ("home_upcoming",),
         batch_values=_upcoming_values,
         direction_in_value=True,
         needs=_MEDIA,
+        tv_facts=True,
     ),
     SortDef(
         ("home_recent",),
@@ -3085,16 +3092,19 @@ for _definition in (
         sql_order=_recent_sql_order,
         direction_in_value=True,
         needs=_MEDIA,
+        tv_facts=True,
     ),
     SortDef(
         ("home_completion",),
         batch_values=_entry_value_sort(_completion_value),
         needs=_MEDIA_AND_MAX,
+        tv_facts=True,
     ),
     SortDef(
         ("home_episodes_left",),
         batch_values=_entry_value_sort(_episodes_left_value),
         needs=_MEDIA_AND_MAX,
+        tv_facts=True,
     ),
 ):
     register_sort(_definition)
@@ -3130,7 +3140,7 @@ def _library_row_executor(user, row, normalized_filters, *, seed: int):
         seed=seed,
         mixed=mixed,
     )
-    return LibraryQueryExecutor(user, query)
+    return LibraryQueryExecutor(user, query, share_shows=True)
 
 
 def _row_items(user, row, executor, offset, limit, *, seed):
@@ -3239,7 +3249,7 @@ def _custom_list_row_executor(user, row, *, seed: int):
         sort_list_id=row.custom_list_id,
         dedupe_cross_provider=False,
     )
-    return LibraryQueryExecutor(user, query)
+    return LibraryQueryExecutor(user, query, share_shows=True)
 
 
 def _custom_list_row_window(user, row, offset, limit, *, seed):
@@ -3538,7 +3548,9 @@ def _build_row_section(
         if media_type in SQUARE_HOME_MEDIA_TYPES
         else "media-grid",
         "poll_for_covers": poll_for_covers,
-        "opposite_artwork": _opposite_direction_artwork(user, row) if batch_start == 0 else [],
+        "opposite_artwork": (
+            _opposite_direction_artwork(user, row, seed=seed) if batch_start == 0 else []
+        ),
     }
 
 
@@ -3554,7 +3566,7 @@ OPPOSITE_ARTWORK_MEDIA_TYPES = frozenset({
 })
 
 
-def _opposite_direction_artwork(user, row, limit: int = 8) -> list[str]:
+def _opposite_direction_artwork(user, row, limit: int = 8, *, seed: int = 0) -> list[str]:
     """Return the first covers a direction flip would show, for the client to prefetch.
 
     The first flip otherwise waits for covers it could not know about. Only
@@ -3573,13 +3585,51 @@ def _opposite_direction_artwork(user, row, limit: int = 8) -> list[str]:
         DirectionChoices.ASC if current == DirectionChoices.DESC else DirectionChoices.DESC
     )
     normalized = _normalized_filter_payload(row.filters or {}, row.media_type)
-    executor = _library_row_executor(user, flipped, normalized, seed=0)
-    items, _total = _row_items(user, flipped, executor, 0, limit, seed=0)
+    executor = _library_row_executor(user, flipped, normalized, seed=seed)
+    items, _total = _row_items(user, flipped, executor, 0, limit, seed=seed)
+    # The same card-size URL the card will load, so the prefetch warms that file.
     return [
-        item.image
+        card_image_url(item.image)
         for item in items
         if item.image and item.image != settings.IMG_NONE and item.image.startswith("http")
     ]
+
+
+_HOME_ROW_BUILD_LOCK_TTL = 30
+
+
+def cache_utils_key(user, row, items_limit: int = 14) -> str:
+    """Cache key of a row's built section (shared with tests that stage the build marker)."""
+    from app import cache_utils
+
+    return cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
+
+
+_HOME_ROW_WAIT_SECONDS = 4.0
+_HOME_ROW_WAIT_STEP = 0.05
+
+
+def _wait_for_row_in_flight(cache, cache_key):
+    """Return the row another request is building, once it lands in the cache.
+
+    A page loaded twice (two tabs, the installed app next to Safari, a retry)
+    asks for the same cold row at the same moment, and each request used to
+    build it. The first marks the row as building; later ones wait for its
+    result instead of repeating the work, and build it themselves if it does
+    not land in time, so a stalled builder never blocks a page. The marker is
+    advisory, not a lock: two requests that both see none still both build.
+    """
+    if cache.get(f"{cache_key}_building") is None:
+        return None
+    deadline = time.monotonic() + _HOME_ROW_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        time.sleep(_HOME_ROW_WAIT_STEP)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if cache.get(f"{cache_key}_building") is None:
+            return cache.get(cache_key)
+    return None
 
 
 def _cached_row_section(
@@ -3601,19 +3651,54 @@ def _cached_row_section(
 
     cache_key = cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
     cached = None if refresh else cache.get(cache_key)
+    if cached is None and not refresh:
+        cached = _wait_for_row_in_flight(cache, cache_key)
     if cached is None:
-        with boundary("home_row"):
-            section = _build_row_section(user, row, media_type, items_limit)
-        cache.set(
-            cache_key,
-            section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
-            cache_utils.HOME_ROW_CACHE_TTL,
-        )
-        cache_utils.register_home_row_cache_key(user.id, cache_key)
+        lock_key = f"{cache_key}_building"
+        cache.set(lock_key, 1, _HOME_ROW_BUILD_LOCK_TTL)
+        try:
+            with boundary("home_row"):
+                section = _build_row_section(user, row, media_type, items_limit)
+            cache.set(
+                cache_key,
+                section if section is not None else _HOME_ROW_EMPTY_SENTINEL,
+                cache_utils.HOME_ROW_CACHE_TTL,
+            )
+            cache_utils.register_home_row_cache_key(user.id, cache_key)
+            if section is not None and section.get("poll_for_covers"):
+                from app.home_artwork import record_cover_baseline
+
+                record_cover_baseline(user)
+        finally:
+            cache.delete(lock_key)
         return section
     if cached == _HOME_ROW_EMPTY_SENTINEL:
         return None
     return cached
+
+
+def _cached_released_ids(user, query) -> list[int]:
+    """Return the Up Next membership scan, cached like a shelf's id order.
+
+    The scan hydrates the whole in-progress library in Python (about 0.2 s per
+    thousand shows), and it ran on every section build, so the 60 s section
+    expiry re-paid it even while the shelf order itself was cached. It has the
+    same media-write invalidation as that order; the shorter lifetime bounds
+    how long a newly released episode can take to appear, since air dates move
+    without any user write.
+    """
+    from django.core.cache import cache
+
+    from app import cache_utils
+
+    key = f"{cache_utils.HOME_ROW_CACHE_PREFIX}_released_{user.id}"
+    released_ids = cache.get(key)
+    if released_ids is None:
+        with boundary("home_rank"):
+            released_ids = LibraryQueryExecutor(user, query, share_shows=True).ranked_ids()
+        cache.set(key, released_ids, cache_utils.HOME_ROW_RELEASED_CACHE_TTL)
+        cache_utils.register_home_row_cache_key(user.id, key)
+    return released_ids
 
 
 def _episode_feed_row_window(user, row, offset, limit, seed):
@@ -3629,9 +3714,9 @@ def _episode_feed_row_window(user, row, offset, limit, seed):
     )
     # Keep ended shows only while they have released episodes left. Use the
     # library's progress policy, rather than calculating a second watch state.
-    released_ids = LibraryQueryExecutor(
+    released_ids = _cached_released_ids(
         user, query.with_sort(MediaSortChoices.TITLE, DirectionChoices.ASC),
-    ).ranked_ids()
+    )
     continuing = Item.objects.annotate(
         production_status=Lower(Replace(Trim("status"), Value("_"), Value(" "))),
     ).exclude(production_status__in=TERMINAL_PRODUCTION_STATUSES)
@@ -3646,7 +3731,7 @@ def _episode_feed_row_window(user, row, offset, limit, seed):
     items, total = _row_items(
         user,
         row,
-        LibraryQueryExecutor(user, query),
+        LibraryQueryExecutor(user, query, share_shows=True),
         offset,
         limit,
         seed=seed,

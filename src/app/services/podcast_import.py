@@ -10,11 +10,12 @@ import logging
 
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, PodcastEpisode, PodcastShow, Sources
+from app.public_errors import PublicMessageError
 
 logger = logging.getLogger(__name__)
 
 
-class PodcastImportError(Exception):
+class PodcastImportError(PublicMessageError):
     """Raised when an iTunes id cannot be resolved into a podcast show."""
 
 

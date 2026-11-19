@@ -3,9 +3,19 @@
 from collections import Counter
 
 from django.apps import apps
+from django.core.cache import cache
 from django.db.models import Count
 
 from app.models import Episode, Media, MoviePlay
+
+# Counting sources reads every tracking table, and the tracking modal asks on
+# every open. The list changes only when a new value is first saved, which
+# note_saved_source() catches, so a day is safe.
+SUGGESTIONS_CACHE_TIMEOUT = 60 * 60 * 24
+
+
+def _cache_key(user_id):
+    return f"entry_source_suggestions:{user_id}"
 
 
 def _source_counts(user):
@@ -41,6 +51,10 @@ def entry_source_suggestions(user):
     """
     if not getattr(user, "is_authenticated", False):
         return []
+    key = _cache_key(user.pk)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
     spellings = {}
     for value, total in _source_counts(user):
         text = value.strip()
@@ -50,4 +64,38 @@ def entry_source_suggestions(user):
         spellings.values(),
         key=lambda counter: (-sum(counter.values()), min(counter).casefold()),
     )
-    return [counter.most_common(1)[0][0] for counter in ranked]
+    suggestions = [counter.most_common(1)[0][0] for counter in ranked]
+    cache.set(key, suggestions, SUGGESTIONS_CACHE_TIMEOUT)
+    return suggestions
+
+
+def _owner_id(instance):
+    """Return the user id that owns a row carrying ``entry_source``."""
+    if isinstance(instance, Media):
+        return instance.user_id
+    if isinstance(instance, MoviePlay):
+        return instance.movie.user_id
+    if isinstance(instance, Episode):
+        return instance.related_season.user_id
+    return None
+
+
+def note_saved_source(instance):
+    """Drop the cached suggestions when a row is saved with a value not in them.
+
+    Most saves repeat a known source (an import stamps thousands of rows with
+    one value), so the cache is read first and left alone when the value is
+    already offered. Bulk writes skip signals; the timeout covers those.
+    """
+    value = (getattr(instance, "entry_source", "") or "").strip()
+    if not value:
+        return
+    user_id = _owner_id(instance)
+    if user_id is None:
+        return
+    key = _cache_key(user_id)
+    cached = cache.get(key)
+    if cached is not None and value.casefold() not in {
+        text.casefold() for text in cached
+    }:
+        cache.delete(key)

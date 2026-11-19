@@ -126,7 +126,7 @@
           <div class="space-y-1">
             {% for debug_item in row.debug_payload.top_candidates %}
               <p>
-                #{{ debug_item.rank }} {{ debug_item.title }} —
+                #{{ debug_item.rank }} {{ debug_item.title }}:
                 raw {{ debug_item.raw_final_score|floatformat:3 }},
                 display {{ debug_item.display_score|floatformat:3 }},
                 library {{ debug_item.library_fit|floatformat:3 }},
@@ -252,7 +252,7 @@
         <div class="space-y-1">
           {% for debug_item in row.debug_payload.top_candidates %}
             <p>
-              #{{ debug_item.rank }} {{ debug_item.title }} —
+              #{{ debug_item.rank }} {{ debug_item.title }}:
               raw {{ debug_item.raw_final_score|floatformat:3 }},
               display {{ debug_item.display_score|floatformat:3 }},
               phase {{ debug_item.phase_fit|floatformat:3 }},

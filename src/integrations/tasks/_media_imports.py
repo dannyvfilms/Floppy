@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 import events
-from app import backfill_queue, cache_safety, statistics_sync
+from app import backfill_queue, cache_safety, cache_utils, statistics_sync
 from app.mixins import disable_fetch_releases
 from app.providers import credentials
 from app.services.watch_state import importing_watch_state
@@ -118,6 +118,16 @@ PSN_IMPORT_LOCK_SECONDS = 15 * 60
 
 
 
+# Sources that read "Watchlist only" and "Collection only" themselves, and the
+# ones among them that hold collection data.
+MODE_AWARE_SOURCES = frozenset(
+    {"plex", "trakt", "trakt_export", "wetrakr", "mdblist", "trakt_collection"},
+)
+COLLECTION_SOURCES = frozenset(
+    {"plex", "trakt", "trakt_export", "mdblist", "trakt_collection"},
+)
+
+
 def import_media(
     importer_func,
     identifier,
@@ -138,6 +148,14 @@ def import_media(
     day_scoped = importer_func in DAY_SCOPED_IMPORTERS
 
     source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
+    if mode == "update_collection" and source not in COLLECTION_SOURCES:
+        return f"{source.replace('_', ' ').title()} has no collection data, so there was nothing to update."
+    # A source that reads these modes itself keeps its own rules; every other
+    # source runs as "new" so no existing entry is touched.
+    watchlist_scope = False
+    if mode in helpers.SINGLE_PURPOSE_MODES and source not in MODE_AWARE_SOURCES:
+        watchlist_scope = mode == "watchlist"
+        mode = "new"
     import_run = None
     state = {}
     if importer_func is trakt.importer:
@@ -172,6 +190,7 @@ def import_media(
             # A Celery task runs no middleware, so without this the importer
             # would not see the user's personal provider keys (#1488).
             credentials.current_user_scope(user),
+            helpers.watchlist_only_scope(watchlist_scope),
             helpers.record_bulk_rows() as bulk_rows,
             importing_watch_state(),
         ):
@@ -263,6 +282,13 @@ def import_media(
             getattr(importer_func, "__name__", importer_func),
             user_id,
         )
+
+    if has_imported_media(imported_counts):
+        # Importers write in bulk, which sends no save signal, so nothing
+        # else clears the library pages and Home for these rows. Any type can
+        # be among them, TV included, so the time-left order goes too. A poll
+        # that imported nothing clears nothing.
+        cache_utils.clear_library_view_caches(user_id, media_types=("tv",))
 
     # Queue collection metadata update task for media server imports
     _queue_post_import_collection_update(user_id, importer_func)
@@ -690,6 +716,28 @@ def import_kapowarr_recurring(instance_id):
     return _run_arr_import(
         "Kapowarr", kapowarr.importer, user_id, "new", instance_id=instance_id
     )
+
+
+@shared_task(name="Remove Collection Source States")
+def remove_collection_source_states(user_id, source, instance_id):
+    """Drop a disconnected arr instance's collection rows outside the request.
+
+    A large library holds tens of thousands of rows, each reconciled on its
+    own, which is far too slow for a web worker (#1911).
+    """
+    from integrations.source_sync import prune_collection_source_states
+
+    user = get_user_model().objects.get(pk=user_id)
+    removed = prune_collection_source_states(
+        user=user,
+        source=source,
+        source_instance_id=instance_id,
+        keep_item_ids=(),
+    )
+    logger.info(
+        "Removed %s %s collection rows for instance %s", removed, source, instance_id
+    )
+    return removed
 
 
 @shared_task(name="Import from Sonarr")

@@ -20,11 +20,188 @@ permissions:
   actions: read
 
 jobs:
+  # On a push to latest that is a pull request merge, the pull request's own
+  # App Tests run may already have executed on a commit with exactly this tree.
+  # This job decides whether that is so. The rules and the reasoning are in
+  # scripts/reuse_pr_tests.py and docs/architecture/test-suite-cost.md.
+  #
+  # The job runs on every event and reports "not applicable" for anything but
+  # a publish-gate push to latest. It is deliberately never skipped: a skipped
+  # job makes GitHub skip every later job in the chain that has no explicit
+  # status check, so a job added after the shards could vanish. The output below
+  # can only be "reuse" for a publish-gate push to latest, whatever the script
+  # printed, so pull request, tag, release and manual runs always get the
+  # shards. A failure here is not a failure of the gate; it means "run".
+  #
+  # Without the REUSE_PR_TEST_RESULTS repository variable set to "true" the
+  # script only reports what it would have decided.
+  # Rollback: delete that variable.
+  reuse_decision:
+    name: Reuse PR test result?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    # Read-only, and no secret other than this token reaches the script.
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      decision: >-
+        ${{ (inputs.release_quality_gates && github.event_name == 'push' &&
+        github.ref == 'refs/heads/latest' &&
+        steps.decide.outputs.decision == 'reuse') && 'reuse' || 'run' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Compare the pushed tree with the tree the pull request tested
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_PR_TEST_RESULTS: ${{ vars.REUSE_PR_TEST_RESULTS }}
+        run: python3 scripts/reuse_pr_tests.py
+
+  # Builds the migrated SQLite test database once and hands it to the test
+  # jobs, so each of them restores it instead of replaying every migration
+  # (src/config/test_db_template.py, docs/architecture/test-suite-cost.md).
+  #
+  # The cache key is the runner's own key: a hash of every migration file, the
+  # lockfile, settings, the runner and the Python and SQLite versions. A changed
+  # input is a new key, and a new key is a real replay here. On a cache hit the
+  # database is restored and Django still runs migrate on it; that must apply
+  # nothing or the step fails.
+  #
+  # This job never decides whether the gate passes. If it fails, the test jobs
+  # find no saved database and replay migrations themselves, as they always
+  # did. It runs even when the shards reuse a pull request's result, so the
+  # cache on latest stays warm for the next pull request.
+  # Rollback: set the TEST_DB_TEMPLATE repository variable to "false".
+  test_db_template:
+    name: Migrated test database
+    if: vars.TEST_DB_TEMPLATE != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    env:
+      SECRET: ci-tests-only-not-a-production-secret
+      FLOPPY_TEST_FAST_DB: "0"
+      FLOPPY_TEST_DB_TEMPLATE: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+
+      - name: Install dependencies
+        run: uv sync --locked --all-packages --all-extras
+
+      - name: Compute the database key
+        id: key
+        run: |
+          set -euo pipefail
+          key="$(uv run --no-sync python src/config/test_db_template.py | tail -n 1)"
+          [[ "$key" =~ ^[0-9a-f]{32}$ ]]
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Look for a saved database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .floppy/testdb-*.sqlite3
+          key: testdb-${{ runner.os }}-${{ steps.key.outputs.key }}
+
+      # The module holds one database-backed test, so this run replays the
+      # migrations and saves the result, or restores the saved file and proves
+      # migrate has nothing to apply. The "[test-db]" line says which.
+      - name: Build or restore the database
+        run: scripts/test.sh config.tests.test_test_db_template --timing
+
+      - name: Hand the database to the test jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-db-template
+          path: .floppy/testdb-${{ steps.key.outputs.key }}-*.sqlite3
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Writes the IDs of every test the run must execute, without a database,
+  # for the accounting check in "test (3.12)". The contract lives in
+  # scripts/ci_tests.sh, apart from how the shards split it.
+  discover:
+    name: Discover required tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SECRET: ci-tests-only-not-a-production-secret
+      FLOPPY_TEST_PARALLEL: "1"
+      CI_TEST_MODE: >-
+        ${{ github.event_name == 'pull_request' && 'pr' ||
+        inputs.release_quality_gates && 'release' || 'full' }}
+      FLOPPY_TEST_ACCOUNTING_DIR: .floppy/discovery
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+      - name: Install dependencies
+        run: uv sync --locked --all-packages --all-extras
+      - name: List the required tests
+        run: scripts/ci_tests.sh discover
+      - name: Hand the list to the accounting check
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-discovery
+          path: .floppy/discovery
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
   test_shards:
     name: test (${{ matrix.suite }}, ${{ matrix.python-version }})
-    # A single non-app shard grew past the 105-minute watchdog on a slow
-    # hosted runner. Keep each shard near half the old workload; the timeout
-    # still leaves setup/coverage margin beyond the test budget.
+    needs: [reuse_decision, test_db_template]
+    # Skipped only when the decision job succeeded and said "reuse". A decision
+    # job that failed, timed out or wrote nothing runs the shards. So does a
+    # database job that failed or was switched off: the shards then replay.
+    if: >-
+      ${{ !cancelled() && !(needs.reuse_decision.result == 'success' &&
+      needs.reuse_decision.outputs.decision == 'reuse') }}
+    # Each shard is its own serial process (FLOPPY_TEST_PARALLEL=1), never
+    # Django's --parallel pool, which loses results (test-suite-cost.md,
+    # "Cause 3"). The browser shard holds every required Playwright test; the
+    # unit shards split every other test by module using
+    # src/config/test_shard_weights.json. What must run, and how these split
+    # it, is in scripts/ci_tests.sh. "test (3.12)" proves on every run that
+    # the shards together ran each required test exactly once.
+    #
+    # No job here runs under coverage. Tracing one context per test made
+    # every shard slower, and nothing it produces decides whether an
+    # image is safe. Coverage and the affected-test map come from
+    # coverage.yml, which runs beside the publish gate, not in front of it,
+    # and keeps its own app-label shards.
+    #
+    # Rollback: restore the three app-label entries (app, integrations,
+    # other) from git history. The runner ignores sharding without
+    # FLOPPY_TEST_SHARD.
     timeout-minutes: 120
     env:
       SECRET: ci-tests-only-not-a-production-secret
@@ -32,26 +209,43 @@ jobs:
       FLOPPY_TEST_TIMEOUT: "6600"
       FLOPPY_TEST_WATCHDOG: "6300"
       FLOPPY_TEST_PARALLEL: "1"
-      TEST_APPS: ${{ matrix.apps }}
+      FLOPPY_TEST_DB_TEMPLATE: ${{ vars.TEST_DB_TEMPLATE != 'false' && '1' || '0' }}
+      FLOPPY_TEST_SHARD: ${{ matrix.shard }}
+      FLOPPY_TEST_ACCOUNTING_DIR: .floppy/accounting
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 3
       matrix:
-        # Separate serial processes avoid the documented multiprocessing
-        # worker/result failures. Every app belongs to exactly one shard.
-        # Integrations is nearly as large as the remaining non-app apps and
-        # has the slowest provider suites, so it gets its own runner.
+        # The shard count is the number after the slash; keep every unit
+        # entry's count equal to the number of unit entries.
         include:
           - python-version: "3.12"
-            suite: app
-            apps: app
+            suite: browser
+            role: browser
+            shard: ""
           - python-version: "3.12"
-            suite: integrations
-            apps: integrations
+            suite: unit-1
+            role: unit
+            shard: 1/5
           - python-version: "3.12"
-            suite: other
-            apps: users lists events api config
+            suite: unit-2
+            role: unit
+            shard: 2/5
+          - python-version: "3.12"
+            suite: unit-3
+            role: unit
+            shard: 3/5
+          - python-version: "3.12"
+            suite: unit-4
+            role: unit
+            shard: 4/5
+          - python-version: "3.12"
+            suite: unit-5
+            role: unit
+            shard: 5/5
+    # Only "Run Tests" may read the event (scripts/tests/test_reuse_pr_workflow.py):
+    # everything else in a shard is the same on a pull request and the
+    # publish gate, so a reused pull request result covers the gate.
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -70,74 +264,51 @@ jobs:
           version: "0.12.3"
 
       - name: Install dependencies
-        run: |
-          uv sync --locked --all-packages --all-extras
-          uv run --no-sync playwright install --with-deps chromium
+        run: uv sync --locked --all-packages --all-extras
+
+      - name: Install Chromium
+        if: matrix.role == 'browser'
+        run: uv run --no-sync playwright install --with-deps chromium
 
       - name: Fetch migration baseline
         run: git fetch --no-tags https://github.com/FuzzyGrim/Yamtrack.git dev:refs/remotes/upstream/dev
 
-      - name: Migration hygiene
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python src/manage.py check_migration_hygiene --strict
+      # Missing or unusable is not an error: the runner replays migrations and
+      # says so in its "[test-db]" line.
+      - name: Fetch the migrated test database
+        id: test_db
+        if: vars.TEST_DB_TEMPLATE != 'false'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: test-db-template
+          path: .floppy
 
-      - name: Check for missing migrations
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python src/manage.py makemigrations --check --dry-run
+      - name: Note a missing test database
+        if: vars.TEST_DB_TEMPLATE != 'false' && steps.test_db.outcome != 'success'
+        run: echo "::warning::No saved test database for this run; replaying migrations."
 
-      - name: MCP tests
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python -m pytest -c mcp_server/pyproject.toml mcp_server/tests -q --durations=20
-
-      - name: Script tests
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python -m unittest discover -s scripts/tests --durations 20
-
+      # scripts/test.sh adds --buffer and --exclude-tag network, and wraps the
+      # run in the FLOPPY_TEST_TIMEOUT kill and the FLOPPY_TEST_WATCHDOG stack
+      # dump. scripts/ci_tests.sh says which tests each mode and role runs.
       - name: Run Tests
         env:
-          COVERAGE_CORE: ctrace
-          RELEASE_QUALITY_GATES: ${{ inputs.release_quality_gates }}
-        run: |
-          read -r -a apps <<< "$TEST_APPS"
-          # A clean required PR baseline still covers every non-browser
-          # test, plus browser coverage in the app and integrations shards.
-          # The other shard's existing provider/list Playwright regressions
-          # run in the visible, non-blocking browser_regressions job below.
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            if [ "${{ matrix.suite }}" = "other" ]; then
-              scripts/test.sh "${apps[@]}" --exclude-tag playwright --timing --durations 30
-            elif [ "${{ matrix.suite }}" = "app" ]; then
-              # The one intermittent short-viewport alphabet browser case
-              # remains visible in browser_regressions below. All other app
-              # Playwright tests are still required.
-              scripts/test.sh "${apps[@]}" --exclude-tag flaky_alphabet_rail --timing --durations 30
-            else
-              scripts/test.sh "${apps[@]}" --timing --durations 30
-            fi
-          else
-            test_args=(--exclude-tag network)
-            if [ "$RELEASE_QUALITY_GATES" = "true" ]; then
-              # Keep the full browser contract on pull requests, where it can
-              # block the change responsible. Do not stall image publication
-              # because pre-existing web/React Playwright cases fail on latest.
-              test_args+=(--exclude-tag playwright)
-              echo "::notice::Docker release gate excludes Playwright; pull requests still run the complete suite."
-            fi
-            timeout --kill-after=30s "$FLOPPY_TEST_TIMEOUT" \
-              uv run --no-sync coverage run src/manage.py test \
-              "${apps[@]}" \
-              --parallel --buffer "${test_args[@]}" --timing --durations 30
-          fi
+          CI_TEST_MODE: >-
+            ${{ github.event_name == 'pull_request' && 'pr' ||
+            inputs.release_quality_gates && 'release' || 'full' }}
+        run: scripts/ci_tests.sh "${{ matrix.role }}"
 
-      - name: Upload shard coverage
-        if: github.event_name != 'pull_request'
+      # Uploaded whether the tests passed or not: a shard that crashed leaves
+      # the IDs it never reported, and the accounting check names them.
+      - name: Hand the test accounting to "test (3.12)"
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: coverage-${{ matrix.suite }}
-          path: .coverage.*
+          name: test-accounting-${{ matrix.suite }}
+          path: .floppy/accounting
           include-hidden-files: true
-          retention-days: 1
-          if-no-files-found: error
+          if-no-files-found: warn
+          retention-days: 7
 
   # Temporary diagnostic quarantine for historical provider settings and
   # list interaction browser failures. Keep these tests running on every PR,
@@ -146,7 +317,10 @@ jobs:
   # its regressions are fixed. This must never be treated as E2E-green.
   browser_regressions:
     name: Browser E2E (other, diagnostic)
-    if: github.event_name == 'pull_request'
+    needs: test_db_template
+    # The status check keeps this job running when the database job failed or
+    # was switched off; it then replays migrations itself.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -156,6 +330,7 @@ jobs:
       FLOPPY_TEST_TIMEOUT: "6600"
       FLOPPY_TEST_WATCHDOG: "6300"
       FLOPPY_TEST_PARALLEL: "1"
+      FLOPPY_TEST_DB_TEMPLATE: ${{ vars.TEST_DB_TEMPLATE != 'false' && '1' || '0' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -174,6 +349,19 @@ jobs:
         run: |
           uv sync --locked --all-packages --all-extras
           uv run --no-sync playwright install --with-deps chromium
+      # Missing or unusable is not an error: the runner replays migrations and
+      # says so in its "[test-db]" line.
+      - name: Fetch the migrated test database
+        id: test_db
+        if: vars.TEST_DB_TEMPLATE != 'false'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: test-db-template
+          path: .floppy
+      - name: Note a missing test database
+        if: vars.TEST_DB_TEMPLATE != 'false' && steps.test_db.outcome != 'success'
+        run: echo "::warning::No saved test database for this run; replaying migrations."
       - name: Exercise quarantined browser regressions
         run: |
           echo "::notice::Other-shard browser E2E remains diagnostic, not passing or skipped."
@@ -182,6 +370,34 @@ jobs:
           scripts/test.sh users lists events api config \
             app.tests.test_alphabet_filter_browser.AlphabetBrowserTests.test_alphabet_navigation_fallback_themes_and_lifecycle \
             --tag playwright --timing --durations 30
+
+  # When a pull request's tests fail, say in the run summary whether the same
+  # tests are failing on latest (the open "Tests are failing on latest" issue,
+  # kept by latest-health.yml). Information only: this job is not required, no
+  # other job waits for it, and it never fails. If latest's state cannot be
+  # read it says "unknown", never "green". Rollback: delete this job.
+  baseline_note:
+    name: Compare failures with latest
+    needs: test_shards
+    if: ${{ failure() && github.event_name == 'pull_request' }}
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Compare this run's failing tests with latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 scripts/latest_health.py pr-note --run-id "$RUN_ID"
 
   oauth_postgres:
     name: OAuth (PostgreSQL)
@@ -205,70 +421,121 @@ jobs:
           version: "0.12.3"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test
-      - name: Run OAuth, reliable sync and custom field tests on PostgreSQL
+      - name: Run OAuth, reliable sync, custom field, Statistics custom range, data invariant and list filter option tests on PostgreSQL
         run: >-
           scripts/test_postgres.sh integrations.tests.test_oauth_device_flow
           api.tests.test_reliable_sync api.tests.test_reliable_sync_postgres
           app.tests.test_reliable_sync_migration
           app.tests.views.test_collection_custom_field_list
+          app.tests.test_statistics_custom_range_cache
+          app.tests.test_check_data_invariants
+          lists.tests.test_list_filter_options
 
-  # Preserve the existing required-check name while requiring every shard and OAuth.
-  test:
-    name: test (3.12)
-    needs: [test_shards, oauth_postgres]
-    if: always()
+  # The migration checks read more than the tree: hygiene compares against the
+  # upstream baseline fetched at run time. They run on every commit, in their
+  # own job, so they still run on the pushed commit when the shards are reused.
+  # The MCP server and scripts/ tests run here too, exactly once per run.
+  migration_checks:
+    name: Migration, MCP and script checks
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 15
+    env:
+      SECRET: ci-tests-only-not-a-production-secret
     steps:
-      - run: test "$SHARD_RESULT" = success && test "$OAUTH_RESULT" = success
-        env:
-          SHARD_RESULT: ${{ needs.test_shards.result }}
-          OAUTH_RESULT: ${{ needs.oauth_postgres.result }}
-
-  coverage:
-    needs: test_shards
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.12.3"
-      - name: Install coverage dependencies
-        run: uv sync --locked --only-group test
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: coverage-*
-          merge-multiple: true
+      - name: Install dependencies
+        run: uv sync --locked --all-packages --all-extras
+      - name: Fetch migration baseline
+        run: git fetch --no-tags https://github.com/FuzzyGrim/Yamtrack.git dev:refs/remotes/upstream/dev
+      - name: Migration hygiene
+        run: uv run --no-sync python src/manage.py check_migration_hygiene --strict
+      - name: Check for missing migrations
+        run: uv run --no-sync python src/manage.py makemigrations --check --dry-run
+      # Once per run, here rather than in a test shard, so they also run when
+      # the shards are reused from the pull request.
+      - name: MCP tests
+        run: uv run --no-sync python -m pytest -c mcp_server/pyproject.toml mcp_server/tests -q --durations=20
+      - name: Script tests
+        run: uv run --no-sync python -m unittest discover -s scripts/tests --durations 20
 
-      - name: Build Coverage Report
+  # Preserve the existing required-check name while requiring every shard,
+  # the migration checks, OAuth, and the proof that the shards together ran
+  # each required test exactly once (scripts/check_test_accounting.py).
+  test:
+    name: test (3.12)
+    needs: [reuse_decision, discover, test_shards, migration_checks, oauth_postgres]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check the required jobs
+        id: jobs
+        env:
+          DECISION_RESULT: ${{ needs.reuse_decision.result }}
+          DECISION: ${{ needs.reuse_decision.outputs.decision }}
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          SHARD_RESULT: ${{ needs.test_shards.result }}
+          MIGRATION_RESULT: ${{ needs.migration_checks.result }}
+          OAUTH_RESULT: ${{ needs.oauth_postgres.result }}
         run: |
-          uv run --no-sync coverage combine
-          mkdir -p .floppy
-          cp .coverage .floppy/affected.coverage
-          uv run --no-sync coverage report
-          uv run --no-sync coverage xml
+          set -eu
+          # The only passing state without shards: the decision job itself
+          # succeeded, said "reuse", and the shards were skipped for that
+          # reason. A shard that failed, was cancelled, or was skipped for any
+          # other reason fails this check.
+          if [ "$SHARD_RESULT" = skipped ] && [ "$DECISION_RESULT" = success ] \
+            && [ "$DECISION" = reuse ]; then
+            echo "accounting=skip" >> "$GITHUB_OUTPUT"
+            echo "::notice::Test shards reused from the pull request run; see the 'Reuse PR test result?' job summary."
+          else
+            # Account for whatever the shards left, even when one failed, so
+            # the summary names tests that never reported.
+            echo "accounting=run" >> "$GITHUB_OUTPUT"
+            test "$DISCOVER_RESULT" = success
+            test "$SHARD_RESULT" = success
+          fi
+          test "$MIGRATION_RESULT" = success
+          test "$OAUTH_RESULT" = success
 
-      - name: Upload affected map
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Checkout the accounting check
+        if: always() && steps.jobs.outputs.accounting == 'run'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          name: affected-map
-          path: .floppy/affected.coverage
-          include-hidden-files: true
-          retention-days: 14
-          if-no-files-found: error
+          persist-credentials: false
+          sparse-checkout: scripts/check_test_accounting.py
+          sparse-checkout-cone-mode: false
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
+      - name: Fetch the discovered tests
+        if: always() && steps.jobs.outputs.accounting == 'run'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          name: test-discovery
+          path: accounting/expected
+
+      - name: Fetch every shard's accounting
+        if: always() && steps.jobs.outputs.accounting == 'run'
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: test-accounting-*
+          path: accounting/shards
+
+      - name: Every required test ran exactly once
+        if: always() && steps.jobs.outputs.accounting == 'run'
+        run: python3 scripts/check_test_accounting.py --expected accounting/expected --shards accounting/shards
 
   release_lint:
     name: release lint

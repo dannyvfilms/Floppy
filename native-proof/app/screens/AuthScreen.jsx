@@ -1,17 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Image, Linking, StyleSheet, Text, View } from 'react-native';
 import {
   accountTransport,
   AUTH_ERROR_CODES,
+  beginProviderSignIn,
   buildDeviceVerificationUrl,
-  buildProviderLoginUrl,
   fetchAuthConfig,
   getAuthState,
+  isBrowserAuth,
+  pollDeviceSignIn,
   recoverPassword,
   restoreAuthSession,
   signIn,
   signOut,
   signUp,
+  startDeviceSignIn,
   testAuthConnection,
   verifyAuthSession,
 } from '../data/authTransport';
@@ -25,13 +28,14 @@ import { Button } from '../../../frontend/ui/Button';
 import { Chip } from '../../../frontend/settings/Chip';
 import { Screen } from '../components/Screen';
 import { palette, radius, spacing } from '../theme';
+import { useSettingsPalettes } from '../surfaces/settingsPalettes';
 
 export const surface = {
   id: 'AUTH',
   status: 'ported',
   title: 'Account and authentication',
   where: 'Login, signup, social, password, TOTP, recovery, connections and deletion guards',
-  note: 'Server URL and connection checks, session sign-in/signup/recovery, verified restore, expiry/revocation, sign-out, account profile/password/TOTP/recovery/delete actions and social/device browser intents use the shared React Native presentation and authenticated transport. Browser handoffs remain redirect intents; iOS and Android runtime remain unverified.',
+  note: 'Server URL and connection checks, session sign-in/signup/recovery, verified restore, expiry/revocation, sign-out, account profile/password/TOTP/recovery/delete actions and social/device browser intents use the shared React Native presentation and authenticated transport. Social and OIDC sign-in completes in the app: native uses the OAuth device flow as the first-party Floppy app client (authorize, approve full account access in the browser, poll for a refreshable token that can also open account security; a server without that client falls back to registering and a scoped token), web redirects through the provider and back with the session cookie. The Expo web build adopts the same-origin session and sends the CSRF cookie value on writes. iOS, Android and browser runtime remain unverified.',
 };
 
 const authPalette = {
@@ -69,9 +73,9 @@ const buttonPalette = {
 };
 
 const views = [
-  { key: 'login', label: 'Sign in' },
-  { key: 'signup', label: 'Create account' },
-  { key: 'recovery', label: 'Recover password' },
+  { key: 'login', label: 'Sign In' },
+  { key: 'signup', label: 'Create Account' },
+  { key: 'recovery', label: 'Recover Password' },
   { key: 'account', label: 'Account security' },
 ];
 
@@ -114,16 +118,18 @@ function GuardChip({ label, active, onPress }) {
   return <Chip label={label} palette={authPalette} pressed={active} onPress={onPress} />;
 }
 
-export default function AuthScreen({ onBack, entranceOnly = false }) {
+export default function AuthScreen({ onBack, entranceOnly = false, embedded = false }) {
+  const { settingsPalette, buttonPalette: settingsButtons } = useSettingsPalettes();
   const initialAuthState = getAuthState();
-  const [view, setView] = useState('login');
-  const [authStep, setAuthStep] = useState('server');
+  const [view, setView] = useState(embedded ? 'account' : 'login');
+  const [authStep, setAuthStep] = useState(isBrowserAuth ? 'credentials' : 'server');
+  const deviceSignIn = useRef(null);
   const [authState, setAuthState] = useState(initialAuthState);
   const [serverUrl, setServerUrl] = useState(initialAuthState.serverUrl || '');
   const [serverError, setServerError] = useState('');
   const [serverHelp, setServerHelp] = useState('');
   const [serverBusy, setServerBusy] = useState(false);
-  const [serverChecked, setServerChecked] = useState(false);
+  const [serverChecked, setServerChecked] = useState(isBrowserAuth);
   const [serverMode, setServerMode] = useState('local');
   const [serverHelpVisible, setServerHelpVisible] = useState(false);
   const [serverDiscoveryBusy, setServerDiscoveryBusy] = useState(false);
@@ -215,6 +221,23 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
   useEffect(() => subscribeAuthSession(() => {
     setAuthState(getAuthState());
   }), []);
+
+  // The web build talks to the server it was loaded from, so there is no
+  // address to enter: read the sign-in options straight away.
+  useEffect(() => {
+    if (!isBrowserAuth) return undefined;
+    let cancelled = false;
+    fetchAuthConfig({}).then(config => {
+      if (cancelled) return;
+      setAuthConfig(config);
+      setServerUrl(config.serverUrl);
+    }).catch(error => {
+      if (!cancelled) setAuthError(errorMessage(error, 'Could not reach the Floppy server.'));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => () => { deviceSignIn.current?.abort(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -377,7 +400,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
     setRedirectLabel('');
     setServerError('');
     if (!validateAuth(view)) {
-      setAuthError('Check the highlighted fields and try again.');
+      setAuthError('Check the details and try again.');
       return;
     }
     setAuthBusy(true);
@@ -396,7 +419,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
         loadConfig().catch(() => {});
         await loadAccountState({ force: true });
         setView('account');
-        setAccountSuccess('Signed in. Your session is stored securely on this device.');
+        setAccountSuccess(isBrowserAuth ? 'Signed in.' : 'Signed in. Your session is stored securely on this device.');
       } else if (view === 'signup') {
         const state = await signUp({
           serverUrl,
@@ -425,7 +448,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           newPassword2: authValues.newPassword2,
         });
         setAuthValues(emptyAuthValues);
-        setAuthSuccess('Password updated. Sign in with the new password.');
+        setAuthSuccess('Password updated. Sign in with your new password.');
         setRedirectLabel('Back to sign in');
       }
     } catch (error) {
@@ -443,12 +466,30 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
     setBusyProvider(provider.id);
     setAuthError('');
     setAuthSuccess('');
+    deviceSignIn.current?.abort();
     try {
-      const url = provider.loginUrl || buildProviderLoginUrl({ serverUrl, providerId: provider.id });
-      await Linking.openURL(url);
-      setAuthSuccess(`${provider.name} sign-in opened in the secure browser session. Return to Floppy and sign in with your server account.`);
+      if (beginProviderSignIn) {
+        // Web: the provider login redirects back to this app with the session cookie.
+        await beginProviderSignIn({ provider });
+        return;
+      }
+      // Native: the server's device page signs in with the provider and the app
+      // collects a scoped token, so the session returns here.
+      const controller = new AbortController();
+      deviceSignIn.current = controller;
+      const grant = await startDeviceSignIn({ serverUrl });
+      await Linking.openURL(grant.verificationUriComplete);
+      setAuthSuccess(`Sign in with ${provider.name} in your browser and approve this device. Code ${grant.userCode}.`);
+      const state = await pollDeviceSignIn({ ...grant, signal: controller.signal });
+      setAuthState(state);
+      setAuthSuccess('');
+      setAuthValues(emptyAuthValues);
     } catch (error) {
-      setAuthError(errorMessage(error, `Could not open ${provider.name} sign-in.`));
+      if (error?.code === AUTH_ERROR_CODES.SIGNED_OUT) setAuthSuccess('');
+      else {
+        setAuthSuccess('');
+        setAuthError(errorMessage(error, `Could not sign in with ${provider.name}.`));
+      }
     } finally {
       setBusyProvider('');
     }
@@ -501,7 +542,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       const payload = await accountTransport.changePassword(passwordValues);
       applyAccountPayload(payload);
       setPasswordValues({ oldPassword: '', newPassword1: '', newPassword2: '' });
-      setPasswordSuccess(payload?.message || 'Your password has been updated.');
+      setPasswordSuccess(payload?.message || 'Password updated.');
       setAccountError('');
       setAccountSuccess('');
     } catch (error) {
@@ -610,7 +651,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       return;
     }
     if (lastSuperuser) {
-      setDeleteError('Promote another account before deleting this one.');
+      setDeleteError('You are the only superuser. Promote another account before deleting this one.');
       return;
     }
     setDeleteBusy(true);
@@ -630,12 +671,18 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
   }
 
   async function handleSignOut() {
-    await signOut().catch(() => {});
+    try {
+      await signOut();
+    } catch (error) {
+      // A browser session can only end on the server, so report a failure.
+      setAccountError(errorMessage(error, 'Could not sign out. Try again.'));
+      return;
+    }
     setAuthState(getAuthState());
     setAccount(null);
     setAuthValues(emptyAuthValues);
     setView('login');
-    setAuthStep('server');
+    setAuthStep(isBrowserAuth ? 'credentials' : 'server');
     setAuthSuccess('Signed out.');
     setRedirectLabel('');
   }
@@ -681,6 +728,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       onServerChange: value => updateAuth('serverUrl', value),
       onContinueServer: continueToCredentials,
       onChangeServer: () => setAuthStep('server'),
+      serverLocked: isBrowserAuth,
       onClearServerAddress: clearServerAddress,
       onCheckServer: checkServer,
       onServerModeChange: setServerMode,
@@ -701,10 +749,11 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
     </View>;
   }
 
-  return <Screen title="Account" subtitle="Authentication and account security" onBack={onBack}>
-    <View style={styles.viewRow}>
+  const Container = embedded ? View : Screen;
+  return <Container {...(embedded ? { style: styles.viewStack } : { title: 'Account', subtitle: 'Authentication and account security', onBack })}>
+    {!embedded ? <View style={styles.viewRow}>
       {views.map(item => <GuardChip key={item.key} label={item.label} active={view === item.key} onPress={() => chooseView(item.key)} />)}
-    </View>
+    </View> : null}
 
     {sessionNotice ? <AuthNotice tone="warning" palette={authPalette}>{sessionNotice}</AuthNotice> : null}
 
@@ -717,6 +766,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
         {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
         {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
       </> : <SettingsAccountView
+        heading={!embedded}
         labels={{
           title: 'Account security',
           copy: sessionLabel ? `Signed in to ${authState.serverUrl} as ${sessionLabel}.` : 'Manage your account and security settings.',
@@ -725,16 +775,17 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
           {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
           {demoAccount ? <AuthNotice tone="warning" palette={authPalette}>Demo accounts are view-only for authenticator, recovery, profile and deletion changes.</AuthNotice> : null}
-          {lastSuperuser ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
+          {lastSuperuser && !embedded ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
           {deleteSuccess ? <AuthNotice tone="success" palette={authPalette}>{deleteSuccess}</AuthNotice> : null}
         </>}
-        actions={<Button label="Sign out" tone="surface" onPress={handleSignOut} palette={buttonPalette} />}
+        actions={embedded ? null : <Button label="Sign out" tone="surface" onPress={handleSignOut} palette={buttonPalette} />}
         profile={{
           username, error: profileError, success: profileSuccess, busy: profileBusy,
           disabled: demoAccount, onChangeUsername: setUsername, onSave: saveProfile,
         }}
         accountType={{ isSuperuser: Boolean(accountUser?.isSuperuser), username }}
         password={{
+          sessionRequired: Boolean(account.credentialSessionRequired),
           values: passwordValues, errors: passwordErrors, error: passwordError,
           success: passwordSuccess, busy: passwordBusy, disabled: demoAccount,
           onChange: (name, value) => {
@@ -745,6 +796,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           onSubmit: savePassword,
         }}
         authenticator={{
+          sessionRequired: Boolean(account.credentialSessionRequired),
           configured: Boolean(account?.authenticator?.configured), setup: authenticatorSetup,
           demo: demoAccount, values: authenticatorValues, error: authenticatorError,
           success: authenticatorSuccess, busy: authenticatorBusy,
@@ -763,6 +815,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           onDisable: disableAuthenticator,
         }}
         recovery={{
+          sessionRequired: Boolean(account.credentialSessionRequired),
           unusedCount: unusedRecoveryCodes, freshCodes: freshRecoveryCodes,
           values: recoveryValues, error: recoveryError, success: recoverySuccess,
           busy: recoveryBusy, demo: demoAccount,
@@ -773,6 +826,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           onRegenerate: regenerateRecoveryCodes,
         }}
         connections={{
+          visible: !embedded,
           providerCount: account.providers?.length || 0, disabled: demoAccount,
           onManageConnections: () => openExternal(account.connectionsUrl, 'Account connections opened in the secure browser session.'),
           onApproveDevice: () => openExternal(account.deviceUrl || buildDeviceVerificationUrl({ serverUrl: authState.serverUrl || serverUrl }), 'Device sign-in approval opened in the secure browser session.'),
@@ -787,9 +841,9 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
           },
           error: deleteError, busy: deleteBusy, onDelete: deleteAccount,
         }}
-        palette={authPalette} buttonPalette={buttonPalette} />}
+        palette={embedded ? { ...settingsPalette, pageCards: true } : authPalette} buttonPalette={embedded ? settingsButtons : buttonPalette} />}
     </View> : null}
-  </Screen>;
+  </Container>;
 }
 
 const styles = StyleSheet.create({

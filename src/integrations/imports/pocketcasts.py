@@ -1625,7 +1625,7 @@ class PocketCastsImporter:
                 e.response is not None
                 and e.response.status_code == HTTPStatus.UNAUTHORIZED
             ):
-                msg = "Pocket Casts token expired during import — please retry"
+                msg = "Pocket Casts token expired during import. Please retry"
                 raise MediaImportError(msg) from e
             logger.warning(
                 "HTTP error fetching play states for podcast %s: %s", podcast_uuid, e
@@ -1666,7 +1666,7 @@ class PocketCastsImporter:
                     e.response is not None
                     and e.response.status_code == HTTPStatus.UNAUTHORIZED
                 ):
-                    msg = "Pocket Casts token expired during import — please retry"
+                    msg = "Pocket Casts token expired during import. Please retry"
                     raise MediaImportError(msg) from e
                 logger.warning(
                     "HTTP error fetching full metadata for podcast %s (page %d): %s",

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from http import HTTPStatus
 
 from django.http import JsonResponse
+from rest_framework.response import Response
 
 from app import db_diagnostics
+from app.log_safety import exception_summary
+
+logger = logging.getLogger(__name__)
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -52,3 +57,20 @@ def database_busy_response(error, *, request=None, report=True):
     if retryable and info.retry_after is not None:
         response["Retry-After"] = str(info.retry_after)
     return response
+
+
+def failure_response(detail, error, *, status, traceback=True):
+    """Return ``{"detail": detail}`` and log the failure instead of returning it.
+
+    For a caught exception whose text Floppy did not write: a provider, a
+    library, the database. The log gets the exception class and, unless
+    ``traceback`` is off, the traceback behind the redacting record factory.
+    Turn it off where the text is known to carry a credential.
+    """
+    logger.warning(
+        "%s error=%s",
+        detail,
+        exception_summary(error),
+        exc_info=error if traceback else None,
+    )
+    return Response({"detail": detail}, status=status)

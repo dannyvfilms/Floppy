@@ -30,7 +30,7 @@ class QueueTaskOrMessageTests(SimpleTestCase):
         task = mock.Mock()
         task.delay.side_effect = OperationalError(DNS_TEXT)
 
-        with self.assertLogs("integrations.views", level="ERROR"):
+        with self.assertLogs("integrations.view_helpers", level="ERROR"):
             queued = views._queue_task_or_message(request, task, user_id=1)
 
         self.assertIs(queued, False)
@@ -61,7 +61,7 @@ class QueueTaskOrMessageTests(SimpleTestCase):
         task = mock.Mock()
         task.delay.side_effect = RuntimeError("serializer exploded")
 
-        with self.assertLogs("integrations.views", level="ERROR"):
+        with self.assertLogs("integrations.view_helpers", level="ERROR"):
             views._queue_task_or_message(request, task)
 
         self.assertEqual(

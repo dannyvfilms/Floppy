@@ -110,6 +110,7 @@ export function connectionSettingsModel(credentials, pageLabels = {}) {
       personalSave: translated(labels, 'Save personal key'),
       personalSaving: translated(labels, 'Saving…'),
       personalSaved: translated(labels, 'Personal key saved'),
+      personalRemoved: translated(labels, 'Personal key removed'),
       personalError: translated(labels, 'Could not save the personal key. Try again.'),
       instanceHelp: translated(labels, 'These credentials are shared across the instance.'),
       personalHelp: translated(labels, 'Your key may avoid shared instance or bundled rate limits.'),
@@ -328,6 +329,7 @@ export function ProviderSettingsView({
   onConnect,
   onDisconnect,
   onCopy,
+  accountContent,
   palette = {},
   buttonPalette = {},
 }) {
@@ -338,12 +340,15 @@ export function ProviderSettingsView({
   if (!sections.length) return null;
 
   const colors = { ...defaultPalette, ...palette };
+  // The "Get a key" link is an info chip. Palettes that carry no badge tokens
+  // (the web theme reader) left it with a black border and no fill, so the
+  // indigo info values are the fallback rather than undefined.
   const keyPalette = {
     ...colors,
-    badgeBorder: colors.infoBadgeBorder || colors.badgeBorder,
-    badgeBackground: colors.infoBadgeBackground || colors.badgeBackground,
-    badgeText: colors.infoBadgeText || colors.badgeText,
-    badgeHover: colors.badgeHover,
+    badgeBorder: colors.infoBadgeBorder || 'rgba(99, 102, 241, 0.3)',
+    badgeBackground: colors.infoBadgeBackground || 'rgba(99, 102, 241, 0.1)',
+    badgeText: colors.infoBadgeText || colors.link || '#c7d2fe',
+    badgeHover: colors.infoBadgeHover || 'rgba(99, 102, 241, 0.2)',
   };
   const pageLabels = { ...(model.labels || {}), ...(labels || {}) };
   const credentials = model.credentials;
@@ -390,11 +395,12 @@ export function ProviderSettingsView({
       const heading = account.heading || translated(combinedLabels(account, pageLabels), 'Connection settings');
       rendered.push(<React.Fragment key="account">
         {heading ? <SectionHeading palette={colors}>{heading}</SectionHeading> : null}
-        <AccountSettings model={card} onConnect={onConnect} onDisconnect={onDisconnect}
-          onFollowUp={followUp => (onFollowUp || onOpenLink)?.(followUp?.url)} palette={palette} buttonPalette={buttonPalette} />
+        {accountContent || <AccountSettings model={card} onConnect={onConnect} onDisconnect={onDisconnect}
+          onFollowUp={followUp => (onFollowUp || onOpenLink)?.(followUp?.url)} palette={palette} buttonPalette={buttonPalette} />}
       </React.Fragment>);
     }
     if (section === 'guides') {
+      if (model.guidesSessionRequired) rendered.push(<Text key="guide-session-required" style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }}>Sign in with your username and password to manage this.</Text>);
       guides.forEach((guide, index) => rendered.push(<SetupGuide key={`guide-${index}`}
         {...setupGuideProps(guide, copy, pageLabels)} onCopy={onCopy} onOpenLink={onOpenLink}
         palette={palette} buttonPalette={buttonPalette} />));

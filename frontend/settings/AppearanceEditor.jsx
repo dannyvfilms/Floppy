@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Icon } from '../ui/Icon';
 import { FormSaveBar } from '../ui/FormSaveBar';
 import { SelectField } from '../ui/SelectField';
 import { ToggleChip } from '../ui/ToggleChip';
@@ -103,6 +104,9 @@ function clampEffect(value, definition, direction = 1) {
  * validation and the dirty/saving/error presentation.
  */
 export function AppearanceEditor({
+  swatches = {},
+  themeIcon,
+  SaveBar = FormSaveBar,
   presets = {},
   colors = {},
   effects = {},
@@ -119,6 +123,7 @@ export function AppearanceEditor({
 }) {
   const copy = { ...defaultLabels, ...labels };
   const colors_ = { ...defaultPalette, ...palette };
+  const { width } = useWindowDimensions();
   const [saving, setSaving] = useState(false);
   const [localErrors, setLocalErrors] = useState({});
   const [localError, setLocalError] = useState('');
@@ -229,28 +234,38 @@ export function AppearanceEditor({
   const familyOptions = familyKeys.map(key => ({ value: key, label: families[key].label || key }));
 
   return <View style={styles.form}>
-    <View style={styles.section}>
-      <View style={styles.sectionHeading}>
-        <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: colors_.text }]}>{copy.theme}</Text>
-        <Text style={[styles.help, { color: colors_.textMuted }]}>{copy.themeHelp}</Text>
+    <View style={[styles.section, colors_.pageCards && { padding: 16, backgroundColor: colors_.surface, borderRadius: 8, gap: 16 }]}>
+      <View style={[styles.sectionHeading, colors_.pageCards && { flexDirection: 'row', gap: 12, marginTop: 2.4 }]}>
+        {themeIcon ? <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6, overflow: 'hidden' }}>
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors_.accentStrong, opacity: 0.12 }]} />
+          <Icon spec={themeIcon} color={colors_.link} size={20} />
+        </View> : null}
+        <View style={{ gap: 4, flex: 1 }}>
+        <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: colors_.text }, colors_.pageCards && { fontSize: 16, lineHeight: 24, fontWeight: '400' }]}>{copy.theme}</Text>
+        <Text style={[styles.help, { color: colors_.textMuted }, colors_.pageCards && { fontSize: 11.2, lineHeight: 16.8 }]}>{copy.themeHelp}</Text>
+        </View>
       </View>
-      <View style={styles.themeGrid}>
+      <View style={[styles.themeGrid, colors_.pageCards && { gap: 12 }]}>
         {themeOptions.map(([value, preset]) => {
           const selected = theme === value;
           return <Pressable
             key={value}
             accessibilityRole="radio"
+            aria-checked={selected}
             accessibilityLabel={preset.label || value}
             accessibilityState={{ checked: selected, disabled }}
             disabled={disabled}
             onPress={() => setTheme(value)}
             style={({ pressed }) => [styles.themeOption, {
-              borderColor: selected ? colors_.accent : colors_.border,
-              backgroundColor: colors_.background,
+              borderColor: selected ? colors_.accent : colors_.surfaceBorder || colors_.border,
+              backgroundColor: colors_.pageCards ? colors_.surface : colors_.background,
+              ...(colors_.pageCards ? { flexBasis: width < 640 ? '100%' : '45%', padding: 16, gap: 12, borderRadius: 12 } : {}),
             }, pressed && !disabled && { backgroundColor: colors_.surfaceStrong }]}>
-            <View style={[styles.swatch, { backgroundColor: presetSwatches[value] || colors_.accent }]} />
-            <Text style={[styles.themeLabel, { color: colors_.text }]}>{preset.label || value}</Text>
-            {selected ? <Text style={[styles.selectedMark, { color: colors_.accent }]}>✓</Text> : null}
+            <View style={[styles.swatch, { backgroundColor: presetSwatches[value] || colors_.accent }, colors_.pageCards && { width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors_.border, overflow: 'hidden' }]}>
+              {swatches[value] ? <Icon spec={swatches[value]} size={44} /> : null}
+            </View>
+            <Text style={[styles.themeLabel, { color: colors_.text }, colors_.pageCards && { fontSize: 16, fontWeight: '500' }]}>{preset.label || value}</Text>
+            {selected && !colors_.pageCards ? <Text style={[styles.selectedMark, { color: colors_.accent }]}>✓</Text> : null}
           </Pressable>;
         })}
       </View>
@@ -316,12 +331,13 @@ export function AppearanceEditor({
       </View> : null}
     </View>
 
-    <View style={styles.section}>
+    <View style={[styles.section, colors_.pageCards && { padding: 16, backgroundColor: colors_.surface, borderRadius: 8, gap: 16 }]}>
       <View style={styles.sectionHeading}>
         <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: colors_.text }]}>{copy.detailPages}</Text>
         <Text style={[styles.help, { color: colors_.textMuted }]}>{copy.detailHelp}</Text>
       </View>
       {familyOptions.length ? <SelectField
+        iconChevron={Boolean(colors_.pageCards)}
         id="appearance-family"
         label={copy.pageType}
         options={familyOptions}
@@ -333,13 +349,14 @@ export function AppearanceEditor({
       {family ? Object.entries(family.zones || {}).map(([zoneKey, zone]) => {
         const order = enabledKeys(layouts, activeFamily, zoneKey);
         const sections = orderedSections(zone.sections || [], order);
-        return <View key={zoneKey} style={[styles.zone, { borderColor: colors_.border, backgroundColor: colors_.surface }]}>
+        return <View key={zoneKey} style={[styles.zone, { borderColor: colors_.surfaceBorder || colors_.border, backgroundColor: colors_.panel || colors_.surface }, colors_.pageCards && { padding: 16, borderRadius: 12, gap: 8 }]}>
           <Text role="heading" aria-level={4} style={[styles.zoneTitle, { color: colors_.text }]}>{zone.label || zoneKey}</Text>
           {sections.map(section => {
             const enabled = order.includes(section.key);
-            return <View key={section.key} style={styles.sectionRow}>
-              <View style={styles.sectionToggle}>
+            return <View key={section.key} style={[styles.sectionRow, colors_.pageCards && { flexDirection: 'row', alignItems: 'center', backgroundColor: colors_.surface, borderRadius: 8, padding: 12, gap: 12 }]}>
+              <View style={[styles.sectionToggle, colors_.pageCards && { flex: 1 }]}>
                 <ToggleChip
+                  checkbox={Boolean(colors_.pageCards)}
                   value={enabled}
                   label={section.label || section.key}
                   offLabel={copy.hidden}
@@ -355,7 +372,7 @@ export function AppearanceEditor({
                   accessibilityLabel={`${copy.moveUp}: ${section.label || section.key}`}
                   disabled={disabled || !enabled || !canMove(order, section.key, -1)}
                   onPress={() => moveSection(activeFamily, zoneKey, section.key, -1)}
-                  style={({ pressed }) => [styles.moveButton, { borderColor: colors_.border }, pressed && { backgroundColor: colors_.surfaceStrong }]}>
+                  style={({ pressed }) => [styles.moveButton, { borderColor: colors_.border }, colors_.pageCards && { width: 24, height: 36, borderWidth: 0, opacity: !enabled || !canMove(order, section.key, -1) ? 0.25 : 1 }, pressed && { backgroundColor: colors_.surfaceStrong }]}>
                   <Text style={[styles.moveText, { color: colors_.textMuted }]}>↑</Text>
                 </Pressable>
                 <Pressable
@@ -363,7 +380,7 @@ export function AppearanceEditor({
                   accessibilityLabel={`${copy.moveDown}: ${section.label || section.key}`}
                   disabled={disabled || !enabled || !canMove(order, section.key, 1)}
                   onPress={() => moveSection(activeFamily, zoneKey, section.key, 1)}
-                  style={({ pressed }) => [styles.moveButton, { borderColor: colors_.border }, pressed && { backgroundColor: colors_.surfaceStrong }]}>
+                  style={({ pressed }) => [styles.moveButton, { borderColor: colors_.border }, colors_.pageCards && { width: 24, height: 36, borderWidth: 0, opacity: !enabled || !canMove(order, section.key, 1) ? 0.25 : 1 }, pressed && { backgroundColor: colors_.surfaceStrong }]}>
                   <Text style={[styles.moveText, { color: colors_.textMuted }]}>↓</Text>
                 </Pressable>
               </View>
@@ -373,7 +390,8 @@ export function AppearanceEditor({
       }) : null}
     </View>
 
-    <FormSaveBar
+    <SaveBar
+      appearance={Boolean(colors_.pageCards)}
       dirty={dirty}
       saving={saving}
       disabled={disabled}

@@ -24,7 +24,9 @@ from app.models import (
     BoardGame,
     Book,
     BookListeningSession,
+    Comic,
     Item,
+    Manga,
     MediaTypes,
     Movie,
     Music,
@@ -431,7 +433,7 @@ class StatisticsHourBucketTests(TestCase):
 
 
 class StatisticsBoardGameDayTests(TestCase):
-    """Board game plays contribute minutes, one play and spread daily time."""
+    """Board game play counts and elapsed minutes remain separate."""
 
     def setUp(self):
         cache.clear()
@@ -465,21 +467,24 @@ class StatisticsBoardGameDayTests(TestCase):
         return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
 
     def test_play_ending_today_counts_minutes_play_and_top_played(self):
-        item = self._boardgame("bg-same-day", 90, self.day, self.day)
+        item = self._boardgame("bg-same-day", 2, self.day - timedelta(minutes=90), self.day)
 
         stats = self._day_stats()
 
         key = MediaTypes.BOARDGAME.value
         self.assertEqual(stats["totals"]["minutes_by_type"][key], 90)
         self.assertEqual(stats["daily_minutes_by_type"][key], 90)
-        self.assertEqual(stats["top_played"][key][str(item.id)]["plays"], 1)
-        self.assertEqual(stats["top_played"][key][str(item.id)]["minutes"], 90)
+        self.assertEqual(stats["hour_minutes"][key], {"10": 30, "11": 60})
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 2)
+        self.assertEqual(stats["activity"]["count"], 2)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["plays"], 2)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["minutes"], 2)
         self.assertIn(str(item.id), stats["items"][key])
 
     def test_multi_day_span_spreads_daily_time_without_counting_a_play(self):
         self._boardgame(
             "bg-span",
-            300,
+            3,
             self.day - timedelta(days=1),
             self.day + timedelta(days=1),
         )
@@ -487,8 +492,8 @@ class StatisticsBoardGameDayTests(TestCase):
         stats = self._day_stats()
 
         key = MediaTypes.BOARDGAME.value
-        self.assertEqual(stats["daily_minutes_by_type"][key], 100)
-        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 1440)
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 1440)
         self.assertEqual(stats["top_played"].get(key, {}), {})
 
     def test_zero_progress_records_item_but_no_time(self):
@@ -500,6 +505,17 @@ class StatisticsBoardGameDayTests(TestCase):
         self.assertIn(str(item.id), stats["items"][key])
         self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
         self.assertEqual(stats["daily_minutes_by_type"].get(key, 0), 0)
+
+    def test_known_runtime_takes_precedence_over_elapsed_time(self):
+        item = self._boardgame(
+            "bg-runtime", 2, self.day - timedelta(hours=5), self.day,
+        )
+        item.runtime_minutes = 40
+        item.save(update_fields=["runtime_minutes"])
+        stats = self._day_stats()
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 80)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 2)
 
 
 class StatisticsAudiobookDayTests(TestCase):
@@ -543,8 +559,44 @@ class StatisticsAudiobookDayTests(TestCase):
         stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
 
         key = MediaTypes.BOOK.value
-        self.assertEqual(stats["daily_minutes_by_type"][key], 120)
+        self.assertEqual(stats["daily_reading_units"][key], 120)
         self.assertEqual(stats["totals"]["listening_minutes"], 84)
+
+    def test_reading_time_and_pages_are_separate(self):
+        book = self._book("reading-time", "ebook", 120)
+        book.start_date = self.day - timedelta(hours=3)
+        book.reading_time = 45
+        book.save(update_fields=["start_date", "reading_time"])
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+        key = MediaTypes.BOOK.value
+        self.assertEqual(stats["daily_reading_units"][key], 120)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 45)
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 45)
+
+    def test_missing_reading_time_uses_interval(self):
+        book = self._book("reading-elapsed", "ebook", 120)
+        book.start_date = self.day - timedelta(hours=3)
+        book.save(update_fields=["start_date"])
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+        key = MediaTypes.BOOK.value
+        self.assertEqual(stats["daily_reading_units"][key], 120)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 180)
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 180)
+
+    def test_comic_and_manga_keep_units_separate_from_elapsed_time(self):
+        for model, media_type in ((Comic, MediaTypes.COMIC), (Manga, MediaTypes.MANGA)):
+            with self.subTest(media_type=media_type):
+                item = Item.objects.create(
+                    media_id=f"elapsed-{media_type.value}", source=Sources.MANUAL.value,
+                    media_type=media_type.value, title="Reading example",
+                )
+                model.objects.create(
+                    item=item, user=self.user, status=Status.COMPLETED.value,
+                    progress=12, start_date=self.day - timedelta(hours=2), end_date=self.day,
+                )
+                stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+                self.assertEqual(stats["daily_reading_units"][media_type.value], 12)
+                self.assertEqual(stats["totals"]["minutes_by_type"][media_type.value], 120)
 
     def test_listening_only_day_is_active(self):
         audio = self._book("audio2", "audiobook", 300, end=self.day - timedelta(days=9))
@@ -1578,8 +1630,10 @@ class RequestPathDayBuildTests(TestCase):
         mock_apply_async.assert_called_once()
 
     def test_eager_mode_still_builds_inline(self):
+        # Eager reads build missing days through the sync's slice builder,
+        # which calls the day builder from its own module.
         with patch(
-            "app.statistics_aggregator.build_stats_for_day",
+            "app.statistics_day_builder.build_stats_for_day",
             return_value={"totals": {"minutes_by_type": {"movie": 60}}},
         ) as mock_build_day:
             result = statistics_cache.get_statistics_minutes_by_type(
@@ -1663,7 +1717,7 @@ class StatisticsChartPreparationTests(SimpleTestCase):
         self.assertEqual(len(result["all"]), 7)
         self.assertTrue(all(len(row) == 24 for row in result["all"]))
 
-    def test_hour_charts_combine_elapsed_time_without_reading_units(self):
+    def test_hour_charts_combine_elapsed_time_including_reading(self):
         result = _build_combined_hours_charts(
             {
                 "movie": {"2026-09-05": 90},
@@ -1672,7 +1726,7 @@ class StatisticsChartPreparationTests(SimpleTestCase):
             },
             {"movie": {"13": 90}, "tv": {"13": 30}, "book": {"13": 600}},
         )
-        self.assertEqual(result["by_month"]["all"]["datasets"][0]["data"][8], 2)
-        self.assertEqual(result["by_time_of_day"]["all"]["datasets"][0]["data"][13], 2)
+        self.assertEqual(result["by_month"]["all"]["datasets"][0]["data"][8], 12)
+        self.assertEqual(result["by_time_of_day"]["all"]["datasets"][0]["data"][13], 12)
         self.assertEqual(result["by_month"]["movie"]["datasets"][0]["data"][8], 1.5)
-        self.assertNotIn("book", result["by_month"])
+        self.assertEqual(result["by_month"]["book"]["datasets"][0]["data"][8], 10)

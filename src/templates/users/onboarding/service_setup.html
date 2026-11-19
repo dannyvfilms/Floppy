@@ -8,13 +8,13 @@
 {% block step_explanation %}
   <p>{% blocktranslate count count=remaining_count %}{{ count }} service left to connect.{% plural %}{{ count }} services left to connect.{% endblocktranslate %}</p>
   {% if current_source.inline_supported %}
-    <p>{% translate "Connect right here — once it's done, you'll automatically see the next one." %}</p>
+    <p>{% translate "Connect right here. Once it's done, you'll automatically see the next one." %}</p>
   {% else %}
     <p>
       {% translate "Connecting opens the normal Import setup for this service in a focused view. Finish there and you'll come right back here for the next one." %}
     </p>
   {% endif %}
-  <p>{% translate "Don't have it handy? Skip it — you can always connect it later from Settings > Import." %}</p>
+  <p>{% translate "Don't have it handy? Skip it. You can always connect it later from Settings > Import." %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}

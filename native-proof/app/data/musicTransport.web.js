@@ -14,7 +14,11 @@ function readCsrfToken() {
 function createRequest(baseUrl, csrfToken) {
   return async (path, options = {}) => {
     const isJson = options.json !== undefined;
-    const response = await fetch(`${baseUrl}${path}`, {
+    const query = Object.entries(options.query || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+    const response = await fetch(`${baseUrl}${path}${query ? `?${query}` : ''}`, {
       method: options.method || 'GET',
       credentials: 'same-origin',
       headers: {

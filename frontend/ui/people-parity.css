@@ -9,7 +9,9 @@
   #detail-secondary-content [data-detail-section="recommendations"] h3 {
     line-height: 28px;
   }
-  @media (max-width: 600px) {
+  /* Rail owns item width after mounting; avoid applying the phone column calculation twice. */
+  @media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+    #detail-secondary-content [data-detail-section="seasons"] [data-rails-row-root][data-react-mounted="true"] .home-row-card,
     #detail-secondary-content [data-detail-section="recommendations"] [data-rails-row-root][data-react-mounted="true"] .home-row-card {
       width: 100% !important;
     }
@@ -23,14 +25,6 @@
     -webkit-line-clamp: unset;
     line-clamp: unset;
   }
-  #detail-secondary-content [data-detail-section="recommendations"] .media-card > .media-card-visual {
-    position: relative;
-    height: auto;
-  }
-  #detail-secondary-content [data-detail-section="recommendations"] .media-card-poster {
-    height: auto !important;
-    aspect-ratio: auto !important;
-  }
   #detail-secondary-content [data-detail-section="recommendations"] .media-card-title {
     display: block;
     overflow: hidden;
@@ -42,4 +36,14 @@
   #detail-secondary-content [data-detail-section="recommendations"] ul {
     margin-top: 0;
     margin-bottom: 0;
+  }
+  [data-detail-section="cast"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="crew"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="seasons"] .search-result-card .media-card-year.media-card-year.media-card-year,
+  [data-detail-section="recommendations"] .search-result-card .media-card-year.media-card-year.media-card-year {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 15px;
+    font-weight: 400;
+    text-shadow: none;
   }

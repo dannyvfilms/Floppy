@@ -17,6 +17,7 @@ HTTP request
      v
 Nginx (port 8000) -----> access log: "$request_method $server_protocol"
      |                   Paths, query strings and referrers are not written.
+     |                   Timings (rt, urt, uct) and an opaque rid are: they carry no URL.
      v
 Gunicorn (port 8001) --> accesslog = None. Nginx owns the request log.
      |                   Gunicorn still writes its error log.

@@ -21,13 +21,18 @@ indicator.
 
 | Layer | Unit | Where | Rebuilt when |
 | --- | --- | --- | --- |
-| Day payload | one user, one local day | cache (`stats:day:v7:{uid}:{day}`) | the day is dirty, missing, or today/yesterday |
+| Day payload | one user, one local day | versioned `stats:day` cache key | the day is dirty, missing, or today/yesterday |
 | Range snapshot | one user, one predefined range | database (`StatisticsSnapshot`) + cache copy | its generation trails the user's, or it was built on an earlier local day |
 
 Day payloads are derived and rebuildable, so they stay in the cache. A range
 payload also reads live database state (undated items, current status and
 score, reading completions, talent), which is why *any* change makes every
 range stale while only the days it touched need rebuilding.
+
+Daily reading units remain separate from minutes. When an entry lacks a
+recorded duration, its elapsed start-to-end interval supplies minutes, split
+at local day boundaries; it does not replace pages or play counts. Recorded
+durations take precedence, and audiobook listening sessions remain separate.
 
 ## Durable state (`app/models/statistics.py`)
 
@@ -95,6 +100,12 @@ database upsert per range to avoid a read-then-write lock upgrade.
    sweep every day payload the cache is missing (a missing
    `stats:sync:day_epoch:{uid}` key, written without a TTL, means the cache was
    flushed). Clear each slice's dirty rows as it lands.
+   Within a slice, days no more than `PREFETCH_MAX_GAP_DAYS` (31) apart share
+   one prefetch, built when the first of them is reached
+   (`statistics_day_builder.SpanPrefetches`). A prefetch reads every row
+   between its first and last day, so a save on a day four years back used to
+   read four years of plays just to rebuild it alongside today: on a
+   40,000-play library 1.8 s and 28 MiB, against 0.08 s and 0.2 MiB now.
 4. Publish ranges that trail: the hot ranges (Today … Last 30 Days) on every
    pass — a scrobble reaches them in seconds. The heavy ranges (Last 90 Days …
    All Time, the user's default first among them) wait until changes have been
@@ -132,6 +143,63 @@ range; `stats_sync` carries `days` and `days_ms` for the day-building phase,
 and each `stats_range_summary` carries `missing_days` and `days_ms` so the
 range's own day-building can be told apart from its aggregation. A range that
 is slow with `missing_days=0` is aggregation work, not a cold cache.
+`phases_ms` then says which part: wall milliseconds per phase of the aggregate
+as `phase:ms` pairs (`day_fetch` and `day_merge` are the walk over the day
+payloads, the rest is the finish), and `days_decoded` is how many day payloads
+it read.
+
+Ranges of one pass share an in-memory memo of lookups that do not depend on
+the range: the History index and the History days the highlight cards read,
+and the tracker rows the cards show (loaded by `_fetch_media_objects`, and the
+top-rated ones annotated with their progress totals). Nested ranges show many
+of the same rows, so each row is loaded and annotated once per pass and every
+range gets its own copy of it, related item included: a range's per-card
+attributes (`aggregated_score`) never reach another range, and the rows the
+memo keeps are never handed out. It lives for the pass only: it is never
+cached and never part of a snapshot, and a pass still stops at any range
+boundary. A range that follows others in a pass is cheaper than the same range
+built first, so its recorded `stats:sync:range_seconds` can understate what it
+costs at the start of a continuation; the first range of a task always runs,
+so this can only let one range start a little late, never stop one starting.
+
+Those rows are narrow. The cards read a few item columns (title, image, ids,
+numbers), so every place that loads a row a range payload keeps defers the
+wide item columns in `history_cache_utils.HISTORY_UNREAD_ITEM_FIELDS`
+(`watch_providers` alone is ~146 KiB a TMDB title): `_fetch_media_objects`,
+`hydrate_payload`'s `_fetch_instances`, and `stats._annotate_top_rated_media`,
+including the season and episode items it prefetches under a show. The one
+exception is a manual anime, manga or comic in the top-rated cards, loaded
+whole because its progress total is read from its custom details. A deferred
+column that something does read comes back with one query per row, so
+`test_statistics_narrow_rows` fails on any such query while a range is built
+or rendered. The change needs no cache or schema bump: the snapshot format
+(references) is unchanged, and an entry cached with whole rows before an
+upgrade renders exactly as a narrow one.
+
+The ranges do not share their walk over the day payloads. On the profiled
+library (3,414 active days) the walks of every bounded range together cost
+about a quarter of a second of CPU per heavy pass, against several seconds for
+the rest; sharing them would mean freezing about thirty accumulators at every
+range boundary, and the calendar ranges (This Week, This Month, This Year) do
+not nest with the rolling ones.
+
+A save does not share its day rebuild with History either. One dated save
+queues one History refresh (the user's own style: the index, then the saved
+day) and one sync (the saved day, today and yesterday in one prefetched slice,
+then the hot ranges); both run on the `celery` worker. The two builders read
+the same media tables for that day, but not the same rows: History hydrates
+narrow model rows for what ended that day (or started that day with no end),
+while the sync reads `.values()` rows overlapping the slice's span and buckets
+them per day. Feeding both from one fetch would mean rewriting one builder
+onto the other's row shape and putting a History build inside the sync's
+lease, budget and interactive yields. Measured per save on 1k and 10k movie
+libraries (`DATA-06A`, SQLite and PostgreSQL): the sync is about 200 queries
+and History about 34, of which the saved day is 14 History queries against the
+slice's 14 family queries. Even sharing all of that would save at most
+about 9% of the combined wall time on either database. The highlights already reuse History's
+published index (no query on a warm index). Outputs of both pipelines match a
+fresh build of the saved day, apart from the volatile `history_version` and
+`backfill.scheduled_credits`.
 
 The highlights ("on this day") read the History day cache and keep any day they
 had to build, so a History cache that keeps losing days (see the coverage repair
@@ -238,11 +306,52 @@ database). Stale → `ensure_sync` (gated, idempotent) and serve it anyway. None
 → an empty payload with `statistics_building=True`, and an urgent sync.
 `/api/cache-status/` reports the snapshot and never touches a running sync.
 
+A **custom range** (any dates that are not a predefined range, on web and in
+`/api/v1/statistics/overview/`) has no snapshot. It is added up from its day
+payloads, which for a full history at 10k items is seconds of web CPU, so
+`statistics_cache._custom_range_result` remembers the result for 15 minutes
+under a token made of what makes a snapshot stale: the change generation, the
+local day and timezone, the snapshot and day schema versions, plus the dates
+and the user preferences the aggregate reads. Any mark (`mark_days`,
+`mark_aggregate`, preference changes) therefore reaches the next load with no
+invalidation of its own. The comparison period's minutes are remembered the
+same way. A result is not kept when a day payload was missing (the background
+build that fills it in marks nothing), while a bulk import runs (its marks
+are deferred) or while a full sweep is pending (it rebuilds day payloads
+without a mark). Each user keeps one entry per kind, so a new range replaces the
+last. A second request for the same range while the first is computing waits
+for it (`cache_utils.wait_for_build`) instead of computing it again. The walk
+also reports the days it found missing, so scheduling their background build
+no longer reads the whole range a second time.
+
 Eager/test mode (`CELERY_TASK_ALWAYS_EAGER` or `TESTING`) has no worker, so the
 read path rebuilds the requested range inline and `ensure_sync` is a no-op.
-Tests that exercise the real queueing override both settings and patch
+Custom ranges and the comparison-period minutes build their missing days the
+way the sync does (`statistics_cache._eager_day_builder` →
+`statistics_sync._build_days`, one range-wide prefetch per slice), not one day
+at a time; the day payloads and stored rows are the same
+(`app/tests/test_statistics_eager_day_builds.py`). An empty library's page went
+from about 9,000 queries to under 500. The prefetch also carries audiobook
+listening minutes, so a prefetched day issues no query of its own. Tests that exercise the real queueing override both settings and patch
 `app.tasks_interactive.statistics_sync_task.apply_async`
 (`app/tests/test_statistics_sync.py`).
+
+### Person pages
+
+A person page shows "N tracked plays" and the time watched per title. Those
+come from one watched-item context per user: every play in the library, built
+by `statistics_talent._build_person_talent_context`. The page renders what is
+stored and never waits for background work.
+`statistics_cache.get_ready_person_talent_totals` reads the totals, or the
+context for the current history version, from the cache. When that context is
+missing it queues `Build person talent context` once per history version and
+uses the last built context instead, so the numbers trail a new play by one
+build. With nothing built yet the page shows "Counting plays"; the web page asks
+again every 3 s (`?talent=1`, cache reads only, at most 40 times) and swaps in
+the hero and credits once ready, and the Expo screen re-requests on
+`talentPending`. Before this, the page built the context inline: 30 to 220 s on
+a large library on spinning disks, almost all of it SQLite reading rows, which
+the request timer now reports as `db_fetch_ms`.
 
 ## Manual refresh
 
@@ -275,6 +384,14 @@ and `coalesce_import_changes` drops the full sweep it requested up front.
 A write that moves rows between libraries (Stremio promoting a show to grouped
 anime) calls `helpers.note_full_refresh()`, which falls back to the blanket drop.
 
+A poll whose upstream has not changed must write nothing and count nothing as
+imported: `coalesce_import_changes` then restores the generation it bumped up
+front, and the task skips its calendar reload. Count only rows the run actually
+wrote; report rows it looked at and left alone as `unchanged`, a metric key
+that is not imported media. `integrations/tests/test_recurring_sync_no_change.py`
+(tagged `slow`) runs every recurring importer twice against the same fake
+upstream and holds that line.
+
 Not in the list: Trakt (its durable, resumable import publishes through
 `durable.publish_pending`, which still drops everything) and the one-off file
 importers, where a full refresh after a big upload is what the user expects.
@@ -282,7 +399,9 @@ Add an importer only after checking that every write it makes takes one of the
 paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
-`queryset.update`) on anything Statistics reads, mark it.
+`queryset.update`) on anything Statistics reads, mark it, and add its row to
+`src/app/bulk_write_refresh.py` (`app.tests.test_bulk_write_refresh` fails
+until you do).
 
 ## Retired
 
@@ -312,7 +431,7 @@ above has no message whose loss matters, and polling never touches it.
 | --- | --- |
 | `stats_mark user_id days reason` | a change was recorded |
 | `stats_sync user_id status ranges elapsed_ms` | a sync pass ended (`done`, `continued`, `busy`, `lost_lease`) |
-| `stats_range_summary user_id range generation elapsed_ms missing_days days_ms` | one range published (`days_ms` is the day-building part of `elapsed_ms`) |
+| `stats_range_summary user_id range generation elapsed_ms missing_days days_ms days_decoded phases_ms` | one range published (`days_ms` is the day-building part of `elapsed_ms`; `phases_ms` splits the aggregate) |
 | `stats_snapshot_superseded user_id range generation` | a publish was skipped: a newer generation is already out |
 | `stats_reconcile candidates queued` | the reconciler found unfinished work |
 | `stats_sync_enqueue_failed` | the broker refused a sync; the reconciler will retry |

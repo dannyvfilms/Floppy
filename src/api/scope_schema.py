@@ -7,7 +7,7 @@ that module.
 
 from drf_spectacular.openapi import AutoSchema
 
-from api.scopes import ANY_SCOPE, NEVER, resolve_required_scope
+from api.scopes import ANY_SCOPE, NEVER, SESSION_ONLY, resolve_required_scope
 
 
 class ScopedAutoSchema(AutoSchema):
@@ -27,7 +27,9 @@ class ScopedAutoSchema(AutoSchema):
         if scope == ANY_SCOPE:
             operation["x-required-scope"] = "any"
         elif scope == NEVER:
-            operation["x-required-scope"] = "none (session or account token only)"
+            operation["x-required-scope"] = "none (session, account token or first-party full access only)"
+        elif scope == SESSION_ONLY:
+            operation["x-required-scope"] = "none (session only)"
         elif scope:
             operation["x-required-scope"] = scope
         return operation

@@ -195,11 +195,13 @@ class HomeRowPagingTests(ShelfFixtures, TestCase):
         order_calls = [
             call for call in cache_set.call_args_list if "_order_" in call.args[0]
         ]
-        # Both directions are kept so flipping the sort arrow is a cache hit.
-        directions = {call.args[0].rsplit("_", 2)[-2] for call in order_calls}
-        self.assertEqual(directions, {"asc", "desc"})
-        for call in order_calls:
-            self.assertEqual(call.args[2], cache_utils.HOME_ROW_ORDER_CACHE_TTL)
+        # One scan caches both directions; the flipped-direction cover preview
+        # then reuses them instead of ranking the shelf a second time.
+        self.assertEqual(len(order_calls), 2)
+        self.assertEqual(
+            {call.args[2] for call in order_calls},
+            {cache_utils.HOME_ROW_ORDER_CACHE_TTL},
+        )
 
     def test_recent_sql_order_matches_the_scan(self):
         """Tracked items by activity, then collected ones: released, upcoming, undated."""

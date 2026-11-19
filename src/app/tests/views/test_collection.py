@@ -1014,6 +1014,9 @@ class CollectionModalViewTest(TestCase):
             ),
         )
 
+        self.assertContains(response, "data-collection-context-root")
+        self.assertContains(response, reverse("api_media_collection_entries", args=["movie", "tmdb", "1234"]))
+        self.assertContains(response, "Test Movie")
         self.assertContains(response, "data-collection-copy-fields-root")
         self.assertContains(response, "data-collection-fields-root")
         self.assertContains(response, "data-collection-field-inputs-root")

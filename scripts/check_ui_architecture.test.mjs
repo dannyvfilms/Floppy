@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { build } from 'esbuild';
 import { inspectUniversal, inspectWebAdapter, isNativeAppShellPresentation, legacyStatements, validateRegistry } from './check_ui_architecture.mjs';
 
 const native = "import React from 'react'; import {View, Text} from 'react-native'; export function Card(){ return <View><Text>ok</Text></View>; }";
@@ -16,6 +17,13 @@ test('data layers may fetch but cannot render or access browser globals', () => 
   assert.deepEqual(inspectUniversal('export function load(){return fetch("/api")}', 'client.js', { logic: true, dataLayer: true }), []);
   assert.ok(inspectUniversal('export function load(){return document.body}', 'client.js', { logic: true, dataLayer: true }).length);
   assert.ok(inspectUniversal('export function load(){return <div/>}', 'client.js', { logic: true, dataLayer: true }).length);
+});
+
+test('native alpha masks stay in the reviewed native presentation adapter', () => {
+  const source = "import React from 'react'; import {View} from 'react-native'; import MaskedView from '@react-native-masked-view/masked-view'; export function A(){return <MaskedView maskElement={<View/>}><View/></MaskedView>}";
+  assert.deepEqual(inspectUniversal(source, 'art.native.jsx', { nativeAdapter: true }), []);
+  assert.match(inspectUniversal(source, 'art.jsx').join(), /unapproved import/);
+  assert.match(inspectUniversal(source.replace('@react-native-masked-view/masked-view', '@react-native-masked-view/unknown'), 'art.native.jsx', { nativeAdapter: true }).join(), /unapproved native dependency/);
 });
 
 test('rejects DOM, browser APIs, transport, CSS and web dependencies', () => {
@@ -149,4 +157,37 @@ test('every island renderer branch is discoverable by the host selector', () => 
   for (const root of dispatched) {
     assert.ok(roots.has(root), `island renderer cannot discover ${root}`);
   }
+});
+
+
+test('browser artwork and edition adapters resolve their shared presentation without a self-import', async () => {
+  const adapter = 'frontend/ui/ArtworkPicker.web.jsx';
+  const { metafile } = await build({
+    entryPoints: [adapter], bundle: true, write: false, metafile: true,
+    format: 'esm', jsx: 'automatic',
+    resolveExtensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js',
+      '.tsx', '.ts', '.jsx', '.js', '.css', '.json'],
+    alias: { 'react-native': 'react-native-web' },
+    define: { 'process.env.NODE_ENV': '"production"', global: 'globalThis' },
+  });
+  assert.equal(metafile.inputs[adapter].imports.some(input => input.path === adapter), false,
+    'the browser adapter must not recursively render itself as shared presentation');
+  assert.ok(metafile.inputs['frontend/ui/ArtworkPicker.jsx'],
+    'both picker adapters must bundle the shared React Native presentation');
+});
+
+
+test('native error-report adapter resolves shared presentation without a self-import', async () => {
+  const adapter = 'frontend/errors/ErrorReportPanel.native.jsx';
+  const { metafile } = await build({
+    entryPoints: [adapter], bundle: true, write: false, metafile: true,
+    format: 'esm', jsx: 'automatic', packages: 'external',
+    resolveExtensions: ['.ios.tsx', '.ios.ts', '.ios.jsx', '.ios.js',
+      '.native.tsx', '.native.ts', '.native.jsx', '.native.js',
+      '.tsx', '.ts', '.jsx', '.js', '.json'],
+  });
+  assert.equal(metafile.inputs[adapter].imports.some(input => input.path === adapter), false,
+    'the native adapter must not recursively render itself as shared presentation');
+  assert.ok(metafile.inputs['frontend/errors/ErrorReportPanel.jsx'],
+    'the native adapter must bundle the shared traceback panel');
 });

@@ -1,12 +1,13 @@
 import { Modal } from './Modal';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
 import { CardScrim } from './CardScrim';
 import { Icon } from './Icon';
 import { STATUS_ICON_SPECS } from './statusChipIcons';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
-import { shouldRevealMediaCardActions } from './mediaCardBehavior';
+import { shouldRevealMediaCardActions, shouldShowMediaCardCorner, shouldShowMediaCardLine } from './mediaCardBehavior';
+import { actionIcons } from './actionIcons';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
 const DEFAULT_PALETTE = {
@@ -61,7 +62,7 @@ function Star({ size = 12, color }) {
   return <Text style={{ fontSize: size, color }}>★</Text>;
 }
 
-function Artwork({ model, palette, selection, onPress }) {
+function Artwork({ model, palette, selection, onPress, onLongPress }) {
   const image = model.image || {};
   const aspectRatio = Number(model.aspectRatio) || ASPECT[model.shape] || ASPECT.poster;
   const frame = <View style={[styles.artworkFrame, { aspectRatio }]}
@@ -84,7 +85,7 @@ function Artwork({ model, palette, selection, onPress }) {
   </View>;
 
   if (!onPress) return frame;
-  return <Pressable accessibilityRole="button" accessibilityLabel={model.title} onPress={onPress}>
+  return <Pressable accessibilityRole="button" accessibilityLabel={model.title} onPress={onPress} onLongPress={onLongPress}>
     {frame}
   </Pressable>;
 }
@@ -114,7 +115,7 @@ function StatusChip({ chip, palette, labels }) {
   if (chip.kind === 'event') {
     return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
       accessible accessibilityLabel={chip.label}>
-      <Text style={[styles.chipGlyph, { color: palette.chipText }]}>◷</Text>
+      <Icon spec={actionIcons.history} size={12} color={palette.chipText} />
       <Text style={[styles.chipText, { color: palette.chipText }]}>{chip.label}</Text>
     </View>;
   }
@@ -124,7 +125,9 @@ function StatusChip({ chip, palette, labels }) {
     accessible accessibilityLabel={chip.label || status}>
     {STATUS_ICON_SPECS[status]
       ? <Icon spec={STATUS_ICON_SPECS[status]} color={color} size={16} />
-      : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
+      : chip.icon
+        ? <Icon spec={chip.icon} color={color} size={16} />
+        : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
   </View>;
 }
 
@@ -184,12 +187,12 @@ function Line({ line, palette }) {
   </Text>;
 }
 
-function Title({ model, palette, onOpen, onOpenLink }) {
+function Title({ model, palette, onOpen, onOpenLink, onLongPress }) {
   if (model.titleLinks?.length) {
     return <View style={styles.titleColumn}>
       {model.titleLinks.map((link, index) => <Pressable key={`${link.url}-${index}`}
         accessibilityRole="link" accessibilityLabel={link.label}
-        onPress={onOpenLink ? () => onOpenLink(link.url) : undefined}
+        onPress={onOpenLink ? () => onOpenLink(link.url) : undefined} onLongPress={onLongPress}
         disabled={!onOpenLink} style={styles.titleLinkPress}>
         <Text numberOfLines={1} style={[index === 0 ? styles.title : styles.titleSecondary, {
           color: index === 0 ? palette.text : palette.textMuted,
@@ -199,7 +202,7 @@ function Title({ model, palette, onOpen, onOpenLink }) {
   }
   const text = <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>{model.title}</Text>;
   if (!onOpen) return <View style={styles.titleColumn}>{text}</View>;
-  return <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpen}
+  return <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpen} onLongPress={onLongPress}
     style={styles.titleColumn}>{text}</Pressable>;
 }
 
@@ -258,10 +261,10 @@ function AltTitle({ label, open, onPress, palette }) {
   </Pressable>;
 }
 
-function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, readOnly, altOpen, setAltOpen }) {
+function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onLongPress, onRate, renderRating, readOnly, altOpen, setAltOpen, revealed = true }) {
   return <>
     <View style={styles.titleRow}>
-      <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} />
+      <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} onLongPress={onLongPress} />
       {model.altTitle ? <AltTitle label={labels.altTitle} open={altOpen}
         onPress={() => setAltOpen(current => !current)} palette={palette} /> : null}
       {model.scoreText != null ? <View style={styles.score}>
@@ -271,11 +274,15 @@ function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, rend
       <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} readOnly={readOnly} />
     </View>
     {altOpen && model.altTitle ? <Text style={[styles.altText, { color: palette.textMuted }]}>{model.altTitle}</Text> : null}
-    {model.lines?.map((line, index) => <Line key={index} line={line} palette={palette} />)}
+    {model.lines?.map((line, index) => shouldShowMediaCardLine(model, line, revealed)
+      ? <Line key={index} line={line} palette={palette} /> : null)}
   </>;
 }
 
-export function MediaCard({
+// Memoized on its props: a list re-render (a shelf arriving, a page appended)
+// skips cards whose model and callbacks are unchanged. Parents pass stable
+// props for this to hold; a changed model still re-renders the card.
+export const MediaCard = React.memo(function MediaCard({
   model,
   labels = {},
   palette,
@@ -285,6 +292,7 @@ export function MediaCard({
   onOpen,
   onOpenLink,
   onAction,
+  onLongPress,
   onReorder,
   onReorderDrag,
   dragging = false,
@@ -308,10 +316,18 @@ export function MediaCard({
     ...labels,
   };
   const [altOpen, setAltOpen] = useState(false);
+  const cardRef = useRef(null);
   const [localRevealed, setLocalRevealed] = useState(false);
   const activeSelection = readOnly ? undefined : selection;
   const shownActions = readOnly ? null : (actions === undefined ? model.actions : actions);
   const isRevealed = revealed === undefined ? localRevealed : revealed;
+
+  function longPress() {
+    if (!onLongPress || activeSelection?.active || readOnly) return;
+    if (cardRef.current?.measureInWindow) {
+      cardRef.current.measureInWindow((x, y, width, height) => onLongPress({ x, y, width, height }));
+    } else onLongPress(null);
+  }
 
   function setReveal(value) {
     if (revealed === undefined) setLocalRevealed(value);
@@ -349,40 +365,51 @@ export function MediaCard({
   }
 
   if (model.layout === 'row') {
-    return <View style={[styles.row, style]}>
-      <View style={styles.rowArtwork}>
-        <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen} />
+    // `rowSplit` (the search list) puts the title block and the actions on one
+    // line, actions at the end, like the web's list rows.
+    const split = Boolean(model.rowSplit);
+    const metadata = <>
+      <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
+        onOpenLink={onOpenLink} onLongPress={onLongPress ? longPress : undefined} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+        altOpen={altOpen} setAltOpen={setAltOpen} />
+      {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
+        style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
+    </>;
+    const actionRow = shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
+      palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null;
+    return <View ref={cardRef} style={[styles.row, split && styles.rowSplit, split && model.rowWidth ? { width: model.rowWidth } : null, style]}>
+      <View style={split ? styles.rowArtworkSplit : styles.rowArtwork}>
+        <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen}
+          onLongPress={onLongPress ? longPress : undefined} />
       </View>
-      <View style={styles.rowBody}>
-        <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
-          onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
-          altOpen={altOpen} setAltOpen={setAltOpen} />
-        {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
-          style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
-        {shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
-          palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null}
-      </View>
+      {split
+        ? <View style={styles.rowBodySplit}>
+          <View style={styles.rowMeta}>{metadata}</View>
+          {actionRow}
+        </View>
+        : <View style={styles.rowBody}>{metadata}{actionRow}</View>}
     </View>;
   }
 
-  return <View style={[styles.card, {
+  return <View ref={cardRef} style={[styles.card, {
     width,
     backgroundColor: colors.card,
     borderColor: colors.border,
   }, style]}
     onPointerEnter={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(true);
+      if (event?.nativeEvent?.pointerType === 'mouse' && (shownActions || model.hoverMetadata) && !activeSelection?.active) setReveal(true);
     }}
     onPointerLeave={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(false);
+      if (event?.nativeEvent?.pointerType === 'mouse' && (shownActions || model.hoverMetadata) && !activeSelection?.active) setReveal(false);
     }}>
     <View style={styles.artworkWrap}>
       <View style={styles.artworkStage}>
-        <Artwork model={model} palette={colors} selection={activeSelection} onPress={open} />
+        <Artwork model={model} palette={colors} selection={activeSelection} onPress={open}
+          onLongPress={onLongPress ? longPress : undefined} />
         {model.statusChip?.kind === 'media-type'
           ? <MediaTypeChip chip={model.statusChip} palette={colors} />
           : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
-        {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
+        {model.cornerChips?.filter(chip => shouldShowMediaCardCorner(model, chip, isRevealed)).map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
           chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} compact={width <= 120} />)}
         <ProgressBar bar={model.progressBar} palette={colors} />
       </View>
@@ -390,18 +417,19 @@ export function MediaCard({
         <CardScrim style={styles.scrim} />
         <View style={styles.body}>
           <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
-            onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
-            altOpen={altOpen} setAltOpen={setAltOpen} />
+            onOpenLink={gatedOpenLink} onLongPress={onLongPress ? longPress : undefined} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+            altOpen={altOpen} setAltOpen={setAltOpen} revealed={isRevealed} />
         </View>
       </View>
       {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
         palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
         onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
         dragging={dragging} renderIcon={renderActionIcon}
+        onLongPress={onLongPress ? longPress : undefined}
         style={{ top: 0, height: width / (ASPECT[model.shape] || ASPECT.poster) }} /> : null}
     </View>
   </View>;
-}
+});
 
 const styles = StyleSheet.create({
   card: { position: 'relative', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
@@ -415,7 +443,7 @@ const styles = StyleSheet.create({
   },
   artworkPlaceholder: { paddingHorizontal: 8, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   body: { padding: 10, gap: 2, zIndex: 1 },
-  bodyStack: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 9 },
+  bodyStack: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 11 },
   // The web card darkens a fixed 3rem above its body, not a percentage of the
   // body, so square and 2:3 cards read the same.
   scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, top: -48, zIndex: 0 },
@@ -458,5 +486,9 @@ const styles = StyleSheet.create({
   ratingTitle: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', gap: 12, padding: 12, alignItems: 'flex-start' },
   rowArtwork: { width: 64 },
+  rowSplit: { alignItems: 'center', padding: 16 },
+  rowArtworkSplit: { width: 64 },
+  rowBodySplit: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  rowMeta: { flex: 1, minWidth: 0 },
   rowBody: { flex: 1, minWidth: 0 },
 });

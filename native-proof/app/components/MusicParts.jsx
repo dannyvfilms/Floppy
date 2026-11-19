@@ -20,6 +20,7 @@ import { MusicRelationCard } from '../../../frontend/ui/MusicRelationCard';
 import { ProgressBar } from '../../../frontend/ui/ProgressBar';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
+import { FormError, FormTextField } from '../../../frontend/ui/MediaCardFormControls';
 import {
   dateTimePalette,
   mediaCardPalette,
@@ -29,9 +30,22 @@ import {
   ratingPalette,
   spacing,
 } from '../theme';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-  'August', 'September', 'October', 'November', 'December'];
+// The date picker's quick actions always reflect the device clock.
+function quickActionDate(action, now = new Date()) {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const date = `${now.getFullYear()}-${month}-${day}`;
+  if (action !== 'just-finished') return date;
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${date}T${hours}:${minutes}`;
+}
+
+// Django's "N j, Y" month names, as the web prints them.
+const MONTHS = ['Jan.', 'Feb.', 'March', 'April', 'May', 'June', 'July',
+  'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
 
 export const STATUS_OPTIONS = ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped'];
 
@@ -39,12 +53,12 @@ const STATUS_COLORS = {
   Completed: palette.success,
   'In progress': palette.accent,
   Paused: palette.warning,
-  Planning: '#38bdf8',
+  Planning: palette.link,
   Dropped: palette.danger,
 };
 
 const statusPalette = STATUS_OPTIONS.reduce((result, option) => {
-  result[option] = { color: '#ffffff', backgroundColor: STATUS_COLORS[option] };
+  result[option] = { color: palette.onAccentStrong, backgroundColor: STATUS_COLORS[option] };
   return result;
 }, {});
 
@@ -156,22 +170,6 @@ function actionGroup(title, items) {
 
 function countLabel(count, singular, plural) {
   return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
-}
-
-export function MusicTabs({ tabs, active, onChange }) {
-  return <View style={styles.tabs} accessibilityRole="tablist">
-    {tabs.map(tab => {
-      const selected = tab.key === active;
-      return <Pressable key={tab.key}
-        accessibilityRole="tab"
-        accessibilityState={{ selected }}
-        accessibilityLabel={tab.label}
-        onPress={() => onChange(tab.key)}
-        style={({ pressed }) => [styles.tab, selected && styles.tabActive, pressed && styles.tabPressed]}>
-        <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>{tab.label}</Text>
-      </Pressable>;
-    })}
-  </View>;
 }
 
 export function FilterChips({ options, value, onChange, label }) {
@@ -303,23 +301,24 @@ function MusicRatingPicker({ value, label, scaleMax, palette: colors, onSelect }
 
 function trackActions() {
   return actionGroup('Track actions', [
-    { kind: 'action', key: 'listen', title: 'Add listen', glyph: '▶', tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Track notes', glyph: '✎', tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', glyph: '◷', tone: 'amber' },
+    { kind: 'action', key: 'listen', title: 'Add listen', icon: actionIcons.listAdd, tone: 'indigo' },
+    { kind: 'action', key: 'notes', title: 'Track notes', icon: actionIcons.edit, tone: 'surface' },
+    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
   ]);
 }
 
 function episodeActions() {
   return actionGroup('Episode actions', [
-    { kind: 'action', key: 'play', title: 'Add play', glyph: '▶', tone: 'indigo' },
-    { kind: 'action', key: 'notes', title: 'Episode notes', glyph: '✎', tone: 'surface' },
-    { kind: 'action', key: 'history', title: 'View your activity history', glyph: '◷', tone: 'amber' },
+    { kind: 'action', key: 'play', title: 'Add play', icon: actionIcons.listAdd, tone: 'indigo' },
+    { kind: 'action', key: 'notes', title: 'Episode notes', icon: actionIcons.edit, tone: 'surface' },
+    { kind: 'action', key: 'history', title: 'View your activity history', icon: actionIcons.history, tone: 'amber' },
   ]);
 }
 
 export function TrackRow({ track, onOpen, onAction, onRate }) {
-  const listens = track.listens.length;
-  const last = track.listens[0];
+  const listens = track.playCount || 0;
+  const last = track.lastPlayed;
+  const collected = track.codec ? [{ text: `Collected: ${track.codec}`, muted: true }] : [];
   const model = {
     layout: 'row',
     mediaType: 'music',
@@ -332,22 +331,19 @@ export function TrackRow({ track, onOpen, onAction, onRate }) {
         join: 'dot',
         parts: [
           { text: `Track ${track.number}${track.disc > 1 ? ` (Disc ${track.disc})` : ''}` },
-          { text: track.duration, muted: true },
+          ...(track.duration ? [{ text: track.duration, muted: true }] : []),
         ],
       },
-      {
+      ...(listens || collected.length ? [{
         join: 'dot',
         parts: listens
           ? [
-            { text: last ? `Last listened ${dateLabel(last.date)}` : 'Listened', muted: true },
-            { text: countLabel(listens, 'listen', 'listens'), muted: true },
-            ...(track.codec ? [{ text: `Collected: ${track.codec}`, muted: true }] : []),
+            { text: last ? `Last listened: ${dateLabel(last.date)}` : 'Listened', muted: true },
+            ...(listens > 1 ? [{ text: `Listened ${listens} times`, muted: true }] : []),
+            ...collected,
           ]
-          : [
-            { text: 'Not listened yet', muted: true },
-            ...(track.codec ? [{ text: `Collected: ${track.codec}`, muted: true }] : []),
-          ],
-      },
+          : collected,
+      }] : []),
     ],
     rating: {
       label: track.score == null ? null : String(track.score),
@@ -355,7 +351,9 @@ export function TrackRow({ track, onOpen, onAction, onRate }) {
       scaleMax: 10,
       rateLabel: 'Rate',
     },
-    ratingEditable: true,
+    // Scores write to the caller's Music row; without one there is nothing to
+    // rate yet, so the control stays read-only like an unrated card.
+    ratingEditable: track.musicId != null,
     actions: trackActions(),
   };
   return <MediaCard model={model}
@@ -368,8 +366,7 @@ export function TrackRow({ track, onOpen, onAction, onRate }) {
 }
 
 export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
-  const state = episode.inProgress ? 'In progress' : episode.plays.length ? 'Played' : 'Unplayed';
-  const last = episode.plays[0];
+  const state = episode.inProgress ? 'In progress' : episode.played ? 'Played' : 'Unplayed';
   const model = {
     layout: 'row',
     mediaType: 'podcast',
@@ -382,19 +379,17 @@ export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
         join: 'dot',
         parts: [
           { text: `Episode ${episode.number}` },
-          { text: dateLabel(episode.published), muted: true },
-          { text: episode.duration, muted: true },
+          ...(episode.published ? [{ text: dateLabel(episode.published), muted: true }] : []),
+          ...(episode.duration ? [{ text: episode.duration, muted: true }] : []),
         ],
       },
       {
         join: 'dot',
         parts: [
           { text: state, muted: true },
-          ...(episode.plays.length
-            ? [{ text: countLabel(episode.plays.length, 'play', 'plays'), muted: true }]
+          ...(episode.inProgress && episode.progressLabel
+            ? [{ text: episode.progressLabel, muted: true }]
             : []),
-          ...(last ? [{ text: `Last played ${dateLabel(last.date)}`, muted: true }] : []),
-          ...(episode.inProgress && last?.progress ? [{ text: last.progress, muted: true }] : []),
         ],
       },
     ],
@@ -404,7 +399,8 @@ export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
       scaleMax: 10,
       rateLabel: 'Rate',
     },
-    ratingEditable: true,
+    // An episode can be scored once it has a tracked play row.
+    ratingEditable: Boolean(episode.episodeId && onRate && (episode.played || episode.inProgress || episode.score != null)),
     actions: episodeActions(),
   };
   return <MediaCard model={model}
@@ -416,14 +412,36 @@ export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
     renderRating={MusicRatingPicker} />;
 }
 
+// "Played 12 times • Nov. 5, 2026 - Nov. 8, 2026", as the web subtitle prints it.
+function activityLine(plays, first, last) {
+  const played = plays ? (plays === 1 ? 'Played once' : `Played ${plays} times`) : '';
+  const range = first && last && first !== last
+    ? `${dateLabel(first)} - ${dateLabel(last)}`
+    : dateLabel(first || last || '');
+  return [played, first || last ? range : ''].filter(Boolean).join(' \u2022 ');
+}
+
+function collectionValue(count, total) {
+  const percent = total ? Math.round((count / total) * 100) : 0;
+  return `${count}/${total} \u2022 ${percent}%`;
+}
+
 export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, onRate, onSyncMembers }) {
+  const origin = artist.origin || '';
+  const formed = artist.formed || '';
+  const collection = artist.collection || {};
+  const mbRating = artist.musicbrainz?.rating ?? null;
+  const mbVotes = artist.musicbrainz?.votes ?? null;
   return <View style={styles.page}>
     <MusicHero image={artist.image} title={artist.name} shape="poster"
       eyebrow={artist.type}
-      subtitle={`${artist.origin} · Formed ${artist.formed}`}>
-      <BadgeRow labels={artist.genres} status={artist.status} />
+      subtitle={[origin, formed ? `Formed ${formed}` : ''].filter(Boolean).join(' · ')}>
+      {activityLine(artist.totalPlays, artist.firstListened, artist.lastListened)
+        ? <Text style={styles.bio}>{activityLine(artist.totalPlays, artist.firstListened, artist.lastListened)}</Text>
+        : null}
+      <BadgeRow labels={artist.genres || []} status={artist.status} />
       <View style={styles.scoreRow}>
-        <MusicBrainzScore rating={artist.musicbrainz.rating} votes={artist.musicbrainz.votes} />
+        <MusicBrainzScore rating={mbRating} votes={mbVotes} />
         <ScoreChip value={artist.score} onSelect={onRate} />
       </View>
       <PrimaryActions>
@@ -431,21 +449,25 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
         <Button label="Activity history" tone="surface" onPress={onHistory} />
         {onSyncMembers ? <Button label="Sync members" tone="surface" onPress={onSyncMembers} /> : null}
       </PrimaryActions>
-      <Text style={styles.bio}>{artist.bio}</Text>
+      {artist.bio ? <Text style={styles.bio}>{artist.bio}</Text> : null}
     </MusicHero>
 
     <View style={styles.panel}>
       <SectionHeading title="Details" />
-      <FactRow label="Type" value={artist.type} />
-      <FactRow label="Origin" value={artist.origin} />
-      <FactRow label="Formed" value={artist.formed} />
+      {artist.type ? <FactRow label="Type" value={artist.type} /> : null}
+      {origin ? <FactRow label="Origin" value={origin} /> : null}
+      {formed ? <FactRow label="Formed" value={formed} /> : null}
       <FactRow label="Releases" value={String(albums.length)} />
-      <FactRow label="Plays" value={String(artist.totalPlays)} />
-      <FactRow label="Collected albums" value={`${artist.collection.albums} / ${artist.collection.totalAlbums}`} />
-      <FactRow label="Collected tracks" value={`${artist.collection.tracks} / ${artist.collection.totalTracks}`} />
+      {artist.totalPlays != null ? <FactRow label="Plays" value={String(artist.totalPlays)} /> : null}
+      {collection.albums != null && collection.totalAlbums != null
+        ? <FactRow label="Collected albums" value={collectionValue(collection.albums, collection.totalAlbums)} />
+        : null}
+      {collection.tracks != null && collection.totalTracks != null
+        ? <FactRow label="Collected tracks" value={collectionValue(collection.tracks, collection.totalTracks)} />
+        : null}
     </View>
 
-    {artist.relations.members.length
+    {(artist.relations?.members || []).length
       ? <View style={styles.section}>
         <SectionHeading title="Members" meta={String(artist.relations.members.length)} />
         <MusicCardGrid items={artist.relations.members}
@@ -453,7 +475,7 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
       </View>
       : null}
 
-    {artist.relations.alsoIn.length
+    {(artist.relations?.alsoIn || []).length
       ? <View style={styles.section}>
         <SectionHeading title="Also In" meta={String(artist.relations.alsoIn.length)} />
         <MusicCardGrid items={artist.relations.alsoIn}
@@ -463,7 +485,7 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
 
     <View style={styles.section}>
       <SectionHeading title="Discography" meta={countLabel(albums.length, 'release', 'releases')} />
-      {artist.discography.map(group => <View key={group.label} style={styles.group}>
+      {(artist.discography || []).map(group => <View key={group.label} style={styles.group}>
         <View style={styles.groupHeading}>
           <Text style={styles.groupTitle}>{group.label}</Text>
           <Text style={styles.groupCount}>{countLabel(group.albums.length, 'release', 'releases')}</Text>
@@ -475,34 +497,49 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
   </View>;
 }
 
-export function AlbumPage({ album, onBack, onOpenTrack, onTrack, onHistory, onRate, onAction, onTrackRate, onSyncMetadata }) {
+export function AlbumPage({ album, onBack, onOpenTrack, onTrack, onHistory, onRate, onAction, onTrackRate, onSyncMetadata, onChooseRelease }) {
+  const subtitle = [album.artistName, album.year].filter(Boolean).join(' · ');
   return <View style={styles.page}>
     <View style={styles.inlineNav}>
       <Button label="Back to artist" tone="surface" onPress={onBack} />
     </View>
     <MusicHero image={album.image} title={album.title} shape="square"
       eyebrow={album.releaseType}
-      subtitle={`Mira Vale · ${album.year}`}>
-      <BadgeRow labels={album.genres} status={null} />
+      subtitle={subtitle}>
+      {album.totalTracks
+        ? <Text style={styles.bio}>{[`Progress: ${album.libraryTracks}/${album.totalTracks}`,
+          activityLine(0, album.firstListened, album.lastListened)].filter(Boolean).join(' \u2022 ')}</Text>
+        : null}
+      <BadgeRow labels={album.genres || []} status={null} />
       <View style={styles.scoreRow}>
         <ScoreChip value={album.score} onSelect={onRate} />
-        <Badge label={album.format} size="sm" tone="outline" palette={outlinePalette} />
+        {album.format ? <Badge label={album.format} size="sm" tone="outline" palette={outlinePalette} /> : null}
       </View>
       <PrimaryActions>
         <Button label={album.status || 'Add to Library'} onPress={onTrack} />
         <Button label="Activity history" tone="surface" onPress={onHistory} />
         {onSyncMetadata ? <Button label="Sync metadata" tone="surface" onPress={onSyncMetadata} /> : null}
+        {onChooseRelease ? <Button label="Choose release" tone="surface" onPress={onChooseRelease} /> : null}
       </PrimaryActions>
     </MusicHero>
 
     <View style={styles.panel}>
       <SectionHeading title="Details" />
-      <FactRow label="Format" value={album.format} />
-      <FactRow label="Release date" value={dateLabel(album.releaseDate)} />
+      {album.format ? <FactRow label="Format" value={album.format} /> : null}
+      {album.releaseDate ? <FactRow label="Release date" value={dateLabel(album.releaseDate)} /> : null}
       <FactRow label="Tracks" value={String(album.tracks.length)} />
-      <FactRow label="Total runtime" value={album.runtime} />
-      <FactRow label="Plays" value={String(album.plays)} />
+      {album.runtime ? <FactRow label="Total runtime" value={album.runtime} /> : null}
+      {album.plays != null ? <FactRow label="Plays" value={String(album.plays)} /> : null}
     </View>
+
+    {album.firstListened || album.lastListened || album.libraryTracks
+      ? <View style={styles.panel}>
+        <SectionHeading title="Your History" />
+        {album.firstListened ? <FactRow label="First listened:" value={dateLabel(album.firstListened)} /> : null}
+        {album.lastListened ? <FactRow label="Last listened:" value={dateLabel(album.lastListened)} /> : null}
+        <FactRow label="Progress:" value={`${album.libraryTracks} / ${album.totalTracks}`} />
+      </View>
+      : null}
 
     <View style={styles.section}>
       <SectionHeading title="Tracks" meta={countLabel(album.tracks.length, 'track', 'tracks')}
@@ -527,15 +564,17 @@ export function TrackPage({ album, track, onBack, onRate, onAddListen, onOpenNot
   useEffect(() => {
     setSaved('');
   }, [track.id]);
-  const listens = track.listens;
+  const listens = track.listens || [];
+  const playCount = track.playCount || listens.length;
+  const lastPlayed = track.lastPlayed;
   return <View style={styles.page}>
     <View style={styles.inlineNav}>
       <Button label="Back to album" tone="surface" onPress={onBack} />
     </View>
     <MusicHero image={album.image} title={track.title} shape="square"
       eyebrow={`Track ${track.number} · ${album.title}`}
-      subtitle={`Mira Vale · ${track.duration}`}>
-      <BadgeRow labels={[track.codec || 'Not collected', `Track ${track.number}`, track.duration]} status={null} />
+      subtitle={[album.artistName, track.duration].filter(Boolean).join(' · ')}>
+      <BadgeRow labels={[`Track ${track.number}`, ...(track.duration ? [track.duration] : [])]} status={null} />
       <View style={styles.scoreRow}>
         <RatingChip value={track.score} scaleMax={10}
           displayValue={track.score == null ? null : String(track.score)}
@@ -543,7 +582,7 @@ export function TrackPage({ album, track, onBack, onRate, onAddListen, onOpenNot
           labels={{ yourScore: 'Your score', rate: 'Rate', close: 'Close', addRating: 'Add rating', editRating: 'Edit rating' }}
           renderStar={star} palette={ratingPalette} open={scoreOpen} onOpenChange={setScoreOpen}
           onSelect={onRate} />
-        <Text style={styles.metaText}>{countLabel(listens.length, 'listen', 'listens')}</Text>
+        <Text style={styles.metaText}>{countLabel(playCount, 'listen', 'listens')}</Text>
       </View>
       <PrimaryActions>
         <Button label="Add listen" onPress={onAddListen} />
@@ -572,7 +611,7 @@ export function TrackPage({ album, track, onBack, onRate, onAddListen, onOpenNot
     </View>
 
     <View style={styles.section}>
-      <SectionHeading title="Play history" meta={countLabel(listens.length, 'listen', 'listens')} />
+      <SectionHeading title="Play history" meta={countLabel(playCount, 'listen', 'listens')} />
       {listens.length ? <View style={styles.rowList}>
         {listens.map((entry, index) => <View key={entry.id} style={styles.historyRow}>
           <View style={styles.historyCopy}>
@@ -581,58 +620,67 @@ export function TrackPage({ album, track, onBack, onRate, onAddListen, onOpenNot
           </View>
           <Button label="Delete" tone="ghost-danger" onPress={() => onDeleteListen(entry.id)} />
         </View>)}
-      </View> : <View style={styles.emptyPanel}>
-        <Text style={styles.emptyText}>Not listened yet</Text>
+      </View> : <View style={styles.rowList}>
+        <View style={styles.historyRow}>
+          <View style={styles.historyCopy}>
+            <Text style={styles.historyDate}>
+              {lastPlayed ? `Last listened ${dateLabel(lastPlayed.date)}` : 'Not listened yet'}
+            </Text>
+            <Text style={styles.historyMeta}>{countLabel(playCount, 'listen', 'listens')} recorded</Text>
+          </View>
+        </View>
       </View>}
     </View>
   </View>;
 }
 
-export function ShowPage({ show, episodes, episodeFilter, onFilter, visibleCount, onLoadMore,
-  onTrack, onHistory, onRate, onAction, onEpisodeRate }) {
-  const listened = episodes.filter(episode => !episode.inProgress && episode.plays.length > 0).length;
+export function ShowPage({ show, episodes, episodeTotal, episodeFilter, onFilter, onLoadMore, hasMore,
+  loadingEpisodes, onTrack, onHistory, onRate, onAction, onVisitWebsite, onRateEpisode, onManageEpisodes }) {
+  const total = episodeTotal != null ? episodeTotal : episodes.length;
+  const listened = episodes.filter(episode => episode.played && !episode.inProgress).length;
   const inProgress = episodes.filter(episode => episode.inProgress).length;
-  const unplayed = episodes.filter(episode => !episode.plays.length).length;
-  const minutes = episodes.reduce((total, episode) => {
-    const entry = episode.plays[0];
-    if (!entry) return total;
-    return total + (entry.minutes || episode.minutes);
-  }, 0);
+  const minutes = episodes.reduce((totalMinutes, episode) => (
+    totalMinutes + (episode.played ? (episode.durationSeconds || 0) / 60 : 0)
+  ), 0);
   const filtered = episodes.filter(episode => {
-    if (episodeFilter === 'played') return !episode.inProgress && episode.plays.length > 0;
+    if (episodeFilter === 'played') return episode.played && !episode.inProgress;
     if (episodeFilter === 'in_progress') return episode.inProgress;
-    if (episodeFilter === 'unplayed') return !episode.plays.length;
+    if (episodeFilter === 'unplayed') return !episode.played;
     return true;
   });
-  const visible = filtered.slice(0, visibleCount);
-  const percent = episodes.length ? Math.round((listened / episodes.length) * 100) : 0;
+  // The web counts the show's play rows for "Progress: N/M".
+  const progressListened = show.listenedCount ?? listened;
+  const percent = total ? Math.round((progressListened / total) * 100) : 0;
   const filterOptions = [
-    { value: 'all', label: 'All', count: episodes.length },
-    { value: 'unplayed', label: 'Unplayed', count: unplayed },
+    { value: 'all', label: 'All', count: total },
+    { value: 'unplayed', label: 'Unplayed', count: Math.max(0, total - listened - inProgress) },
     { value: 'in_progress', label: 'In progress', count: inProgress },
     { value: 'played', label: 'Played', count: listened },
   ];
   return <View style={styles.page}>
     <MusicHero image={show.image} title={show.title} shape="square"
       eyebrow="Podcast"
-      subtitle={`by ${show.author}`}>
-      <BadgeRow labels={show.genres} status={show.status} />
+      subtitle={show.author ? `by ${show.author}` : ''}>
+      <Text style={styles.bio}>{`Progress: ${progressListened}/${total}`}</Text>
+      <BadgeRow labels={show.genres || []} status={show.status} />
       <View style={styles.scoreRow}>
         <ScoreChip value={show.score} onSelect={onRate} />
-        <Badge label={`${episodes.length} episodes`} size="sm" tone="outline" palette={outlinePalette} />
+        <Badge label={`${total} episodes`} size="sm" tone="outline" palette={outlinePalette} />
       </View>
       <PrimaryActions>
         <Button label={show.status || 'Add to Library'} onPress={onTrack} />
         <Button label="Activity history" tone="surface" onPress={onHistory} />
+        {onVisitWebsite ? <Button label="Show website" tone="surface" onPress={onVisitWebsite} /> : null}
+        {onManageEpisodes ? <Button label="Manage episodes" tone="surface" onPress={onManageEpisodes} /> : null}
       </PrimaryActions>
-      <Text style={styles.bio}>{show.description}</Text>
+      {show.description ? <Text style={styles.bio}>{show.description}</Text> : null}
     </MusicHero>
 
     <View style={styles.statsRow}>
-      <StatCard label="Episodes" value={String(episodes.length)} />
+      <StatCard label="Episodes" value={String(total)} />
       <StatCard label="Listened" value={String(listened)} />
       <StatCard label="In progress" value={String(inProgress)} />
-      <StatCard label="Time" value={durationLabel(minutes)} />
+      <StatCard label="Time" value={durationLabel(Math.round(minutes))} />
     </View>
 
     <View style={styles.progressPanel}>
@@ -641,29 +689,156 @@ export function ShowPage({ show, episodes, episodeFilter, onFilter, visibleCount
         <Text style={styles.progressValue}>{percent}%</Text>
       </View>
       <ProgressBar percent={percent} height={8} palette={progressDetailPalette} label={`${percent}% of episodes played`} />
-      <Text style={styles.progressCopy}>{listened} of {episodes.length} episodes played · {unplayed} unplayed</Text>
+      <Text style={styles.progressCopy}>{progressListened} of {total} episodes played · {Math.max(0, total - listened - inProgress)} unplayed</Text>
     </View>
 
     <View style={styles.section}>
-      <SectionHeading title="Episodes" meta={`${Math.min(visibleCount, filtered.length)} of ${filtered.length}`}
-        copy="Filter the feed, load older pages and record repeats. Each play is dated and kept in the episode history." />
+      <SectionHeading title="Episodes" meta={`${episodes.length} of ${total} loaded`}
+        copy="Filter the feed, load older pages and record plays. Each play is dated and kept in the episode history." />
       <FilterChips label="Filter episodes" options={filterOptions} value={episodeFilter} onChange={onFilter} />
       <View style={styles.rowList}>
-        {visible.map(episode => <EpisodeRow key={episode.id} episode={episode} showImage={show.image}
+        {filtered.map(episode => <EpisodeRow key={episode.id} episode={episode} showImage={show.image}
           onOpen={() => onAction('play', episode)}
-          onAction={(key, target) => onAction(key, target)}
-          onRate={onEpisodeRate} />)}
+          onRate={onRateEpisode}
+          onAction={(key, target) => onAction(key, target)} />)}
       </View>
-      {!visible.length ? <View style={styles.emptyPanel}>
+      {!filtered.length ? <View style={styles.emptyPanel}>
         <Text style={styles.emptyText}>No episodes match this filter.</Text>
       </View> : null}
-      {visible.length < filtered.length
+      {hasMore
         ? <View style={styles.loadMore}>
-          <Button label={`Load more (${filtered.length - visible.length} left)`} tone="surface" onPress={onLoadMore} />
+          <Button label={loadingEpisodes ? 'Loading…' : `Load more (${total - episodes.length} left)`}
+            tone="surface" onPress={onLoadMore} />
         </View>
         : null}
     </View>
   </View>;
+}
+
+// Tracked artists, albums or shows: one tappable row each, with the loading,
+// empty and error states the browse tabs share.
+export function BrowseList({ rows, loading, error, emptyTitle, emptyCopy, onOpen, onRetry }) {
+  if (loading) {
+    return <View style={styles.emptyPanel}><Text style={styles.emptyText}>Loading…</Text></View>;
+  }
+  if (error) {
+    return <View style={styles.emptyPanel}>
+      <Text style={styles.emptyText}>{error}</Text>
+      {onRetry ? <Button label="Try again" tone="surface" onPress={onRetry} /> : null}
+    </View>;
+  }
+  if (!rows.length) {
+    return <View style={styles.emptyPanel}>
+      <Text style={styles.sectionTitle}>{emptyTitle}</Text>
+      {emptyCopy ? <Text style={styles.emptyText}>{emptyCopy}</Text> : null}
+    </View>;
+  }
+  return <View style={styles.rowList}>
+    {rows.map(row => <Pressable key={row.key} accessibilityRole="button"
+      accessibilityLabel={row.subtitle ? `${row.title}, ${row.subtitle}` : row.title}
+      onPress={() => onOpen(row)}
+      style={({ pressed }) => [styles.browseRow, pressed && styles.browsePressed]}>
+      <CoverArt image={row.image} title={row.title} width={56} />
+      <View style={styles.browseCopy}>
+        <Text numberOfLines={2} style={styles.historyDate}>{row.title}</Text>
+        {row.subtitle ? <Text numberOfLines={1} style={styles.historyMeta}>{row.subtitle}</Text> : null}
+      </View>
+      {row.status ? <Badge label={row.status} size="sm" palette={statusPalette} tone={row.status} /> : null}
+    </Pressable>)}
+  </View>;
+}
+
+// Releases (editions) of an album; picking one stores it for this account.
+export function ReleasePickerModal({ open, title, state, onSelect, onClose }) {
+  return <SheetModal open={open} title={title} subtitle="Choose the release whose tracklist to use" onClose={onClose}>
+    {state.loading ? <Text style={styles.emptyText}>Loading releases…</Text> : null}
+    {state.error ? <Text style={styles.emptyText}>{state.error}</Text> : null}
+    {!state.loading && !state.error && !state.releases.length
+      ? <Text style={styles.emptyText}>No releases found for this album.</Text> : null}
+    {state.releases.map(release => {
+      const selected = release.id === state.selectedId;
+      return <Pressable key={release.id} accessibilityRole="button" accessibilityState={{ selected }}
+        accessibilityLabel={release.title}
+        onPress={() => onSelect(release)}
+        style={({ pressed }) => [styles.browseRow, selected && styles.browseSelected, pressed && styles.browsePressed]}>
+        <View style={styles.browseCopy}>
+          <Text numberOfLines={2} style={styles.historyDate}>{release.title}</Text>
+          {release.detail ? <Text style={styles.historyMeta}>{release.detail}</Text> : null}
+        </View>
+        {selected ? <Badge label="In use" size="sm" tone="outline" palette={outlinePalette} /> : null}
+      </Pressable>;
+    })}
+  </SheetModal>;
+}
+
+const EMPTY_EPISODE = {
+  title: '', description: '', episodeNumber: '', seasonNumber: '', published: '', duration: '', audioUrl: '', websiteUrl: '', imageUrl: '',
+};
+
+// Add, edit and delete the episodes of a manual show.
+export function ManageEpisodesModal({ open, showTitle, state, onSave, onDelete, onClose }) {
+  const [draft, setDraft] = useState(EMPTY_EPISODE);
+  const [editingId, setEditingId] = useState(null);
+  useEffect(() => {
+    if (open) {
+      setDraft(EMPTY_EPISODE);
+      setEditingId(null);
+    }
+  }, [open]);
+  const set = key => value => setDraft(current => ({ ...current, [key]: value }));
+  function edit(episode) {
+    setEditingId(episode.id);
+    setDraft({ ...EMPTY_EPISODE, ...episode });
+  }
+  async function submit() {
+    const saved = await onSave(editingId, draft);
+    if (saved) {
+      setDraft(EMPTY_EPISODE);
+      setEditingId(null);
+    }
+  }
+  return <SheetModal open={open} title="Manage episodes" subtitle={showTitle} onClose={onClose}>
+    {state.loading ? <Text style={styles.emptyText}>Loading episodes…</Text> : null}
+    {state.episodes.map(episode => <View key={episode.id} style={styles.historyRow}>
+      <View style={styles.historyCopy}>
+        <Text numberOfLines={2} style={styles.historyDate}>{episode.title}</Text>
+        <Text style={styles.historyMeta}>
+          {[episode.episodeNumber ? `Episode ${episode.episodeNumber}` : '', episode.published ? episode.published.slice(0, 10) : '']
+            .filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      <View style={styles.primaryActions}>
+        <Button label="Edit" tone="surface" onPress={() => edit(episode)} />
+        <Button label="Delete" tone="ghost-danger" onPress={() => onDelete(episode)} />
+      </View>
+    </View>)}
+    {!state.loading && !state.episodes.length
+      ? <Text style={styles.emptyText}>No episodes yet. Add the first one below.</Text> : null}
+    <SectionHeading title={editingId ? 'Edit episode' : 'Add episode'} />
+    <FormTextField label="Title" required value={draft.title} onChangeText={set('title')}
+      error={state.errors.title} palette={palette} />
+    <FormTextField label="Description" multiline value={draft.description} onChangeText={set('description')}
+      error={state.errors.description} palette={palette} />
+    <FormTextField label="Episode number" keyboardType="number-pad" value={draft.episodeNumber}
+      onChangeText={set('episodeNumber')} error={state.errors.episode_number} palette={palette} />
+    <FormTextField label="Season number" keyboardType="number-pad" value={draft.seasonNumber}
+      onChangeText={set('seasonNumber')} error={state.errors.season_number} palette={palette} />
+    <FormTextField label="Published" value={draft.published} placeholder="YYYY-MM-DDTHH:MM"
+      onChangeText={set('published')} error={state.errors.published} palette={palette} />
+    <FormTextField label="Duration" value={draft.duration} help="Minutes, mm:ss or h:mm:ss. Leave blank if unknown."
+      onChangeText={set('duration')} error={state.errors.duration} palette={palette} />
+    <FormTextField label="Audio URL" value={draft.audioUrl} onChangeText={set('audioUrl')}
+      error={state.errors.audio_url} palette={palette} />
+    <FormTextField label="Website URL" value={draft.websiteUrl} onChangeText={set('websiteUrl')}
+      error={state.errors.website_url} palette={palette} />
+    <FormTextField label="Image URL" value={draft.imageUrl} onChangeText={set('imageUrl')}
+      error={state.errors.image} palette={palette} />
+    <FormError message={state.errors.form} palette={palette} />
+    <View style={styles.modalActions}>
+      {editingId ? <Button label="Cancel edit" tone="surface" onPress={() => { setEditingId(null); setDraft(EMPTY_EPISODE); }} /> : null}
+      <Button label={editingId ? 'Save episode' : 'Add episode'} busy={state.saving} disabled={state.saving || !draft.title.trim()} onPress={submit} />
+    </View>
+  </SheetModal>;
 }
 
 export function SheetModal({ open, title, subtitle, children, onClose }) {
@@ -702,10 +877,7 @@ export function DateEntryModal({ open, title, subtitle, value, onChange, onClose
       quickActions={quickDateActions}
       suggestionDate={suggestionDate}
       suggestionLabel={suggestionDate ? 'Release date' : ''}
-      onQuickAction={action => {
-        if (action === 'today') onChange('2026-11-04');
-        else onChange('2026-11-04');
-      }}
+      onQuickAction={action => onChange(quickActionDate(action))}
       palette={dateTimePalette} />
     <View style={styles.modalActions}>
       <Button label="Cancel" tone="surface" onPress={onClose} />
@@ -783,15 +955,9 @@ export function NotesModal({ open, title, subtitle, value, error, onClose, onSav
 
 const styles = StyleSheet.create({
   page: { gap: spacing.xl },
-  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, borderBottomWidth: 1, borderBottomColor: palette.border, paddingBottom: spacing.sm },
-  tab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.sm },
-  tabActive: { backgroundColor: palette.surfaceStrong },
-  tabPressed: { opacity: 0.8 },
-  tabLabel: { color: palette.textMuted, fontSize: 14, fontWeight: '600' },
-  tabLabelActive: { color: palette.text },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   filterChip: { borderWidth: 1, borderColor: palette.border, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
-  filterChipActive: { borderColor: palette.accent, backgroundColor: 'rgba(99, 102, 241, 0.16)' },
+  filterChipActive: { borderColor: palette.accent, backgroundColor: palette.surfaceStrong },
   filterChipPressed: { opacity: 0.75 },
   filterChipText: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
   filterChipTextActive: { color: palette.text },
@@ -807,9 +973,9 @@ const styles = StyleSheet.create({
   factLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '600' },
   factValue: { color: palette.textSecondary, fontSize: 12, flexShrink: 1, textAlign: 'right' },
   star: { fontWeight: '600' },
-  mbScore: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.22)', backgroundColor: 'rgba(244, 63, 94, 0.07)', paddingRight: spacing.md },
-  mbBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(244, 63, 94, 0.3)', backgroundColor: 'rgba(244, 63, 94, 0.14)' },
-  mbBadgeText: { color: '#ffe4e6', fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
+  mbScore: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.dangerSoft, paddingRight: spacing.md },
+  mbBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.dangerSoft },
+  mbBadgeText: { color: palette.text, fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
   mbValue: { color: palette.text, fontSize: 13, fontWeight: '700' },
   mbDivider: { color: palette.textMuted, fontSize: 13 },
   mbVotes: { color: palette.textSecondary, fontSize: 12 },
@@ -852,9 +1018,13 @@ const styles = StyleSheet.create({
   progressLabel: { color: palette.text, fontSize: 14, fontWeight: '600' },
   progressValue: { color: palette.text, fontSize: 14, fontWeight: '700' },
   progressCopy: { color: palette.textMuted, fontSize: 12 },
+  browseRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, backgroundColor: palette.surface, padding: spacing.md },
+  browseSelected: { borderColor: palette.accent },
+  browsePressed: { opacity: 0.8 },
+  browseCopy: { flex: 1, minWidth: 0, gap: 2 },
   loadMore: { flexDirection: 'row', justifyContent: 'center', paddingTop: spacing.sm },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  modalBackdrop: { backgroundColor: 'rgba(0, 0, 0, 0.6)' },
+  modalBackdrop: { backgroundColor: palette.overlay },
   modalSheet: { width: '100%', maxWidth: 560, maxHeight: '88%', borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.background, overflow: 'hidden' },
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   modalHeading: { flex: 1, gap: 2 },

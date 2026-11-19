@@ -17,4 +17,18 @@ export function createHistoryTransport(options = {}) {
   );
 }
 
-export { historyEntriesFromPayload, historyQuery } from './historyTransportCore.js';
+export {
+  genreOptionsFromPayload,
+  historyDaysFromPayload,
+  historyEntriesFromPayload,
+  historySavedViewQuery,
+  historyMonthNav,
+  historyQuery,
+  monthBounds,
+  monthKey,
+  monthPrefix,
+  parseHistoryFilterUrl,
+  sessionQuery,
+  shiftMonth,
+  todayKey,
+} from './historyTransportCore.js';

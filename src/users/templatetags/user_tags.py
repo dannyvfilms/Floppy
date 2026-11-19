@@ -329,14 +329,14 @@ def source_display(source_name, label=None, heading_level=4):
 def date_format_display(format_value):
     """Display the human-readable name for date format values."""
     format_display_map = {
-        "system_default": "System default — Aug 12, 2025 / 12 Aug 2025",
-        "iso_8601": "ISO 8601 — 2025-08-12",
-        "month_d_yyyy": "Month D, YYYY — Aug 12, 2025",
-        "d_mon_yyyy": "D Mon YYYY — 12 Aug 2025",
-        "m_d_yyyy": "M/D/YYYY — 08/12/2025",
-        "d_m_yyyy": "D/M/YYYY — 12/08/2025",
-        "dd_mm_yyyy": "DD.MM.YYYY — 12.08.2025",
-        "yyyy_mm_dd": "YYYY/MM/DD — 2025/08/12",
+        "system_default": "System default: Aug 12, 2025 / 12 Aug 2025",
+        "iso_8601": "ISO 8601: 2025-08-12",
+        "month_d_yyyy": "Month D, YYYY: Aug 12, 2025",
+        "d_mon_yyyy": "D Mon YYYY: 12 Aug 2025",
+        "m_d_yyyy": "M/D/YYYY: 08/12/2025",
+        "d_m_yyyy": "D/M/YYYY: 12/08/2025",
+        "dd_mm_yyyy": "DD.MM.YYYY: 12.08.2025",
+        "yyyy_mm_dd": "YYYY/MM/DD: 2025/08/12",
     }
     return format_display_map.get(format_value, format_value)
 
@@ -392,11 +392,11 @@ def detail_layout_family(media_type):
 def time_format_display(format_value):
     """Display the human-readable name for time format values."""
     format_display_map = {
-        "system_default": "System default — 6:45 PM / 18:45",
-        "h_mm_ampm": "12-hour (h:mm AM/PM) — 6:45 PM",
-        "hh_mm_ampm": "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM",
-        "hh_mm": "24-hour (HH:mm) — 18:45",
-        "hh_mm_ss": "24-hour with seconds (HH:mm:ss) — 18:45:00",
+        "system_default": "System default: 6:45 PM / 18:45",
+        "h_mm_ampm": "12-hour (h:mm AM/PM): 6:45 PM",
+        "hh_mm_ampm": "12-hour, leading zero (hh:mm AM/PM): 06:45 PM",
+        "hh_mm": "24-hour (HH:mm): 18:45",
+        "hh_mm_ss": "24-hour with seconds (HH:mm:ss): 18:45:00",
     }
     return format_display_map.get(format_value, format_value)
 

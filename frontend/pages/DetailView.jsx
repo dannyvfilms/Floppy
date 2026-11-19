@@ -4,6 +4,10 @@ import { Button } from '../ui/Button';
 import { DetailChildren } from '../ui/DetailChildren';
 import { DetailRelated } from '../ui/DetailRelated';
 import { RatingStars } from '../ui/RatingStars';
+import { DetailSecondary } from '../ui/DetailSecondary';
+import { PersonCard } from '../ui/People';
+import { Rail } from '../ui/Rail';
+import { MediaCard } from '../ui/MediaCard';
 import {
   DetailActions,
   DetailChips,
@@ -45,19 +49,18 @@ export const detailLabels = {
   error: 'The detail could not be loaded.',
 };
 
-function PeopleSection({ title, people = [], palette }) {
+function PeopleSection({ title, people = [], palette, onOpen, cardWidth, RailComponent = Rail }) {
   if (!people.length) return null;
-  return <View style={styles.contentSection}>
-    <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>{title}</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleGrid} accessibilityLabel={title}>
-      {people.map((person, index) => <View key={`${person.name}-${index}`} style={[styles.personCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        {person.image ? <Image source={{ uri: person.image }} resizeMode="cover" style={styles.personImage}
-          accessibilityLabel={person.name} /> : <View style={[styles.personImage, styles.personPlaceholder, { backgroundColor: palette.surfaceStrong }]} />}
-        <Text numberOfLines={2} style={[styles.personName, { color: palette.text }]}>{person.name}</Text>
-        {person.role ? <Text numberOfLines={2} style={[styles.personRole, { color: palette.textMuted }]}>{person.role}</Text> : null}
-      </View>)}
-    </ScrollView>
-  </View>;
+  // Expo supplies Home's width; web detail casts use their separate media-card adapter.
+  return <RailComponent title={title} items={people} itemWidth={cardWidth || 132} itemGap={16}
+    windowCards palette={palette}
+    renderItem={person => cardWidth ? <MediaCard width={cardWidth} palette={palette.mediaCard || palette}
+      model={{ title: person.name, image: { src: person.imageUrl, fallback: person.imageFallback },
+        lines: (person.cardLines ? person.cardLines.map(line => line.text) : [person.role]).filter(Boolean)
+          .map(text => ({ parts: [{ text }], dormant: true })) }}
+      onOpen={onOpen && person.person_id != null ? () => onOpen(person) : undefined} />
+      : <PersonCard person={person} palette={palette}
+        onOpen={onOpen && person.person_id != null ? () => onOpen(person) : undefined} />} />;
 }
 
 function DetailLinks({ groups = [], palette, onOpen }) {
@@ -107,7 +110,20 @@ export function DetailView({
   onRateChild,
   onRateMain,
   hideContent = false,
+  actionsSlot,
+  scoreSlot,
+  sectionsSlot,
+  childrenSlot,
+  sectionSlots,
+  childSlots,
+  noticeSlot,
+  ratingInScoreRow = false,
+  onOpenPerson,
+  onOpenMetadata,
   children,
+  heroViewport,
+  shelfCardWidth,
+  railComponent: RailComponent = Rail,
 }) {
   const copy = { ...detailLabels, ...(labels || {}) };
   const { width } = useWindowDimensions();
@@ -124,11 +140,39 @@ export function DetailView({
 
   const sections = orderedSections(model);
   const hasSections = sections.some(section => section.body || sectionBodies[section.id]);
-  const immersive = width < 768 && Boolean(model?.artwork?.backdrop);
+  const childContent = model.children ? <DetailChildren model={model.children}
+    labels={model.childLabels || labels} palette={palette} variant="detail"
+    onOpenSeason={season => onOpenItem?.(season.identity)}
+    onOpenChild={item => onOpenItem?.(item.identity)}
+    onAction={(key, item) => onChildAction?.(key, item)}
+    onRate={(item, score) => onRateChild?.(item, score)}
+    onLoadMore={model.children.nextPage ? onLoadMore : undefined}
+    loadMoreLabel={model.children.nextLabel} /> : null;
+  const childSection = model.children?.kind === 'issue' ? 'issues'
+    : model.children?.episodes?.length ? 'episodes' : 'seasons';
+  const related = (model.relatedSections || []).filter(section => section.id !== 'recommendations');
+  const recommendations = (model.relatedSections || []).find(section => section.id === 'recommendations');
+  const secondarySections = {
+    ...sectionSlots,
+    ...childSlots,
+    ...(childContent && !childSlots?.[childSection] ? { [childSection]: childContent } : {}),
+    cast: model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} onOpen={onOpenPerson} cardWidth={shelfCardWidth} RailComponent={RailComponent} /> : null,
+    crew: model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} onOpen={onOpenPerson} cardWidth={shelfCardWidth} RailComponent={RailComponent} /> : null,
+    related: related.length || model.steamDlcs?.length ? <DetailRelated
+      model={{ sections: related, steamDlcs: model.steamDlcs || [] }} labels={model.relatedLabels || labels}
+      palette={palette.mediaCard || palette} onOpen={onOpenItem} onOpenLink={onOpenExternal}
+      onOpenExternal={onOpenExternal} onRate={onRate} /> : null,
+    recommendations: recommendations?.items?.length ? <RailComponent title={recommendations.label || 'Recommendations'}
+      items={recommendations.items} itemWidth={shelfCardWidth || 144} itemGap={16} windowCards palette={palette}
+      renderItem={item => <MediaCard model={{ ...(item.model || item), altTitle: null }} width={shelfCardWidth || 144} palette={palette.mediaCard || palette}
+        onOpen={() => onOpenItem?.(item.model || item)} onOpenLink={onOpenExternal}
+        onRate={score => onRate?.(item.model || item, score)} />} /> : null,
+  };
+  const immersive = Boolean(heroViewport || width < 768) && Boolean(model?.artwork?.backdrop);
 
   return <View style={styles.root}>
-    {error ? <View style={[styles.notice, { borderColor: palette.danger || '#ef4444' }]}>
-      <Text accessibilityLiveRegion="polite" style={[styles.noticeText, { color: palette.danger || '#ef4444' }]}>{error || copy.error}</Text>
+    {error ? <View style={[styles.notice, { borderColor: palette.danger }]}>
+      <Text accessibilityLiveRegion="polite" style={[styles.noticeText, { color: palette.danger }]}>{error || copy.error}</Text>
       {onRetry ? <Button label={copy.retry} tone="surface" palette={palette} onPress={onRetry} /> : null}
     </View> : null}
     {loading ? <View accessibilityLiveRegion="polite" style={styles.loading}>
@@ -136,17 +180,19 @@ export function DetailView({
       <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View> : !hideContent ? <>
       {part !== 'sections' ? <>
-        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} /> : <>
+        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} actions={actionsSlot} viewport={heroViewport} /> : <>
           <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
-          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} />
-          <DetailActions model={model} labels={labels} palette={palette} />
+          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork}
+            compact={Boolean(heroViewport) && width < 768} viewportWidth={heroViewport?.width || width} />
+          {actionsSlot || <DetailActions model={model} labels={labels} palette={palette} />}
         </>}
-        <DetailChips chips={model.scoreChips || []} palette={palette} onOpen={onOpenExternal} />
-        <DetailLinks groups={model.linkSections} palette={palette} onOpen={onOpenExternal} />
+        {scoreSlot || null}
+        {!model.secondary ? <><DetailChips chips={model.scoreChips || []} palette={palette} onOpen={onOpenExternal} />
+        <DetailLinks groups={model.linkSections} palette={palette} onOpen={onOpenExternal} /></> : null}
         {renderSynopsis
           ? renderSynopsis({ model, labels, palette })
           : <DetailSynopsis model={model} labels={labels} palette={palette} />}
-        {model.viewerRating?.editable ? <View style={[styles.contentSection, styles.viewerRating, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        {!ratingInScoreRow && model.viewerRating?.editable ? <View style={[styles.contentSection, styles.viewerRating, { backgroundColor: palette.surface, borderColor: palette.border }]}>
           <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>Your rating</Text>
           <RatingStars scaleMax={model.viewerRating.scaleMax || 10} value={model.viewerRating.value}
             label="Your rating" palette={{ lit: '#facc15', unlit: palette.surfaceStrong, muted: palette.textMuted, focusStyle: {} }}
@@ -154,12 +200,19 @@ export function DetailView({
             onSelect={onRateMain} />
         </View> : null}
       </> : null}
+      {model.secondary ? <>
+        {noticeSlot}
+        <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette}
+          onOpenLink={onOpenMetadata || onOpenExternal} promote={Boolean(model.artwork?.backdrop || model.artwork?.gallery?.photos?.length)} />
+      </> : <>
       {hasSections ? sections.map(section => {
         const body = sectionBodies[section.id] || section.body;
         if (!body && !section.copy) return null;
         return <DetailSection key={section.id || section.title}
           section={{ ...section, body }} palette={palette} />;
       }) : null}
+      {sectionsSlot || null}
+      {childrenSlot || null}
       {model.children ? <DetailChildren
         model={model.children}
         labels={model.childLabels || labels}
@@ -172,10 +225,11 @@ export function DetailView({
         onLoadMore={model.children.nextPage ? onLoadMore : undefined}
         loadMoreLabel={model.children.nextLabel}
       /> : null}
-      {model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} /> : null}
-      {model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} /> : null}
-      {model.relatedSections?.length ? <DetailRelated
-        model={{ sections: model.relatedSections, steamDlcs: model.steamDlcs || [] }}
+      {(secondarySections.cast || secondarySections.crew || model.relatedSections?.length || model.steamDlcs?.length) ? <View style={styles.relatedRows}>
+      {secondarySections.cast}
+      {secondarySections.crew}
+      {(shelfCardWidth ? related.length || model.steamDlcs?.length : model.relatedSections?.length) ? <DetailRelated
+        model={{ sections: shelfCardWidth ? related : model.relatedSections, steamDlcs: model.steamDlcs || [] }}
         labels={model.relatedLabels || labels}
         palette={palette.mediaCard || palette}
         onOpen={onOpenItem}
@@ -184,6 +238,9 @@ export function DetailView({
         onRate={onRate}
         web={false}
       /> : null}
+      {shelfCardWidth ? secondarySections.recommendations : null}
+      </View> : null}
+      </>}
     </> : null}
     {children || null}
   </View>;
@@ -191,6 +248,7 @@ export function DetailView({
 
 const styles = StyleSheet.create({
   root: { gap: 18, minWidth: 0 },
+  relatedRows: { gap: 12 },
   notice: { gap: 8, borderWidth: 1, borderRadius: 8, padding: 12, alignItems: 'flex-start' },
   noticeText: { fontSize: 13, lineHeight: 18 },
   loading: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },

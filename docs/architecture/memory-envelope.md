@@ -54,6 +54,7 @@ What it reads, all of it cheap:
 | Field | Source |
 | --- | --- |
 | `rss` | `/proc/self/statm` field 2 |
+| `rss_anon` | `/proc/self/statm` field 2 minus field 3 (file and shmem pages) |
 | `hwm` | `/proc/self/status`, `VmHWM` |
 | `cgroup_current` | `/sys/fs/cgroup/memory.current` |
 | `anon`, `file`, `kernel` | `/sys/fs/cgroup/memory.stat` |
@@ -87,7 +88,7 @@ only when one of these crosses its threshold:
 | `peak_rss` (new VmHWM) | `MEMORY_HIGH_WATER_HWM_DELTA_BYTES` | 32 MiB |
 | `cgroup_growth` | `MEMORY_HIGH_WATER_CGROUP_DELTA_BYTES` | 128 MiB |
 | `page_cache_growth` | `MEMORY_HIGH_WATER_CGROUP_FILE_DELTA_BYTES` | 128 MiB |
-| `near_recycle_ceiling` | `MEMORY_HIGH_WATER_CEILING_RATIO` | 0.85 |
+| `near_recycle_ceiling` (on `rss_anon`, as the recyclers measure) | `MEMORY_HIGH_WATER_CEILING_RATIO` | 0.85 |
 
 Zero disables a signal. `MEMORY_HIGH_WATER_ENABLED=False` disables the whole
 layer, including the sampling.
@@ -97,7 +98,7 @@ are expected to be tuned once real events accumulate. **None of them is a
 memory guarantee.**
 
 The event carries `kind`, `name`, `pid`, `role`, `reasons`, `duration_ms`,
-`rss_before/after/delta`, `hwm_before/after`, `cgroup_before/after/delta`,
+`rss_before/after/delta`, `rss_anon_before/after`, `hwm_before/after`, `cgroup_before/after/delta`,
 `anon_before/after`, `file_before/after`, `kernel_after`, `cgroup_peak` and the
 role's recycle `ceiling`.
 
@@ -116,8 +117,12 @@ arguments carry user ids, search terms and credentials.
 
 ### Reading an event
 
-`rss_growth` or `peak_rss` without `page_cache_growth` is **process-anonymous
-growth** — Python built something. `page_cache_growth` with `anon` flat is
+Read `rss_growth` and `peak_rss` against `rss_anon_before/after` first. RSS
+includes the memory-mapped database (see
+[Mapped database pages are not worker memory](#mapped-database-pages-are-not-worker-memory)):
+RSS up with `rss_anon` flat is **SQLite reading the file through its map**,
+page cache that recycling cannot return. `rss_anon` up is **process-anonymous
+growth** — Python, or SQLite's own heap, built something. `page_cache_growth` with `anon` flat is
 **filesystem cache** — something wrote or read a large file. Both together
 usually means a large read into Python. `duration` alone means slow but not
 large, which is a responsiveness problem rather than a memory one.
@@ -132,9 +137,82 @@ large, which is a responsiveness problem rather than a memory one.
 | `/medialist/movie` | process-anonymous | structurally bounded |
 | Pocket Casts recurring poll | process-anonymous + duration | convergence fixed, counters added |
 | Statistics restart thrash | duration / worker occupancy | settling window added |
-| Statistics FINISH | process-anonymous | **unfixed**, documented below |
-| History day-cache warming | process-anonymous | **uninvestigated** |
+| Statistics FINISH | process-anonymous | **profiled, partly reduced**, documented below |
+| Memory-mapped database pages in worker RSS | page cache counted as process memory | **confirmed; ceilings fixed** |
+| History day-cache warming | process-anonymous | bounded to a recent window, one style |
 | Interactive worker first-webhook growth | process-anonymous | measured, **not** imports; see below |
+
+### Mapped database pages are not worker memory
+
+**Measured** (validations D, E and G), in the real image under `docker-compose.memory-benchmark.yml`: standard tier,
+two web workers with four threads, default ceilings. The fixture is
+`app.benchmark_data.build_dataset(60000)` widened for this run: 132,000 items,
+three users of 20,000 tracked titles each; every movie, TV and anime item has
+a synopsis and a TMDB-shaped `watch_providers` blob, **35% of them 146 to
+180 KiB** (median 11 KiB); activity spread over ten years; one 8,000-item
+smart list; a 1.8 GB database. Each surface ran on a fresh worker that had
+already served one unrelated request, three times, cold (cache cleared) and
+then warm. The worker's VmHWM was reset (`clear_refs`) before each request, so
+"peak" is that request's own.
+
+SQLite memory-maps the database (`SQLITE_MMAP_SIZE_MIB`, 256 MiB per
+connection on the standard tier, 1 GiB on the large one, since `8f24d925d`).
+Mapped pages count as resident. Every heavy surface is mostly that:
+
+| Surface (cold, median of 3) | Peak over start | of which anonymous | Notes |
+| --- | --- | --- | --- |
+| History, date range | +437 MiB | +97 | ends at 566 MiB RSS; anonymous still held 60 s later |
+| `/medialist/movie?sort=runtime` (validation E) | +370 MiB | +92 | ends at ~500 MiB RSS; 504 at 60 s in 5 of 6 runs, warm too |
+| Statistics sync, Celery background child (validation G) | +264 MiB | ~+15 | peak 393 MiB = 121 anonymous + 272 mapped |
+| History, anniversary | +262 MiB | +21 | |
+| Search, TV scope | +169 MiB | +15 | |
+| Smart list page (8,000 items) | +168 MiB | +24 | |
+| History, month | +164 MiB | +9 | |
+| Home row, Season "upcoming" | +155 MiB | +36 | |
+| Home row, TV "next episode air date" | +153 MiB | +33 | `tracemalloc` peak ~25 MiB |
+| Smart list sync task | +150 MiB | ~+10 | `tracemalloc` peak 2 MiB |
+| Metadata backfill task (Celery, after the fix) | +381 MiB | +40 | one run, from the live log |
+| History rebuild task (`refresh_history_cache_task`) | +43 to +104 MiB | none retained | `tracemalloc` peak 6 MiB, 95 s |
+| `/medialist/movie` (default) | +133 MiB | +16 | |
+| `GET /api/v1/statistics` | +126 MiB | +3 | warm too |
+| `/medialist/tv` | +110 MiB | +16 | 17 s cold on this host |
+| Statistics page, All Time | +2 MiB | +1 | served from the snapshot |
+
+Two web workers can each hold several hundred MiB of mapped pages at once, but
+they are the same physical page cache, and the kernel reclaims them under
+pressure. They belong to the operational envelope, not the resident one.
+
+The recyclers did not know that. Gunicorn's `post_request` compared
+`/proc/self/statm` resident, and billiard compares `ru_maxrss` (a lifetime
+peak, file pages included). So a date-range History request or a runtime
+sort alone put a worker over its 400 MiB ceiling (566 and ~500 MiB RSS), and
+a Statistics sync left its child at 386 MiB of lifetime peak against a
+400 MiB ceiling. Not measured here, but the same arithmetic: the constrained
+tier also maps 256 MiB, under a 250 MiB background ceiling. Recycling for those returns nothing: the
+replacement maps the same file back in, and the user waits for the restart.
+This fits the production records that were never reproduced: a worker
+growing 588 MB during one search and then recycling (2026-10-31, four days
+after the map was enabled) and +30 to +125 MB per cold Home row.
+
+**Fixed.** Both ceilings, and the `near_recycle_ceiling` signal, now compare
+the anonymous resident size, statm resident minus shared
+(`config.runtime_profile.current_anon_rss_bytes`): gunicorn's hook directly,
+and Celery by replacing `billiard.pool.mem_rss` in each pool child. The map
+itself is unchanged; it is what keeps cold reads fast on slow disks. A
+`/proc` that cannot be read keeps the old behaviour (gunicorn never retires
+on a guess; Celery falls back to billiard's figure).
+
+**Still open, as structural hypotheses** (not measured further here):
+
+- The anonymous part is mostly not Python. `tracemalloc` peaks at 23 MiB for
+  the date-range History request while anonymous memory grows 97 MiB and
+  stays. The likely owner is SQLite's own heap: its page cache
+  (`SQLITE_CACHE_SIZE_MIB`, per connection) and in-memory sorts
+  (`SQLITE_TEMP_STORE=MEMORY`) of rows that carry the wide `Item` columns,
+  which glibc then keeps. A lone `TV.objects.select_related("item").first()`
+  (ordered, one row) grew a process by 70 MiB anonymous on this fixture.
+- The runtime sort's non-SQL path is also a latency failure (60 s, 504) on a
+  20,000-title library; that is the "updated"-sort class of prompt 08.
 
 ### `reconcile_trakt_popularity` — 600 MiB of Python, for four scalars
 
@@ -216,8 +294,8 @@ after completion was roughly *one* database-copy rather than two.
 
 What remains is that the backup reads most of the live ~2 GB database while
 writing the ~2 GB destination, warming both sides at once, and `quick_check`
-then reads the whole copy back before the hint is issued. **No change was made
-to the backup for this**, and that is a deliberate decision rather than an
+then reads the whole copy back before the hint is issued. **Nothing bounds that
+cache during the copy**, and that is a deliberate decision rather than an
 omission — see below.
 
 The fix issues `POSIX_FADV_DONTNEED` on the finished snapshot. Its safety
@@ -230,25 +308,44 @@ front of it. `posix_fadvise` is feature-detected; a platform without it still
 publishes, and a hint that fails is logged and ignored. Global `drop_caches` is
 never used.
 
-#### Why the backup itself was not changed
+#### How the copy runs, and what was not changed
 
-The obvious lever is `Connection.backup(dest, pages=N, progress=cb)` with a
-periodic `fdatasync` and `POSIX_FADV_DONTNEED` on the staging descriptor, so
-the destination cache is bounded *during* the copy rather than dropped after
-it. It was investigated and deliberately not implemented, for two independent
-reasons that source reading alone cannot settle:
+The copy is stepped: `Connection.backup(dest, pages=256)` with a 2 ms pause
+between steps, so the snapshot does not monopolise the disk while web and
+worker traffic runs (added with background verification in `1d4f07a39`).
 
-- **It trades a measured-nothing for a real regression risk.** `pages=-1`
-  copies in a single step, holding one read transaction throughout. With
-  `pages=N`, SQLite restarts the backup from the beginning whenever the source
-  is written between steps. On a busy instance that can extend the snapshot or
-  stop it converging.
-- **The hint may do nothing.** `DONTNEED` drops only clean pages, so a mid-copy
-  hint requires extra syncs, and whether the kernel then reclaims is filesystem-
-  and writeback-dependent. Advisory behaviour is not identical everywhere.
+A stepped copy alone restarts from page one whenever another connection
+commits between steps. Measured on an 82 MB database (SQLite 3.42): a commit
+every 0.25 s caused 175 restarts in 45 s and the copy never finished. So
+`_copy_source` in `config/sqlite_integrity.py` picks by the source's own
+journal mode:
 
-`quick_check` would also re-warm the copy afterwards, undoing a mid-copy hint,
-and it cannot advise as it goes because it runs on the write connection.
+- **WAL:** the copy runs inside one read transaction on the source
+  (`BEGIN` plus one read). It copies that single snapshot in one pass, with
+  commits every 50 ms, and never blocks a writer (the copy's disk traffic
+  can still slow a commit: slowest 184 ms against 449 ms to 4 s for the old
+  unpinned copy, on a 711 MB file). The cost is that
+  checkpoints cannot move past the snapshot until the copy ends, so the WAL
+  grows for one pass and shrinks at the next checkpoint (CONC-43 receipts).
+- **Rollback journal** (the fallback on SQLite builds with the WAL-reset bug):
+  the copy is not pinned. A held read lock, or a single-step copy, blocks
+  every writer at commit for the whole copy: 2.8 s for a 711 MB file in
+  CONC-43, minutes for a multi-GB one, past the busy timeout. Unpinned,
+  writers wait at most one step, but a busy instance can restart the copy.
+
+Each run records `pinned`, `steps` and `restarts` on the `db_snapshot` log
+line. A pinned copy should show `restarts=0`; more than three restarts fails
+the snapshot with "the database kept changing" rather than running to the
+task time limit. On a busy rollback-journal install that means a missed,
+reported snapshot instead of stalled writes. Measured on a laptop with SQLite
+3.42 (macOS) and 3.53.4 (the Linux image), not on a production instance.
+
+Bounding the destination cache *during* the copy (a periodic `fdatasync` and
+`POSIX_FADV_DONTNEED` on the staging file) was investigated and not
+implemented. `DONTNEED` drops only clean pages, so a mid-copy hint needs extra
+syncs, and whether the kernel then reclaims depends on the filesystem and
+writeback. `quick_check` would also re-warm the copy afterwards, and it cannot
+advise as it goes because it runs on the write connection.
 
 So the deliverable is measurement, not a guess:
 `scripts/snapshot_memory_ladder.sh` runs the real `write_database_snapshot`
@@ -420,40 +517,132 @@ is the next step if it still shows on the minimal tier.
 
 ## Still unverified, and still unfixed
 
-**What memory limit the snapshot requires.** That the excursion is page cache
-is now confirmed. What is still unmeasured is the only number an operator can
-act on: the smallest cgroup the backup completes inside.
-`scripts/snapshot_memory_ladder.sh` exists to answer it and has not yet been
-run against production-scale data at every rung.
+**What memory limit the snapshot requires: 768 MiB, measured.** The ladder
+ran on the pinned copy (CONC-43) against a
+synthetic 2.43 GB database (622,592 pages; 184,800 items, 201,600 episodes,
+403,200 history rows; wide `watch_providers` make `app_item` 2.2 GB of it),
+with the whole stack (gunicorn, Celery with beat, nginx) idle in the same
+container. Every copy was pinned with `restarts=0`.
+
+| Limit | Quiet | With 4 commits/s |
+| --- | --- | --- |
+| No limit | ok, 126 s, peak 2.3 GB | |
+| 2 GiB | ok, 116 s | |
+| 1.5 GiB | ok, 130 s | |
+| 1 GiB | ok, 134 s | ok, 117 s |
+| 768 MiB | ok, 261 s | ok, 90 s |
+| 512 MiB | 11 OOM kills | snapshot killed, no copy |
+
+- At 768 MiB nothing is killed and the snapshot takes at most about twice its
+  unconstrained time: the kernel reclaims the copy's page cache as it goes.
+  With the writer, commits never failed (p99 139 ms, slowest 0.85 s) and the
+  WAL peaked at 6.6 MB.
+- 512 MiB fails on **anonymous** memory, not cache. The idle stack plus its
+  boot-time tasks already reach about 490 MB `anon`; cache was squeezed to
+  near zero and the kernel killed Celery children, gunicorn and, with the
+  writer, the snapshot itself. A smaller copy would not fix that rung.
+- The startup recovery snapshot (`sqlite_startup --prepare-migrations
+  --fast`, services stopped) took 44 s at 768 MiB and 39 s unconstrained,
+  with no kills.
+- Without `posix_fadvise` the snapshot still publishes; page cache right
+  after it was 780 MB against 412 MB with the hint, and both settled within
+  five minutes.
+
+So the stepped, pinned copy is adequate and the incremental-backup question
+stays closed. Limits of the evidence: it was measured under Docker Desktop,
+whose virtual disk is slower than a NAS, so durations are only comparable to
+each other; the ladder triggers the task through `manage.py shell`, which adds
+about 90 MB of `anon` that a Celery worker would not; and the fixture is
+lighter on episodes and history than production, which affects `quick_check`
+time more than cache.
 
 **Whether the Trakt reconcile fix holds in a container.** The allocation
 profile is structurally bounded and benchmarked, but `tracemalloc` is Python
 allocation, not RSS. Validation A is what turns it into a memory claim.
 
-**Whether `/medialist/movie` now fits in a worker.** The object graph is
-structurally smaller. Whether the request stops approaching the 400 MiB
-recycle ceiling is a Docker measurement.
+**Whether `/medialist/movie` now fits in a worker: measured
+(validation E), and it does not on the slow path.** On the SQL-paginated
+default it adds 133 MiB, 16 MiB of it anonymous. Sorted by `runtime` (the
+non-SQL-paginated path) it adds about 370 MiB, about 92 MiB anonymous and the
+rest the mapped database, ends near 500 MiB RSS, and timed out at 60 s in five
+of six runs, warm included. With the ceilings now measuring anonymous size it
+no longer retires the worker; the 92 MiB and the minute are still there. Not
+compared against `3fe29eff`; this was a ranking run on current code only.
 
-**Statistics FINISH, 30–53 s.** `_aggregate_statistics_from_days` is a single
-~1800-line function with about thirty nested accumulators that grow with the
-number of *distinct items* in the range, not with days. Its 50-day
-`get_many` loop is already batched; the cost is after it — per-media-type
-undated-row sweeps, four separate `_fetch_media_objects` passes, the top-talent
-credit rollup, and `_get_history_day_payload` falling through to a full inline
-`history_cache.build_history_day` twice per active media type. Deliberately not
-touched: #1200's own design document already names FINISH as the unbounded
-remainder, and reshaping it without a profile would be guessing. **Profile it
-first**, with the per-phase timings the aggregator does not currently emit.
+**Statistics FINISH: profiled, partly reduced.** `_aggregate_statistics_from_days`
+is a short sequence of phases in `statistics_aggregator.py`: the day walk
+(`_walk_days`, merging each payload into one `_RangeAccumulators` with
+`_merge_day`), then undated rows, status and scores with top rated
+(`_build_scores_and_top_rated`), top played, activity and play charts, games,
+reading (`_build_reading_consumption` per type), History highlights, summary
+cards, top talent, and packing the per-type metric cards. Each phase is a
+function that reads the accumulators and returns its part of the payload, and
+`stats_range_summary` logs each one's wall time in `phases_ms` under the same
+names, so a slow range names its own cause. The profile was taken on a synthetic library
+(one user, 3,414 active days, about 15,000 items; production is about 9,570
+days and 250,000 items), with day payloads warm:
 
-**The next largest target.** With the Trakt reconcile bounded and the history
-day-cache repair loop fixed (above), the largest known *unfixed*
-process-anonymous source is Statistics FINISH. It needs a profile before a
-design.
+- The finish is most of the cost for every bounded range (85% or more) and
+  about 60% for All Time. The walk over the day payloads is the rest.
+- All Time held about 74 MB of Python allocations at peak and grew the process
+  by about 90 to 110 MB. Both scale with the distinct items in the range.
+- A snapshot's cache copy holds full tracker and `Item` instances, wide columns
+  included: about 900 `Item` rows in the All Time snapshot.
 
-**History day-cache warming, remaining questions.** Whether thousands of
-historical days need eager warming at all (the reader builds missing days on
-demand), and whether 120 is the right fixed batch, are open but no longer
-urgent: a full pass now costs minutes, and it converges.
+Removed, with every range's payload unchanged: the day payloads were decoded
+twice (once to look for missing days, once to merge them); top-rated rows were
+re-read and annotated once for the overall list and again for each media type;
+every completed reading row was loaded as two models to read six scalars; and
+each range, and each media type inside it, re-read the History index and the
+same History days. That is about a third of the CPU of a hot pass and a fifth
+of a heavy one on the profiled library.
+
+**Across the ranges of a pass (2026-11-14).** Profiled again per range inside
+whole passes (same library shape, 3,400 days, about 18,000 items). In a heavy
+pass the top-rated card was the largest phase of every range (about 45% of the
+ranges' CPU), and 54% of the rows it annotated and 62% of the card rows loaded
+had already been loaded by an earlier range of the same pass. The walks over
+the day payloads of all bounded ranges together were about 0.25 s. So the
+pass now loads and annotates each card row once and hands each range a copy
+(`statistics-sync.md`); the day walk is still per range, and sharing it is not
+worth the accumulator snapshots it would need. For one pass of all eleven
+ranges: 25,033 model instances built became 12,755, queries about 1,460
+became 953, and the Python allocation peak 139 MB became 101 MB; every payload
+is byte-identical.
+
+Measured in the real Celery background child (validation G,
+memory half): one sync of a 20,000-title, ten-year library peaked at 393 MiB
+RSS, of which 121 MiB anonymous and 272 MiB the mapped database; anonymous
+growth per run was about 10 to 15 MiB. The webhook-injection half of G
+(chunk duration, FINISH duration, aborted runs versus follow-ups) was not run.
+
+Still open, largest first for All Time:
+
+- **The day walk** (fetch and merge, about a third of All Time). Each range
+  walks its own days; see above for why the ranges do not share one walk.
+- **Top-rated annotation.** `MediaManager.annotate_max_progress` is called per
+  row for seasons and re-reads rows the aggregate has just fetched. It now runs
+  once per row per pass rather than per range.
+- **Reading items.** `_fetch_reading_items_with_authors` loads a full `Item`
+  for every reading title in the range to read its release date and authors.
+- **Top talent**, and the wide `Item` columns loaded by `_fetch_media_objects`
+  and `statistics_sync._fetch_instances`, which have their own owners.
+- The sparse activity scan that resolves All Time's day list runs once per
+  All Time aggregate.
+
+**The next largest target.** With the Trakt reconcile bounded, the history
+day-cache repair loop fixed (above) and Statistics FINISH profiled, the largest
+known *unfixed* process-anonymous source is still the All Time aggregate: its
+day walk and the model instances its snapshot carries.
+
+**History day-cache warming.** Thousands of historical days did not need
+eager warming: every reader builds a missing day on demand and caches it.
+Warming now covers only the recent window of the style the user reads (see
+"A missing index and which days stay warm" in `history-memory.md`). On a
+3,650-day fixture one full pass had cost about 96 s of CPU, 55,000 queries and
+10 MB of payloads per style, and with the 30-day TTL that repeated for every
+day, in both styles, indefinitely; a cold old page costs about 0.1 to 0.3 s
+the first time someone opens it.
 
 **Interactive worker first-webhook growth — measured, and it is not imports.**
 The first real Plex webhook took the interactive child from ~99 MiB to
@@ -579,6 +768,15 @@ every fifteen minutes. The failure this replaces was stable at 149 errors out
 of 150, indefinitely.
 
 ### D. Aged container
+
+Read recycling from the sampler, not from the cgroup alone. Sample every
+process's `RssAnon` and `RssFile` once a second beside a mixed web workload
+(every surface in a loop, caches cleared every third pass, plus
+`scripts/memory_library_workload.py`), and count distinct worker pids: a
+worker pool that recycles every minute is a sawtooth, and the recycle checks
+compare anonymous size (see
+[Mapped database pages are not worker memory](#mapped-database-pages-are-not-worker-memory)),
+so RSS above the ceiling with anonymous size below it must not recycle.
 
 Run the production-like workload for several hours. Report the two envelopes
 **separately** — application-resident (process PSS and private-anon) and raw

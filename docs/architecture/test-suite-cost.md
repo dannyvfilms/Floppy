@@ -1,5 +1,202 @@
 # What the test suite costs
 
+
+## Balanced shards (November 2026)
+
+[PR #2005](https://github.com/dannyvfilms/Floppy/pull/2005) replaced the
+three app-label shards (`app`, `integrations`, `other`) with six shards of
+roughly equal cost, and made `test (3.12)` prove on every run that each
+required test ran exactly once.
+
+**Why.** Shards were whole Django apps. `app` held more than half the test
+time, so the required check finished when `app` did (18 to 30 minutes) while
+`integrations` sat idle after 5. Browser tests lived inside `app`, so a
+browser failure was reported only at the end of the longest job.
+
+**Layout.**
+
+| Shard | Runs | Chromium |
+| --- | --- | --- |
+| `test (browser, 3.12)` | every required Playwright test (`app` and `integrations`, minus `flaky_alphabet_rail` on pull requests) | yes, the only shard that installs it |
+| `test (unit-1 … unit-5, 3.12)` | every other test of every app, split by module with `FLOPPY_TEST_SHARD=<i>/5` | no |
+
+What must run, per mode (`pr`, `release`, `full`), and how the shards cover it,
+are side by side in `scripts/ci_tests.sh`. The tag rules are unchanged:
+`network` is excluded everywhere, `slow` is included, users/lists/events/api/
+config Playwright stays in the non-blocking `Browser E2E (other, diagnostic)`
+job, and the publish gate runs no Playwright. MCP and `scripts/` tests run once
+per run in `Migration, MCP and script checks`, so they also run when the
+publish gate reuses a pull request's result.
+
+**Each shard is its own serial process.** Not Django's `--parallel` pool, which
+loses results ("Cause 3" below). `FLOPPY_TEST_PARALLEL=1` stays set, and the
+runner refuses `FLOPPY_TEST_SHARD` together with a pool.
+
+**Assignment** (`src/config/test_sharding.py`). The unit is the test module, so
+class fixtures are never split. Modules named in
+`src/config/test_shard_weights.json` are placed heaviest first on the lightest
+shard; a module missing from it goes to `sha256(name) mod n`. The result depends
+only on the sorted module list, the weights file and the count, so every
+module lands in exactly one shard by construction. Stale weights cost balance,
+never completeness.
+
+**Accounting.** With `FLOPPY_TEST_ACCOUNTING_DIR` set, the runner writes:
+
+* `selected.txt`: the IDs this process kept, before any test runs;
+* `reported.txt`: one line per outcome (pass, fail, error, skip), flushed as it
+  happens, so a process that dies leaves what it finished. A class or module
+  that fails or skips in its setup is reported once, as `setUpClass (<class>)`,
+  and counts for every test in it;
+* `module_seconds.json`: wall seconds per module, class setup included.
+
+The runner takes `FLOPPY_TEST_SHARD`, `FLOPPY_TEST_ACCOUNTING_DIR` and
+`FLOPPY_TEST_LIST_ONLY` out of the environment when it starts. A test that
+builds its own runner, or starts a subprocess, must not inherit them: on the
+first CI run one did and rewrote a shard's `selected.txt`, which the check
+caught.
+
+`Discover required tests` lists the required set with
+`FLOPPY_TEST_LIST_ONLY=1` (no database, about 25 seconds, and it fails if a test
+module cannot be imported). `test (3.12)` then runs
+`scripts/check_test_accounting.py` and fails, naming the tests, unless the
+shards' selected IDs equal the discovered IDs, no two shards share an ID, and
+every selected ID has a result. It runs on the publish gate too; it is skipped
+only when the gate reuses a pull request result, whose own run passed it.
+
+**Refreshing weights.** After a green run:
+
+```bash
+gh run download <run-id> -R dannyvfilms/Floppy -p 'test-accounting-unit-*' -D /tmp/acc
+python3 scripts/refresh_test_shard_weights.py --run <run-id> /tmp/acc/*
+```
+
+**Locally:** `scripts/test.sh --shards N [label ...]` starts N serial
+processes, waits for all of them, prints each exit status and a bounded
+summary (full logs in `.floppy/shards/`), and fails if any failed.
+
+**Rollback:** restore the three app-label matrix entries. The runner ignores
+sharding while `FLOPPY_TEST_SHARD` is unset.
+
+**Measured** (pull request runs, wall time from the first job starting to
+`test (3.12)` finishing; queueing for runners excluded where it dominated):
+
+| | before (app-label shards) | after (browser + 5 unit shards) |
+| --- | --- | --- |
+| required check, median | 22.8 min (3 runs; 24.3 min over the 100 runs before Nov 11) | 10.0 min (5 green runs: 11.0, 10.8, 10.0, 9.6, 9.1) |
+| longest shard | `app`, 18 to 26 min | a unit shard, 7 to 9 min |
+| browser failure reported after | the end of `app` (median 28 min to red) | 3.9 min into `test (browser)` |
+| runner minutes per run | 54 to 75 | 60 to 64 |
+| discovery | none | 25 to 30 s, no database |
+
+Unit shards vary between 5 and 9 minutes on the same weights; that is runner
+speed, not the weights (the same module costs up to 30% more on a slow runner).
+Local, `scripts/test.sh --shards 4 integrations` took 77 to 102 s against 246
+to 396 s serially.
+
+**What the accounting has caught so far.** A test building its own runner
+inherited a shard's accounting (fixed in the runner, above), and regrouping
+exposed `test_statistics_undated_range` reading a day-statistics cache entry
+left by an earlier test: the fake Redis is process-wide and SQLite reuses user
+IDs after rollback. Statistics tests that call `get_statistics_data` now clear
+the cache in `setUp`. Regrouping also surfaced a real bug in
+`config.startup_server`, which ignored SIGTERM when the kernel delivered it to
+the serving thread.
+
+
+## Test mode and eager Celery: the paths the suite skips
+
+`config.test_settings` sets `TESTING` and runs Celery eagerly so that a save
+does not run provider work inline. About thirty production lines check one of
+those flags and then do less, so the suite never ran what a server runs after a
+write: the calendar reload, the season's episode runtime backfill, importer
+enrichment. Two shipped faults lived there (#1827, and the 15,000-query
+Statistics path). `config.tests.test_test_mode_branches` lists every such line
+with the test that turns the flag off and checks the production path, or the
+reason the test path is a stand-in (fakeredis, the anime mapping fixture,
+start-up work). Those tests patch the task's `delay` or `apply_async` and
+assert the task, its arguments and its queue; they never run the provider call.
+A new check of `TESTING`, `CELERY_TASK_ALWAYS_EAGER` or `IS_PROD` fails the
+ratchet until it is listed with a covering test. The branches stay: removing
+them would make eager Celery run every backfill inside ordinary tests.
+
+
+## November 12, 2026: publish-gate evidence
+
+[PR #1917](https://github.com/dannyvfilms/Floppy/pull/1917) moved
+traced coverage to a separate `Coverage` workflow and added an **opt-in**
+path for reusing a green pull request's tests when the tree tested on
+`refs/pull/N/merge` is identical to the tree published on `latest`.
+
+**Observed after merge, with reuse OFF:** The `Reuse PR test result?`
+job in 14 `Docker Image` push runs reported `Decision: run (shadow
+mode). Every condition for reuse held`, and recorded matching
+`pushed tree` and `tested tree` values. Examples:
+[#1917's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43112262627),
+[#1933's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43222624986),
+and [#1938's merge](https://github.com/dannyvfilms/Floppy/actions/runs/43325180912).
+All three test shards still executed and passed. The first four
+post-merge Docker Image workflows failed at the *distributed image
+verification* step despite passing the quality gate and build; later
+[Docker Image runs](https://github.com/dannyvfilms/Floppy/actions/runs/43325180912)
+passed end to end. The independent
+[Coverage workflow](https://github.com/dannyvfilms/Floppy/actions/runs/43325180826)
+also completed successfully.
+
+**Live direct-push negative case:** A documentation-only direct push
+([Docker Image run 43352328375](https://github.com/dannyvfilms/Floppy/actions/runs/43352328375))
+correctly reported `Decision: run` with the reason
+`no pull request is associated with this commit`, so the full gate
+was selected. The run's eventual completion is tracked separately.
+
+**Switched on 2026-11-13.** `REUSE_PR_TEST_RESULTS` has been `true`
+since then. The cases that were "not proven" above have all happened on
+`latest` itself, in the 32 `Docker Image` push runs from then to
+2026-11-15:
+
+| Case | Example | Decision |
+| --- | --- | --- |
+| Up-to-date merge commit | [#1996](https://github.com/dannyvfilms/Floppy/actions/runs/43733184735) and 18 more | Reused, trees equal |
+| Squash merge | [#1974](https://github.com/dannyvfilms/Floppy/actions/runs/43680572742), [#1562](https://github.com/dannyvfilms/Floppy/actions/runs/43505694059) | Reused, trees equal |
+| Squash merged while behind | [#1998](https://github.com/dannyvfilms/Floppy/actions/runs/43670473917) | Full gate: tested tree differs |
+| Merged while the PR run was still going | [#1987](https://github.com/dannyvfilms/Floppy/actions/runs/43652629220), [#1988](https://github.com/dannyvfilms/Floppy/actions/runs/43655717286) | Full gate: run in progress or queued |
+| Direct push, including merge commits pushed by hand | [eed87a907](https://github.com/dannyvfilms/Floppy/actions/runs/43671959036) and 7 more | Full gate: no pull request |
+| Reused, then an always-run job failed | [#1989](https://github.com/dannyvfilms/Floppy/actions/runs/43664812425) | Upgrade (PostgreSQL) failed, no image published |
+
+On every reused run the shards show as skipped, `test (3.12)` passed,
+and migration checks, OAuth, both upgrade replays, release lint and the
+image smoke still ran.
+
+Push to built image, from the same runs:
+
+| Gate | Runs | Median | Range |
+| --- | --- | --- | --- |
+| Reused | 20 | 15.1 min | 10.7 to 16.6 min |
+| Full | 6 | 25.0 min | 23.3 to 27.8 min |
+
+The full-gate row includes three shadow-mode runs from 2026-11-12; only
+six full-gate runs published an image, because most direct pushes in
+this window failed a shard.
+
+These are different commits on shared runners, not a controlled A/B, but
+the gap is the shard time and is consistent across every run.
+
+The one thing tree equality cannot prove is that the publish gate runs
+no test the pull request skipped, because the same workflow file picks
+tests by event. `scripts/tests/test_reuse_pr_workflow.py` holds that:
+it runs the shard's test step for both events and fails if the gate
+would select a label, tag or test the pull request did not. It also
+checks that only the decision can skip the shards and that the
+roll-up and the image build still need every always-run job. If that
+test breaks because test selection was rewritten, prove the property
+again for the new wiring; do not delete it.
+
+If GitHub stops reporting the tested commit for runs, reuse stops on
+every merge (safe) and the decision job raises a warning on the run.
+
+Remaining follow-ups are in
+[#1918](https://github.com/dannyvfilms/Floppy/issues/1918).
+
+
 The suite got slow enough that waiting on it became the bottleneck for both
 people and agents. This records what was measured, what the causes actually
 are, and what was changed.
@@ -208,11 +405,39 @@ it needs its own change with the maintainer reviewing the ported functions and
 the upgrade matrix (`scripts/replay_upgrade_matrix.sh`) replayed. It is not
 something to bolt onto an unrelated PR.
 
-**The cheap prerequisite worth doing first:** move the idempotent operations
-into one shared module (e.g. `users/migrations/_operations.py`) that new
-migrations import, and give them `reduce()`. That does not touch a single
-shipped migration's behaviour, and it means the *next* squash optimizes
-properly instead of dragging 410 operations forward.
+**The prerequisite, now done (November 2026).** The idempotent operations
+live in one shared module, `src/app/migration_operations.py`, and
+`check_migration_hygiene --strict` rejects any new migration that defines one
+inline. By then the inline copies had grown from 21 files to 102 (75
+`AddFieldIfNotExists`, 39 `AddConstraintIfNotExists`, 27
+`RemoveConstraintIfExists`, 13 `AddIndexIfNotExists`, 5
+`CreateModelIfNotExists`, 1 `RemoveFieldIfExists`). Those 102 files are
+frozen on an allowlist and were not touched.
+
+Measuring it corrected point 1 above. The optimizer is *not* blind to the
+inline copies: Django's `reduce()` matches by `isinstance`, so an inline
+`AddConstraintIfNotExists` followed by an inline `RemoveConstraintIfExists`
+of the same name already cancels (2 operations to 0 in a scratch squash).
+What actually blocks a squash is the operations that survive: the writer
+serializes an inline class as `users.migrations.0038_x.AddFieldIfNotExists(...)`,
+which is a `SyntaxError` because the module name starts with a digit, and it
+flags every such migration as needing hand-copying. The shared classes
+serialize as `app.migration_operations.AddFieldIfNotExists(...)` and import
+cleanly. They also keep their class when the optimizer merges (Django's own
+`AddField` + `AlterField` merge returns a plain `AddField`, silently dropping
+idempotence), and `CreateModelIfNotExists` refuses to absorb later field
+changes, which would be lost when the table already exists.
+
+The 410 surviving operations are mostly ordering, not class identity: Django
+will not move a constraint operation across another operation on the same
+model, so add, alter-field, remove sequences stay as they are. That is the
+same for Django's own classes.
+
+**What a `users` squash still needs:** hand-porting and maintainer review of
+the 31 `RunPython` functions; replacing the `lambda` in `0038` that blocks
+serialization; rewriting the surviving inline operations in the squashed file
+to the shared imports; and a full `scripts/replay_upgrade_matrix.sh` replay on
+SQLite and PostgreSQL with drift scenarios.
 
 ## Cause 2: password hashing, 42% of an auth-heavy module
 
@@ -365,8 +590,8 @@ kills it, with no one needing to remember a flag.
 
 CI accepts workflow changes through the normal PR checks. Hosted run
 `38993407779` took almost 69 minutes, so the test job now allows 120 minutes,
-with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. Both PR and
-coverage runs have the same bounded test budget, with time left for setup and
+with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. PR, publish
+and coverage runs have the same bounded test budget, with time left for setup and
 reporting. The watchdog leaves thread stacks before the runner times out:
 
 ```yaml
@@ -540,20 +765,269 @@ is the result of fixing it.
 * Until then, treat a suite run that produces no output well past its usual
   wall time as this bug, not as a slow test.
 
+## Coverage runs beside the publish gate, not in front of it
+
+Until November 2026 a push to `latest` ran the three shards under
+`coverage run` with one context per test, inside the Docker publish gate. The
+tracer is needed for the affected-test map (`ctrace`, because `sysmon` on
+3.12 keeps only the first test per line), but nothing it produces decides
+whether an image is safe, and it slowed every shard on the critical path.
+
+Now:
+
+- The publish gate (`docker-image.yml` calling `app-tests.yml` with
+  `release_quality_gates`) runs the same tests through `scripts/test.sh`,
+  with no tracer. The exclusions are unchanged: `network` and `playwright`.
+  The timeout and watchdog come from `scripts/test.sh`.
+- `coverage.yml` runs on every push to `latest`: the same three shards under
+  coverage, then the combine step, the `affected-map` artifact and the
+  Codecov upload. Its job summary records the number of measured files and
+  test contexts. A newer push cancels a run still in flight, so only the
+  newest commit's map is built.
+- A red coverage run does not block or unpublish an image. It shows as a red
+  run on `latest`.
+
+The two workflows list the shards separately. Change them together.
+
+## Knowing when latest itself is broken
+
+From 12 to 15 November 2026, 30 of 100 pull request runs of App Tests failed.
+27 of those fell in four windows where unrelated branches failed the same
+tests, and each window began with a push to `latest` and ended when a fix
+reached it (one began when the date entered the Discover holiday window).
+Three of the four were non-browser tests: the publish gate went red on
+`latest` within about 20 minutes, but a red run on `latest` tells nobody. The
+fourth was four Playwright tests, which the publish gate leaves out on
+purpose, so nothing on `latest` ran them at all.
+
+`latest-health.yml` closes both gaps without gating anything:
+
+- On every push to `latest` it runs the browser tests pull requests must
+  pass (`CI_TEST_MODE=pr scripts/ci_tests.sh browser`, the same command as
+  the pull request browser shard), with real migrations. A newer push
+  cancels the older run.
+- When the publish gate finishes for a push to `latest`, it reads the
+  gate's test shards.
+- Once a day (00:20 UTC, just after the date changes for the tests) and on
+  manual dispatch, it runs both again on `latest`'s newest commit: the
+  browser tests, and the gate's other tests through `app-tests.yml` with
+  `release_quality_gates`. No push is needed, because some breaks come from
+  the calendar, not a commit: on 15 November 2026 the Discover holiday
+  window opened and three tests failed on every branch with no commit to
+  blame. When a commit that passed before fails, the issue says no commit
+  caused it.
+  The daily run has its own concurrency group, so pushes never cancel it.
+- A publish gate that reused a pull request run (see the next section)
+  passes on that run's evidence, from up to 72 hours earlier. Such a pass
+  does not clear a failure unless the reused run started after the failure
+  was first seen; otherwise it is recorded as "could not tell", and the
+  next real run (a push that is not reused, or the daily run) decides.
+- `scripts/latest_health.py` keeps one issue, **Tests are failing on
+  latest**: opened on the first failure with the failing tests, the first
+  bad commit and the range since the last good one; edited while anything
+  still fails; commented on and closed only when both sources have passed
+  cleanly. The closed issue keeps each source's last result, so a result for
+  an older commit than the one recorded is ignored even when nothing is open. A run that could not tell
+  (Chromium did not install or start, a job was killed, no test was named)
+  is "unknown" and never opens or closes the issue.
+- When a pull request's shards fail, the **Compare failures with latest**
+  job in `app-tests.yml` writes one line in the run summary: whether the
+  same tests are failing on `latest`. It says green only when both sources
+  passed `latest`'s newest commit; otherwise, or if it cannot read the
+  state, it says "unknown". It is not required and never fails.
+
+Rollback: delete `latest-health.yml` and the `baseline_note` job. To stop
+only the daily run, delete its `schedule` trigger.
+
+## Reusing a pull request's test result on the publish gate
+
+A push to `latest` runs the Docker publish gate, which runs the three test
+shards. When that push is a pull request merge and the branch was up to date,
+the pull request's own `App Tests` run already executed on a commit with the
+same Git tree. The first job of the gate, `Reuse PR test result?`
+(`scripts/reuse_pr_tests.py`), decides whether that is so, and the shards are
+skipped only when it is.
+
+It is off unless the repository variable `REUSE_PR_TEST_RESULTS` is `true`.
+Without it the job still evaluates every push and writes what it would have
+decided to its job summary (shadow mode), and the full gate runs. To turn the
+feature off, delete the variable.
+
+What is compared is the tree, not the commit. A merge commit is never the
+pull request head, but a tree hash names every file in the checkout: source,
+tests, `uv.lock`, the workflows and the test tooling. Equal trees give a test
+run identical input files.
+
+The tested tree is read from GitHub's record of the run, not inferred from
+the pull request head. A `pull_request` run executes on GitHub's test merge
+commit (`refs/pull/N/merge`). The run's `head_sha` is the pull request head,
+whose tree differs whenever the branch was behind. The test merge commit is
+reported in the run's `referenced_workflows` (as `sha`, with
+`ref: refs/pull/N/merge`), which is present because `App Tests` references
+the local lint workflow. If that reference is ever removed, runs stop
+reporting a tested commit and nothing is reused.
+
+Reuse needs all of these. Anything else, including any API error, runs the
+full gate:
+
+1. The event is a push to `refs/heads/latest`. Tags, `release` and manual
+   runs are never reused.
+2. The pushed commit is associated with exactly one pull request, merged into
+   `latest` in this repository, with the pushed commit as its merge commit.
+3. The newest `App Tests` `pull_request` run for that pull request's head is
+   completed and successful, and ran on that pull request's merge ref.
+4. The commit that run executed merges the pull request head, and its tree
+   equals the pushed tree.
+5. That run's `test (3.12)` job succeeded on its latest attempt.
+6. The run started no more than 72 hours ago, so a result does not outlive
+   the runner image, Python patch release and browser build it ran on.
+
+What this means in practice:
+
+| Push to `latest` | Result |
+| --- | --- |
+| Up-to-date green pull request, merge commit or squash | Reused |
+| Pull request merged while behind `latest` (bypass) | Full gate: trees differ |
+| Pull request whose run failed, merged by bypass | Full gate |
+| Docs-only pull request (no `App Tests` run) | Full gate |
+| Direct push | Full gate: no pull request |
+| Tag, `release`, manual run | Full gate: not applicable |
+
+Still run on the pushed commit every time: migration hygiene and
+`makemigrations --check` (the `Migration, MCP and script checks` job,
+because hygiene reads the upstream baseline at run time), the MCP server and
+`scripts/` tests (same job), OAuth on PostgreSQL, both upgrade replays,
+release lint and the image smoke.
+
+The `test (3.12)` job passes when the shards succeeded, or when the decision
+job succeeded, said `reuse`, and the shards were skipped. A pull request run
+can never take the second path: the decision output is forced to `run` for
+every event except the publish-gate push to `latest`. That also means a
+reused result can never become the evidence for another reuse, because
+evidence is only ever a `pull_request` run.
+
+Coverage is unaffected: `coverage.yml` runs its own shards on every push to
+`latest`, whether or not the publish gate reused a result.
+
+## Reusing the migrated test database
+
+The migration floor is paid once per set of migration inputs, not once per
+command or per CI job. `scripts/test.sh` sets `FLOPPY_TEST_DB_TEMPLATE=1` for
+local runs, and `app-tests.yml` sets it for the test shards and the diagnostic browser
+job. The
+first run replays every migration as before and then saves the result to
+`.floppy/testdb-<key>-<contents>.sqlite3`. Later runs copy that file into the
+in-memory test database and let Django run `migrate` on it, which finds nothing
+to apply. The runner prints one `[test-db]` line saying which happened.
+
+Measured on a Mac, `scripts/test.sh app.tests.test_query_counts`:
+
+| | database setup | whole command |
+| --- | --- | --- |
+| replay (first run, or any input changed) | 124 s | 141 s |
+| restore | 0.7 s | 16 s |
+
+This is not the models-only schema of `FLOPPY_TEST_FAST_DB=1`. The saved file is
+the output of a real replay, so `RunPython` rows are in it and tests that are
+skipped under the fast schema still run.
+
+### Why a restored database is the replayed one
+
+It was measured before anything was built on it:
+
+* Two independent replays produce the same schema (`sqlite_master`, in creation
+  order), the same `PRAGMA` values and the same rows in every table that has
+  rows (`django_migrations`, `django_content_type`, `auth_permission`,
+  `sqlite_sequence`). The only difference is the 593 `applied` timestamps in
+  `django_migrations`, which differ between any two test runs anyway.
+* A replayed database saved to disk, restored, run through `migrate` and saved
+  again is the same file byte for byte. SQLite's backup API copies pages, so
+  the layout, the autoincrement counters and therefore the ids tests receive
+  are unchanged.
+* Each test still gets the isolation it had: the restore happens once, before
+  Django's setup, and everything after it (per-test transactions, flushes,
+  worker clones) is Django's unchanged code working on that database.
+
+### What stops a stale database being used
+
+A stale template would mean tests passing against an old schema, so reuse does
+not rest on the key alone (`src/config/test_db_template.py`):
+
+1. **The key** hashes every file under `src/*/migrations/`, `uv.lock`, the
+   settings and runner modules, the SQLite backend, every first-party module
+   that registers a `pre_migrate` or `post_migrate` receiver, and the Python
+   and SQLite versions. Any change is a miss, and a miss is a real replay.
+2. **`migrate` still runs** on a restored database. If it plans to apply
+   anything, the key was wrong: the file is deleted and the run fails before a
+   single test.
+3. **The contents are checked.** The file name carries a hash of the schema and
+   every row. A truncated or edited file is deleted and replaced by a replay.
+   If the database no longer matches that hash after `migrate`, the run fails.
+
+`FLOPPY_TEST_DB_TEMPLATE=0` turns reuse off. It never applies to PostgreSQL,
+`--keepdb`, `FLOPPY_TEST_FAST_DB=1` or `--affected-record`.
+
+### In CI
+
+`app-tests.yml` has one job, "Migrated test database", in front of the shards:
+
+1. It computes the runner's own key (`python src/config/test_db_template.py`)
+   and asks `actions/cache` for a file saved under it.
+2. It runs `config.tests.test_test_db_template`, which holds one
+   database-backed test. On a cache miss that replays every migration and
+   saves the result. On a hit it restores the file, and `migrate` must find
+   nothing to apply.
+3. It uploads the file as a run artifact. The shards and the browser job
+   download it into `.floppy/` and restore it under the same three guards.
+
+The job never decides whether the gate passes. If it fails, or the artifact is
+missing or does not match a shard's own key, that shard prints a warning and
+replays migrations as before. It also runs when the shards reuse a pull
+request's result, so the cache on `latest` stays warm for the next pull
+request. A pull request that touches a migration gets a new key and a real
+replay in that run.
+
+The file holds an empty schema, permission and content-type rows and migration
+bookkeeping. No account, secret or user data exists when it is saved.
+
+Rollback: set the `TEST_DB_TEMPLATE` repository variable to `false`. Every job
+then replays, with no commit needed. If a run ever reports a saved database that
+"does not match this checkout", delete that cache entry; the key design has a
+gap and it should be reported.
+
+### Where migrations are still really replayed
+
+| boundary | replay |
+| --- | --- |
+| any key input changes (a migration added, edited or renamed; the lockfile; settings; the runner) | full replay in that run |
+| "Migrated test database" job | once per run when the key is new; otherwise a restore plus a `migrate` that must apply nothing |
+| CI test shards and browser job | only when the saved database is missing, damaged or keyed differently |
+| `Migration, MCP and script checks` (hygiene `--strict`, missing-migration check) | every run |
+| `OAuth (PostgreSQL)` | every run, on PostgreSQL |
+| `coverage.yml` shards | every run (reuse is not set there) |
+| `Upgrade (sqlite)` and `Upgrade (postgres)` | every run, with retained user data |
+| image smoke | every run, cold boot of a real database |
+| `migration-order.yml` | graph load on every migration PR |
+| `scripts/test_postgres.sh` | every run |
+
 ## How to run tests quickly now
 
 ```bash
 # Iterating on non-migration code — the fast path.
 FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
-# The real gate: real migrations, real graph.
+# The real gate: real migrations, real graph. Replays once, then restores the
+# saved result until a migration input changes.
 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
+
+# Force a replay.
+FLOPPY_TEST_DB_TEMPLATE=0 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
 # Whole fast suite.
 SECRET=test-only scripts/test.sh
 
-# Tests the current diff can reach. Still pays the migration floor
-# unless FLOPPY_TEST_FAST_DB=1 is set. Uses the coverage map when present.
+# Tests the current diff can reach. Pays the migration floor only when a
+# migration input changed. Uses the coverage map when present.
 SECRET=test-only scripts/test.sh --affected
 
 # Record the map. Same suite CI runs on latest: slow included, network

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Q
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -45,7 +46,7 @@ class BackupDirectoryTests(SimpleTestCase):
     def test_username_cannot_escape_backup_directory(self):
         with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
             root = Path(temporary)
-            for username in (".", "..", "../outside", "/outside"):
+            for username in ("", ".", "..", "../outside", "/outside", "a/b"):
                 with self.subTest(username=username):
                     user = SimpleNamespace(username=username, pk=42)
                     with patch(
@@ -63,6 +64,18 @@ class BackupDirectoryTests(SimpleTestCase):
                 exports.backup_directory(user),
                 Path(temporary) / "alice.example",
             )
+
+    def test_backup_directory_stays_inside_backup_dir(self):
+        """The folder check refuses a path even if the name check were to pass one."""
+        with (
+            TemporaryDirectory() as temporary,
+            override_settings(BACKUP_DIR=f"{temporary}/"),
+            patch("integrations.exports.Path.name", "../outside"),
+        ):
+            user = SimpleNamespace(username="../outside", pk=42)
+            with self.assertRaises(SuspiciousFileOperation):
+                exports.backup_directory(user)
+            self.assertEqual(list(Path(temporary).parent.glob("outside")), [])
 
 
 class ExportCSVTest(TestCase):

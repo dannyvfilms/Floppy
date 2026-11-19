@@ -28,6 +28,7 @@ from django.db.backends.signals import connection_created
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
+from config.data_paths import resolve_data_paths
 from config.runtime_profile import (
     PROFILE as RESOURCE_PROFILE,
 )
@@ -53,14 +54,8 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-_data_dir_override = config("FLOPPY_DATA_DIR", default=None)
-FLOPPY_DATA_DIR = Path(_data_dir_override) if _data_dir_override else BASE_DIR / "db"
-_database_path_override = config("FLOPPY_DB_PATH", default=None)
-FLOPPY_DB_PATH = (
-    Path(_database_path_override)
-    if _database_path_override
-    else FLOPPY_DATA_DIR / "db.sqlite3"
-)
+# Shared with the background SQLite verifier, which runs without Django.
+FLOPPY_DATA_DIR, FLOPPY_DB_PATH = resolve_data_paths(config, BASE_DIR)
 DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
@@ -1187,10 +1182,13 @@ DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
 # analysis_limit bounds each ANALYZE to a row sample, keeping the first run on a
 # multi-GB database short.
 DB_OPTIMIZE_ENABLED = config("DB_OPTIMIZE_ENABLED", default=True, cast=bool)
-# Sequential read of the SQLite file after start so cold page loads hit the OS
-# cache (app/tasks_db_warm.py). Budget is further capped at 25% of free memory.
+# Sequential read of the SQLite file at worker start and hourly, so cold page
+# loads hit the OS cache (app/tasks_db_warm.py). The host shares that cache with
+# everything else it runs, so a database on a slow disk falls out of it within
+# an hour or two of other activity. Budget is further capped at 25% of free
+# memory; the standard tier covers the whole file of a large library.
 DB_WARM_ENABLED = config("DB_WARM_ENABLED", default=True, cast=bool)
-DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 2048), cast=int)
+DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 8192), cast=int)
 DB_WARM_PAUSE_MS = config("DB_WARM_PAUSE_MS", default=20, cast=int)
 # Below this sequential read speed the warm logs a "slow_disk" warning.
 DB_SLOW_DISK_MIB_PER_SECOND = config("DB_SLOW_DISK_MIB_PER_SECOND", default=60, cast=int)
@@ -1250,6 +1248,15 @@ else:
         "DISCOVER_WARMUP_ON_STARTUP",
         cast=bool,
     )
+# A tracked write rebuilds Discover in the background only for someone who
+# opened Discover (or called the recommendations API) in the last this many
+# days; for everyone else the tab is marked stale and rebuilt on the next visit.
+# 0 rebuilds after every write for everyone (the previous behaviour).
+DISCOVER_EAGER_REBUILD_DAYS = config(
+    "DISCOVER_EAGER_REBUILD_DAYS",
+    default=3,
+    cast=int,
+)
 
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
@@ -1288,6 +1295,7 @@ SHARED_DEFAULT_CREDENTIALS = {
     "IGDB_ID": "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
     "BGG_API_TOKEN": "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
     "COMICVINE_API": "cdab0706269e4bca03a096fbc39920dadf7e4992",
+    "WETRAKR_CLIENT_ID": "84fcb12dd6f78fc0efc0f279d5fea165",
 }
 
 TMDB_API = config(
@@ -1341,14 +1349,15 @@ MAL_API_SECRET = config(
     ),
 )
 
-# The application key a WeTrakr account is connected with. WeTrakr issues these
-# on request, so each user or instance brings their own (Settings > Metadata);
-# nothing ships with the image.
+# The application key every WeTrakr account is connected with. WeTrakr issued it
+# to Floppy as an app-owned developer key (no client secret, no redirect URI:
+# login is a device code), so it ships as a shared default. An instance or member
+# can still supply their own (Settings > Providers > WeTrakr).
 WETRAKR_CLIENT_ID = config(
     "WETRAKR_CLIENT_ID",
     default=secret(
         "WETRAKR_CLIENT_ID_FILE",
-        "",
+        SHARED_DEFAULT_CREDENTIALS["WETRAKR_CLIENT_ID"],
     ),
 )
 
@@ -1856,8 +1865,10 @@ CELERY_TASK_ROUTES = {
     # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
     # starve other celery-queue work.
     "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
-    # Discover cache rebuilds go to the dedicated discover worker so a post-restart
-    # burst of O(users x tabs) tasks never starves imports or background work.
+    # Discover cache rebuilds have their own queue, but no tier starts a separate
+    # discover worker: the background worker consumes it alongside `celery` (see
+    # celery_queue_plan). Background priority keeps a post-restart burst of
+    # O(users x tabs) rebuilds behind imports and freshness work queued with it.
     "Refresh Discover Tab Cache": {
         "queue": "discover",
         "priority": CELERY_TASK_PRIORITY_BACKGROUND,
@@ -1890,6 +1901,12 @@ CELERY_TASK_ROUTES = {
     # Rebuilds a talent section the viewer already sees a stale copy of. It is a
     # full talent scan, so it belongs with the other bulk derived work.
     "Refresh statistics talent fragment": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # The all-time scan behind person page totals. Pages show stored numbers
+    # while it runs, so it waits with the other bulk derived work.
+    "Build person talent context": {
         "queue": "celery",
         "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
@@ -1995,6 +2012,16 @@ WARMUP_USER_LIMIT = config(
     "WARMUP_USER_LIMIT",
     default=by_tier(10, 20, 50),
     cast=int,
+)
+# History day payloads built ahead of a visit: the days of the last
+# HISTORY_COVERAGE_WINDOW_DAYS (and at least one page), in the user's own game
+# logging style. Older days and the other style are built when a page asks.
+# 0 warms every day; True below also warms the style the user does not use.
+HISTORY_COVERAGE_WINDOW_DAYS = config(
+    "HISTORY_COVERAGE_WINDOW_DAYS", default=62, cast=int
+)
+HISTORY_COVERAGE_BOTH_STYLES = config(
+    "HISTORY_COVERAGE_BOTH_STYLES", default=False, cast=bool
 )
 METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
 # The nightly calendar reload queues a metadata backfill rather than running one
@@ -2108,7 +2135,7 @@ CELERY_BEAT_SCHEDULE = {
     },
     "warm_database_page_cache": {
         "task": "Warm database page cache",
-        "schedule": 60 * 60 * 6,
+        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
@@ -2295,6 +2322,16 @@ SOCIALACCOUNT_PROVIDERS = config(
 SOCIALACCOUNT_ONLY = config("SOCIALACCOUNT_ONLY", default=False, cast=bool)
 if SOCIALACCOUNT_ONLY:
     ACCOUNT_EMAIL_VERIFICATION = "none"
+
+# The built-in Floppy app signs social and OIDC accounts in through the OAuth
+# device flow under a fixed client id. When this is on, the person is told on
+# the approval page that the app gets full access, and its token may then manage
+# the account except for credential disclosure/issuance (including URL secrets,
+# OAuth approval, password/authenticator/recovery and admin credential changes),
+# which require a session (password sign-in). Off: the app gets a scoped token like
+# any other application, and tokens already issued lose full access at once.
+# See integrations.oauth_scope_info.has_full_account_access.
+FLOPPY_APP_FULL_ACCESS = config("FLOPPY_APP_FULL_ACCESS", default=True, cast=bool)
 
 REGISTRATION = config("REGISTRATION", default=True, cast=bool)
 if not REGISTRATION:

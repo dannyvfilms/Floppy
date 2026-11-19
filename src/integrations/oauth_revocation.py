@@ -14,12 +14,7 @@ from django.views.decorators.http import require_POST
 
 from integrations.models import IntegrationToken
 from integrations.oauth_models import OAuthClient, OAuthRefreshToken, oauth_token_digest
-
-
-def _no_store(response: JsonResponse) -> JsonResponse:
-    response["Cache-Control"] = "no-store"
-    response["Pragma"] = "no-cache"
-    return response
+from integrations.oauth_models import no_store as _no_store
 
 
 def _request_data(request: HttpRequest) -> dict[str, object]:

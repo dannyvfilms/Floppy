@@ -48,7 +48,7 @@ FILE_IMPORTS = {
                 "Select File", {"fields": ("mode",), "multiple": True}),
     "hardcover": ("import_hardcover", "hardcover_csv", ".csv", "Import from Hardcover export (Account -> Export Data)", "Select CSV File", {
         "auto": False, "submit": "Save",
-        "text_fields": (("hardcover_api_key", "Hardcover API Key", "password", "Optional — also settable in Providers > Hardcover > Connection", False),)}),
+        "text_fields": (("hardcover_api_key", "Hardcover API Key", "password", "Optional: also settable in Providers > Hardcover > Connection", False),)}),
     "mdblist": ("import_mdblist", "", "", "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.",
                 "", {"auto": False, "submit": "Import", "files": (),
                      "text_fields": (("api_key", "MDBList API key", "password", "MDBList API key", True),)}),
@@ -141,8 +141,14 @@ def import_preferences(request, slug, context=None):
     }
 
 
+def device_login(code, url, interval, expires_at=None):
+    """Describe a pending device-code login so the page resumes it after a reload."""
+    return {"kind": "device", "userCode": code, "verificationUrl": url, "openUrl": url, "interval": int(interval or 5),
+            "expiresAt": expires_at.isoformat() if expires_at else None}
+
+
 def account_connection(request, *, connected, saved, attention, fields, messages, follow_up, connect_url, disconnect_url,
-                       instances=None, description="", summary=None):
+                       instances=None, description="", summary=None, device=None, link_slug="", link_label=""):
     """Describe an account form without serializing saved URLs or credentials.
 
     ``instances`` lists connections that can coexist (one row per saved server);
@@ -151,7 +157,11 @@ def account_connection(request, *, connected, saved, attention, fields, messages
     return {
         "connected": connected, "saved": saved, "attention": attention, "fields": fields, "messages": messages, "followUp": follow_up,
         "connectUrl": connect_url, "disconnectUrl": disconnect_url, "instances": instances, "description": description,
-        "summary": summary,
+        "summary": summary, "device": device,
+        # Providers that sign in with a device code share the app's link flow
+        # (ProviderLinkCard) instead of a plain connect form.
+        "link": {"label": link_label, **{key: reverse(f"api_provider_connect_{key}", kwargs={"slug": link_slug}) for key in ("start", "poll", "cancel")}}
+            if link_slug else None,
         "csrf": get_token(request), "next": request.get_full_path(),
         "labels": {text: _(text) for text in (
             "Connection settings", "Account connection", "Connected", "Not connected", "Needs attention",
@@ -249,22 +259,43 @@ def anilist_overview(user):
     }
 
 
-def overview_cards(user, provider, overview=None):
-    """Describe supported tabs once; every provider uses the same card renderer."""
+def _credential_line(user, slug):
+    """Say whose API credentials are in use, or nothing when users cannot manage them."""
+    spec = credentials.REGISTRY.get(slug)
+    if not spec or spec.bundled_only:
+        return ""
+    sources = {credentials.source_of(slug, field.name, user) for field in spec.fields if field.required}
+    if credentials.SOURCE_USER in sources:
+        return _("Personal credentials active")
+    return _("Bundled credentials active") if sources == {credentials.SOURCE_DEFAULT} else _("Instance credentials active")
+
+
+def _connection_card(user, provider, overview, base):
+    """Describe the Connection card; a linked account and API credentials are different things."""
     slug = provider["slug"]
-    base = reverse("provider_detail", args=[slug])
-    cards = []
-    if provider.get("connection"):
-        state = provider["state"]
+    state = provider["state"]
+    tooltip = ""
+    detail = ""
+    if state["account_linkable"]:
+        # The card answers "is my account linked?". Credentials only support that
+        # and appear as a second line, never as the headline.
+        linked = state["account_saved"] and state["connection_tone"] != "warning"
+        subtitle = _({
+            "Needs attention": "Account needs attention",
+            "Awaiting authorization": "Waiting for you to approve",
+            "Webhook events received": "Receiving events",
+        }.get(state["connection"], "Account linked" if state["account_saved"] else "Account not linked"))
+        active = linked or state["connection"] == "Webhook events received"
+        tone = "warning" if state["connection_tone"] == "warning" else "info" if active else "neutral"
+        if state["credentials_available"]:
+            detail = _credential_line(user, slug)
+    else:
         active = state["connection_tone"] == "success"
         subtitle = _(state["connection"])
-        tooltip = ""
-        spec = credentials.REGISTRY.get(slug)
-        if state["credentials_available"] and spec:
-            sources = {credentials.source_of(slug, field.name, user) for field in spec.fields if field.required}
-            subtitle = _("Personal credentials active") if credentials.SOURCE_USER in sources else (
-                _("Bundled credentials active") if sources == {credentials.SOURCE_DEFAULT} else _("Instance credentials active")
-            )
+        tone = "warning" if state["connection_tone"] == "warning" else "info" if active else "neutral"
+        if state["credentials_available"] and credentials.REGISTRY.get(slug):
+            subtitle = _credential_line(user, slug) or subtitle
+            sources = {credentials.source_of(slug, field.name, user) for field in credentials.REGISTRY[slug].fields if field.required}
             if credentials.SOURCE_USER in sources and sources - {credentials.SOURCE_USER}:
                 tooltip = _("Uses instance fallback for fields without a personal value.")
         if overview is not None:
@@ -275,9 +306,18 @@ def overview_cards(user, provider, overview=None):
             )
             if not active:
                 tooltip = _("Public username imports do not require provider credentials.")
-        cards.append({"key": "connection", "title": _("Connection"), "url": f"{base}?tab=connection",
-                      "tone": "warning" if state["connection_tone"] == "warning" else "info" if active else "neutral",
-                      "badge": _("Active") if active else _("Inactive"), "subtitle": subtitle, "detail": "", "tooltip": tooltip})
+            tone = "warning" if state["connection_tone"] == "warning" else "info" if active else "neutral"
+    return {"key": "connection", "title": _("Connection"), "url": f"{base}?tab=connection", "tone": tone,
+            "badge": _("Active") if active else _("Inactive"), "subtitle": subtitle, "detail": detail, "tooltip": tooltip}
+
+
+def overview_cards(user, provider, overview=None):
+    """Describe supported tabs once; every provider uses the same card renderer."""
+    slug = provider["slug"]
+    base = reverse("provider_detail", args=[slug])
+    cards = []
+    if provider.get("connection"):
+        cards.append(_connection_card(user, provider, overview, base))
     latest = None
     if provider.get("import"):
         if overview is not None:
@@ -418,17 +458,23 @@ def metadata_page(user, provider, context):
     }
 
 
-def anilist_activity(user, page=1):
+def anilist_activity(user, page=1, *, all_sources=False, activity=None):
     """Serialize existing activity controls with owned rows and bounded history pages."""
-    activity = user.get_import_tasks(sources={"anilist"}, result_limit=ACTIVITY_PAGE_SIZE + 1,
-                                   result_offset=(page - 1) * ACTIVITY_PAGE_SIZE)
-    runs = list(ImportRun.objects.filter(user=user, source="anilist").defer(
+    sources = None if all_sources else {"anilist"}
+    if activity is None:
+        activity = user.get_import_tasks(sources=sources, result_limit=ACTIVITY_PAGE_SIZE + 1,
+                                        result_offset=(page - 1) * ACTIVITY_PAGE_SIZE)
+    runs_query = ImportRun.objects.filter(user=user)
+    if sources is not None:
+        runs_query = runs_query.filter(source__in=sources)
+    runs = list(runs_query.defer(
         "prepared_state", "terminal_error",
     ).order_by("-started_at", "-id")[:10])
-    active_tasks = TaskResult.objects.filter(task_name="Import from AniList", status__in=[states.PENDING, states.STARTED],
+    active_tasks = TaskResult.objects.filter(status__in=[states.PENDING, states.STARTED],
         task_kwargs__regex=rf"[\"']user_id[\"']:\s*{user.pk}\s*[,}}]",
     ).exclude(Q(status=states.PENDING) & Q(date_created__lt=timezone.now() - timedelta(minutes=30)))
-    active = ImportRun.objects.filter(user=user, source="anilist", status="running").exists() or any(
+    active_tasks = active_tasks.filter(Q(task_name__startswith="Import ") | Q(task_name="integrations.tasks.import_goodreads")) if all_sources else active_tasks.filter(task_name="Import from AniList")
+    active = any(row["status"] in {states.PENDING, states.STARTED} for row in activity["results"]) or runs_query.filter(status="running").exists() or any(
         helpers.task_kwargs_belong_to_user(kwargs, user.pk) for kwargs in active_tasks.values_list("task_kwargs", flat=True).iterator()
     )
     return {
@@ -436,6 +482,8 @@ def anilist_activity(user, page=1):
         "hasMore": len(activity["results"]) > ACTIVITY_PAGE_SIZE and page < MAX_ACTIVITY_PAGES,
         "active": active,
         "schedules": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
             "id": row["task"].pk, "name": row["task"].name, "schedule": _(row["schedule"]),
             "username": row["username"], "mode": _(row["mode"]),
             "lastRun": user_datetime_format(row["last_run"], user),
@@ -443,6 +491,8 @@ def anilist_activity(user, page=1):
             "action": reverse("delete_import_schedule"),
         } for row in activity["schedules"]],
         "results": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
             "id": row["task_id"], "status": row["status"], "statusLabel": _status(row["status"]),
             "date": user_datetime_format(row["date"], user),
             "summary": redact_secrets(str(translate_import_summary(row["summary"]) or "")),
@@ -452,6 +502,8 @@ def anilist_activity(user, page=1):
             "cancelAction": reverse("cancel_pending_import", args=[row["task_id"]]) if row["status"] == states.PENDING else "",
         } for row in activity["results"][:ACTIVITY_PAGE_SIZE]],
         "runs": [{
+            "source": run.source, "sourceLabel": SOURCES_CONFIG.get(run.source, {}).get("name", run.source),
+            "sourceLogo": SOURCES_CONFIG.get(run.source, {}).get("logo", ""),
             "id": run.pk, "status": run.status, "statusLabel": _status(run.status),
             "date": user_datetime_format(run.started_at, user), "created": run.created_count,
             "updated": run.updated_count, "skipped": run.skipped_count, "failed": run.failed_count,
@@ -459,9 +511,14 @@ def anilist_activity(user, page=1):
             "action": reverse("cancel_import_run" if run.status == "running" else "rollback_import_run", args=[run.pk]),
         } for run in runs],
         "cleanup": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
+            "confirm": (_("Permanently delete all %(media)s items imported from this source?") % {"media": row["media_type"]}
+                + (" " + _("Artists and albums left with no tracks are removed from your library too.") if row["media_type"] == "music" else "")
+                + " " + _("This cannot be undone.")) if all_sources else "",
             "mediaType": row["media_type"], "mediaLabel": str(media_type_readable(row["media_type"])), "count": row["count"],
-            "action": reverse("bulk_delete_by_import_source", args=[row["media_type"], "anilist"]),
-        } for row in views._import_source_media_summary(user, sources={"anilist"})],
+            "action": reverse("bulk_delete_by_import_source", args=[row["media_type"], row["source"]]),
+        } for row in views._import_source_media_summary(user, sources=sources)],
     }
 
 
@@ -620,7 +677,7 @@ def _labels():
         "Save personal key": _("Save personal key"),
         "Your key may avoid shared instance or bundled rate limits.": _("Your key may avoid shared instance or bundled rate limits."),
         "Leave a field blank to keep the current fallback.": _("Leave a field blank to keep the current fallback."),
-        "Saved — enter a new value to replace": _("Saved — enter a new value to replace"),
+        "Saved: enter a new value to replace": _("Saved: enter a new value to replace"),
         "Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials.": _("Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials."),
         "You are not a superuser": _("You are not a superuser"),
         "Ask an administrator, or promote your own account": _("Ask an administrator, or promote your own account"),

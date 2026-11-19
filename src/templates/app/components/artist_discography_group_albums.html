@@ -1,0 +1,5 @@
+{# A discography group's albums as one grid, then its "Show more" button. #}
+<div data-discography-group>
+  {% include "app/components/album_grid.html" with all_albums=group.albums show_release_type=False %}
+  {% include "app/components/artist_discography_more.html" with group=group artist=artist %}
+</div>

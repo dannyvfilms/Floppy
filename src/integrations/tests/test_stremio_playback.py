@@ -280,6 +280,7 @@ class StremioPlaybackSessionTests(TestCase):
             )
             self.assertEqual(self.observe(session_id, 41 * 60).status, "complete")
             self.assertEqual(calls, [["tt100"], ["tt100"]])
+            playback.finish_completion(session_id)
             self.assertEqual(self.observe(session_id, 42 * 60).status, "duplicate")
             self.assertEqual(len(calls), 2)
 
@@ -585,13 +586,76 @@ class StremioPlaybackSessionTests(TestCase):
             with self.assertRaisesRegex(RuntimeError, "bug"):
                 self.observe(session_id, 60)
 
-    def test_duplicate_observations_claim_completion_once(self):
+    def test_claimed_completion_is_handed_back_until_its_play_is_saved(self):
+        """A worker lost between the claim and the save must not lose the play.
+
+        The claim keeps the session; a redelivered verifier gets the same
+        payload back (saving it again is deduplicated by its watched time).
+        Once the play is saved, the session closes.
+        """
         session_id = self.establish_movie_progress()
         self.library = self.state(
             "tt100", 90, watched_at=self.now + timedelta(minutes=41), flagged=1
         )
-        self.assertEqual(self.observe(session_id, 41 * 60).status, "complete")
+        claimed = self.observe(session_id, 41 * 60)
+        self.assertEqual(claimed.status, "complete")
+        resumed = self.observe(session_id, 41 * 60)
+        self.assertEqual(resumed.status, "complete")
+        self.assertEqual(resumed.reason, "completion_resumed")
+        self.assertEqual(resumed.payload, claimed.payload)
+
+        playback.finish_completion(session_id)
+
         self.assertEqual(self.observe(session_id, 41 * 60).status, "duplicate")
+
+    def test_verifier_for_an_older_revision_stops(self):
+        """A redelivered verifier must not start a second polling chain."""
+        session_id = self.start()
+        self.library = self.state("tt100", 1)
+        queued = []
+
+        def schedule(sid, countdown, revision):
+            queued.append((sid, countdown, revision))
+
+        first = playback.observe_session(
+            session_id,
+            now=self.now + timedelta(seconds=60),
+            revision=0,
+            schedule=schedule,
+        )
+        self.assertEqual(first.reason, "baseline_captured")
+        self.assertEqual(queued, [(session_id, first.countdown, 1)])
+
+        again = playback.observe_session(
+            session_id,
+            now=self.now + timedelta(seconds=61),
+            revision=0,
+            schedule=schedule,
+        )
+        self.assertEqual(again.status, "duplicate")
+        self.assertEqual(again.reason, "stale_verifier")
+        self.assertEqual(len(queued), 1)
+
+    def test_first_verifier_is_queued_before_the_session_is_stored(self):
+        """A worker lost after storing the session still leaves a verifier."""
+        seen = []
+
+        def schedule(sid, countdown, revision):
+            seen.append((sid, countdown, revision, dict(self.redis.values)))
+
+        decision = playback.start_session(
+            {"id": "tt100", "type": "movie"},
+            self.user.id,
+            now=self.now,
+            schedule=schedule,
+        )
+
+        self.assertEqual(len(seen), 1)
+        sid, countdown, revision, stored = seen[0]
+        self.assertEqual(sid, decision.session_id)
+        self.assertEqual(countdown, playback.INITIAL_OBSERVATION_SECONDS)
+        self.assertEqual(revision, 0)
+        self.assertEqual(stored, {})
 
     def test_completed_session_allows_a_genuine_replay(self):
         first = self.establish_movie_progress()
@@ -599,6 +663,7 @@ class StremioPlaybackSessionTests(TestCase):
             "tt100", 90, watched_at=self.now + timedelta(minutes=41), flagged=1
         )
         self.assertEqual(self.observe(first, 41 * 60).status, "complete")
+        playback.finish_completion(first)
         replay = playback.start_session(
             {"id": "tt100", "type": "movie"},
             self.user.id,

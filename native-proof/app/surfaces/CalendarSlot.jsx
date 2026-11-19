@@ -2,60 +2,38 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ReleaseCalendar } from '../../../frontend/ui/ReleaseCalendar';
 import { palette, spacing } from '../theme';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import CalendarRailControls, { useCalendarRail } from './CalendarRailControls';
 
 export const surface = {
   id: 'RELEASE-CALENDAR',
   title: 'Release calendar',
   where: 'Calendar month, agenda, list and subscription links',
   status: 'ported',
-  note: 'The shared calendar renders the server-owned month grid, agenda, list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. The Calendar screen adds the shared calendar-links panel with release/history feeds, switchable filters, subscription URL and copy/download actions, and persists native filter and week-start choices through the shell adapter. Month and range loads use /api/v1/calendar/ through the session facade; the API exposes per-user tracking status only as part of media rows, not calendar events, so the status filter stays hidden instead of showing fixture statuses. The calendar token needed for the subscription links is not exposed by a read endpoint, so those links stay placeholder text. Web React ownership was browser-verified, while iOS and Android runtime were not exercised.',
+  note: 'The shared calendar renders the server-owned month grid, agenda, month toolbar, the filter menu and the calendar actions menu. Media types, statuses, release types and the account week start come from GET /api/v1/calendar/links/; events come from /api/v1/calendar/ with the viewer status merged in from /api/v1/calendar/statuses/, so the status filter is real. TV episode releases map to the season type the web filters use. The region-unset notice shows when the account has no watch-provider region. Web React ownership was browser-verified earlier; iOS and Android runtime were not exercised.',
 };
 
-const mediaTypes = [
-  { value: 'tv', label: 'TV Shows', shortLabel: 'TV Show' },
-  { value: 'season', label: 'TV Seasons', shortLabel: 'TV Season' },
-  { value: 'movie', label: 'Movies', shortLabel: 'Movie' },
-  { value: 'anime', label: 'Anime', shortLabel: 'Anime' },
-  { value: 'book', label: 'Books', shortLabel: 'Book' },
-  { value: 'game', label: 'Games', shortLabel: 'Game' },
-  { value: 'podcast', label: 'Podcasts', shortLabel: 'Podcast' },
-  { value: 'manga', label: 'Manga', shortLabel: 'Manga' },
-  { value: 'comic', label: 'Comics', shortLabel: 'Comic' },
-  { value: 'boardgame', label: 'Board Games', shortLabel: 'Board Game' },
-  { value: 'music', label: 'Music', shortLabel: 'Music' },
-  { value: 'video', label: 'Videos', shortLabel: 'Video' },
-];
-
-const releaseTypes = [
-  { value: 'digital', label: 'Digital' },
-  { value: 'physical', label: 'Physical' },
-];
-
-const statusesByType = {};
-
-const defaultFilters = {
-  selectedTypes: mediaTypes.map((item) => item.value),
-  selectedStatusesByType: {},
-  selectedReleaseTypes: releaseTypes.map((item) => item.value),
-};
-
-const calendarPalette = {
+const calendarPalette = () => ({
   background: palette.background,
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
   surfaceMuted: palette.surfaceMuted,
+  surfaceMutedSoft: palette.surfaceMutedSoft,
   surfaceHover: palette.surfaceStrong,
   border: palette.border,
+  surfaceBorder: palette.surfaceBorder,
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
   accent: palette.accent,
   accentStrong: palette.accentStrong,
-  accentText: '#ffffff',
-  link: '#818cf8',
+  accentText: palette.accentContrast,
+  link: palette.link,
   danger: palette.danger,
-  overlay: 'rgba(24, 24, 27, 0.78)',
-};
+  overlay: palette.overlay,
+});
+
+const regionNotice = 'Set your watch provider region in Preferences to see digital and physical dates.';
 
 const menu = {
   labels: {
@@ -77,18 +55,28 @@ const navigation = {
 
 export default function CalendarSlot({
   model,
+  options,
+  regionUnset = false,
+  onOpenPreferences,
   onOpenRelease,
   onNavigate,
   onMenuAction,
   onFiltersChange,
   initialFilters,
   weekStart,
+  monthLoading = false,
+  initialLoading = false,
 }) {
-  if (!model) {
+  const hasRail = useCalendarRail();
+  if (!model || !options) {
     return null;
   }
   return <View style={styles.wrapper}>
+    {/* Expo uses the mobile toolbar on wide and hinged devices as well as phones. */}
     <ReleaseCalendar
+      mobile
+      monthLoading={monthLoading}
+      initialLoading={initialLoading}
       month={model.month}
       year={model.year}
       monthName={model.monthName}
@@ -100,17 +88,25 @@ export default function CalendarSlot({
       selectedDay={model.selectedDay}
       view="grid"
       releases={model.releases}
-      mediaTypes={mediaTypes}
-      releaseTypes={releaseTypes}
-      statusesByType={statusesByType}
-      initialFilters={initialFilters || defaultFilters}
+      mediaTypes={options.mediaTypes}
+      releaseTypes={options.releaseTypes}
+      statusesByType={options.statusesByType}
+      initialFilters={initialFilters || options.initialFilters}
+      regionUnset={regionUnset}
+      regionNotice={regionNotice}
+      onOpenPreferences={onOpenPreferences}
       navigation={navigation}
       menu={{ ...menu, weekStart: weekStart || 'monday' }}
-      palette={calendarPalette}
+      palette={calendarPalette()}
       onNavigate={onNavigate}
       onOpenRelease={onOpenRelease}
       onFiltersChange={onFiltersChange}
-      onMenuAction={onMenuAction} />
+      onMenuAction={onMenuAction}
+      hideToolbarControls={hasRail}
+      renderRailControls={hasRail ? props => <CalendarRailControls {...props} /> : undefined}
+      renderSettingsSheet={({ open, onClose, title, children }) => <AdaptivePresentationSheet
+        isPresented={open} onDismiss={onClose} onClose={onClose} title={title}
+        titleColor={palette.text} containerColor={palette.surface}>{children}</AdaptivePresentationSheet>} />
   </View>;
 }
 

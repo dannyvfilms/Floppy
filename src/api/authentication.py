@@ -3,14 +3,17 @@
 import hashlib
 from datetime import timedelta
 
+from django.db import OperationalError
 from django.db.models import Q
 from django.utils import timezone
-from rest_framework.authentication import BaseAuthentication
+from rest_framework.authentication import BaseAuthentication, SessionAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
-from api.scopes import ANY_SCOPE, NEVER, resolve_required_scope
+from api.scopes import ANY_SCOPE, NEVER, SESSION_ONLY, resolve_required_scope
+from app.db_retry import brief_writer_wait, is_lock_error
 from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import has_full_account_access
 from users.models import User
 
 # Bound how often a request writes ``last_used_at``. Every authenticated request
@@ -30,11 +33,20 @@ def _touch_last_used(token: IntegrationToken) -> None:
     if token.last_used_at and now - token.last_used_at < LAST_USED_WRITE_INTERVAL:
         return
     cutoff = now - LAST_USED_WRITE_INTERVAL
-    updated = (
-        IntegrationToken.objects.filter(pk=token.pk)
-        .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
-        .update(last_used_at=now)
-    )
+    # The timestamp is advisory, so it never holds a request behind SQLite's
+    # writer: if the writer is busy the touch is skipped and the next request
+    # tries again.
+    try:
+        with brief_writer_wait():
+            updated = (
+                IntegrationToken.objects.filter(pk=token.pk)
+                .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
+                .update(last_used_at=now)
+            )
+    except OperationalError as error:
+        if not is_lock_error(error):
+            raise
+        return
     if updated:
         token.last_used_at = now
 
@@ -129,9 +141,13 @@ class HasScope(BasePermission):
     """Enforce the scope map against the credential the request authenticated with.
 
     Session logins and legacy ``User.token`` credentials carry no token object
-    (``request.auth is None``) and keep full access. A scoped ``IntegrationToken``
+    (``request.auth is None``) and keep ordinary access, as does the built-in Floppy
+    app's device-flow token when it holds the full-account marker (see
+    ``integrations.oauth_scope_info.has_full_account_access``). A scoped ``IntegrationToken``
     must hold the scope ``api.scopes`` maps to this view and method; an unmapped
     endpoint is denied, so a new route cannot silently become reachable.
+    Credential disclosure and issuance require SessionAuthentication before
+    either legacy or first-party token bypasses are considered.
     """
 
     required_scope = None
@@ -146,11 +162,17 @@ class HasScope(BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
+        scope = self.required_scope or resolve_required_scope(view, request.method)
+        if scope == SESSION_ONLY:
+            self.message = "Sign in with your username and password to manage this."
+            return isinstance(request.successful_authenticator, SessionAuthentication)
+
         token = request.auth
         if token is None or not hasattr(token, "has_scope"):
             return True
+        if has_full_account_access(token):
+            return True
 
-        scope = self.required_scope or resolve_required_scope(view, request.method)
         if scope == ANY_SCOPE:
             return True
         if scope is None or scope == NEVER:
@@ -180,6 +202,9 @@ class CanWriteBoundList(BasePermission):
         """Return whether this request may write the list it names."""
         token = request.auth
         if token is None or not hasattr(token, "may_write_list"):
+            return True
+        # The first-party app with full access writes lists like a session.
+        if has_full_account_access(token):
             return True
         if request.method in SAFE_METHODS:
             return True

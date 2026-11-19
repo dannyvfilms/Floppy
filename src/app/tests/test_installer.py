@@ -729,6 +729,9 @@ class GeneratedNginxTests(SimpleTestCase):
                     "$http_referer",
                 ):
                     self.assertNotIn(variable, conf)
+                # Timings and an opaque id are safe: no URL, no credentials.
+                for variable in ("$request_time", "$upstream_response_time", "$request_id"):
+                    self.assertIn(variable, conf)
 
 
 class GeneratedServiceUnitTests(SimpleTestCase):

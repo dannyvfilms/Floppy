@@ -3,6 +3,9 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { Modal } from '../ui/Modal';
+import { Spinner } from '../ui/Spinner';
+import { CopyBlock } from '../ui/CopyBlock';
 
 const defaultPalette = {
   background: '#18181b',
@@ -281,7 +284,7 @@ export function WhatsNewCard({ releases = [], releasesUrl, onOpenUrl, loading = 
                 <Text style={[styles.bulletDot, { color: colors.textSecondary }]}>•</Text>
                 <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
                   {item.title ? <Text style={styles.bulletTitle}>{item.title}</Text> : null}
-                  {item.title && item.text ? '—' : ''}
+                  {item.title && item.text ? ': ' : ''}
                   {item.text}
                 </Text>
               </View>)}
@@ -451,6 +454,32 @@ export function DeveloperSpecsCard({ specs = [], onOpenUrl, onPreview, onDownloa
       mobileWidths={[150.2, 103.4, 129.2]} mobileWidth={382.8} colors={colors}
       testID="about-specs-table" />
   </Section>;
+}
+
+export function AboutSpecificationPreview({ model, onClose, onRetry, onCopy, onDownload, copyLabel = 'Copy', copiedLabel = 'Copied!', palette = {}, buttonPalette = {} }) {
+  const colors = useColors(palette);
+  return <Modal transparent visible={Boolean(model)} animationType="fade" onRequestClose={onClose}>
+    <View style={{ flex: 1, padding: 16, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.overlay }}>
+      <View accessibilityViewIsModal style={{ width: '100%', maxWidth: 900, maxHeight: '90%', flexShrink: 1, backgroundColor: colors.surface, borderRadius: colors.radius, padding: 16, gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <Text role="heading" aria-level={2} style={{ color: colors.text, fontSize: 18, fontWeight: '600', flex: 1 }}>{model?.spec.label}</Text>
+          <Button label="Close" tone="surface" onPress={onClose} palette={buttonPalette} />
+        </View>
+        {model?.loading ? <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Spinner color={colors.accent} size={18} /><Text style={{ color: colors.textMuted }}>Loading...</Text>
+        </View> : model?.error ? <View style={{ gap: 12 }}>
+          <Text accessibilityRole="alert" style={{ color: colors.danger }}>{model.error}</Text>
+          <Button label="Retry" onPress={onRetry} palette={buttonPalette} />
+        </View> : <ScrollView style={{ flexShrink: 1, minHeight: 0 }}>
+          <CopyBlock text={model?.text || ''} palette={colors} />
+        </ScrollView>}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
+          <Button label={model?.copied ? copiedLabel : copyLabel} tone="surface" disabled={model?.loading || Boolean(model?.error)} onPress={onCopy} palette={buttonPalette} />
+          <Button label="Download" disabled={model?.loading || Boolean(model?.error)} onPress={onDownload} palette={buttonPalette} />
+        </View>
+      </View>
+    </View>
+  </Modal>;
 }
 
 export function AttributionsCard({ attributions = [], onOpenUrl, palette = {}, labels = {},

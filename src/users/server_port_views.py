@@ -12,6 +12,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
+from app.helpers import wants_json as _wants_json
 from config.server_port import (
     DEFAULT_SERVER_PORT,
     SERVER_PORT_ENV,
@@ -41,15 +42,6 @@ def _environment_override_active() -> bool:
     return SERVER_PORT_ENV in os.environ
 
 
-def _wants_json(request) -> bool:
-    """Return whether the browser adapter asked for an in-place result."""
-    accept = request.headers.get("Accept", "")
-    return (
-        request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        or "application/json" in accept
-    )
-
-
 def _json_port_result(request, message: str, *, ok: bool = True):
     """Return a fresh server-port payload for an async browser write."""
     from users.advanced_props import server_port_props
@@ -73,7 +65,7 @@ def server_port_context() -> dict[str, object]:
         config_error_source = "saved" if status.saved_error else ""
     except ServerPortError as exc:
         status = None
-        config_error = str(exc)
+        config_error = exc.message
         config_error_source = "environment" if environment_override else "saved"
 
     return {
@@ -104,7 +96,7 @@ def update_server_port(request):
         try:
             removed = clear_saved_port()
         except ServerPortError as exc:
-            message = str(exc)
+            message = exc.message
             messages.error(request, message)
             if _wants_json(request):
                 return _json_port_result(request, message, ok=False)
@@ -136,7 +128,7 @@ def update_server_port(request):
         try:
             saved_port = save_server_port(request.POST.get("port", ""))
         except ServerPortError as exc:
-            message = str(exc)
+            message = exc.message
             messages.error(request, message)
             if _wants_json(request):
                 return _json_port_result(request, message, ok=False)

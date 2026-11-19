@@ -39,6 +39,21 @@ class IntegrationRedirectTests(SimpleTestCase):
             "/onboarding/",
         )
 
+    def test_native_return_keeps_its_own_scheme_only(self):
+        from http import HTTPStatus
+
+        request = RequestFactory().get("/")
+        native = f"{views.pending_auth.NATIVE_APP_SCHEME}://connected?provider=trakt"
+        response = views._integration_redirect(request, next_url=native)
+        self.assertEqual(response.status_code, HTTPStatus.FOUND)
+        self.assertEqual(response["Location"], native)
+        self.assertEqual(
+            views._integration_redirect(request, next_url="other-app://connected")[
+                "Location"
+            ],
+            reverse("import_data"),
+        )
+
 
 class FeedFetchBoundaryTests(SimpleTestCase):
     """Public podcast metadata cannot request internal services."""

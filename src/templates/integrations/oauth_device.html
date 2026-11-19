@@ -6,6 +6,8 @@
 {% endblock title %}
 
 {% block content %}
+  {{ device_approval_props|json_script:"device-approval-props" }}
+  <div data-device-approval-root data-props-id="device-approval-props">
   <div class="mx-auto max-w-2xl space-y-6">
     <div>
       <h1 class="text-3xl font-bold">Authorise Application</h1>
@@ -58,22 +60,32 @@
               <h2 class="text-xl font-semibold mt-1">{{ authorization.client.name }}</h2>
             </div>
 
-            <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-              <strong>Unverified application.</strong>
-              Floppy cannot check who made it. The name above is whatever the app chose for itself.
-            </div>
-
-            <div>
-              <h3 class="font-medium mb-3">Requested permissions</h3>
-              <div class="space-y-3">
-                {% for item in scope_details %}
-                  <div class="rounded-md bg-[var(--color-surface-strong)] p-3">
-                    <div class="font-medium text-sm">{{ item.label }}</div>
-                    <div class="text-[var(--color-text-muted)] text-xs mt-1">{{ item.description }}</div>
-                  </div>
-                {% endfor %}
+            {% if full_account %}
+              <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm space-y-2">
+                <p>
+                  <strong>Approving signs the Floppy app into your account with full access.</strong>
+                  It can do everything you can do when signed in, including changing your account, connections and tokens.
+                </p>
+                <p>Only approve if you started this sign-in from the Floppy app yourself.</p>
               </div>
-            </div>
+            {% else %}
+              <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+                <strong>Unverified application.</strong>
+                Floppy cannot check who made it. The name above is whatever the app chose for itself.
+              </div>
+
+              <div>
+                <h3 class="font-medium mb-3">Requested permissions</h3>
+                <div class="space-y-3">
+                  {% for item in scope_details %}
+                    <div class="rounded-md bg-[var(--color-surface-strong)] p-3">
+                      <div class="font-medium text-sm">{{ item.label }}</div>
+                      <div class="text-[var(--color-text-muted)] text-xs mt-1">{{ item.description }}</div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
 
             <form method="post" class="flex flex-wrap gap-3 pt-2">
               {% csrf_token %}
@@ -94,5 +106,6 @@
     <p class="text-xs text-[var(--color-text-muted)]">
       Only approve a code you requested from a device or application you recognise. Floppy never gives the application your password.
     </p>
+  </div>
   </div>
 {% endblock content %}

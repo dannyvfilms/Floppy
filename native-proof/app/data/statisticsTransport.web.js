@@ -1,10 +1,12 @@
 import {
   createLocalStatisticsActions,
   createRemoteStatisticsActions,
-  flattenStatisticsModel,
+  featuredFromPerson,
+  statisticsModelFromPayload,
+  talentFromPayload,
 } from './statisticsTransportCore';
 
-export { flattenStatisticsModel };
+export { featuredFromPerson, statisticsModelFromPayload, talentFromPayload };
 
 const CSRF_COOKIE = 'csrftoken';
 
@@ -19,6 +21,7 @@ function readCsrfToken() {
 function createRequest(baseUrl, csrfToken) {
   return async (path, options = {}) => {
     const form = options.form || {};
+    const json = options.body !== undefined;
     const body = new URLSearchParams();
     Object.entries(form).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
@@ -32,10 +35,12 @@ function createRequest(baseUrl, csrfToken) {
         Accept: 'application/json',
         'X-CSRFToken': csrfToken,
         ...(options.method && options.method !== 'GET'
-          ? { 'Content-Type': 'application/x-www-form-urlencoded' }
+          ? { 'Content-Type': json ? 'application/json' : 'application/x-www-form-urlencoded' }
           : {}),
       },
-      body: options.method && options.method !== 'GET' ? body.toString() : undefined,
+      body: options.method && options.method !== 'GET'
+        ? (json ? JSON.stringify(options.body) : body.toString())
+        : undefined,
     });
     const data = response.status === 204
       ? null
@@ -52,8 +57,8 @@ function createRequest(baseUrl, csrfToken) {
 }
 
 // The same-origin Django session and CSRF cookie are the web transport. When
-// they are absent (a static export or signed-out preview) the screen keeps its
-// local demo state instead of pretending a write succeeded.
+// they are absent (a static export or signed-out preview) the screen shows a
+// sign-in prompt instead of pretending a write succeeded.
 export function createStatisticsTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteStatisticsActions(options.request);

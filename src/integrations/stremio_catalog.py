@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, unquote
 from django.db.models import F, Max
 
 from app.models import TV, MediaTypes, Movie, Season, Sources, Status
+from app.public_errors import PublicMessageError
 from lists.models import CustomList, CustomListItem
 
 PAGE_SIZE = 100
@@ -308,6 +309,10 @@ def manifest_catalogs(user, selected=None):
     return catalogs
 
 
+class CatalogSkipError(PublicMessageError, ValueError):
+    """The catalog extra segment is not valid. The message is fixed text."""
+
+
 def parse_skip(extra):
     """Parse the optional Stremio extra segment and return a non-negative skip."""
     if not extra:
@@ -321,22 +326,22 @@ def parse_skip(extra):
         )
     except ValueError as error:
         message = "Malformed catalog extra arguments"
-        raise ValueError(message) from error
+        raise CatalogSkipError(message) from error
 
     if len(pairs) != 1 or pairs[0][0] != "skip":
         message = "Only one skip argument is supported"
-        raise ValueError(message)
+        raise CatalogSkipError(message)
 
     value = pairs[0][1]
     if not value.isdecimal():
         message = "skip must be a non-negative integer"
-        raise ValueError(message)
+        raise CatalogSkipError(message)
 
     try:
         return int(value)
     except ValueError as error:
         message = "skip must be a non-negative integer"
-        raise ValueError(message) from error
+        raise CatalogSkipError(message) from error
 
 
 def local_imdb_id(item):

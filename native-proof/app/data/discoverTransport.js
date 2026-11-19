@@ -4,7 +4,7 @@ import {
   createRemoteDiscoverActions,
   discoverRowsFromPayload,
   hiddenFromPayload,
-  mediaOptionsFromNavigation,
+  discoverMediaOptionsFromPayload,
 } from './discoverTransportCore.js';
 
 export function createDiscoverTransport(options = {}) {
@@ -23,5 +23,5 @@ export function createDiscoverTransport(options = {}) {
 export {
   discoverRowsFromPayload,
   hiddenFromPayload,
-  mediaOptionsFromNavigation,
+  discoverMediaOptionsFromPayload,
 };

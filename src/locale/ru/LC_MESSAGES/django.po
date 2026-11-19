@@ -1018,11 +1018,8 @@ msgstr "%(value_1)s: %(value_2)s"
 
 #: app/save_views.py:793
 #, python-format
-msgid ""
-"%(value_1)s %(value_2)s already fully watched from that date — left as is."
-msgstr ""
-"%(value_1)s %(value_2)s уже полностью просмотрены с этой даты — запись "
-"оставлена без изменений."
+msgid "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
+msgstr "%(value_1)s %(value_2)s уже полностью просмотрены с этой даты. Запись оставлена без изменений."
 
 #: app/save_views.py:1430 app/save_views.py:1436 app/views.py:1153
 #: app/views.py:1159
@@ -1828,9 +1825,8 @@ msgid "Login"
 msgstr "Войти"
 
 #: templates/account/login.html:13
-msgid "Welcome to Floppy — set up your account to get started"
-msgstr ""
-"Добро пожаловать во Floppy — настройте свой аккаунт, чтобы начать работу"
+msgid "Welcome to Floppy: set up your account to get started"
+msgstr "Добро пожаловать во Floppy: настройте свой аккаунт, чтобы начать работу"
 
 #: templates/account/login.html:15
 msgid "Sign in to your account"
@@ -1877,8 +1873,8 @@ msgid "Register"
 msgstr "Зарегистрироваться"
 
 #: templates/account/signup.html:12
-msgid "Welcome to Floppy — create your first account"
-msgstr "Добро пожаловать во Floppy — создайте свой первый аккаунт"
+msgid "Welcome to Floppy: create your first account"
+msgstr "Добро пожаловать во Floppy: создайте свой первый аккаунт"
 
 #: templates/account/signup.html:32
 msgid "Create Account"
@@ -8811,12 +8807,8 @@ msgstr ""
 "повысить права этой учётной записи командой:"
 
 #: templates/users/account.html:81
-msgid ""
-"This must be run from a terminal with access to the Floppy container — it "
-"cannot be done from this web UI."
-msgstr ""
-"Эту команду нужно выполнить в терминале с доступом к контейнеру Floppy — "
-"через веб-интерфейс это сделать нельзя."
+msgid "This must be run from a terminal with access to the Floppy container. It cannot be done from this UI."
+msgstr "Эту команду нужно выполнить в терминале с доступом к контейнеру Floppy. Через веб-интерфейс это сделать нельзя."
 
 #: templates/users/account.html:90
 msgid "Change Password"
@@ -9027,48 +9019,40 @@ msgid "Cache Management"
 msgstr "Управление кэшем"
 
 #: templates/users/advanced.html:113
-msgid ""
-"Floppy caches computed pages (History, Statistics, Discover) and provider "
-"search results so they load fast. If one looks stale or wrong, clearing it "
-"forces a rebuild from your actual data — nothing about your library, watch "
-"history, ratings, or lists is touched by any of these."
-msgstr ""
-"Floppy кэширует вычисленные страницы (История, Статистика, Обзор) и "
-"результаты поиска поставщиков, чтобы ускорить загрузку. Если данные устарели"
-" или неверны, очистка заставит их пересобраться из ваших фактических данных "
-"— библиотека, история просмотров, оценки и списки не изменятся."
+msgid "Floppy caches computed pages (History, Statistics, Discover) and provider search results so they load fast. If one looks stale or wrong, clearing it forces a rebuild from your actual data. Nothing about your library, watch history, ratings, or lists is touched by any of these."
+msgstr "Floppy кэширует вычисленные страницы (История, Статистика, Обзор) и результаты поиска поставщиков, чтобы ускорить загрузку. Если данные устарели или неверны, очистка заставит их пересобраться из ваших фактических данных. Библиотека, история просмотров, оценки и списки не изменятся."
 
 #: templates/users/advanced.html:121
 msgid "Search Cache"
 msgstr "Кэш поиска"
 
 #: templates/users/advanced.html:122
-msgid "Provider search results — shared instance-wide"
-msgstr "Результаты поиска провайдеров — общий кэш для всего сервера"
+msgid "Provider search results (shared instance-wide)"
+msgstr "Результаты поиска провайдеров (общий кэш для всего сервера)"
 
 #: templates/users/advanced.html:131
 msgid "History Cache"
 msgstr "Кэш истории"
 
 #: templates/users/advanced.html:132
-msgid "Your cached History page — just you"
-msgstr "Кэш страницы истории — только для вас"
+msgid "Your cached History page (just you)"
+msgstr "Кэш страницы истории (только для вас)"
 
 #: templates/users/advanced.html:141
 msgid "Statistics Cache"
 msgstr "Кэш статистики"
 
 #: templates/users/advanced.html:142
-msgid "Your cached Statistics page — just you"
-msgstr "Кэш страницы статистики — только для вас"
+msgid "Your cached Statistics page (just you)"
+msgstr "Кэш страницы статистики (только для вас)"
 
 #: templates/users/advanced.html:151
 msgid "Discover Cache"
 msgstr "Кэш рекомендаций"
 
 #: templates/users/advanced.html:152
-msgid "Your recommendation rows & taste profile — just you"
-msgstr "Ваши рекомендации и профиль интересов — только для вас"
+msgid "Your recommendation rows & taste profile (just you)"
+msgstr "Ваши рекомендации и профиль интересов (только для вас)"
 
 #: templates/users/advanced.html:163 templates/users/advanced.html:350
 msgid "Clear All Caches"
@@ -9079,7 +9063,7 @@ msgid "Clear Search Cache?"
 msgstr "Очистить кэш поиска?"
 
 #: templates/users/advanced.html:212
-msgid "This is the one shared cache here — clearing it affects"
+msgid "This is the one shared cache here. Clearing it affects"
 msgstr "Это общий кэш; его очистка затронет"
 
 #: templates/users/advanced.html:213 templates/users/advanced.html:330
@@ -9091,11 +9075,8 @@ msgid "on this Floppy instance, not just you."
 msgstr "этого сервера Floppy, а не только вас."
 
 #: templates/users/advanced.html:216
-msgid ""
-"No data is lost — this only affects search/lookup results, not your library."
-msgstr ""
-"Данные не будут потеряны — очистятся только результаты поиска и запросов, но"
-" не библиотека."
+msgid "No data is lost. This only affects search/lookup results, not your library."
+msgstr "Данные не будут потеряны. Очистятся только результаты поиска и запросов, но не библиотека."
 
 #: templates/users/advanced.html:218
 msgid ""
@@ -9119,12 +9100,8 @@ msgid "Only affects your own account."
 msgstr "Затронет только ваш аккаунт."
 
 #: templates/users/advanced.html:244
-msgid ""
-"Your watch history itself is not touched — this only clears the cached, day-"
-"by-day rendering of it."
-msgstr ""
-"Сама история просмотров не изменится — будет очищено только её кэшированное "
-"отображение по дням."
+msgid "Your watch history itself is not touched. This only clears the cached, day-by-day rendering of it."
+msgstr "Сама история просмотров не изменится. Будет очищено только её кэшированное отображение по дням."
 
 #: templates/users/advanced.html:245
 msgid ""
@@ -9143,15 +9120,11 @@ msgid "Clear Statistics Cache?"
 msgstr "Очистить кэш статистики?"
 
 #: templates/users/advanced.html:270
-msgid "No underlying data is touched — only the cached charts/totals."
-msgstr ""
-"Исходные данные не изменятся — очистятся только кэшированные диаграммы и "
-"итоги."
+msgid "No underlying data is touched, only the cached charts/totals."
+msgstr "Исходные данные не изменятся, очистятся только кэшированные диаграммы и итоги."
 
 #: templates/users/advanced.html:272
-msgid ""
-"Unlike History, Statistics rebuilds in the background rather than on your "
-"next page load — expect placeholder"
+msgid "Unlike History, Statistics rebuilds in the background rather than on your next page load. Expect placeholder"
 msgstr ""
 "В отличие от истории, статистика перестраивается в фоновом режиме. До "
 "завершения задачи могут отображаться заглушки."
@@ -9169,12 +9142,8 @@ msgid "Clear Discover Cache?"
 msgstr "Очистить кэш рекомендаций?"
 
 #: templates/users/advanced.html:300
-msgid ""
-"Your recommendation rows and taste profile get recomputed from scratch — "
-"rows may look different or take a moment to repopulate."
-msgstr ""
-"Строки рекомендаций и профиль вкусов будут рассчитаны заново — они могут "
-"измениться или появиться не сразу."
+msgid "Your recommendation rows and taste profile get recomputed from scratch. Rows may look different or take a moment to repopulate."
+msgstr "Строки рекомендаций и профиль вкусов будут рассчитаны заново. Они могут измениться или появиться не сразу."
 
 #: templates/users/advanced.html:302
 msgid ""
@@ -9221,20 +9190,14 @@ msgid "Your Statistics page will show placeholder"
 msgstr "На странице статистики временно будут показаны заглушки"
 
 #: templates/users/advanced.html:335
-msgid ""
-"values until a background task finishes rebuilding it — this is the slowest "
-"of the four to recover."
+msgid "values until a background task finishes rebuilding it. This is the slowest of the four to recover."
 msgstr ""
 "данные появятся после того, как фоновая задача завершит пересборку. Из "
 "четырёх кэшей этот восстанавливается дольше всего."
 
 #: templates/users/advanced.html:338
-msgid ""
-"No watch history, ratings, lists, or tracked media is deleted by any of this"
-" — only cached, computed views of it."
-msgstr ""
-"История просмотров, оценки, списки и отслеживаемые медиа не удаляются — "
-"очищаются только кэшированные вычисленные представления."
+msgid "No watch history, ratings, lists, or tracked media is deleted by any of this, only cached, computed views of it."
+msgstr "История просмотров, оценки, списки и отслеживаемые медиа не удаляются, очищаются только кэшированные вычисленные представления."
 
 #: templates/users/advanced.html:370
 msgid "Danger Zone"
@@ -9882,9 +9845,7 @@ msgid "Configure"
 msgstr "Настроить"
 
 #: templates/users/components/media_type_provider_modal.html:158
-msgid ""
-"This library doesn't have a switchable default yet — configure a provider "
-"above to make it available."
+msgid "This library doesn't have a switchable default yet. Configure a provider above to make it available."
 msgstr ""
 "Для этой библиотеки ещё нет варианта, на который можно переключиться. "
 "Настройте поставщика выше, чтобы он стал доступен."
@@ -10366,11 +10327,7 @@ msgid "Export - Floppy"
 msgstr "Экспорт — Floppy"
 
 #: templates/users/export_data.html:22
-msgid ""
-"Export your media, ratings, and lists as CSV, or create a recurring export "
-"schedule and download the initial CSV immediately. This is a data export, "
-"not a database backup — it does not restore your account, integrations, or "
-"preferences, and it cannot replace a damaged database file."
+msgid "Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup. It does not restore your account, integrations, or preferences, and it cannot replace a damaged database file."
 msgstr ""
 "Экспортируйте медиа, оценки и списки в CSV или настройте экспорт по "
 "расписанию и сразу скачайте первый файл. Это экспорт данных, а не резервная "
@@ -10390,8 +10347,8 @@ msgstr[1] "%(count)s файлов уже там."
 msgstr[2] "%(count)s файлов уже там."
 
 #: templates/users/export_data.html:31 templates/users/export_data.html:42
-msgid "Not mounted to the host — add"
-msgstr "Не смонтировано на хосте — добавьте"
+msgid "Not mounted to the host. Add"
+msgstr "Не смонтировано на хосте. Добавьте"
 
 #: templates/users/export_data.html:31 templates/users/export_data.html:42
 msgid "to your docker-compose volumes to find these files."
@@ -10424,8 +10381,8 @@ msgstr[2] ""
 " сама база данных повреждена."
 
 #: templates/users/export_data.html:46
-msgid "Disabled — set"
-msgstr "Отключено — установите"
+msgid "Disabled. Set"
+msgstr "Отключено. Установите"
 
 #: templates/users/export_data.html:46
 msgid "to turn it back on."
@@ -12050,10 +12007,7 @@ msgstr ""
 "отслеживать просмотры."
 
 #: templates/users/integrations.html:84
-msgid ""
-"This token authenticates webhook requests from your media servers. It has "
-"full access to your account, so for apps and API clients create an app token"
-" below instead — those can be limited and revoked one at a time."
+msgid "This token authenticates webhook requests from your media servers. It has full access to your account, so for apps and API clients create an app token below instead. Those can be limited and revoked one at a time."
 msgstr ""
 "Этот токен подтверждает подлинность запросов вебхука от медиасерверов. Он "
 "предоставляет полный доступ к аккаунту. Для приложений и API-клиентов "
@@ -12395,12 +12349,8 @@ msgstr ""
 "воспроизведению)."
 
 #: templates/users/integrations.html:445
-msgid ""
-"Playback Reporting's API isn't reachable with this key — using the current-"
-"watched-state backfill instead (one event per item)."
-msgstr ""
-"API Playback Reporting недоступен с этим ключом — вместо него используется "
-"заполнение истории по текущему статусу просмотра (одно событие на элемент)."
+msgid "Playback Reporting's API isn't reachable with this key, so Floppy is using the current-watched-state backfill instead (one event per item)."
+msgstr "API Playback Reporting недоступен с этим ключом, вместо него используется заполнение истории по текущему статусу просмотра (одно событие на элемент)."
 
 #: templates/users/integrations.html:447
 msgid "Not yet run."
@@ -12852,7 +12802,7 @@ msgid "Tip: open the Kodi web interface at"
 msgstr "для настройки дополнения — это проще, чем использовать пульт."
 
 #: templates/users/integrations.html:1170
-msgid "to configure the add-on — easier than using the remote."
+msgid "to configure the add-on, which is easier than using the remote."
 msgstr "Оставьте поля с логином и паролем пустыми."
 
 #: templates/users/integrations.html:1186
@@ -12892,12 +12842,8 @@ msgstr ""
 "или Kodi сообщает"
 
 #: templates/users/integrations.html:1188
-msgid ""
-"option, turn it off — it can suppress the events Floppy needs to mark an "
-"episode watched."
-msgstr ""
-"Если такая настройка включена, отключите её — она может блокировать события,"
-" нужные Floppy для отметки эпизода как просмотренного."
+msgid "option, turn it off. It can suppress the events Floppy needs to mark an episode watched."
+msgstr "Если такая настройка включена, отключите её. Она может блокировать события, нужные Floppy для отметки эпизода как просмотренного."
 
 #: templates/users/integrations.html:1189
 #, python-format
@@ -13223,7 +13169,7 @@ msgstr ""
 "функций Nuvio."
 
 #: templates/users/integrations.html:1574
-msgid "Copy the token secret when it's shown — Floppy only displays it once."
+msgid "Copy the token secret when it's shown. Floppy only displays it once."
 msgstr "Отзовите токен в"
 
 #: templates/users/integrations.html:1576
@@ -13502,9 +13448,7 @@ msgstr ""
 "Необязательный общий секретный ключ. Если он указан, каждый запрос содержит"
 
 #: templates/users/notifications.html:73
-msgid ""
-"POSTs the live playback state to this URL whenever it changes — the same "
-"body"
+msgid "POSTs the live playback state to this URL whenever it changes, with the same body"
 msgstr ""
 "При каждом изменении текущего состояния воспроизведения на этот URL "
 "отправляется POST-запрос с тем же телом,"
@@ -13637,9 +13581,7 @@ msgid "Importing…"
 msgstr "Продолжить"
 
 #: templates/users/onboarding/import_status.html:40
-msgid ""
-"No services connected yet — you can connect one anytime from Settings > "
-"Import."
+msgid "No services connected yet. You can connect one anytime from Settings > Import."
 msgstr ""
 "Подключённых служб пока нет. Их можно добавить позже в разделе «Настройки → "
 "Импорт»."
@@ -13761,11 +13703,8 @@ msgstr[2] ""
 "данными. (%(count)s)"
 
 #: templates/users/onboarding/service_setup.html:11
-msgid ""
-"Connect right here — once it's done, you'll automatically see the next one."
-msgstr ""
-"Подключите службу здесь — после завершения автоматически появится следующий "
-"шаг."
+msgid "Connect right here. Once it's done, you'll automatically see the next one."
+msgstr "Подключите службу здесь. После завершения автоматически появится следующий шаг."
 
 #: templates/users/onboarding/service_setup.html:14
 msgid ""
@@ -13776,12 +13715,8 @@ msgstr ""
 "настройку, и вы вернётесь сюда к следующему шагу."
 
 #: templates/users/onboarding/service_setup.html:17
-msgid ""
-"Don't have it handy? Skip it — you can always connect it later from Settings"
-" > Import."
-msgstr ""
-"Нет под рукой? Пропустите этот шаг — службу всегда можно подключить позже в "
-"разделе «Настройки → Импорт»."
+msgid "Don't have it handy? Skip it. You can always connect it later from Settings > Import."
+msgstr "Нет под рукой? Пропустите этот шаг. Службу всегда можно подключить позже в разделе «Настройки → Импорт»."
 
 #: templates/users/onboarding/service_setup.html:25
 msgid "Public profile, private profile (OAuth), or a data export file."
@@ -13818,12 +13753,8 @@ msgid "Do you use any of these apps for %(value1)s?"
 msgstr "Вы пользуетесь каким-либо из этих приложений для %(value1)s?"
 
 #: templates/users/onboarding/services.html:14
-msgid ""
-"Pick any that apply — we'll walk you through connecting them next. Skip this"
-" if you don't use any."
-msgstr ""
-"Выберите все подходящие службы — дальше мы поможем подключить их. Если вы не"
-" пользуетесь такими службами, пропустите этот шаг."
+msgid "Pick any that apply. We'll walk you through connecting them next. Skip this if you don't use any."
+msgstr "Выберите все подходящие службы. Дальше мы поможем подключить их. Если вы не пользуетесь такими службами, пропустите этот шаг."
 
 #: templates/users/onboarding/services.html:15
 #, python-format
@@ -13834,9 +13765,7 @@ msgstr ""
 
 #: templates/users/onboarding/services.html:33
 #, python-format
-msgid ""
-"No dedicated services yet for %(value1)s — you can always bring in existing "
-"data with a backup/CSV import later."
+msgid "No dedicated services yet for %(value1)s. You can always bring in existing data with a backup or CSV import later."
 msgstr ""
 "Для %(value1)s пока нет отдельных служб. Существующие данные можно "
 "импортировать позже из резервной копии или CSV."
@@ -13866,9 +13795,7 @@ msgid "You can always finish this later from Settings > Import."
 msgstr "Настроить позже"
 
 #: templates/users/onboarding/services_summary.html:26
-msgid ""
-"You didn't pick any services to connect — that's fine, you can add them "
-"anytime from Settings > Import."
+msgid "You didn't pick any services to connect. That's fine, you can add them anytime from Settings > Import."
 msgstr ""
 "Вы не выбрали службы для подключения. Ничего страшного — их можно добавить в"
 " любое время в разделе «Настройки → Импорт»."
@@ -13975,35 +13902,35 @@ msgid "How dates appear."
 msgstr "Системная по умолчанию — 12 августа 2025 г. / 12 Aug 2025"
 
 #: templates/users/preferences.html:172
-msgid "System default — Aug 12, 2025 / 12 Aug 2025"
-msgstr "ISO 8601 — 2025-08-12"
+msgid "System default: Aug 12, 2025 / 12 Aug 2025"
+msgstr "ISO 8601: 2025-08-12"
 
 #: templates/users/preferences.html:177
-msgid "ISO 8601 — 2025-08-12"
-msgstr "Месяц Д, ГГГГ — 12 августа 2025 г."
+msgid "ISO 8601: 2025-08-12"
+msgstr "Месяц Д, ГГГГ: 12 августа 2025 г."
 
 #: templates/users/preferences.html:182
-msgid "Month D, YYYY — Aug 12, 2025"
-msgstr "Д месяц ГГГГ — 12 Aug 2025"
+msgid "Month D, YYYY: Aug 12, 2025"
+msgstr "Д месяц ГГГГ: 12 Aug 2025"
 
 #: templates/users/preferences.html:187
-msgid "D Mon YYYY — 12 Aug 2025"
-msgstr "М/Д/ГГГГ — 08/12/2025"
+msgid "D Mon YYYY: 12 Aug 2025"
+msgstr "М/Д/ГГГГ: 08/12/2025"
 
 #: templates/users/preferences.html:192
-msgid "M/D/YYYY — 08/12/2025"
-msgstr "Д/М/ГГГГ — 12/08/2025"
+msgid "M/D/YYYY: 08/12/2025"
+msgstr "Д/М/ГГГГ: 12/08/2025"
 
 #: templates/users/preferences.html:197
-msgid "D/M/YYYY — 12/08/2025"
-msgstr "ДД.ММ.ГГГГ — 12.08.2025"
+msgid "D/M/YYYY: 12/08/2025"
+msgstr "ДД.ММ.ГГГГ: 12.08.2025"
 
 #: templates/users/preferences.html:202
-msgid "DD.MM.YYYY — 12.08.2025"
-msgstr "ГГГГ/ММ/ДД — 2025/08/12"
+msgid "DD.MM.YYYY: 12.08.2025"
+msgstr "ГГГГ/ММ/ДД: 2025/08/12"
 
 #: templates/users/preferences.html:207
-msgid "YYYY/MM/DD — 2025/08/12"
+msgid "YYYY/MM/DD: 2025/08/12"
 msgstr "Формат времени"
 
 #: templates/users/preferences.html:217
@@ -14015,23 +13942,23 @@ msgid "How times appear."
 msgstr "Системный по умолчанию — 18:45"
 
 #: templates/users/preferences.html:251
-msgid "System default — 6:45 PM / 18:45"
-msgstr "12-часовой (ч:мм AM/PM) — 18:45"
+msgid "System default: 6:45 PM / 18:45"
+msgstr "12-часовой (ч:мм AM/PM): 18:45"
 
 #: templates/users/preferences.html:256
-msgid "12-hour (h:mm AM/PM) — 6:45 PM"
-msgstr "12-часовой с ведущими нулями (чч:мм AM/PM) — 06:45"
+msgid "12-hour (h:mm AM/PM): 6:45 PM"
+msgstr "12-часовой с ведущими нулями (чч:мм AM/PM): 06:45"
 
 #: templates/users/preferences.html:261
-msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
-msgstr "24-часовой (ЧЧ:мм) — 18:45"
+msgid "12-hour, leading zero (hh:mm AM/PM): 06:45 PM"
+msgstr "24-часовой (ЧЧ:мм): 18:45"
 
 #: templates/users/preferences.html:266
-msgid "24-hour (HH:mm) — 18:45"
-msgstr "24-часовой с секундами (ЧЧ:мм:сс) — 18:45:00"
+msgid "24-hour (HH:mm): 18:45"
+msgstr "24-часовой с секундами (ЧЧ:мм:сс): 18:45:00"
 
 #: templates/users/preferences.html:271
-msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
+msgid "24-hour with seconds (HH:mm:ss): 18:45:00"
 msgstr "Мобильная сетка"
 
 #: templates/users/preferences.html:281
@@ -14168,12 +14095,11 @@ msgid "Game history style."
 msgstr "Сеансы — новая запись для каждого игрового действия; точная история."
 
 #: templates/users/preferences.html:897
-msgid "Sessions — new entry per play; exact history"
-msgstr ""
-"Повторы — обновление одной записи; распределение времени по диапазону."
+msgid "Sessions: new entry per play; exact history"
+msgstr "Повторы: обновление одной записи; распределение времени по диапазону."
 
 #: templates/users/preferences.html:902
-msgid "Repeats — update one entry; spreads time across range"
+msgid "Repeats: update one entry; spreads time across range"
 msgstr "Формат прогресса"
 
 #: templates/users/preferences.html:912
@@ -14287,9 +14213,7 @@ msgid "Coming Soon"
 msgstr "делает недействительными старые ссылки на каналы."
 
 #: templates/users/rss.html:95
-msgid ""
-"rows for the Movie/TV/Anime media types). This feed uses your account's API "
-"token — regenerating it from"
+msgid "rows for the Movie/TV/Anime media types). This feed uses your account's API token. Regenerating it from"
 msgstr ""
 "для типов медиа «Фильмы», «Сериалы» и «Аниме». Лента использует API-токен "
 "аккаунта. При его обновлении в разделе"

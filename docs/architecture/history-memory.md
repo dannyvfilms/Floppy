@@ -45,12 +45,57 @@ row commit reads pre-write rows and republishes them under the new era. The
 next invalidation (any save) or staleness timer repairs it; this window
 existed before the era protocol and is unchanged by it.
 
+Day refreshes are deduped per set of days (`_refresh_dedupe_key`): while one
+is queued or running, another request for the same days is not queued. Such a
+request leaves a marker (`_refresh_rerun_key`) instead of vanishing. The
+refresh reads the marker before it reads rows and again when it finishes; a
+marker that appeared in between means a change landed after its read, so it
+queues one more pass. A marker already there at the start is covered by the
+read and is cleared. A finishing refresh releases only its own dedupe key, and
+the style lock only while that lock still names it, so a request for other
+days that is still waiting keeps its lock. Regression:
+`app.tests.test_history_refresh_rerun`.
+
 Regression: `app.tests.test_history_index_race_safety` drives the original
 interleavings deterministically (patched cache/build calls, never sleeps):
 lost-registry registrations, invalidation between row read and publish,
 publication with a retired token, era-key eviction, registry loss, full and
 day invalidation, style/user isolation, empty indexes, and a bounded
 repeated schedule.
+
+## A missing index and which days stay warm
+
+The month view reads only the index days that start with its month; the
+previous and next month links are calendar arithmetic. So when no index is
+cached for the user and style (six quiet hours, a Redis restart, an eviction),
+`get_month_history` answers from `build_history_index(..., window=(first, last))`,
+which runs the same per-source day queries restricted to that month (games in
+repeats style by span overlap, so a play crossing midnight or a month boundary
+still lists every day). It schedules the whole-history build in the background
+once (`schedule_history_refresh`, deduplicated by the refresh lock, never
+inline) and **never publishes the month list as the index**: readers treat the
+index key as every day that exists, so a month-only list there would empty
+every other month. If the task queue is down, each request keeps answering
+from its month. The era protocol is untouched: the background build captures
+its era before reading rows, as before. On a 9,600-day fixture this took the
+cold-index month request from 84 to 145 ms of CPU (the whole library, read
+per source) to about 8 ms, and its peak allocation from 1.7 MiB to 0.3 MiB.
+The anniversary view, the paged API view and Statistics highlights still
+build the whole index when it is missing; they need every year.
+
+Day payloads are built ahead of a visit only for the **style the user reads**
+(`game_logging_style`) and only for the **recent window**:
+`history_coverage_day_keys` keeps the days of the last
+`HISTORY_COVERAGE_WINDOW_DAYS` (62, the current and previous month) and never
+fewer than one page, so someone who has been away still finds their latest
+page warm. Every older day, and every day of the other style, is built by the
+reader the first time a page asks for it and then lives for its TTL. A write
+still invalidates both styles: the user's style keeps its old payloads
+readable until the scheduled rebuild replaces them; the other style's changed
+days and its index are deleted at once (`history_rebuild_styles`), so it is
+never served from before the write. A style switch therefore starts cold and
+correct. `HISTORY_COVERAGE_WINDOW_DAYS=0` warms every day again and
+`HISTORY_COVERAGE_BOTH_STYLES=true` warms both styles again.
 
 ## What production showed
 

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DetailChildren } from './DetailChildren';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { RatingStars } from './RatingStars';
+import { openModal } from './ModalHost';
+import { rootStyle } from './rootStyle.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -20,7 +22,7 @@ function resolveColor(value, fallback) {
 }
 
 function readPalette() {
-  const css = getComputedStyle(document.documentElement);
+  const css = rootStyle();
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   return {
@@ -74,6 +76,19 @@ function clickAction(legacy, item, key) {
   const row = legacyRow(legacy, item);
   const button = row?.querySelector(`[data-children-action="${key}"]`);
   if (!button) return false;
+  if (key === 'track') {
+    // The fallback row is hidden once React owns it. Its non-teleported
+    // comic popup cannot become visible through that hidden ancestor, so
+    // reuse the shared web modal host with a distinct target instead.
+    const url = button.getAttribute('hx-get');
+    const target = button.getAttribute('hx-target');
+    if (url && target) {
+      let vals;
+      try { vals = JSON.parse(button.getAttribute('hx-vals') || '{}'); } catch { vals = {}; }
+      openModal({ modal: 'track', url, target: `${target}-react-child`, vals });
+      return true;
+    }
+  }
   button.click();
   return true;
 }

@@ -2,10 +2,12 @@ import { getActiveAuthSession } from './authSession.js';
 import {
   createLocalStatisticsActions,
   createRemoteStatisticsActions,
-  flattenStatisticsModel,
+  featuredFromPerson,
+  statisticsModelFromPayload,
+  talentFromPayload,
 } from './statisticsTransportCore.js';
 
-export { flattenStatisticsModel };
+export { featuredFromPerson, statisticsModelFromPayload, talentFromPayload };
 
 export function createStatisticsTransport(options = {}) {
   if (typeof options.request === 'function') {

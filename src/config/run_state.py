@@ -63,7 +63,7 @@ _lock = threading.Lock()
 _stopped = threading.Event()
 
 
-def _now():
+def _utc_now_whole_seconds():
     return datetime.now(UTC).replace(microsecond=0)
 
 
@@ -297,7 +297,7 @@ def _append_history(line):
             lines = path.read_text().splitlines()
         except OSError:
             lines = []
-        lines = [*lines, f"{_now().isoformat()} {line}"][-HISTORY_MAX_LINES:]
+        lines = [*lines, f"{_utc_now_whole_seconds().isoformat()} {line}"][-HISTORY_MAX_LINES:]
         path.write_text("\n".join(lines) + "\n")
     except OSError:
         logger.debug("Could not write %s", path, exc_info=True)
@@ -331,7 +331,7 @@ def start():
 
     _state.clear()
     _state.update(
-        started_at=_now().isoformat(),
+        started_at=_utc_now_whole_seconds().isoformat(),
         version=settings.VERSION,
         hostname=socket.gethostname(),
         container_started_at=_container_started_at(),
@@ -352,7 +352,7 @@ def start():
 def _beat(*, clean):
     with _lock:
         _state.update(_sample())
-        _state["last_heartbeat"] = _now().isoformat()
+        _state["last_heartbeat"] = _utc_now_whole_seconds().isoformat()
         _state["clean"] = clean
         _write_state(_state)
 
@@ -385,7 +385,7 @@ def note_stop_signal(name):
     instead of an unexplained crash.
     """
     if _state:
-        _state.update(stop_signal=name, stop_requested_at=_now().isoformat())
+        _state.update(stop_signal=name, stop_requested_at=_utc_now_whole_seconds().isoformat())
         _beat(clean=False)
 
 

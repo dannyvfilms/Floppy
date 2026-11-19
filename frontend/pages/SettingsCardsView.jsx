@@ -5,7 +5,7 @@ import { SettingsPage } from './SettingsView';
 
 export const settingsCardsCopy = {
   title: 'Media Cards',
-  copy: 'Choose how cards look for each media type. Add properties below; up to three can share a line.',
+  copy: '',
 };
 
 // Card configuration and live preview for every media type. The adapter owns
@@ -26,6 +26,7 @@ export function SettingsCardsView({
   palette = {},
   buttonPalette = {},
   disabled = false,
+  renderPreview,
 }) {
   const copy = { ...settingsCardsCopy, ...(labels || {}) };
   return <View><SettingsPage title={copy.title} copy={copy.copy} palette={palette} heading={heading}>
@@ -33,7 +34,7 @@ export function SettingsCardsView({
     <CardsEditor catalog={catalog} saved={saved} initialSaved={initialSaved}
       initialTouchActions={initialTouchActions} active={active}
       touchActions={touchActions} onChange={onChange} onSave={onSave} validate={validate}
-      labels={labels} palette={palette} buttonPalette={buttonPalette} disabled={disabled} />
+      labels={labels} palette={palette} buttonPalette={buttonPalette} disabled={disabled} renderPreview={renderPreview} />
     </>}
   </SettingsPage></View>;
 }

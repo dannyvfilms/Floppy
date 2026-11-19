@@ -1,0 +1,113 @@
+# Per-user view caches
+
+Three short-lived caches make the media list, Home and the TV time-left sort fast
+on a repeat visit. They are cleared through one function so every write path
+agrees on what a change can make stale.
+
+## The caches
+
+| View | What it holds | Lifetime | Registry |
+|------|---------------|----------|----------|
+| Media list | Rendered list pages and their filter summaries | 60 s (filters 300 s) | `register_media_list_cache_key` |
+| Home rows | Built shelves; ranked shelf order; Up Next membership | 60 s; order 1800 s; Up Next 300 s | `register_home_row_cache_key` |
+| Time left | The TV list's time-left order | 300 s | `register_time_left_cache_key` |
+
+Each entry is registered per user when it is written, and a clear removes
+everything in that user's registry (`src/app/cache_utils.py`).
+
+## Keys
+
+The media-list and time-left keys are built from the view's effective
+`MediaListFilters` through `MediaListFilters.cache_token()`, plus a few view
+settings the filters do not hold (sort, anime library mode, title display for
+the A to Z rail, entry grouping). A new filter field reaches every key on its
+own. Each key's deliberate omissions are named in `cache_utils`
+(`FILTER_MENU_IGNORED_FILTERS`, `TIME_LEFT_IGNORED_FILTERS`), and
+`app.tests.views.test_media_list_cache_keys` pins which requests share an entry.
+
+## Clearing
+
+Call `cache_utils.clear_library_view_caches(user_id, change, media_types=...)`
+and name what happened. The table in `cache_utils` decides which views that can
+affect:
+
+| Change | Clears | Used by |
+|--------|--------|---------|
+| `LIBRARY_EDIT` (default; pass `media_types`) | Media list and Home, plus Time left when a TV, season or episode changed | Model signals, TV model methods, saves, bulk tracking, check-in, migrations |
+| `TAGS` | Media list, plus Home when the user has an enabled Home row filtered by tag | Tag views |
+| `LIST_SETTING` | Media list | List display preferences |
+| `HOME_SETTING` | Home | Enabled media types (web and API) |
+| `EPISODE_DETAILS` | Time left and media list | Provider runtime and air-date refreshes |
+
+`cache_utils.clear_show_view_caches(media_id, source, change)` applies a change
+to every user tracking a show or one of its seasons.
+
+Inside a transaction the function clears immediately and again on commit,
+because a concurrent reader can re-cache the rows from before the write until the
+write commits. Outside a transaction it clears once.
+
+`EPISODE_DETAILS` leaves Home out on purpose. A provider refresh touches every
+tracker of a show, and rebuilding Home costs a library scan. Home's order and
+Up Next caches pick these changes up when they expire.
+
+## When a write path must call it
+
+Model signals call it for single-row saves and deletes of tracked media. Call it
+yourself only after writes that skip signals: `QuerySet.update`, `bulk_create`,
+`bulk_update`, and blocks inside `suppress_media_change_side_effects()` that do
+not end in `flush_media_change_side_effects`.
+
+Every such write is listed in `src/app/bulk_write_refresh.py` with how the
+library pages, Statistics, History and the watch-state projection learn about
+it. A write that changes a status like a save would (auto-pause, a reopened
+show, a rewatch ending) runs `signals._handle_media_cache_change`, the same
+refresh a save runs, rather than a call of its own. A new bulk write on a
+tracking model fails `app.tests.test_bulk_write_refresh` until it has a row.
+
+## Adding a cache or a change
+
+- A new per-user view cache gets a registry and a column in `_VIEWS_BY_CHANGE`.
+  Callers do not change.
+- A new kind of change is added only when an existing one would clear something
+  it cannot affect, or miss something it can.
+
+## Tests
+
+`app.tests.test_view_cache_invalidation` pins what each change and each family
+of write paths clears. It also fails if any module outside `cache_utils.py`
+calls the per-view clear functions directly.
+
+`app.tests.test_bulk_write_refresh` scans the source tree (`ast`, about two
+seconds) for `update`, `bulk_create`, `bulk_update`, raw SQL and suppressed
+blocks on tracking models, and fails when one is not in
+`app/bulk_write_refresh.py`. Its behaviour tests warm a user's library page,
+Home and Statistics, make a bulk change through its view or service, and check
+that nothing cached from before the change can still be served.
+
+## Token feeds
+
+The calendar links (`events.views.download_calendar`,
+`download_history_calendar`) and the Discover RSS link
+(`app.discover.feeds.discover_row_feed`) are polled all day by calendar apps
+and Radarr/Sonarr, so each answers an unchanged poll from a validator it can
+compute without building the body (`app/feed_validation.py`). The user's side
+is the Statistics sync state (`StatisticsSyncState`), which every tracking and
+play write already marks; the release dates are `events.release_marker`,
+bumped by every path that creates, moves or deletes an `Event` (and only when
+something really changed). The validator also holds the link's token, its
+options, the day and, for the upcoming link, the enabled types and region. A
+matching `If-None-Match` gets a 304; otherwise the rendered calendar is kept
+for an hour under that validator, so a change can never serve an old body.
+The RSS link never builds a Discover row in the request: it serves a row
+built by `Refresh Discover Feed Row` (or by the settings preview), rebuilds
+it in the background when the user's library, Discover activity or the
+row's hour-long lifetime moves, and answers 503 with `Retry-After` until the
+first build lands, because an empty list can make arr list cleaning remove
+films. All three send `Cache-Control: private, max-age=900`. Item retitles and
+cross-provider duplicate mappings are not markers; the daily validator change
+picks them up.
+
+## Not covered here
+
+History (`app.history_cache`), Statistics (`docs/architecture/statistics-sync.md`)
+and Discover (`app.discover_tab_cache`) have their own invalidation contracts.
