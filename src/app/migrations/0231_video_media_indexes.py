@@ -9,6 +9,7 @@ from app.migration_operations import AddIndexIfNotExists
 class Migration(migrations.Migration):
     dependencies = [
         ("app", "0230_videogametag_status_cover_index"),
+        ("app", "0231_item_library_media_type_set"),
         ("integrations", "0063_wetrakr_account"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
