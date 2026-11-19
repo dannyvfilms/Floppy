@@ -486,7 +486,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,
-                library_media_type="",
+                library_media_type=MediaTypes.MOVIE.value,
                 defaults=self._item_defaults(
                     metadata,
                     fallback_title=(payload.get("Item") or {}).get("Name"),
@@ -545,7 +545,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 media_id=media_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                library_media_type="",
+                library_media_type=MediaTypes.TV.value,
                 defaults=self._item_defaults(
                     show_metadata,
                     fallback_title=(payload.get("Item") or {}).get("SeriesName"),
@@ -866,7 +866,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 media_id=media_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                library_media_type="",
+                library_media_type=MediaTypes.TV.value,
                 defaults=self._item_defaults(
                     metadata,
                     fallback_title=self._extract_series_title(payload),

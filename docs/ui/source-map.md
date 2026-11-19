@@ -711,7 +711,9 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
 - `src/templates/app/components/artist_discography_container.html`
-- `src/templates/app/components/artist_discography_groups.html`
+- `src/templates/app/components/artist_discography_groups.html` (each release-type group shows its first 24 albums; the heading counts every album in the group)
+- `src/templates/app/components/artist_discography_more.html` (a group's "Show more" button, the shared React `button`, and the hidden length the cover poller sends back so an expanded group stays expanded)
+- `src/templates/app/components/artist_discography_group_albums.html` (a group's album grid island and its button; `artist_discography_more` returns it one page longer, as one grid from the first album so rows stay aligned)
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`
@@ -755,6 +757,7 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)

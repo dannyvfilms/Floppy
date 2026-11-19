@@ -1,0 +1,2424 @@
+{
+  "pagination": {
+    "limit": 31,
+    "next": "http://testserver/api/v1/history/?limit=31&offset=31&max_entries_per_day=30",
+    "offset": 0,
+    "previous": null,
+    "total": 41
+  },
+  "results": [
+    {
+      "date": "2026-01-15",
+      "date_display": "January 15, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Sample Movie",
+          "end_date": "2026-01-15T12:00:00Z",
+          "entry_key": "1",
+          "entry_source": "",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 8,
+            "library_media_type": "movie",
+            "localized_title": null,
+            "media_id": "9400201",
+            "media_type": "movie",
+            "original_title": null,
+            "source": "tmdb",
+            "title": "Sample Movie"
+          },
+          "media_type": "movie",
+          "play_count": 1,
+          "played_at_local": "2026-01-15T12:00:00Z",
+          "poster": "https://example.com/movie.jpg",
+          "record_type": "movie_tracker",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-16T12:00:00Z",
+          "status": "In progress",
+          "title": "Sample Movie"
+        },
+        {
+          "album": {
+            "artist_name": "Shot Band",
+            "id": 1,
+            "image": "",
+            "title": "Shot Album"
+          },
+          "artist_name": "Shot Band",
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Shot Album",
+          "end_date": "2026-01-15T11:00:00Z",
+          "entry_key": "1-20260115",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Rock"
+          ],
+          "instance_id": 1,
+          "item": {
+            "id": 22,
+            "library_media_type": "music",
+            "localized_title": null,
+            "media_id": "sample-track-1",
+            "media_type": "music",
+            "original_title": null,
+            "source": "musicbrainz",
+            "title": "Track 1"
+          },
+          "media_type": "music",
+          "play_count": 3,
+          "played_at_local": "2026-01-15T11:00:00Z",
+          "poster": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
+          "runtime_display": "9min",
+          "runtime_minutes": 9,
+          "score": 9.0,
+          "start_date": null,
+          "time_range_display": "9:00 AM - 11:00 AM",
+          "title": "Shot Album"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 9,
+      "total_runtime_display": "9min",
+      "weekday": "Thursday"
+    },
+    {
+      "date": "2026-01-14",
+      "date_display": "January 14, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Sample Anime",
+          "end_date": "2026-01-14T12:00:00Z",
+          "entry_key": "anime-1-e1",
+          "episode_code": "E01",
+          "episode_label": "E01",
+          "episode_number": 1,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 9,
+            "library_media_type": "anime",
+            "localized_title": null,
+            "media_id": "9400301",
+            "media_type": "anime",
+            "original_title": null,
+            "source": "mal",
+            "title": "Sample Anime"
+          },
+          "media_type": "anime",
+          "played_at_local": "2026-01-14T12:00:00Z",
+          "poster": "https://example.com/anime.jpg",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 8.0,
+          "start_date": "2025-12-15T12:00:00Z",
+          "status": "Completed",
+          "title": "Sample Anime"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "The Long Title That Wraps Across Several Lines",
+          "end_date": "2026-01-14T12:00:00Z",
+          "entry_key": "2",
+          "entry_source": "",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama",
+            "Sci-Fi"
+          ],
+          "instance_id": 2,
+          "item": {
+            "genres": [
+              "Drama",
+              "Sci-Fi"
+            ],
+            "id": 16,
+            "library_media_type": "movie",
+            "localized_title": null,
+            "media_id": "sample-manual-movie",
+            "media_type": "movie",
+            "original_title": null,
+            "source": "manual",
+            "title": "The Long Title That Wraps Across Several Lines"
+          },
+          "media_type": "movie",
+          "play_count": 1,
+          "played_at_local": "2026-01-14T12:00:00Z",
+          "poster": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
+          "record_type": "movie_tracker",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 8.0,
+          "start_date": null,
+          "status": "Completed",
+          "title": "The Long Title That Wraps Across Several Lines"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 0,
+      "total_runtime_display": "0min",
+      "weekday": "Wednesday"
+    },
+    {
+      "date": "2026-01-13",
+      "date_display": "January 13, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Sample Manga",
+          "end_date": "2026-01-13T12:00:00Z",
+          "entry_key": "manga-1",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 10,
+            "library_media_type": "manga",
+            "localized_title": null,
+            "media_id": "9400401",
+            "media_type": "manga",
+            "original_title": null,
+            "source": "mal",
+            "title": "Sample Manga"
+          },
+          "media_type": "manga",
+          "played_at_local": "2026-01-13T12:00:00Z",
+          "poster": "https://example.com/manga.jpg",
+          "runtime_display": "720h 00min",
+          "runtime_minutes": 43200.0,
+          "score": 9.0,
+          "start_date": "2025-12-14T12:00:00Z",
+          "status": "In progress",
+          "title": "Sample Manga"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 1,
+      "total_minutes": 43200.0,
+      "total_runtime_display": "720h 00min",
+      "weekday": "Tuesday"
+    },
+    {
+      "date": "2026-01-12",
+      "date_display": "January 12, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260112",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-12T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 1,
+      "total_minutes": 0,
+      "total_runtime_display": "0min",
+      "weekday": "Monday"
+    },
+    {
+      "date": "2026-01-11",
+      "date_display": "January 11, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Sample Book",
+          "end_date": "2026-01-11T12:00:00Z",
+          "entry_key": "book-1",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 12,
+            "library_media_type": "book",
+            "localized_title": null,
+            "media_id": "OL9400601M",
+            "media_type": "book",
+            "original_title": null,
+            "source": "openlibrary",
+            "title": "Sample Book"
+          },
+          "media_type": "book",
+          "played_at_local": "2026-01-11T12:00:00Z",
+          "poster": "https://example.com/book.jpg",
+          "runtime_display": "720h 00min",
+          "runtime_minutes": 43200.0,
+          "score": 8.0,
+          "start_date": "2025-12-12T12:00:00Z",
+          "status": "In progress",
+          "title": "Sample Book"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260111",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-11T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 43200.0,
+      "total_runtime_display": "720h 00min",
+      "weekday": "Sunday"
+    },
+    {
+      "date": "2026-01-10",
+      "date_display": "January 10, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "display_title": "Sample Comic",
+          "end_date": "2026-01-10T12:00:00Z",
+          "entry_key": "comic-1",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 13,
+            "library_media_type": "comic",
+            "localized_title": null,
+            "media_id": "9400701",
+            "media_type": "comic",
+            "original_title": null,
+            "source": "comicvine",
+            "title": "Sample Comic"
+          },
+          "media_type": "comic",
+          "played_at_local": "2026-01-10T12:00:00Z",
+          "poster": "https://example.com/comic.jpg",
+          "runtime_display": "720h 00min",
+          "runtime_minutes": 43200.0,
+          "score": 9.0,
+          "start_date": "2025-12-11T12:00:00Z",
+          "status": "Completed",
+          "title": "Sample Comic"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260110",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-10T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 43200.0,
+      "total_runtime_display": "720h 00min",
+      "weekday": "Saturday"
+    },
+    {
+      "date": "2026-01-09",
+      "date_display": "January 9, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260109",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-09T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 1,
+      "total_minutes": 0,
+      "total_runtime_display": "0min",
+      "weekday": "Friday"
+    },
+    {
+      "date": "2026-01-08",
+      "date_display": "January 8, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260108",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-08T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260108",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-08T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "12h 00min",
+          "runtime_minutes": 720.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 720.0,
+      "total_runtime_display": "12h 00min",
+      "weekday": "Thursday"
+    },
+    {
+      "date": "2026-01-07",
+      "date_display": "January 7, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260107",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-07T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260107",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-07T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Wednesday"
+    },
+    {
+      "date": "2026-01-06",
+      "date_display": "January 6, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260106",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-06T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260106",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-06T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Tuesday"
+    },
+    {
+      "date": "2026-01-05",
+      "date_display": "January 5, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260105",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-05T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260105",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-05T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Monday"
+    },
+    {
+      "date": "2026-01-04",
+      "date_display": "January 4, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260104",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-04T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260104",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-04T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Sunday"
+    },
+    {
+      "date": "2026-01-03",
+      "date_display": "January 3, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260103",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-03T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260103",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-03T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Saturday"
+    },
+    {
+      "date": "2026-01-02",
+      "date_display": "January 2, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260102",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-02T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260102",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-02T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Friday"
+    },
+    {
+      "date": "2026-01-01",
+      "date_display": "January 1, 2026",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20260101",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2026-01-01T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20260101",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2026-01-01T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Thursday"
+    },
+    {
+      "date": "2025-12-31",
+      "date_display": "December 31, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251231",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-31T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251231",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-31T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Wednesday"
+    },
+    {
+      "date": "2025-12-30",
+      "date_display": "December 30, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251230",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-30T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251230",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-30T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Tuesday"
+    },
+    {
+      "date": "2025-12-29",
+      "date_display": "December 29, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251229",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-29T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251229",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-29T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Monday"
+    },
+    {
+      "date": "2025-12-28",
+      "date_display": "December 28, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251228",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-28T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251228",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-28T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Sunday"
+    },
+    {
+      "date": "2025-12-27",
+      "date_display": "December 27, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251227",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-27T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251227",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-27T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Saturday"
+    },
+    {
+      "date": "2025-12-26",
+      "date_display": "December 26, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251226",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-26T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251226",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-26T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Friday"
+    },
+    {
+      "date": "2025-12-25",
+      "date_display": "December 25, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251225",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-25T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251225",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-25T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Thursday"
+    },
+    {
+      "date": "2025-12-24",
+      "date_display": "December 24, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251224",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-24T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251224",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-24T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Wednesday"
+    },
+    {
+      "date": "2025-12-23",
+      "date_display": "December 23, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251223",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-23T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251223",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-23T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Tuesday"
+    },
+    {
+      "date": "2025-12-22",
+      "date_display": "December 22, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251222",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-22T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251222",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-22T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Monday"
+    },
+    {
+      "date": "2025-12-21",
+      "date_display": "December 21, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251221",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-21T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251221",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-21T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Sunday"
+    },
+    {
+      "date": "2025-12-20",
+      "date_display": "December 20, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251220",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-20T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251220",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-20T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Saturday"
+    },
+    {
+      "date": "2025-12-19",
+      "date_display": "December 19, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251219",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-19T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251219",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-19T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Friday"
+    },
+    {
+      "date": "2025-12-18",
+      "date_display": "December 18, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251218",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-18T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251218",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-18T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Thursday"
+    },
+    {
+      "date": "2025-12-17",
+      "date_display": "December 17, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251217",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-17T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251217",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-17T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Wednesday"
+    },
+    {
+      "date": "2025-12-16",
+      "date_display": "December 16, 2025",
+      "entries": [
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 13 - Jan 12",
+          "display_title": "Sample Game",
+          "end_date": "2026-01-12T12:00:00Z",
+          "entry_key": "1-20251216",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 11,
+            "library_media_type": "game",
+            "localized_title": null,
+            "media_id": "9400501",
+            "media_type": "game",
+            "original_title": null,
+            "source": "igdb",
+            "title": "Sample Game"
+          },
+          "media_type": "game",
+          "played_at_local": "2025-12-16T00:00:00Z",
+          "poster": "https://example.com/game.jpg",
+          "progress_display": "1min",
+          "runtime_display": null,
+          "runtime_minutes": 0,
+          "score": 7.0,
+          "start_date": "2025-12-13T12:00:00Z",
+          "title": "Sample Game"
+        },
+        {
+          "created_at": "2026-01-15T12:00:00Z",
+          "date_range_display": "Dec 9 - Jan 8",
+          "display_title": "Sample Board Game",
+          "end_date": "2026-01-08T12:00:00Z",
+          "entry_key": "1-20251216",
+          "episode_code": null,
+          "episode_label": null,
+          "genres": [
+            "Drama"
+          ],
+          "instance_id": 1,
+          "item": {
+            "genres": [
+              "Drama"
+            ],
+            "id": 15,
+            "library_media_type": "boardgame",
+            "localized_title": null,
+            "media_id": "9400801",
+            "media_type": "boardgame",
+            "original_title": null,
+            "source": "bgg",
+            "title": "Sample Board Game"
+          },
+          "media_type": "boardgame",
+          "played_at_local": "2025-12-16T00:00:00Z",
+          "poster": "https://example.com/boardgame.jpg",
+          "progress_display": "1 play",
+          "runtime_display": "24h 00min",
+          "runtime_minutes": 1440.0,
+          "score": 8.0,
+          "start_date": "2025-12-09T12:00:00Z",
+          "title": "Sample Board Game"
+        }
+      ],
+      "entries_truncated": false,
+      "entry_count": 2,
+      "total_minutes": 1440.0,
+      "total_runtime_display": "24h 00min",
+      "weekday": "Tuesday"
+    }
+  ]
+}

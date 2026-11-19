@@ -102,9 +102,28 @@ class DataInvariantTests(TestCase):
         return {name: n for name, n in self._counts(**kwargs).items() if n}
 
     def _empty_bucket(self, item):
-        # Item.save fills an empty bucket, so only a raw update can store one,
-        # which is how bulk_create left them in real libraries.
-        Item.objects.filter(pk=item.pk).update(library_media_type="")
+        # Bulk writes stored empty buckets in real libraries until migration
+        # 0231 made the database refuse them. The checks still guard a
+        # database that has not migrated, so the fixture lifts the check for
+        # this test only (rolled back with the test's transaction).
+        update = Item.objects.filter(pk=item.pk)
+        with connection.cursor() as cursor:
+            if connection.vendor == "postgresql":
+                # Run pending foreign-key checks first: PostgreSQL refuses to
+                # alter a table with deferred trigger events outstanding.
+                cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+                cursor.execute(
+                    "ALTER TABLE app_item DROP CONSTRAINT IF EXISTS "
+                    "app_item_library_media_type_set",
+                )
+                cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+                update.update(library_media_type="")
+                return
+            cursor.execute("PRAGMA ignore_check_constraints = ON")
+            try:
+                update.update(library_media_type="")
+            finally:
+                cursor.execute("PRAGMA ignore_check_constraints = OFF")
 
     def _run(self, *args):
         out = StringIO()
