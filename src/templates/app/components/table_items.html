@@ -6,7 +6,7 @@
 {% if not is_pagination %}
   {% if table_browser_props %}{{ table_browser_props|json_script:"table-browser-props" }}{% endif %}
   <div id="{{ table_view_id|default:'media-table-view' }}"
-       class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll media-table"
+       class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-2rem)] overflow-x-scroll media-table"
        {% if table_browser_props %}data-media-table-root data-props-id="table-browser-props"{% endif %}>
   <table class="w-full bg-[var(--color-surface)] media-table">
   <thead class="text-left text-[var(--color-text-muted)] text-sm">

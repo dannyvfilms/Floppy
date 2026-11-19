@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
 import { shelfCardWidth } from './HomeShelves';
 import { rootStyle } from './rootStyle.web';
@@ -104,10 +105,7 @@ function CastRail({ props, palette }) {
     palette={palette}
     web
     castWidth={width}
-    renderPersonCard={person => <MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
-      shape: 'poster', image: { src: person.imageUrl || person.imageFallback },
-      lines: person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
-        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })) }} />}
+    renderPersonCard={person => <MediaCard variant="grid" model={personCardModel(person)} />}
     viewAll={viewAll}
     collapsible={Boolean(props.collapseKey)}
     collapsed={props.collapseKey ? collapsed : undefined}

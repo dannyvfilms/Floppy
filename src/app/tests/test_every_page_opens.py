@@ -85,7 +85,7 @@ EXEMPT = {
 # from the reader itself, so a key the app starts reading is checked here.
 DETAIL_READER = (
     Path(settings.BASE_DIR).parent
-    / "native-proof"
+    / "expo"
     / "app"
     / "surfaces"
     / "DetailSlot.jsx"

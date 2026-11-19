@@ -30,8 +30,8 @@ if [ "$bootstrap" = 1 ]; then
   command -v uv >/dev/null && uv sync --locked --all-packages --all-extras
   echo "[bootstrap] web deps (root)"
   [ -f package-lock.json ] && npm ci --no-audit --no-fund
-  echo "[bootstrap] Expo deps (native-proof)"
-  [ -f native-proof/package-lock.json ] && npm ci --prefix native-proof --no-audit --no-fund
+  echo "[bootstrap] Expo deps (expo)"
+  [ -f expo/package-lock.json ] && npm ci --prefix expo --no-audit --no-fund
   refresh=1
 fi
 
@@ -56,7 +56,7 @@ line() { printf '%-22s %s\n' "$1" "$2"; }
   done
   [ -d .venv ] && line python-venv "present" || line python-venv "missing (run --bootstrap)"
   [ -d node_modules ] && line web-node_modules "present" || line web-node_modules "missing (run --bootstrap)"
-  [ -d native-proof/node_modules ] && line expo-node_modules "present" || line expo-node_modules "missing (run --bootstrap)"
+  [ -d expo/node_modules ] && line expo-node_modules "present" || line expo-node_modules "missing (run --bootstrap)"
 
   # Browser evidence (Expo Web and web screenshots)
   chromium=none

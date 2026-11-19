@@ -133,13 +133,13 @@ test('a legacy re-export through a web adapter must lead to the registered compo
 
 
 test('native application shell screens are allowed outside frontend but still checked', () => {
-  assert.equal(isNativeAppShellPresentation('native-proof/app/screens/HomeScreen.jsx'), true);
-  assert.equal(isNativeAppShellPresentation('native-proof/app/components/Note.tsx'), true);
-  assert.equal(isNativeAppShellPresentation('native-proof/App.js'), false);
+  assert.equal(isNativeAppShellPresentation('expo/app/screens/HomeScreen.jsx'), true);
+  assert.equal(isNativeAppShellPresentation('expo/app/components/Note.tsx'), true);
+  assert.equal(isNativeAppShellPresentation('expo/App.js'), false);
   assert.equal(isNativeAppShellPresentation('src/HomeScreen.jsx'), false);
-  assert.deepEqual(inspectUniversal(native, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
-  assert.deepEqual(inspectUniversal("import React from 'react'; import {Screen} from './Screen'; export default function Home(){return <Screen/>}", 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
-  assert.ok(inspectUniversal(`${native}; <div/>`, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }).length);
+  assert.deepEqual(inspectUniversal(native, 'expo/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
+  assert.deepEqual(inspectUniversal("import React from 'react'; import {Screen} from './Screen'; export default function Home(){return <Screen/>}", 'expo/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
+  assert.ok(inspectUniversal(`${native}; <div/>`, 'expo/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }).length);
 });
 
 // The island dispatch already supports these roots; a missing host selector

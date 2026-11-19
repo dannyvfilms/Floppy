@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Floppy Expo Build Tracker</title>
+<style>
+/* Layout: a summary band, then one row per page with three stacked bars (conversion, ownership, your sign-off); a row opens to its component list. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --fg:#161a22; --muted:#5d6676; --line:#dfe3ea; --line2:#eceff4; --accent:#3a4bd1; --accent-soft:#e8ebfb;
+  --c-rn:#2a9a8d; --c-neutral:#9bd3cb; --c-mixed:#e2a233; --c-dom:#d4553f;
+  --o-shared:#3b6fd4; --o-fe:#94b2ec; --o-reused:#8a6bd6; --o-unique:#e48a3a;
+  --v-signed:#0f7a4f; --v-reg:#4aa3c7; --v-part:#b9d7e6; --v-none:#d3d8e0;
+  --good:#0f7a4f; --warn:#a86a0a; --bad:#b83b27;
+  --f-ui:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif; --f-head:'Space Grotesk','Inter',system-ui,sans-serif; --f-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1218; --surface:#171b23; --fg:#e8ebf1; --muted:#9aa3b2; --line:#2a303b; --line2:#222833; --accent:#8e9bff; --accent-soft:#222850;
+  --c-rn:#35b3a4; --c-neutral:#2f6e66; --c-mixed:#e8b04a; --c-dom:#ee735c;
+  --o-shared:#6c97ee; --o-fe:#40598f; --o-reused:#a68df0; --o-unique:#f0a35c;
+  --v-signed:#2fbf84; --v-reg:#4aa3c7; --v-part:#35566a; --v-none:#333a47;
+  --good:#3ccf93; --warn:#e8b04a; --bad:#ee735c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --surface:#171b23; --fg:#e8ebf1; --muted:#9aa3b2; --line:#2a303b; --line2:#222833; --accent:#8e9bff; --accent-soft:#222850;
+  --c-rn:#35b3a4; --c-neutral:#2f6e66; --c-mixed:#e8b04a; --c-dom:#ee735c;
+  --o-shared:#6c97ee; --o-fe:#40598f; --o-reused:#a68df0; --o-unique:#f0a35c;
+  --v-signed:#2fbf84; --v-reg:#4aa3c7; --v-part:#35566a; --v-none:#333a47;
+  --good:#3ccf93; --warn:#e8b04a; --bad:#ee735c; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--f-ui);padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--f-head);margin:0;font-weight:600;text-wrap:balance}
+h1{font-size:26px;letter-spacing:-.01em}
+h2{font-size:16px}
+.mono{font-family:var(--f-mono);font-size:12px}
+.muted{color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between;align-items:flex-end}
+header.top p{margin:4px 0 0;max-width:62ch;color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:6px 12px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+label.chk{display:inline-flex;gap:6px;align-items:center;color:var(--muted);cursor:pointer}
+.banner{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 12px;color:var(--muted);font-size:13px}
+.banner.warn{border-color:var(--warn);color:var(--warn)}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card .big{font-family:var(--f-head);font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1}
+.card .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.card .sub{color:var(--muted);font-size:12.5px;margin:2px 0 10px}
+.bar{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--line2);gap:1px}
+.bar>i{display:block;min-width:0;height:100%}
+.bar.thin{height:10px}
+.bar.lg{height:20px}
+.leg{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;font-size:12px;color:var(--muted)}
+.leg span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.leg b{font-weight:500;color:var(--fg);font-variant-numeric:tabular-nums}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block;flex:none}
+.k-rn{background:var(--c-rn)}.k-neutral{background:var(--c-neutral)}.k-mixed{background:var(--c-mixed)}.k-dom{background:var(--c-dom)}.k-logic{background:var(--v-none)}
+.o-shared{background:var(--o-shared)}.o-fe{background:var(--o-fe)}.o-reused{background:var(--o-reused)}.o-unique{background:var(--o-unique)}
+.v-s{background:var(--v-signed)}.v-rv{background:var(--v-reg)}.v-rp{background:var(--v-part)}.v-u{background:var(--v-none)}
+details.how{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 16px}
+details.how summary{cursor:pointer;font-weight:600}
+details.how .defs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px 24px;margin-top:10px;color:var(--muted);font-size:13px}
+details.how dt{color:var(--fg);font-weight:600;margin-top:6px}
+details.how dd{margin:0}
+.group{display:flex;flex-direction:column;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.ghead,.row{display:grid;grid-template-columns:minmax(190px,1.15fr) repeat(3,minmax(0,1fr)) 20px;gap:10px 18px;align-items:center;padding:10px 16px}
+.ghead{background:var(--line2);border-bottom:1px solid var(--line)}
+.ghead h2{font-size:14px}
+.ghead .cols{display:contents;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.row{border:0;border-bottom:1px solid var(--line2);background:none;width:100%;text-align:left}
+.row:hover{background:var(--line2)}
+.row[aria-expanded="true"]{background:var(--accent-soft)}
+.pname{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pname strong{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pname .mono{color:var(--muted);overflow-wrap:anywhere}
+.bcell{min-width:0}
+.bcell .pct{font-size:11.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--muted);transition:transform .15s}
+.row[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.legacy{color:var(--warn);border-color:var(--warn)}
+.pill.shared{color:var(--good);border-color:var(--good)}
+.detail{padding:14px 16px 18px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;gap:12px}
+.facts{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--muted);font-size:12.5px}
+.facts .mono{color:var(--fg)}
+.tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.tools input[type=search]{font:inherit;padding:6px 10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;min-width:200px;flex:1;max-width:320px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 11px;font-size:12.5px;color:var(--muted)}
+.chip[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 12px;font-size:12.5px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.fam{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:10px 0 4px;border-bottom:1px solid var(--line2);display:flex;justify-content:space-between}
+.tscroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:720px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line2);vertical-align:top}
+td.nm{min-width:0;max-width:340px}
+td.nm button{border:0;background:none;padding:0;text-align:left;display:block}
+td.nm .mono{font-weight:500;color:var(--fg);overflow-wrap:anywhere}
+td.nm .pth{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere;font-family:var(--f-mono)}
+td.num{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.tag{display:inline-flex;gap:5px;align-items:center;font-size:12px;white-space:nowrap}
+.dots{display:inline-flex;gap:3px}
+.dot{width:18px;height:18px;border-radius:4px;font-size:9.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;background:var(--v-none);color:var(--bg)}
+.dot.on{background:var(--v-reg)}
+tr.open>td{background:var(--line2)}
+.ev{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12.5px;color:var(--muted);padding:6px 0}
+.ev b{display:block;color:var(--fg);font-weight:600;margin-bottom:2px}
+.ev input{width:100%;font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--v-signed);cursor:pointer}
+.empty{color:var(--muted);padding:14px 0}
+.toast{position:fixed;bottom:max(16px,env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:20}
+@media (max-width:900px){
+  .summary{grid-template-columns:1fr}
+  .ghead .cols{display:none}
+  .row,.ghead{grid-template-columns:1fr 20px}
+  .row .pname{grid-column:1}
+  .row .bcell{grid-column:1 / -1}
+  .row .chev{grid-column:2;grid-row:1}
+  .bcell .tl{display:block}
+}
+.tl{display:none;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head><body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Floppy Expo Build Tracker</h1>
+      <p>Every screen in <span class="mono">expo/</span> and the components it renders: how much is React Native, how much is shared with the web build, and how much is signed off in the component register.</p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Weight bars by"><button id="w-loc" aria-pressed="true">Lines of code</button><button id="w-files" aria-pressed="false">File count</button></div>
+      <label class="chk"><input type="checkbox" id="logic"> Include logic &amp; data files</label>
+    </div>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <section class="summary" id="summary" aria-label="Overall progress"></section>
+  <details class="how">
+    <summary>How the bars are calculated</summary>
+    <dl class="defs">
+      <div><dt>Native conversion</dt><dd>Read from each file's imports and JSX. <b>React Native</b> imports <span class="mono">react-native</span> and has no DOM markup. <b>Neutral</b> composes other components without its own primitives. <b>Mixed / DOM</b> still contains HTML tags, <span class="mono">className</span> or browser globals.</dd></div>
+      <div><dt>Code ownership</dt><dd><b>Shared</b>: a <span class="mono">frontend/</span> file the web build also imports (including <span class="mono">.native</span>/<span class="mono">.web</span> pairs). <b>Frontend, native only</b>: lives in <span class="mono">frontend/</span> but no web page uses it yet. <b>Reused native</b>: native-app code used by 2+ pages. <b>Unique native</b>: native-app code used by one page only, the first place to look for duplicated solutions.</dd></div>
+      <div><dt>Sign-off</dt><dd><b>Signed off</b> means the file is listed on a <span class="mono">- Sign-off:</span> line in <span class="mono">docs/ui/component-register.md</span> (the owner's review). <b>Registry verified</b> means <span class="mono">docs/ui/architecture-registry.json</span> records iOS and Android as verified (agent evidence, not yours); <b>partial</b> means one platform.</dd></div>
+      <div><dt>Page tree</dt><dd>Each page lists every file reachable from its native screen (and shared view), following <span class="mono">.native</span>/<span class="mono">.ios</span> variants as Metro does. Other pages' screens are not followed. Sign-offs apply to the file, so one sign-off counts on every page that uses it.</dd></div>
+    </dl>
+  </details>
+  <div id="groups"></div>
+  <p class="muted" id="foot" style="font-size:12px"></p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+let DATA = /*DATA*/null;
+</script>
+<script>
+(function(){
+let F=[], P={};
+let signed=new Map();
+function load(d){DATA=d;P=d.pages;F=d.files.map((a,i)=>({i,path:a[0],name:a[0].split('/').pop(),kind:a[1],loc:a[2],layer:a[3],own:a[4],onWeb:a[5],uses:a[6],reg:a[7],ver:a[8],ev:a[9],purpose:a[10],variants:a[11],usedBy:a[12],signoff:a[13]}));signed=new Map(F.filter(f=>f.signoff).map(f=>[f.path,f.signoff]))}
+load(DATA);
+const KINDS=[['rn','React Native','k-rn'],['neutral','Neutral composition','k-neutral'],['mixed','Mixed / DOM','k-mixed'],['dom','DOM only','k-dom'],['logic','Logic / data','k-logic']];
+const OWNS=[['shared','Shared with web','o-shared'],['shared-native-only','Frontend, native only','o-fe'],['native-reused','Reused native','o-reused'],['native-unique','Unique native','o-unique']];
+const VERS=[['s','Signed off','v-s'],['rv','Registry: iOS + Android','v-rv'],['rp','Registry: one platform','v-rp'],['u','Unverified','v-u']];
+const KLABEL={rn:'React Native',neutral:'Neutral',mixed:'Mixed / DOM',dom:'DOM only',logic:'Logic / data'};
+const OLABEL={'shared':'Shared','shared-native-only':'Frontend, native only','native-reused':'Reused native','native-unique':'Unique native'};
+const LAYER={frontend:'frontend/',  'native-surface':'native surfaces','native-screen':'native screens','native-data':'native data','native-component':'native components','native-app':'native app'};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>n.toLocaleString('en-US');
+let byLoc=true, inclLogic=false;
+let openPage=null, openFile=null;
+const pf=new Map();  // per-page UI filters; a Map so a page key like '__proto__' can never reach Object.prototype
+function pfOf(k){let v=pf.get(k); if(!v){v={q:'',flt:'all'}; pf.set(k,v)} return v}
+try{const h=location.hash.slice(1); if(P[h]) openPage=h}catch(e){}
+
+function inc(f){return inclLogic||f.kind!=='logic'}
+function w(f){return byLoc?Math.max(f.loc,1):1}
+function vcat(f){
+  const so=signed.get(f.path); if(so&&!so.stale) return 's';
+  if(!f.ver) return 'u';
+  const n=f.ver.slice(1).filter(x=>x==='verified').length;
+  if(n===2) return 'rv'; if(f.ver.some(x=>x==='verified')) return 'rp'; return 'u';
+}
+function kcat(f){return f.kind}
+function tally(list){
+  const t={k:{},o:{},v:{},total:0,n:0};
+  for(const f of list){ if(!inc(f)) continue; const x=w(f); t.total+=x; t.n++;
+    const k=kcat(f); t.k[k]=(t.k[k]||0)+x; t.o[f.own]=(t.o[f.own]||0)+x; const v=vcat(f); t.v[v]=(t.v[v]||0)+x; }
+  return t;
+}
+function bar(def,counts,total,cls){
+  if(!total) return '<div class="bar '+cls+'"></div>';
+  return '<div class="bar '+cls+'" role="img" aria-label="'+esc(def.map(d=>d[1]+' '+Math.round((counts[d[0]]||0)/total*100)+'%').join(', '))+'">'+
+    def.filter(d=>counts[d[0]]).map(d=>{const v=counts[d[0]];return '<i class="'+d[2]+'" style="flex:'+v+' 1 0" title="'+esc(d[1]+': '+fmt(v)+(byLoc?' lines':' files')+' ('+(v/total*100).toFixed(0)+'%)')+'"></i>'}).join('')+'</div>';
+}
+function pctLine(def,counts,total,keys){
+  if(!total) return '–';
+  return keys.map(k=>{const d=def.find(x=>x[0]===k);return Math.round((counts[k]||0)/total*100)+'% '+d[1].toLowerCase().replace('signed off by you','signed off')}).join(' · ');
+}
+function legend(def,counts,total){
+  return '<div class="leg">'+def.map(d=>'<span><i class="sw '+d[2]+'"></i>'+esc(d[1])+' <b>'+(total?Math.round((counts[d[0]]||0)/total*100):0)+'%</b></span>').join('')+'</div>';
+}
+function pageFiles(key){return P[key].f.map(x=>F[x[0]])}
+function allUnique(keys){const s=new Set();keys.forEach(k=>P[k].f.forEach(x=>s.add(x[0])));return [...s].map(i=>F[i])}
+
+function renderSummary(){
+  const all=allUnique(Object.keys(P)); const t=tally(all);
+  const rnPct=t.total?Math.round(((t.k.rn||0)+(t.k.neutral||0))/t.total*100):0;
+  const shPct=t.total?Math.round((t.o.shared||0)/t.total*100):0;
+  const sgPct=t.total?Math.round((t.v.s||0)/t.total*100):0;
+  const pgs=Object.values(P); const sharedPages=pgs.filter(p=>p.status==='shared').length;
+  $('#summary').innerHTML=
+   card('Native conversion',rnPct+'%',fmt(t.n)+' unique '+(inclLogic?'files':'UI files')+' across '+pgs.length+' pages',DATA_K(t))+
+   card('Shared with web',shPct+'%',sharedPages+' of '+pgs.length+' pages registered as shared; the rest own their composition',DATA_O(t))+
+   card('Signed off',sgPct+'%',(n=>n+' file'+(n===1?'':'s')+' signed off'+(F.some(f=>f.signoff&&f.signoff.stale)?', '+F.filter(f=>f.signoff&&f.signoff.stale).length+' to re-review':''))(F.filter(f=>vcat(f)==='s').length),DATA_V(t));
+}
+function DATA_K(t){return bar(KINDS,t.k,t.total,'lg')+legend(KINDS,t.k,t.total)}
+function DATA_O(t){return bar(OWNS,t.o,t.total,'lg')+legend(OWNS,t.o,t.total)}
+function DATA_V(t){return bar(VERS,t.v,t.total,'lg')+legend(VERS,t.v,t.total)}
+function card(l,big,sub,body){return '<div class="card"><div class="lbl">'+l+'</div><div class="big">'+big+'</div><div class="sub">'+sub+'</div>'+body+'</div>'}
+
+function bars(list){
+  const t=tally(list);
+  return '<div class="bcell"><span class="tl">Native conversion</span>'+bar(KINDS,t.k,t.total,'')+'<div class="pct">'+pctLine(KINDS,t.k,t.total,['rn','neutral','mixed','dom','logic'].filter(k=>t.k[k]))+'</div></div>'+
+   '<div class="bcell"><span class="tl">Code ownership</span>'+bar(OWNS,t.o,t.total,'')+'<div class="pct">'+pctLine(OWNS,t.o,t.total,['shared','native-unique'])+'</div></div>'+
+   '<div class="bcell"><span class="tl">Sign-off</span>'+bar(VERS,t.v,t.total,'')+'<div class="pct">'+pctLine(VERS,t.v,t.total,['s','rv'])+'</div></div>';
+}
+function renderGroups(){
+  $('#groups').innerHTML='<div style="display:flex;flex-direction:column;gap:18px">'+DATA.groups.map(g=>{
+    const list=allUnique(g.pages);
+    return '<section class="group"><div class="ghead"><h2>'+esc(g.name)+'</h2><div class="cols"><span>Native conversion</span><span>Code ownership</span><span>Sign-off</span><span></span></div></div>'+
+      g.pages.map(k=>pageRow(k)).join('')+'</section>';
+  }).join('')+'</div>';
+}
+function pageRow(k){
+  const p=P[k], list=pageFiles(k), open=openPage===k;
+  const noNative=!p.f.length;
+  const pill=p.status==='shared'?'<span class="pill shared">Shared view</span>':'<span class="pill legacy">Legacy page</span>';
+  const web=p.serverOwned?'<span class="pill" title="No web React adapter: the browser page is server-rendered">Web: server-owned</span>':'';
+  return '<button class="row" data-page="'+k+'" aria-expanded="'+open+'" id="r-'+k+'"><div class="pname"><strong>'+esc(p.label)+pill+web+'</strong><span class="mono">'+esc(p.route)+'</span></div>'+
+    (noNative?'<div class="bcell muted" style="grid-column:2 / 5">No native implementation of its own: Sidebar settings has no native view yet.</div>':bars(list))+'<span class="chev" aria-hidden="true">›</span></button>'+(open?detail(k):'');
+}
+function famOf(f){return f.reg||LAYER[f.layer]||f.layer}
+function detail(k){
+  const p=P[k]; const st=pfOf(k);
+  let list=pageFiles(k).filter(inc);
+  const counts={all:list.length,unsigned:list.filter(f=>vcat(f)!=='s').length,unique:list.filter(f=>f.own==='native-unique').length,dom:list.filter(f=>f.kind==='dom'||f.kind==='mixed').length,unver:list.filter(f=>vcat(f)==='u').length};
+  const q=st.q.toLowerCase();
+  const view=list.filter(f=>(!q||f.path.toLowerCase().includes(q)||famOf(f).toLowerCase().includes(q))&&(st.flt==='all'||(st.flt==='unsigned'&&vcat(f)!=='s')||(st.flt==='unique'&&f.own==='native-unique')||(st.flt==='dom'&&(f.kind==='dom'||f.kind==='mixed'))||(st.flt==='unver'&&vcat(f)==='u')));
+  const fams={}; view.forEach(f=>(fams[famOf(f)]=fams[famOf(f)]||[]).push(f));
+  const famKeys=Object.keys(fams).sort((a,b)=>fams[b].reduce((s,f)=>s+f.loc,0)-fams[a].reduce((s,f)=>s+f.loc,0));
+  const chip=(id,l)=>'<button class="chip" data-flt="'+id+'" aria-pressed="'+(st.flt===id)+'">'+l+' '+counts[id]+'</button>';
+  const facts=[['Screen',p.screen],['Adapter',p.adapter],['Shared view',p.view],['Web adapter',p.webAdapter]].filter(x=>x[1]).map(x=>'<span>'+x[0]+': <span class="mono">'+esc(x[1])+'</span></span>').join('');
+    return '<div class="detail" id="d-'+k+'"><div class="facts">'+facts+(p.status!=='shared'?'<span>Registry marks this page <b>legacy</b>: the native screen owns its own composition.</span>':'')+'</div>'+
+   '<div class="tools"><input type="search" id="q-'+k+'" placeholder="Filter components" value="'+esc(st.q)+'" aria-label="Filter components">'+
+   '<div class="chips">'+chip('all','All')+chip('unsigned','Not signed off')+chip('unique','Unique native')+chip('dom','DOM / mixed')+chip('unver','Unverified')+'</div>'+
+   '</div>'+
+   (view.length?famKeys.map(fam=>famTable(fam,fams[fam])).join(''):'<div class="empty">No components match this filter.</div>')+'</div>';
+}
+function famTable(fam,list){
+  list=list.slice().sort((a,b)=>b.loc-a.loc);
+  const lines=list.reduce((s,f)=>s+f.loc,0);
+  return '<div><div class="fam"><span>'+esc(fam)+'</span><span>'+list.length+' file'+(list.length===1?'':'s')+' · '+fmt(lines)+' lines</span></div><div class="tscroll"><table><thead><tr><th>Component</th><th>Native</th><th>Ownership</th><th class="num">Pages</th><th class="num">Lines</th><th>Registry</th><th>Sign-off</th></tr></thead><tbody>'+list.map(fileRow).join('')+'</tbody></table></div></div>';
+}
+function fileRow(f){
+  const so=signed.get(f.path); const o=openFile===f.path;
+  const kc=(KINDS.find(k=>k[0]===f.kind)||[])[2]; const oc=OWNS.find(x=>x[0]===f.own)[2];
+  const dots=f.ver?'<span class="dots" title="web / iOS / Android as recorded in the architecture registry">'+['W','i','A'].map((l,i)=>'<span class="dot '+(f.ver[i]==='verified'?'on':'')+'">'+l+'</span>').join('')+'</span>':'<span class="muted">not registered</span>';
+  let r='<tr class="'+(o?'open':'')+'"><td class="nm"><button data-file="'+esc(f.path)+'" aria-expanded="'+o+'"><span class="mono">'+esc(f.name)+'</span><span class="pth">'+esc(f.path.replace(/\/[^/]*$/,'/'))+'</span></button></td>'+
+   '<td><span class="tag"><i class="sw '+kc+'"></i>'+KLABEL[f.kind]+'</span></td><td><span class="tag"><i class="sw '+oc+'"></i>'+OLABEL[f.own]+'</span></td>'+
+   '<td class="num">'+f.uses+'</td><td class="num">'+fmt(f.loc)+'</td><td>'+dots+'</td>'+
+   '<td>'+(so?(so.stale?'<span class="tag" title="Changed '+esc(so.changed)+', after the sign-off"><i class="sw k-mixed"></i>Re-review</span>':'<span class="tag"><i class="sw v-s"></i>'+esc(so.by||'signed')+(so.date?' · '+esc(so.date):'')+'</span>'):'<span class="muted">–</span>')+'</td></tr>';
+  if(o){
+    const evs=f.ev?['Web','iOS','Android'].map((l,i)=>'<div><b>'+l+': '+esc(f.ver[i])+'</b>'+esc(f.ev[i])+'</div>').join(''):'<div><b>No registry entry</b>This file is not listed in docs/ui/architecture-registry.json, so nothing is recorded about it.</div>';
+    r+='<tr class="open"><td colspan="7"><div class="ev">'+evs+
+     '<div><b>Used on</b>'+f.usedBy.map(u=>esc(P[u].label)).join(', ')+'</div>'+
+     (f.variants.length?'<div><b>Platform variants</b><span class="mono">'+f.variants.map(v=>esc(v.split('/').pop())).join(', ')+'</span></div>':'')+
+     (f.purpose?'<div><b>Purpose</b>'+esc(f.purpose)+'</div>':'')+
+     '<div><b>Sign-off</b>'+(so?esc([so.by,so.date,so.note].filter(Boolean).join(' · ')||'Signed off')+(so.stale?' — changed '+esc(so.changed)+', so it needs a new review':''):'Not signed off. Add a <span class="mono">- Sign-off:</span> line to its family in component-register.md (see docs/ui/expo-dashboard.md).')+'</div></div></td></tr>';
+  }
+  return r;
+}
+function renderAll(){
+  const a=document.activeElement, aid=a&&a.id, sel=a&&a.selectionStart;
+  renderSummary(); renderGroups();
+  if(aid){const n=document.getElementById(aid); if(n){n.focus(); try{n.setSelectionRange(sel,sel)}catch(e){}}}
+  $('#foot').textContent='Scanned from the Expo project on '+DATA.generated+'. Sizes count non-comment lines. Re-run the scan to refresh after the code changes.';
+}
+let tt; function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3500)}
+
+/* ---- events ---- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button,input'); if(!t) return;
+  if(t.dataset.page){const k=t.dataset.page; openPage=openPage===k?null:k; openFile=null; try{history.replaceState(null,'',openPage?'#'+openPage:location.pathname)}catch(_){ } renderAll(); const r=document.getElementById('r-'+k); if(r&&openPage) r.scrollIntoView({block:'nearest'}); return}
+  if(t.dataset.file){openFile=openFile===t.dataset.file?null:t.dataset.file; renderAll(); return}
+  if(t.dataset.flt){pfOf(openPage).flt=t.dataset.flt; renderAll(); return}
+  if(t.id==='w-loc'||t.id==='w-files'){byLoc=t.id==='w-loc'; $('#w-loc').setAttribute('aria-pressed',byLoc); $('#w-files').setAttribute('aria-pressed',!byLoc); renderAll(); return}
+});
+document.addEventListener('change',e=>{if(e.target.id==='logic'){inclLogic=e.target.checked; renderAll()}});
+document.addEventListener('input',e=>{const t=e.target; if(t.id&&t.id.startsWith('q-')){pfOf(openPage).q=t.value; renderAll()}});
+
+/* ---- boot ---- */
+renderAll();
+const live=location.protocol.startsWith('http');
+async function refresh(){
+  try{const r=await fetch('/data.json',{cache:'no-store'}); if(!r.ok) throw 0; const d=await r.json(); if(d.source!==DATA.source||JSON.stringify(d.files)!==JSON.stringify(DATA.files)||JSON.stringify(d.pages)!==JSON.stringify(DATA.pages)){load(d); renderAll(); toast('Updated from the repo')} const un=d.unplaced||[]; $('#banner').hidden=false; $('#banner').textContent='Live: '+d.source+'. Updates when this branch moves.'+(un.length?' Sign-off lines name files that are on no page tree: '+un.join(', ')+'.':''); $('#banner').classList.toggle('warn',un.length>0)}
+  catch(e){$('#banner').hidden=false; $('#banner').textContent='Live rescan stopped. Restart with python3 scripts/expo_dashboard.py --serve.'; $('#banner').classList.add('warn')}
+}
+if(live){refresh(); setInterval(refresh,4000)} else {$('#banner').hidden=false; $('#banner').textContent='Snapshot of '+DATA.source+', generated '+DATA.generated+'. Re-run scripts/expo_dashboard.py to refresh, or use --serve for a live view.'}
+})();
+</script>
+
+</body></html>

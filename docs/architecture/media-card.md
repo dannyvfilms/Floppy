@@ -62,7 +62,7 @@ and list-reorder controls from the same action specs, with explicit `onAction`,
 `onReorder` and reveal callbacks; touch reveals the buttons and hover reveals them
 where the platform reports hover. It never posts, fetches or opens a popup itself.
 `frontend/ui/MediaCardActionHost.jsx` is the native popup shell for modal actions,
-while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlot.jsx`
+while the browser keeps `ModalHost.jsx`. `expo/app/surfaces/MediaCardSlot.jsx`
 renders the card and the callback contract on Home, Discover and Library with demo
 library items.
 
@@ -167,11 +167,16 @@ chip that the table says should show.
 ## Not this card
 
 These cards are built separately, on purpose, because they show a different kind of
-thing or use a different layout: list cards (`lists/components/list_grid.html`),
-history day cards, the Now Playing server-rendered fallback, person and cast cards, and statistics highlights. The React-owned Now Playing card uses this shared MediaCard.
-A person's or studio's list of titles is not one of them: it uses the `credit` surface, with
-`people_views.attach_card_media` loading the viewer's tracking row for each title. The Statistics
-repeat-player strip is still the older hand-built `person_filmography_card.html`.
+thing or use a different layout: history day cards and the Detail episode cards. Every other
+card is the shared MediaCard, including a custom list's (`list_card_model`; a list is not a
+media item, so its buttons are Pin to sidebar and Settings and it has no status or rating). Where React draws
+a card over a server element (artist albums and relations, the Statistics hero, Now Playing, the
+cast rail), the server element is `app/components/card_shell.html`: a poster and a title, the
+first paint, and nothing else. It never carries the card's content, and React hosts are hidden
+until they mount, so there is no hand-written fallback card to keep in step. A person's or
+studio's list of titles uses the `credit` surface, with `people_views.attach_card_media` loading
+the viewer's tracking row for each title. The Statistics repeat-player strip is a model too
+(`filmography_card_model`, tag `filmography_card_react`).
 Do not copy the `media-card-*` classes into a new card for a media item; use the tag.
 
 The library's album and artist grids (`artist_grid_items.html`,
@@ -188,6 +193,21 @@ Known remaining duplication:
   loads episodes' seasons and annotates `max_progress`, and serves the owner's data on
   public lists.
 - Moving either onto the shared lookup needs its own change, with query-count checks.
+
+## One card, many data shapes
+
+A card that looks like a media card is a media card. Another kind of data (a person, a Statistics
+highlight, a Steam DLC, a franchise entry) reaches it through an adapter in
+`frontend/ui/cardModels.js`, which builds the same model the server builds; no component draws its
+own poster and gradient. What a model can configure beyond the basics: `subtitleAbove`, any
+`aspectRatio`, `highlighted`, `density: 'compact'`, expandable lines, and corner chips with a
+`position`, `icon` or `action`. The press-and-hold menu is part of the card, built from the
+actions and callbacks it is given (`frontend/ui/cardMenu.js`) and installed once per app
+(`cardMenuHost.js`), so every Expo screen gets the same menu in the same order.
+
+Expo is guarded the way the web templates are: `expo/app/mediaCardReuse.test.mjs` fails if
+a component other than the card imports the card gradient or draws its own. Its `FOLLOW_UPS` list
+names what still has to move (today the Detail episode cards) and can only shrink.
 
 ## Artwork loading
 

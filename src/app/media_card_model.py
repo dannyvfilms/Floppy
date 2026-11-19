@@ -6,15 +6,19 @@ content so the template and the React card read one answer. Hover actions,
 modals and the rating button are added by later slices.
 """
 
+import re
+
 from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
 from app.artwork_sizes import card_image_url
-from app.icon_specs import file_icon
+from app.icon_specs import file_icon, type_icon
 from app.models import MediaTypes, Status
 from app.templatetags import app_tags
 from users.templatetags import user_tags
+
+_EPISODE_PATH = re.compile(r"/season/(\d+)/episode/(\d+)")
 
 SQUARE_TYPES = {MediaTypes.PODCAST.value, MediaTypes.MUSIC.value}
 
@@ -246,7 +250,34 @@ def _subtitle_lines(ctx, media_type):
     return lines
 
 
+def _special_lines_dormant(ctx, media_type):
+    """Whether a line that replaces the saved subtitle lines stays visible at rest.
+
+    Episode codes, release dates, play times and the like take the place of the
+    user's lines, so they follow the user's choice for the first line (or the
+    type-level choice when no per-line choice exists) instead of always waiting
+    for hover.
+    """
+    from users.card_metadata import DISPLAY_ALWAYS, DISPLAY_DORMANT, resolve_profile
+
+    profile = resolve_profile(ctx.get("user"), media_type)
+    if ctx.get("card_use_lines"):
+        lines = profile.get("lines") or []
+        return bool(lines) and lines[0].get("display") == DISPLAY_DORMANT
+    return profile["display"] == DISPLAY_ALWAYS
+
+
 def _item_lines(ctx, media_type):
+    """Lines under the title, each marked dormant (visible at rest) or hover."""
+    lines = _item_lines_by_precedence(ctx, media_type)
+    dormant = _special_lines_dormant(ctx, media_type)
+    for line in lines:
+        # Lines the saved profile produced already carry their own flag.
+        line.setdefault("dormant", dormant)
+    return lines
+
+
+def _item_lines_by_precedence(ctx, media_type):
     """Lines under the title, in the same precedence the template used."""
     media, item, user = ctx.get("media"), ctx.get("item"), ctx.get("user")
     lines = []
@@ -389,12 +420,20 @@ def _corner_chips(ctx, media_type):
     ):
         href = app_tags.next_episode_url(item, media)
         if href:
-            chips.append({
+            chip = {
                 "kind": "next-episode",
                 "text": _("Next ep"),
                 "compactText": _("Next"),
                 "href": href,
-            })
+            }
+            # Desktop hover widens the chip to name the episode: the long wording when it
+            # fits, else the short chip text with the code.
+            match = _EPISODE_PATH.search(href)
+            if match:
+                code = f"S{int(match[1]):02d}E{int(match[2]):02d}"
+                chip["expandedText"] = _("Next episode: %(code)s") % {"code": code}
+                chip["expandedShortText"] = f"{chip['text']}: {code}"
+            chips.append(chip)
     return chips
 
 
@@ -1036,4 +1075,278 @@ def progress_changer_model(media, csrf_token=""):
             if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
             else ""
         ),
+    }
+
+
+def list_card_model(custom_list, user, request=None, profile_username=None):
+    """Return a custom list as a card for the shared React card.
+
+    A list is not a media item, so the card is built from the list: its cover, a count line that
+    shows on hover like every card's subtitle, and, for the owner's own page, Pin to sidebar and Settings.
+    """
+    from django.middleware.csrf import get_token
+
+    href = reverse("list_detail", args=[custom_list.public_reference])
+    cached = getattr(custom_list, "cached_cover_url", None)
+    image = {"src": app_tags.image_url(cached) if cached else "", "fallback": "", "source": "primary"}
+    if not cached:
+        # A cold cover is found after the page renders; the card asks for it when it is on screen.
+        image["coverUrl"] = reverse("list_cover_image", args=[custom_list.id])
+    parts = []
+    count = custom_list.items_count
+    if count > 0:
+        text = ngettext("%(value_1)s item", "%(value_1)s items", count) % {"value_1": count}
+        percent = getattr(custom_list, "completion_percent", None)
+        if percent is not None:
+            text += " " + _("· %(value_1)s%% completed") % {"value_1": percent}
+        parts.append(text)
+    lines = [{"clamp": True, "dormant": False, "parts": [{"text": text}]} for text in parts]
+    if not profile_username:
+        role = getattr(custom_list, "role", None)
+        if role == "Viewer":
+            lines.append({"clamp": True, "dormant": False, "parts": [{"text": _("Shared with you · view only")}]})
+        elif role == "Collaborator":
+            lines.append({"clamp": True, "dormant": False, "parts": [{"text": _("Shared with you · can edit")}]})
+    chips = []
+    if custom_list.is_smart:
+        chips.append(
+            {
+                "kind": "text",
+                "position": "bottom-right",
+                "icon": file_icon("bolt"),
+                "title": _("Smart List"),
+                "color": "#facc15",
+            },
+        )
+    items = []
+    if not profile_username:
+        items.append(
+            {
+                "kind": "pin",
+                "tone": "indigo",
+                "title": _("Pin to sidebar"),
+                "titleActive": _("Unpin from sidebar"),
+                "icon": file_icon("pin"),
+                "pin": {
+                    "id": str(custom_list.pk),
+                    "name": custom_list.name,
+                    "url": href,
+                    "pinsUrl": reverse("sidebar_pins"),
+                },
+            },
+        )
+        if getattr(custom_list, "can_edit", False):
+            items.append(
+                {
+                    "kind": "modal",
+                    "modal": "list",
+                    "tone": "emerald",
+                    "title": _("Settings"),
+                    "icon": file_icon("ellipsis"),
+                    "url": reverse("list_edit_form", args=[custom_list.id]),
+                    "vals": {},
+                    "target": f"#list-edit-modal-{custom_list.id}",
+                },
+            )
+    return {
+        "mediaType": "list",
+        "shape": "landscape",
+        "aspectRatio": 1.5,
+        "video": False,
+        "publicView": False,
+        "recommend": False,
+        "bulkItemId": None,
+        "href": href,
+        "image": image,
+        "title": custom_list.name,
+        "altTitle": None,
+        "statusChip": None,
+        "cornerChips": chips,
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": lines,
+        "actions": {
+            "href": href,
+            "items": items,
+            "ordering": None,
+            "modals": {},
+            "csrfToken": get_token(request) if request else "",
+            "clickable": bool(getattr(user, "clickable_media_cards", False)),
+        },
+        "quickStatus": None,
+        "cardKey": f"list-{custom_list.id}",
+    }
+
+
+def filmography_card_model(entry, user, source=None):
+    """Return a person's filmography entry (a plain dict) as a card for the shared React card.
+
+    The entry has no tracker row to act on, so the card links to the title and shows its
+    subtitle lines and the rating or watched-runtime chip; it has no hover actions.
+    """
+    from django.conf import settings
+
+    from users.card_metadata import card_lines
+
+    media_type = entry.get("media_type") or ""
+    tracked = entry.get("tracked_item")
+    if tracked:
+        href = app_tags.media_url(tracked)
+    else:
+        href = reverse(
+            "media_details",
+            kwargs={
+                "source": entry.get("source") or source,
+                "media_type": media_type,
+                "media_id": entry.get("media_id"),
+                "title": app_tags.slug(entry.get("title") or ""),
+            },
+        )
+    image = entry.get("image") or ""
+    if image == settings.IMG_NONE:
+        image = ""
+    corner = []
+    if entry.get("watched_person_runtime_display"):
+        corner.append({"kind": "runtime-top", "text": entry["watched_person_runtime_display"]})
+    elif entry.get("vote_average"):
+        corner.append({"kind": "runtime-top", "text": f"★ {entry['vote_average']:.1f}"})
+    lines = []
+    for lines_for in (card_lines(user, media_type, entry, entry), card_lines(user, "person", entry)):
+        lines.extend(
+            {
+                "clamp": True,
+                "dormant": bool(line.get("dormant")),
+                "parts": [
+                    {"text": part["text"], **({"score": True} if part.get("score") else {})}
+                    for part in line["parts"]
+                ],
+            }
+            for line in lines_for
+        )
+    return {
+        "mediaType": media_type,
+        "shape": "poster",
+        "video": False,
+        "publicView": False,
+        "recommend": False,
+        "bulkItemId": None,
+        "href": href,
+        "image": {"src": app_tags.image_url(image) if image else "", "fallback": "", "source": "primary"},
+        "title": entry.get("title") or "",
+        "altTitle": None,
+        "statusChip": None,
+        "cornerChips": corner,
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": lines,
+        "actions": {"href": href, "items": [], "ordering": None, "modals": {}, "csrfToken": "",
+                    "clickable": bool(getattr(user, "clickable_media_cards", False))},
+        "quickStatus": None,
+        "cardKey": f"filmography-{media_type}-{entry.get('media_id')}",
+    }
+
+
+def music_tracker_card_model(kind, tracker, user, request=None):
+    """Return a library artist or album card for the shared React card.
+
+    Albums and artists have no ``Item`` row, so the card is built from the tracker and its
+    entity directly, in the same model shape ``card_model`` returns.
+    """
+    from django.conf import settings
+    from django.middleware.csrf import get_token
+
+    from users.card_metadata import card_lines
+
+    artist = kind == "artist"
+    entity = tracker.artist if artist else tracker.album
+    href = app_tags.music_artist_url(entity) if artist else app_tags.music_album_url(entity)
+    title = entity.name if artist else entity.title
+    image = entity.image if entity.image and entity.image != settings.IMG_NONE else ""
+    return_url = request.get_full_path() if request else ""
+    status = tracker.status
+    chip = {
+        "kind": "status-native",
+        "status": status,
+        "label": _("Status: %(value_1)s") % {"value_1": _(status)},
+        "colorClass": app_tags.status_color(status),
+    } if status else None
+    label = rating_label(user, MediaTypes.MUSIC.value, tracker.score)
+    try:
+        number = float(label) if label is not None else None
+    except ValueError:
+        number = None
+    rate_url = reverse("update_artist_score" if artist else "update_album_score", args=[entity.id])
+    items = [
+        {
+            "kind": "modal",
+            "modal": "track",
+            "tone": TONES["track"],
+            "title": _("Edit tracking"),
+            "icon": file_icon("edit"),
+            "url": reverse("artist_track_modal" if artist else "album_track_modal", args=[entity.id]),
+            "vals": {"return_url": return_url},
+            "target": f"#{kind}-track-modal-{entity.id}",
+        },
+        {
+            "kind": "link",
+            "tone": "emerald",
+            "title": _("View artist") if artist else _("View album"),
+            "icon": file_icon("person") if artist else type_icon("music"),
+            "href": href,
+        },
+        {
+            "kind": "link",
+            "tone": TONES["history"],
+            "title": _("View listening history"),
+            "icon": file_icon("history"),
+            "href": f"{reverse('history')}?{kind}={entity.id}",
+        },
+    ]
+    return {
+        "mediaType": MediaTypes.MUSIC.value,
+        "shape": "poster" if artist else "square",
+        "video": False,
+        "publicView": False,
+        "recommend": False,
+        "bulkItemId": None,
+        "href": href,
+        "image": {"src": app_tags.image_url(image) if image else "", "fallback": "", "source": "primary"},
+        "title": title,
+        "altTitle": None,
+        "statusChip": chip,
+        "cornerChips": [],
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": [
+            {
+                "clamp": True,
+                "dormant": bool(line.get("dormant")),
+                "parts": [
+                    {"text": part["text"], **({"score": True} if part.get("score") else {})}
+                    for part in line["parts"]
+                ],
+            }
+            for line in card_lines(user, MediaTypes.MUSIC.value, entity, tracker)
+        ],
+        "actions": {
+            "href": href,
+            "items": items,
+            "ordering": None,
+            "modals": {},
+            "csrfToken": get_token(request) if request else "",
+            "clickable": bool(getattr(user, "clickable_media_cards", False)),
+        },
+        "quickStatus": None,
+        "cardKey": f"music-{kind}-{entity.id}",
+        "statusId": f"music-{kind}-status-{entity.id}",
+        "ratingId": f"music-{kind}-rating-{entity.id}",
+        "rating": {
+            "label": label,
+            "value": number,
+            "rateUrl": rate_url,
+            "scaleMax": app_tags.rating_scale_max(user),
+            "rateLabel": _("Rate"),
+        },
+        "ratingEditable": True,
+        "csrfToken": get_token(request) if request else "",
     }

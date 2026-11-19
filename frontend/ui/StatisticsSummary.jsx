@@ -2,7 +2,6 @@ import { Modal, ModalCloseButton } from './Modal';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,8 @@ import {
 import { actionIcons } from './actionIcons';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { MediaCard } from './MediaCard';
+import { highlightCardModel } from './cardModels';
 import { DateTimePicker } from './DateTimePicker';
 import { SortMenu } from './StatisticsSections';
 
@@ -322,37 +323,10 @@ export function StatisticsHero({ model, labels, palette }) {
 
 function HighlightCard({ item, palette, onSelectHighlight, style }) {
   const pressable = Boolean(item.href && onSelectHighlight);
-  const body = <View style={[styles.highlightCard, { backgroundColor: palette.surface }, style]}>
-    {item.image
-      ? <Image source={{ uri: item.image }} style={styles.highlightImage}
-        resizeMode="cover" accessibilityIgnoresInvertColors
-        accessibilityLabel={item.title || item.label} />
-      : <View style={[styles.highlightImage, { backgroundColor: palette.surfaceStrong }]} />}
-    <View pointerEvents="none" style={styles.highlightShade}>
-      {Array.from({ length: 26 }, (_, index) => {
-        const ratio = (index + 1) / 26;
-        return <View key={index} style={{
-          flex: 1,
-          backgroundColor: `rgba(9, 11, 24, ${(0.03 + 0.9 * ratio ** 1.4).toFixed(3)})`,
-        }} />;
-      })}
-    </View>
-    <View style={styles.highlightBody}>
-      <Text style={[styles.highlightLabel, { color: palette.textMuted }]} numberOfLines={1}>
-        {item.label}
-      </Text>
-      <Text style={[styles.highlightTitle, { color: palette.text }]} numberOfLines={1}>
-        {item.title || DEFAULT_LABELS.notAvailable}
-      </Text>
-    </View>
-  </View>;
-  if (!pressable) return <View style={style ? { flex: 1 } : undefined}>{body}</View>;
-  return <Pressable accessibilityRole="link"
-    accessibilityLabel={`${item.label}: ${item.title}`}
-    onPress={() => onSelectHighlight?.(item)}
-    style={({ pressed }) => [style ? { flex: 1 } : undefined, pressed && styles.pressed]}>
-    {body}
-  </Pressable>;
+  const card = <MediaCard variant="grid" model={highlightCardModel(item, DEFAULT_LABELS.notAvailable)} width="100%"
+    palette={{ ...palette, card: palette.surface }}
+    onOpen={pressable ? () => onSelectHighlight?.(item) : undefined} />;
+  return <View style={style ? { flex: 1 } : undefined}>{card}</View>;
 }
 
 export function StatisticsHighlights({ model, labels, palette, onSelectHighlight }) {
@@ -814,11 +788,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
   },
-  highlightImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
-  highlightShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '68%' },
-  highlightBody: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: 12, gap: 4 },
-  highlightLabel: { fontSize: 12, lineHeight: 16, letterSpacing: 0.6, textTransform: 'uppercase' },
-  highlightTitle: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
   highlightDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, marginBottom: 12 },
   highlightDot: { width: 8, height: 8, borderRadius: 4 },
   summaryColumn: { width: '100%' },
