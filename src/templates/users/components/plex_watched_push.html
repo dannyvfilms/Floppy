@@ -1,0 +1,19 @@
+{% load i18n %}
+{# Body of the Send Watched to Plex modal on the Integrations page. Plex users load on demand so the page never calls plex.tv. #}
+<p class="text-sm text-[var(--color-text-muted)]">
+  {% translate "Mark the movies and episodes you watched in Floppy as watched for one Plex user. You choose the user and review every change before anything is sent." %}
+</p>
+<p class="text-xs text-[var(--color-text-muted)]">
+  {% translate "Only 'watched' is sent: nothing in Plex is ever marked unwatched, and items already watched in Plex are skipped." %}
+</p>
+<div id="plex-push-targets">
+  <button type="button"
+          hx-get="{% url 'plex_push_targets' %}"
+          hx-target="#plex-push-targets"
+          hx-swap="innerHTML"
+          hx-disabled-elt="this"
+          class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">
+    {% translate "Choose Plex user" %}
+  </button>
+</div>
+<div id="plex-push-preview"></div>

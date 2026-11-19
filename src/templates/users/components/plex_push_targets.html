@@ -1,0 +1,43 @@
+{% load i18n %}
+{# Plex user and server pickers for the Plex modal; the check itself only reads. #}
+{% if error %}
+  <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ error }}</div>
+{% elif not users or not servers %}
+  <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{% translate "No Plex Home users or Plex servers owned by this account were found." %}</div>
+{% else %}
+  <form hx-post="{% url 'plex_push_preview' %}"
+        hx-target="#plex-push-preview"
+        hx-swap="innerHTML"
+        hx-disabled-elt="find button"
+        hx-indicator="#plex-push-checking"
+        class="space-y-2">
+    {% csrf_token %}
+    <label class="block text-sm text-[var(--color-text)]">
+      {% translate "Plex user" %}
+      <select name="user_uuid" class="mt-1 w-full rounded-md bg-[var(--color-surface)] px-3 py-2 text-sm">
+        {% for target in users %}
+          <option value="{{ target.uuid }}">{{ target.title }}{% if target.is_owner %} ({% translate "you" %}){% elif target.protected %} ({% translate "PIN" %}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block text-sm text-[var(--color-text)]">
+      {% translate "Plex server" %}
+      <select name="machine_identifier" class="mt-1 w-full rounded-md bg-[var(--color-surface)] px-3 py-2 text-sm">
+        {% for server in servers %}
+          <option value="{{ server.machine_identifier }}">{{ server.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="block text-sm text-[var(--color-text)]">
+      {% translate "PIN (only for a Home user who has one)" %}
+      <input type="password" id="plex-push-pin" name="pin" inputmode="numeric" autocomplete="off" maxlength="4"
+             class="mt-1 w-full rounded-md bg-[var(--color-surface)] px-3 py-2 text-sm">
+    </label>
+    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">
+      {% translate "Check what would change" %}
+    </button>
+    <p id="plex-push-checking" class="htmx-indicator text-xs text-[var(--color-text-muted)]">
+      {% translate "Reading Plex. A large library can take a minute. Nothing is changed." %}
+    </p>
+  </form>
+{% endif %}

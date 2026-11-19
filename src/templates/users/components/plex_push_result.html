@@ -1,0 +1,58 @@
+{% load i18n %}
+{# Progress of a Plex send, polled until it is done, then what it did. Everything sent is recorded, so the history import skips it. #}
+{% if error %}
+  <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ error }}</div>
+{% elif not done %}
+  <div hx-get="{% url 'plex_push_status' %}"
+       hx-trigger="every 2s"
+       hx-target="this"
+       hx-swap="outerHTML"
+       class="space-y-1 border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-text)]">
+    <p>{% blocktranslate %}Sending to Plex: {{ current }} of {{ total }} done.{% endblocktranslate %}</p>
+    <p class="text-xs text-[var(--color-text-muted)]">
+      {% translate "Each item is checked again before it is marked. You can close this popup; the send carries on." %}
+    </p>
+  </div>
+{% else %}
+  <div class="space-y-3 border-t border-[var(--color-border)] pt-3">
+    <p class="text-sm text-[var(--color-text)]">
+      {% blocktranslate count counter=result.sent|length with user=user_title %}{{ counter }} item marked watched in Plex for {{ user }}.{% plural %}{{ counter }} items marked watched in Plex for {{ user }}.{% endblocktranslate %}
+    </p>
+    {% if result.stopped %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ result.stopped }}</div>
+    {% endif %}
+    {% if result.stale %}
+      <p class="text-sm text-[var(--color-text-muted)]">
+        {% if result.failed_libraries %}
+          {% blocktranslate count counter=result.stale %}{{ counter }} ticked item changed since the check, or is in a library that could not be read, and was not sent.{% plural %}{{ counter }} ticked items changed since the check, or are in a library that could not be read, and were not sent.{% endblocktranslate %}
+        {% else %}
+          {% blocktranslate count counter=result.stale %}{{ counter }} ticked item changed since the check and was not sent.{% plural %}{{ counter }} ticked items changed since the check and were not sent.{% endblocktranslate %}
+        {% endif %}
+      </p>
+    {% endif %}
+    {% if result.stale and result.failed_libraries %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">
+        {% translate "Could not read:" %} {{ result.failed_libraries|join:", " }}
+      </div>
+    {% endif %}
+    {% if result.sent %}
+      <details class="text-sm">
+        <summary class="cursor-pointer text-[var(--color-text-muted)]">{% translate "Sent" %}</summary>
+        <ul class="mt-1 space-y-1 text-xs text-[var(--color-text-muted)]">
+          {% for title in result.sent %}<li>{{ title }}</li>{% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+    {% if result.skipped %}
+      <details class="text-sm" open>
+        <summary class="cursor-pointer text-[var(--color-text-muted)]">
+          {% blocktranslate count counter=result.skipped|length %}{{ counter }} not sent{% plural %}{{ counter }} not sent{% endblocktranslate %}
+        </summary>
+        <ul class="mt-1 space-y-1 text-xs text-[var(--color-text-muted)]">
+          {% for title, reason in result.skipped %}<li>{{ title }}: {{ reason }}</li>{% endfor %}
+        </ul>
+      </details>
+    {% endif %}
+    <p class="text-xs text-[var(--color-text-muted)]">{% translate "Check what would change again to see anything that is left." %}</p>
+  </div>
+{% endif %}

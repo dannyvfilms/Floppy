@@ -85,6 +85,10 @@ NOT_MOVED_BECAUSE = {
     "integrations.StateConflict.item": _SYNC_BOOKKEEPING,
     "integrations.OutboundStateDelivery.item": _SYNC_BOOKKEEPING,
     "integrations.RatingSyncEdit.item": _SYNC_BOOKKEEPING,
+    "integrations.PlexWatchedPush.item": (
+        "A log of watched marks already sent to Plex: history, not state. The "
+        "echo filter matches on machine_identifier and rating_key, not item."
+    ),
     "users.User.notification_excluded_items": (
         "Known gap: a notification exclusion stays on the old item. Moving it "
         "changes correction behaviour, so it is left for its own change."
