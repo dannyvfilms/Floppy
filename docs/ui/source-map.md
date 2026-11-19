@@ -545,7 +545,7 @@ pending. These checks do not establish complete page parity.
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
-- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
+- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`, `onOpenTitle`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
@@ -750,7 +750,7 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 
 The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
 
-- `src/templates/app/components/detail_carousel_fragment.html`
+- `src/templates/app/components/detail_carousel_fragment.html` (also the detail-page title logo; on a season page it links to the show because it hides the title link; `Legacy` until the web detail hero migrates)
 - `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
