@@ -58,7 +58,7 @@ def search(query, page):
             top_edition = doc["editions"]["docs"][0]
             media_id = extract_openlibrary_id(top_edition["key"])
             title = doc["title"]
-            edition_title = top_edition["title"]
+            edition_title = top_edition.get("title", title)
 
             if edition_title != title:
                 result_title = f"{edition_title}: {title}"
