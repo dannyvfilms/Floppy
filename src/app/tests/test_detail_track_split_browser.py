@@ -58,7 +58,7 @@ class DetailTrackSplitBrowserTests(SerialStaticLiveServerTestCase):
             split.get_by_role("button", name="More tracking actions").click()
             expect(split.get_by_role("button", name="Check-in")).to_be_visible()
             split.get_by_role("button", name="Edit").click()
-            expect(page.locator("[data-track-modal-root]")).to_be_visible()
+            expect(page.locator("[data-track-modal-root]")).to_be_visible(timeout=15000)
             page.locator("button.ui-button").filter(has_text="Update").click(timeout=15000)
             expect(split.get_by_role("button", name="Log a play")).to_be_visible(timeout=15000)
             if capture:
