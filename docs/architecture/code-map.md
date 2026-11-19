@@ -17,7 +17,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 |---|---|---|
 | Models and their querysets | `src/app/models/` (one file per subject; `src/app/models/manager.py` holds the per-row hydration and progress annotations shared by detail, Home and list pages) | `docs/agents/domain_model.md` |
 | List-shaped pages (media list, list pages, Home shelves, list API) | `src/app/library_query/` decides which rows and in what order; `src/app/media_list_views.py` renders one page of them; `src/app/media_list_filters.py` is the API entry | `docs/architecture/library-query.md` |
-| Detail pages | `src/app/media_details_views.py`, `src/app/season_details_views.py`, `src/app/detail_builders.py`, `src/app/detail_related.py` | `docs/architecture/media-card.md` |
+| Detail pages | `src/app/media_details_views.py`, `src/app/season_details_views.py`, `src/app/detail_builders.py`, `src/app/detail_related.py`; music pages in `src/app/music_views.py`, with the artist page's albums and totals (shared with the artist API) in `src/app/music_artist_page.py` | `docs/architecture/media-card.md` |
 | History | `src/app/history_views.py`, `src/app/history_processor.py`, `src/app/history_cache*.py` | `docs/architecture/history-memory.md` |
 | Statistics | `src/app/statistics*.py` (pipeline), `src/app/stats_*.py` (sections), `src/app/statistics_views.py` | `docs/architecture/statistics-sync.md` |
 | Discover | `src/app/discover/`, `src/app/discover_views.py`, `src/app/tasks_discover.py` | |
@@ -88,7 +88,25 @@ names the module to import from.
   query parameter). Name a new one for what it returns, as the renamed copies
   are (`_now_iso`, `_parse_tvdb_datetime`).
 <!-- Shared view builders: add the public modules that own detail-page builders here. -->
-<!-- Split view files: add each subject module split out of a large view file here. -->
+
+### Split view files
+
+Split a view file only when it holds several subjects that share little and
+change often; one long subject stays in one file. Each subject moves to
+`<subject>_views.py` beside it, the old file re-exports its views so URL names,
+`urls.py` and imports keep working, and moves are pure (same names and bodies,
+one subject per commit). A helper one subject uses moves with it; a helper
+several subjects use goes to one module in that app named for the purpose,
+never left in the old file for others to reach into.
+
+`src/integrations/views.py` is the first file split this way. Its subject
+modules so far: `src/integrations/webhook_views.py` (media-server and Seerr
+webhooks), `src/integrations/cover_proxy_views.py` (Audiobookshelf and Plex
+cover proxies), `src/integrations/stremio_views.py` (Stremio connect and the
+add-on), `src/integrations/mal_sync_views.py` (MyAnimeList sync). Their shared
+helpers are in `src/integrations/view_helpers.py`. Connect and import views
+for the other sources are still in `views.py`; a new view for a split subject
+goes in that subject's module.
 
 ## Where new code goes
 
@@ -106,6 +124,16 @@ names the module to import from.
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
+
+**Recorded server answers for the Expo app.** `native-proof/app/data/__recorded__/`
+holds the real JSON of the endpoints the native detail, library, list, History and
+Home readers use, recorded from the sample library by
+`src/api/tests/test_native_recordings.py`. That test fails when a committed file no
+longer matches what the server returns, and the `*TransportCore.test.mjs` files read
+each file through the real reader (`native-proof/app/data/recordedAnswers.mjs`).
+Changing the shape of one of these endpoints means refreshing the files
+(`FLOPPY_RECORD_NATIVE=1 scripts/test.sh api.tests.test_native_recordings`) and
+reading the native diff: a changed field is one a native screen may read.
 
 ## Four rules the code holds to
 

@@ -19,6 +19,8 @@ import {
   trackingFromState,
   trackingEntriesFromPayload,
 } from './detailTransportCore.js';
+import { scoreChipsFromPayload, trackingFactsFromPayload, viewerRatingFromPayload } from '../surfaces/detailActions.mjs';
+import { assertFields, recorded } from './recordedAnswers.mjs';
 import { getDatePreferences, setDatePreferences } from './userDate.js';
 
 test('activity sessions use the web history filters for detail identities', () => {
@@ -392,4 +394,42 @@ test('repeat history preserves instance coordinates, display rating and edit per
   assert.equal(result.entries[0].editable, false);
   assert.equal(result.entries[0].notes, 'A repeat');
   assert.deepEqual(trackingEntriesFromPayload(), { entries: [], count: 0, hasMore: false });
+});
+
+test('recorded detail answers carry every tracking field the detail page reads', () => {
+  const tracked = recorded('detail-movie-tracked');
+  assertFields(tracked, {
+    title: 'string', identity: 'object', artwork: 'object', read_only: 'boolean', public_view: 'boolean',
+    capabilities: 'object', viewer_rating: 'object', score_chips: 'array', tag_sections: 'array',
+    facts: 'array', tracking: 'object', tracking_entries: 'array',
+    tracking_entries_count: 'number', tracking_entries_has_more: 'boolean',
+  }, 'detail');
+  assertFields(tracked.identity, { media_type: 'string', source: 'string', media_id: 'string' }, 'detail.identity');
+  assertFields(tracked.tracking, { status: 'string', score: ['number', 'null'], progress: ['number', 'null'] }, 'detail.tracking');
+  assertFields(tracked.viewer_rating, { enabled: 'boolean', scale_max: 'number', value: ['number', 'null'] }, 'detail.viewer_rating');
+  assertFields(tracked.capabilities, { can_update: 'boolean', can_track: 'boolean', can_request_seerr: 'boolean' }, 'detail.capabilities');
+  tracked.tracking_entries.forEach((entry, index) => assertFields(entry, {
+    id: 'number', status: 'string', display_score: ['number', 'null'], scale_max: 'number',
+    start_date: ['string', 'null'], end_date: ['string', 'null'], notes: 'string', can_edit: 'boolean',
+    media_type: 'string', identity: 'object',
+  }, `detail.tracking_entries[${index}]`));
+
+  // The History section: entries, their count and "show more".
+  const history = trackingEntriesFromPayload(tracked);
+  assert.ok(history.entries.length > 0);
+  assert.equal(history.count, tracked.tracking_entries_count);
+  assert.equal(history.hasMore, tracked.tracking_entries_has_more);
+  history.entries.forEach(entry => {
+    assert.ok(entry.id && entry.statusLabel, 'each play shows its status');
+    assert.ok(entry.identity.mediaType && entry.identity.source && entry.identity.mediaId);
+  });
+  assert.ok(trackingFactsFromPayload(tracked).some(fact => fact.label === 'Status'));
+  assert.equal(viewerRatingFromPayload(tracked).value, tracked.viewer_rating.value);
+  assert.ok(Array.isArray(scoreChipsFromPayload(tracked)));
+
+  const untracked = recorded('detail-movie-untracked');
+  assertFields(untracked, { tracking: 'null', tracking_entries: 'array', tracking_entries_count: 'number', capabilities: 'object' }, 'untracked detail');
+  assert.deepEqual(trackingEntriesFromPayload(untracked), { entries: [], count: 0, hasMore: false });
+  assert.equal(viewerRatingFromPayload(untracked), null);
+  assert.equal(untracked.capabilities.can_track, true);
 });

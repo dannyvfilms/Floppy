@@ -2225,7 +2225,7 @@ class GroupedMALSync(TestCase):
         self.assertNotIn("nsfw", request.call_args_list[0].kwargs["params"])
         self.assertEqual(request.call_args_list[1].kwargs["params"]["nsfw"], "true")
 
-    @patch("integrations.views.services.get_media_metadata")
+    @patch("integrations.mal_sync_views.services.get_media_metadata")
     def test_mapping_wizard_lists_selected_mal_episodes(self, metadata):
         self.client.force_login(self.user)
         metadata.return_value = {
@@ -2240,7 +2240,7 @@ class GroupedMALSync(TestCase):
         self.assertEqual(response.json()["episodes"], [1, 2, 3])
         self.assertEqual(response.json()["title"], "Prison School")
 
-    @patch("integrations.views.services.get_media_metadata")
+    @patch("integrations.mal_sync_views.services.get_media_metadata")
     def test_mapping_wizard_handles_unknown_episode_count(self, metadata):
         self.client.force_login(self.user)
         metadata.return_value = {
