@@ -1138,7 +1138,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             partition = [F("related_season_id"), F("item_id")]
             aggregates = {
                 "_card_total_count": Count("pk"),
-                "_card_completed_count": Count("pk", filter=Q(status=Status.COMPLETED.value)),
+                "_card_completed_count": Count("pk", filter=Episode.watch_q()),
                 "_card_dropped_count": Count("pk", filter=Q(status=Status.DROPPED.value)),
                 "_card_first_end": Min("end_date"),
                 "_card_last_end": Max("end_date"),
@@ -1169,6 +1169,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                     "id",
                     "end_date",
                     "status",
+                    "dropped",
                     "created_at",
                     "related_season_id",
                     "item_id",
@@ -1201,6 +1202,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                         "id",
                         "end_date",
                         "status",
+                        "dropped",
                         "created_at",
                         "related_season_id",
                         "item__id",
@@ -3202,6 +3204,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         library_media_type=None,
     ):
         """Return tracked episode consumptions for a show."""
+        # No max_progress: nothing reads it on an episode, and annotating
+        # evaluates the queryset, which loaded every watch of the season even
+        # when the caller then narrowed it to one page of episode numbers.
         queryset = self.filter_media_prefetch(
             user,
             media_id,
@@ -3209,6 +3214,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             source,
             season_number=season_number,
             library_media_type=library_media_type,
+            annotate_progress=False,
         )
 
         if episode_numbers is not None:

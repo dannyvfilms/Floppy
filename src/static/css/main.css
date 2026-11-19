@@ -5758,6 +5758,11 @@
       border-radius: 4px;
     }
   }
+  .md\:rounded-lg {
+    @media (width >= 48rem) {
+      border-radius: var(--radius-lg);
+    }
+  }
   .md\:rounded-xl {
     @media (width >= 48rem) {
       border-radius: var(--radius-xl);
@@ -5778,6 +5783,11 @@
   .md\:border-\[var\(--color-border\)\] {
     @media (width >= 48rem) {
       border-color: var(--color-border);
+    }
+  }
+  .md\:bg-\[var\(--color-surface\)\] {
+    @media (width >= 48rem) {
+      background-color: var(--color-surface);
     }
   }
   .md\:bg-black\/70 {
@@ -5801,6 +5811,11 @@
   .md\:p-2 {
     @media (width >= 48rem) {
       padding: calc(var(--spacing) * 2);
+    }
+  }
+  .md\:p-5 {
+    @media (width >= 48rem) {
+      padding: calc(var(--spacing) * 5);
     }
   }
   .md\:p-6 {

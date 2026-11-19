@@ -23,6 +23,13 @@ test('an API episode event is a season-type release with an SxxEyy label', () =>
   assert.equal(release.status, 'In progress');
 });
 
+test('calendar pages are shown for books only', () => {
+  const item = { title: 'Example', number_of_pages: 24 };
+  assert.deepEqual(releaseFromEvent({ item: { ...item, media_type: 'anime' } }).cardLines, []);
+  assert.deepEqual(releaseFromEvent({ item: { ...item, media_type: 'season' } }).cardLines, []);
+  assert.deepEqual(releaseFromEvent({ item: { ...item, media_type: 'book' } }).cardLines, ['24 pages']);
+});
+
 test('model keeps episode releases on their day', () => {
   const model = calendarModelFromPayload({ results: [episodeEvent] }, { month: 11, year: 2026 });
   assert.equal(model.total, 1);

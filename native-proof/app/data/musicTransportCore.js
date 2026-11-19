@@ -37,6 +37,45 @@ export function groupAlbums(albums) {
   ));
 }
 
+// The artist endpoint sends each release-type group with its size and first
+// page (as the web page draws it); older servers sent one flat album list.
+function mapDiscography(payload) {
+  if (!Array.isArray(payload.discography)) {
+    return groupAlbums((payload.albums || []).map(mapAlbumPayload).filter(Boolean))
+      .map(group => ({ ...group, count: group.albums.length, nextOffset: null }));
+  }
+  return payload.discography.map(group => {
+    const albums = (group.albums || []).map(mapAlbumPayload).filter(Boolean);
+    return {
+      label: group.label || 'Unknown',
+      albums,
+      count: Number.isInteger(group.count) ? group.count : albums.length,
+      nextOffset: Number.isInteger(group.next_offset) ? group.next_offset : null,
+    };
+  });
+}
+
+// Appends GET .../albums/?group=&offset= to its group; a stale page (the
+// artist reloaded meanwhile) is ignored.
+export function appendDiscographyPage(artist, payload) {
+  if (!artist || !payload || typeof payload !== 'object') return artist;
+  let changed = false;
+  const discography = (artist.discography || []).map(group => {
+    if (group.label !== payload.label || group.nextOffset == null) return group;
+    changed = true;
+    const known = new Set(group.albums.map(album => album.id));
+    const albums = (payload.albums || []).map(mapAlbumPayload)
+      .filter(album => album && !known.has(album.id));
+    return {
+      ...group,
+      albums: [...group.albums, ...albums],
+      count: Number.isInteger(payload.count) ? payload.count : group.count,
+      nextOffset: Number.isInteger(payload.next_offset) ? payload.next_offset : null,
+    };
+  });
+  return changed ? { ...artist, discography } : artist;
+}
+
 export function flattenAlbums(artist) {
   return (artist?.discography || []).flatMap(group => group.albums || []);
 }
@@ -135,7 +174,7 @@ export function mapAlbumPayload(payload) {
 export function mapArtistPayload(payload) {
   if (!payload || typeof payload !== 'object') return null;
   const tracker = mapTracker(payload.tracker);
-  const albums = (payload.albums || []).map(mapAlbumPayload).filter(Boolean);
+  const discography = mapDiscography(payload);
   return {
     id: numericId(payload.id),
     artistId: numericId(payload.id),
@@ -163,7 +202,10 @@ export function mapArtistPayload(payload) {
       }
       : { albums: null, totalAlbums: null, tracks: null, totalTracks: null },
     relations: { members: [], alsoIn: [] },
-    discography: groupAlbums(albums),
+    totalReleases: Number.isInteger(payload.total_releases)
+      ? payload.total_releases
+      : discography.reduce((sum, group) => sum + group.count, 0),
+    discography,
   };
 }
 
@@ -173,6 +215,18 @@ export async function loadArtistWithRelations(transport, artistId) {
     transport.loadArtistRelations({ artistId }).catch(() => null),
   ]);
   return { artist, relations };
+}
+
+// A new artist or album is filled in by a background repair on the server
+// (app/music_page_repair.py). While it runs the API says so, and the screen
+// loads again quietly, as the web page's poller does: every 2 seconds for
+// about two minutes.
+export const REPAIR_POLL_MS = 2000;
+export const REPAIR_POLL_MAX_ATTEMPTS = 60;
+
+export function repairPending(payload, attempts = 0) {
+  if (attempts >= REPAIR_POLL_MAX_ATTEMPTS) return false;
+  return Boolean(payload?.repair_pending || payload?.pending);
 }
 
 export function mapTracksPayload(payload) {
@@ -432,6 +486,10 @@ export function createRemoteMusicActions(request) {
         method: 'POST',
       });
     },
+    loadArtistAlbums({ artistId, group, offset }) {
+      const query = new URLSearchParams({ group, offset: String(offset || 0) });
+      return request(api(`/music/artists/${encodeURIComponent(artistId)}/albums/?${query}`));
+    },
     loadArtistRelations({ artistId }) {
       return request(api(`/music/artists/${encodeURIComponent(artistId)}/relations/`));
     },
@@ -602,6 +660,7 @@ export function createLocalMusicActions(reason) {
     saveArtist: local,
     removeArtist: local,
     syncArtistDiscography: local,
+    loadArtistAlbums: local,
     loadArtistRelations: local,
     syncArtistMembers: local,
     deleteArtistPlays: local,

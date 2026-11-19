@@ -7,11 +7,14 @@ statistics.py and stats_music.py.
 """
 
 import logging
+from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.utils import timezone
 
 from app import providers
 from app.models import MediaTypes, Track
+from app.play_duration import elapsed_minutes
 from app.stats_utils import (
     _format_hours_minutes,
     _get_activity_datetime,
@@ -40,6 +43,18 @@ def _calculate_game_time_in_range(media, start_date, end_date):
     """Return game minutes to count within the requested date range."""
     game_total_minutes = getattr(media, "progress", 0) or 0
     if game_total_minutes <= 0:
+        if start_date and end_date:
+            first = start_date.date() if isinstance(start_date, datetime) else start_date
+            last = end_date.date() if isinstance(end_date, datetime) else end_date
+            tz = timezone.get_current_timezone()
+            range_start = timezone.make_aware(datetime.combine(first, datetime.min.time()), tz)
+            range_end = timezone.make_aware(
+                datetime.combine(last + timedelta(days=1), datetime.min.time()), tz
+            )
+            return elapsed_minutes(media.start_date, media.end_date,
+                                   range_start=range_start, range_end=range_end)
+        if not start_date and not end_date:
+            return elapsed_minutes(media.start_date, media.end_date)
         return 0
 
     game_start_date = media.start_date.date() if media.start_date else None

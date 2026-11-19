@@ -42,6 +42,8 @@ Sidebar retains the accepted text metrics and anchored menu presentation while p
 
 The saved-view/sidebar fallback adapter loads before Alpine and also registers immediately when Alpine is already running, preserving its once guard. Browser regression coverage checks script order, late real-fallback insertion and Explore toggling without page errors. Shared Sidebar remains React-owned with the same coexisting server fallback and retirement conditions; actual iOS/Android runtime was not reverified by this browser bootstrap fix.
 
+Sidebar account destinations are supplied by the web adapter as links; unmodified Logout submits a CSRF-protected POST, and the server fallback links to confirmation. Native uses its navigation and session adapters instead of browser links. The shared Sidebar remains React-owned with the same fallback retirement conditions. Web interaction was tested in Chromium; iOS and Android exports passed, but sidebar runtime was not verified on either platform.
+
 The Django head conditionally initializes the development toolbar when its root exists. Provider browser coverage exercises responses without that root. Shell ownership and existing fallback retirement conditions are unchanged; iOS and Android do not consume this browser adapter and were not verified for it.
 
 Native screen adapters omit empty headers and read heading/section colors at render time. Settings pages share `SettingsSurface`, and changing its active page resets the scroll container. Setup renders outside the signed-in header. Browser file pickers keep a hidden file input attached until selection, cancellation or failure, then remove it; file access stays in the web adapter. Browser verification is recorded per surface; iOS is not verified, and Android is not verified. Native readiness remains `Primitives`.
@@ -126,6 +128,7 @@ Status: `Existing (no UI work needed)`
 
 Custom native surface/panel opacity and runtime radius getters are live; static module-level radii and true backdrop blur remain incomplete. Browser effect comparison pending; iOS and Android not verified.
 
+- `frontend/ui/rootStyle.web.js` (web palette reads; one style snapshot per task)
 - `src/static/css/input.css`
 - `src/static/css/main.css`
 
@@ -165,7 +168,7 @@ Shared `Badge` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS
 - `frontend/ui/mountBadge.jsx`
 - `src/templates/users/components/badge.html`
 - `src/users/templatetags/ui_tags.py` (`{% badge %}`)
-- Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
+- Consumers: `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
 
 ## BUTTON
 
@@ -402,6 +405,8 @@ Status: `Partial / coexisting`
 
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
+Suggestion requests (2026-11-16): `GlobalSearch` cancels the superseded request with an `AbortController` and passes `signal` to the platform loader; web loads through `frontend/ui/webRequest.web.js`, Expo through `searchTransportCore` and `authTransportCore` `send`. Both send a per-box `sid` (made in `GlobalSearch.web.jsx`, and per transport by `searchBoxId` in `searchTransportCore`) that `search_views.suggestion_superseded_check` uses to stop older All-media requests early.
+
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
 
 - `src/templates/app/icons/magnifying-glass.svg` (connected SVG shared by GlobalSearch, CollectionBrowser, ProviderDirectoryView and remaining server-template search controls; shared SearchIcon is mapped under SHELL)
@@ -607,17 +612,28 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/detail_track_action_attrs.html`
 - `src/templates/app/components/detail_track_open_attrs.html`
 - `src/templates/app/components/detail_track_split.html`
+- `frontend/ui/mountDetailTrackSplit.jsx` and `frontend/ui/DetailTrackSplit.jsx`:
+  PWA mounts the shared split button over its server fallback;
+  Expo consumes the same button through `DetailActionBar` in `DetailFeatures`.
+  Partial/coexisting; retire the web fallback after its modal and HTMX lifecycle
+  migrate. Browser: Chromium compared desktop and phone fallback and shared menus
+  and exercised edit/save. iOS and Android: Expo Go simulator/emulator component previews
+  compared the button; signed-in detail flows were not exercised.
 - `src/templates/app/components/fill_track.html`
 - `src/templates/app/components/fill_track_episode.html`
 - `src/templates/app/components/fill_track_episode_bulk.html`
-- `src/templates/app/components/fill_track_song.html`
+- `src/templates/app/components/fill_track_song.html` (album rows pass `play_count`, so the hidden fallback reads no per-track history)
+- `src/templates/app/components/fill_track_song_listen_count.html`
 - `src/templates/app/components/media_metadata_panel.html`
 - `src/templates/app/components/podcast_show_track_modal.html`
 - `src/templates/app/create_entry.html`
 
 ## DATE-TIME
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- Activity history calendar is `Partial / coexisting`: `frontend/ui/DateTimePicker.jsx` and `mountDateTimePicker.jsx` own the web detail calendar, with `sessionHistory.js` bridging the server-owned list; `HistoryFeed.jsx` supplies `HistoryActivityCalendar` to native `DetailFeatures.jsx`, and native `HistoryScreen.jsx` uses the same picker. Remaining legacy field-picker consumers retire with their own migration. Browser: seeded detail dialog inspected and selection and month navigation exercised. iOS and Android: Expo Go intensity fixtures inspected; complete native dialog integration remains unverified.
+- Shared `DateTimePicker` activity markers and selected-day background use the same spacing on web, iOS and Android. Browser, iOS and Android fixture comparisons cover the spacing adjustment; the consumers and remaining legacy ownership are unchanged.
 
 - `src/static/js/calendar.js`
 - `src/static/js/dateTimePicker.js`
@@ -694,11 +710,15 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
 - `src/templates/app/components/artist_discography_container.html`
-- `src/templates/app/components/artist_discography_groups.html`
+- `src/templates/app/components/artist_discography_groups.html` (each release-type group shows its first 24 albums; the heading counts every album in the group)
+- `src/templates/app/components/artist_discography_more.html` (a group's "Show more" button, the shared React `button`, and the hidden length the cover poller sends back so an expanded group stays expanded)
+- `src/templates/app/components/artist_discography_group_albums.html` (a group's album grid island and its button; `artist_discography_more` returns it one page longer, as one grid from the first album so rows stay aligned)
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`
-- `src/templates/app/components/detail_music_album.html`
+- `src/templates/app/components/detail_music_album.html` (renders the first 50 track rows; totals cover every track)
+- `src/templates/app/components/detail_music_album_track_rows.html` (one page of album track rows plus the scroll trigger that loads the next page from `music_album_track_rows`; links in later pages return to the album page)
+- `src/templates/app/components/music_repair_poll.html` (hidden poller on an artist, album or track page while its background repair runs; reloads the page when `music_repair_status` reports it finished, or follows a merge to the surviving album or artist)
 - `src/templates/app/components/detail_music_album_activity_subtitle.html`
 - `src/templates/app/components/detail_music_artist.html`
 - `src/templates/app/components/detail_music_track.html`
@@ -707,7 +727,6 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/detail_music_track_history_line.html`
 - `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
-- `src/templates/app/podcast_show_detail.html`
 - `frontend/pages/MusicView.jsx`
 - `frontend/ui/MusicAlbumCard.jsx`
 - `frontend/ui/MusicParts.jsx`
@@ -729,12 +748,18 @@ Status: `Legacy`
 
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
+The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
+
 - `src/templates/app/components/detail_carousel_fragment.html`
-- `src/templates/app/components/detail_cast_grid.html`
+- `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
-- `src/templates/app/components/person_card_inline.html`
+- `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
+- `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
+- `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
+- `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
@@ -783,6 +808,8 @@ Status: `Legacy`
 - `src/templates/app/components/session_history_row.html` (also the audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/history.html`
 - `native-proof/app/screens/HistoryScreen.jsx`, `native-proof/app/data/historyTransportCore.js` (+ `historyTransportCore.test.mjs`) (native History screen and transport; release-date mode pages by day through `limit`/`offset` on `/api/v1/history/release/`, like the activity feed)
+- `frontend/ui/historyScrollAnchor.web.js` (browser adapter: Back or reload returns History to the day the reader left; loads the waiting days down to it first).
+- `frontend/ui/historyFirstView.js` (shared first-view rule: about two screens of entries, whole days; `scripts/historyFirstView.test.mjs`). The server mirrors it in `src/app/history_views.py` (`HISTORY_FIRST_VIEW_ENTRIES`, `_first_view_day_count`). Waiting days load as they come near the screen through `HistoryFeed.web.jsx`'s own observer (1.5-screen look-ahead from `homeRowLoading.js`) on web and the Home watcher `native-proof/app/data/homeRowWatcherCore.js` in `HistoryScreen.jsx` on Expo. `frontend/ui/historyScrollAnchor.web.js` (browser only) returns Back to the day the reader left.
 
 ## STATISTICS
 
@@ -821,6 +848,17 @@ Status: `Partial / coexisting` — shared React islands and native presentation 
 
 ## RELEASE-CALENDAR
 
+- `frontend/ui/calendarFilterState.js`: normalizes legacy per-media statuses and applies one status selection across applicable types for web and Expo. Browser: latest mobile layout inspected with an empty calendar. iOS and Android: latest layout not yet inspected.
+- `ReleaseCalendar` uses equal mobile gaps from the grid to its divider and from the divider to filter chips, matching weekday-to-grid spacing; web and `CalendarSlot` share this presentation. The web server grid remains the no-JavaScript fallback. Browser: synthetic before/after inspected and all three gaps measured at 12 pixels. iOS and Android: native bundles built; runtime verification of this spacing is pending.
+- `frontend/ui/cardTypography.js`: shared card title, secondary and item text sizes used by `ReleaseCalendar` and `CollectionCopies` on web and Expo. Browser: synthetic card comparisons inspected. iOS: earlier styling inspected on Duo; final inset unverified. Android: bundle built, runtime unverified. Existing Collection and calendar server fallbacks remain.
+- `frontend/ui/CardRow.jsx`: props-only shared row layout for calendar releases and Collection copies, including compact spacing, alignment and an optional first-row top inset. Calendar uses 2:3 artwork and a single metadata line; native calendar mapping limits page counts to books. Browser: synthetic before/after inspected for both cards. iOS: earlier row styling and page-label fix inspected on Duo; latest compact spacing and first-row inset need runtime verification. Android: bundle built, runtime not verified. Existing server fallbacks remain.
+- Month navigation retains the visible shared `ReleaseCalendar` while `mountReleaseCalendar` fetches server props or `CalendarScreen` fetches Expo data, then swaps the month; the compact agenda divider uses the surface-border theme token. Expo omits the page heading and reduces top spacing, while web keeps its heading. The server-rendered calendar remains the no-JavaScript fallback. Browser: light and dark month swaps inspected; iOS: isolated Expo preview inspected; Android: native bundle built, latest runtime unavailable.
+- Expo `CalendarScreen` presents an empty shared grid while its initial data loads, and `calendarTransportCore` overlaps event and status requests with calendar preferences. `accountDisplay` exposes the session-cached week start to avoid rearranging the grid when available. Web keeps its server-rendered first load. iOS: isolated loading and loaded previews inspected; Android: latest runtime unavailable.
+
+- `ReleaseCalendar` and `DropdownItem`: shared mobile date/count grid header, attached agenda, available media chips and two-level media/status filter; web mount and `native-proof/app/surfaces/CalendarSlot.jsx` consume them. Saved per-media statuses merge into one selection and release-date restrictions retire. The server grid is the no-JavaScript fallback. Expo retains the mobile layout at wide sizes; `CalendarRailControls.ios.jsx` supplies grouped system filter and settings menus and a separate weekday/date Today control when the rail is present; `AdaptivePresentationSheet` hosts actions on other Expo devices. Latest layout was inspected in a browser with an empty calendar; iOS and Android verification is pending.
+
+CalendarLinks renders grouped Collection cards (Calendar Links, Media Types, Status, Release Dates, Copy/Download Calendar) on Expo and mobile web, and its original tabbed card on desktop web. `native-proof/app/surfaces/CalendarFeedPicker.ios.jsx` is a SwiftUI Menu with a short closed label and a Liquid Glass menu of full names for the Calendar Type; Android and web use SelectField. The final Copy/Download card carries an ICS heading; mobile web shows the groups directly on the page because the Django links wrapper is a card only from md up. Runtime verification for this change is pending on web, iOS and Android.
+
 Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified.
 
 - `native-proof/app/surfaces/CalendarSlot.jsx`: passes `surfaceMutedSoft` to shared `ReleaseCalendar`; current 375x812 browser pair verifies blank-day fill, with subtitle wrapping still Partial. iOS/Android not verified, Primitives; browser ownership unchanged.
@@ -828,7 +866,7 @@ Shared CalendarLinks accepts a session-required state from CalendarScreen. Calen
 Status: `Partial / coexisting`
 
 - `src/templates/events/calendar.html`
-- `src/templates/events/components/calendar_grid.html`
+- `src/templates/events/components/calendar_grid.html` (pre-paint agenda: selected day's panel only, SURFACE-16)
 - `src/templates/events/components/calendar_list.html`
 - `frontend/ui/mountCalendarLinks.jsx`
 
@@ -1552,3 +1590,5 @@ Status: `Partial / coexisting`
 DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the modal host, including an explicit iOS height animation on the Duo rail; Android applies the settled keyboard size; its existing web and native consumers and retirement conditions are unchanged. The user accepted the quartic animation on a physical iOS Duo; browser and Android animation remain unverified.
 
 - Episode label formatting: `ProgressBreakdown` serves the web progress mount and Expo `ProgressDialog`; history, media cards, and tracking dialogs receive their labels from their existing server adapters. Shared presentation remains React-owned, with existing legacy web history consumers coexisting; retirement conditions are unchanged. EpisodeOrdering uses shared React presentation on web with a coexisting server fallback; native metadata review remains unported. Retirement of the fallback requires preserving its no-JavaScript behavior. Browser, iOS, and Android verification are recorded separately in the component register.
+
+- Calculated play duration flows through the existing History, Statistics, and Detail adapters to their shared presentation and coexisting web fallbacks. Shared `StatisticsCharts` keeps its responsive hook in every loading state; the native Detail adapter resolves structured History items lacking web URLs. Component ownership and retirement conditions remain unchanged; platform evidence is recorded in the component register.

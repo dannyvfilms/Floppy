@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  appendDiscographyPage,
   createLocalMusicActions,
   createRemoteMusicActions,
   endDateStamp,
@@ -142,6 +143,47 @@ test('artist payload with a partial tracker and no albums still renders', () => 
   assert.deepEqual(flattenAlbums(null), []);
   assert.equal(mapArtistPayload(null), null);
   assert.equal(mapArtistPayload(undefined), null);
+});
+
+// GET /api/v1/music/artists/{id}/ sends each group's size and first page;
+// GET .../albums/?group=&offset= sends the next one.
+test('a paged discography keeps group sizes and appends the next page once', () => {
+  const page = (ids) => ids.map(id => ({ id, title: `A${id}`, release_type: 'Album', play_count: 1 }));
+  const artist = mapArtistPayload({
+    id: 5,
+    name: 'Long',
+    total_releases: 30,
+    discography: [
+      { label: 'Album', count: 28, albums: page([1, 2]), next_offset: 2 },
+      { label: 'Single', count: 2, albums: page([3, 4]), next_offset: null },
+    ],
+  });
+  assert.equal(artist.totalReleases, 30);
+  assert.deepEqual(artist.discography.map(group => [group.label, group.count, group.nextOffset]),
+    [['Album', 28, 2], ['Single', 2, null]]);
+  assert.equal(artist.discography[0].albums[0].plays, 1);
+
+  const next = appendDiscographyPage(artist, {
+    label: 'Album', count: 28, albums: page([2, 5, 6]), next_offset: 4,
+  });
+  assert.deepEqual(next.discography[0].albums.map(album => album.id), [1, 2, 5, 6]);
+  assert.equal(next.discography[0].nextOffset, 4);
+  assert.equal(next.discography[1], artist.discography[1]);
+
+  const last = appendDiscographyPage(next, { label: 'Album', count: 28, albums: page([7]), next_offset: null });
+  assert.equal(last.discography[0].nextOffset, null);
+  // A page for a finished or unknown group, or a local-mode answer, changes nothing.
+  assert.equal(appendDiscographyPage(last, { label: 'Album', albums: page([8]) }), last);
+  assert.equal(appendDiscographyPage(last, { label: 'EP', albums: page([9]) }), last);
+  assert.equal(appendDiscographyPage(last, { local: true }), last);
+  assert.equal(appendDiscographyPage(null, { label: 'Album' }), null);
+});
+
+test('an older server sending only a flat album list still groups it', () => {
+  const artist = mapArtistPayload(artistPayload);
+  assert.equal(artist.totalReleases, artistPayload.albums.length);
+  assert.ok(artist.discography.every(group => group.nextOffset === null
+    && group.count === group.albums.length));
 });
 
 test('discography groups follow the web release type order', () => {
@@ -409,4 +451,13 @@ test('new music and podcast actions address the documented endpoints', async () 
   assert.deepEqual(calls[4].options, { query: { q: 'deluxe' } });
   assert.deepEqual(calls[5].options.json, { release_id: 'r1' });
   assert.deepEqual(calls[10].options.json, { score: 8 });
+});
+
+test('repairPending follows the server flag and stops at the attempt cap', async () => {
+  const { repairPending, REPAIR_POLL_MAX_ATTEMPTS } = await import('./musicTransportCore.js');
+  assert.equal(repairPending({ repair_pending: true }), true);
+  assert.equal(repairPending({ results: [], pending: true }), true);
+  assert.equal(repairPending({ results: [], pending: false }), false);
+  assert.equal(repairPending(null), false);
+  assert.equal(repairPending({ pending: true }, REPAIR_POLL_MAX_ATTEMPTS), false);
 });

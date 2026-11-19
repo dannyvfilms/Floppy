@@ -85,7 +85,7 @@ function Genres({ values, palette }) {
 }
 
 export function ArtistPage({ artist, albums = [], palette, cardPalette, formatDate, renderScore, renderProviderScore,
-  renderNotes, onOpenAlbum, onOpenArtist, onTrack, onHistory, onRate, onSyncMembers, onOpenNotes }) {
+  renderNotes, onOpenAlbum, onOpenArtist, onTrack, onHistory, onRate, onSyncMembers, onOpenNotes, onMoreAlbums }) {
   const collection = artist.collection || {};
   const facts = [fact('type', 'TYPE', artist.type), fact('origin', 'ORIGIN', artist.origin),
     fact('formed', artist.type === 'Group' ? 'FORMED' : 'BORN', artist.formed),
@@ -126,6 +126,12 @@ export function ArtistPage({ artist, albums = [], palette, cardPalette, formatDa
         {(artist.discography || []).map(group => <View key={group.label} style={styles.section}>
           <Text accessibilityRole="header" style={[styles.groupHeading, { color: palette.text }]}>{group.label}</Text>
           <MusicAlbumGrid albums={group.albums} palette={cardPalette} onOpen={onOpenAlbum} />
+          {onMoreAlbums && group.nextOffset != null && group.count > group.albums.length
+            ? <View style={styles.more}>
+              <Button label={`Show more (${group.count - group.albums.length} remaining)`} tone="surface"
+                onPress={() => onMoreAlbums(group)} />
+            </View>
+            : null}
         </View>)}
       </Section>
     </MusicDetailLayout>
@@ -251,7 +257,7 @@ const styles = StyleSheet.create({
   sidebarWide: { width: '25%', maxWidth: 250 }, content: { minWidth: 0, gap: 32 }, contentWide: { flex: 1 },
   section: { gap: 16 }, headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   heading: { fontSize: 20, lineHeight: 28, fontWeight: '700' }, largeHeading: { fontSize: 24, lineHeight: 32 },
-  groupHeading: { fontSize: 18, lineHeight: 28, fontWeight: '600' }, rows: { borderRadius: 8, overflow: 'hidden' },
+  groupHeading: { fontSize: 18, lineHeight: 28, fontWeight: '600' }, more: { flexDirection: 'row', justifyContent: 'center', alignSelf: 'stretch' }, rows: { borderRadius: 8, overflow: 'hidden' },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, borderBottomWidth: 1 }, historyText: { flex: 1 },
   empty: { padding: 16 }, stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 24 },
   stat: { padding: 12, borderRadius: 8, alignItems: 'center' }, statLabel: { fontSize: 12, lineHeight: 16, fontWeight: '600', marginBottom: 4 },

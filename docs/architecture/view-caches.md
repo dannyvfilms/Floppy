@@ -57,6 +57,13 @@ yourself only after writes that skip signals: `QuerySet.update`, `bulk_create`,
 `bulk_update`, and blocks inside `suppress_media_change_side_effects()` that do
 not end in `flush_media_change_side_effects`.
 
+Every such write is listed in `src/app/bulk_write_refresh.py` with how the
+library pages, Statistics, History and the watch-state projection learn about
+it. A write that changes a status like a save would (auto-pause, a reopened
+show, a rewatch ending) runs `signals._handle_media_cache_change`, the same
+refresh a save runs, rather than a call of its own. A new bulk write on a
+tracking model fails `app.tests.test_bulk_write_refresh` until it has a row.
+
 ## Adding a cache or a change
 
 - A new per-user view cache gets a registry and a column in `_VIEWS_BY_CHANGE`.
@@ -69,6 +76,36 @@ not end in `flush_media_change_side_effects`.
 `app.tests.test_view_cache_invalidation` pins what each change and each family
 of write paths clears. It also fails if any module outside `cache_utils.py`
 calls the per-view clear functions directly.
+
+`app.tests.test_bulk_write_refresh` scans the source tree (`ast`, about two
+seconds) for `update`, `bulk_create`, `bulk_update`, raw SQL and suppressed
+blocks on tracking models, and fails when one is not in
+`app/bulk_write_refresh.py`. Its behaviour tests warm a user's library page,
+Home and Statistics, make a bulk change through its view or service, and check
+that nothing cached from before the change can still be served.
+
+## Token feeds
+
+The calendar links (`events.views.download_calendar`,
+`download_history_calendar`) and the Discover RSS link
+(`app.discover.feeds.discover_row_feed`) are polled all day by calendar apps
+and Radarr/Sonarr, so each answers an unchanged poll from a validator it can
+compute without building the body (`app/feed_validation.py`). The user's side
+is the Statistics sync state (`StatisticsSyncState`), which every tracking and
+play write already marks; the release dates are `events.release_marker`,
+bumped by every path that creates, moves or deletes an `Event` (and only when
+something really changed). The validator also holds the link's token, its
+options, the day and, for the upcoming link, the enabled types and region. A
+matching `If-None-Match` gets a 304; otherwise the rendered calendar is kept
+for an hour under that validator, so a change can never serve an old body.
+The RSS link never builds a Discover row in the request: it serves a row
+built by `Refresh Discover Feed Row` (or by the settings preview), rebuilds
+it in the background when the user's library, Discover activity or the
+row's hour-long lifetime moves, and answers 503 with `Retry-After` until the
+first build lands, because an empty list can make arr list cleaning remove
+films. All three send `Cache-Control: private, max-age=900`. Item retitles and
+cross-provider duplicate mappings are not markers; the daily validator change
+picks them up.
 
 ## Not covered here
 

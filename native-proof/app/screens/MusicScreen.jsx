@@ -26,6 +26,7 @@ import { MusicView } from '../../../frontend/pages/MusicView';
 import { createMusicTransport } from '../data/musicTransport';
 import { formatUserDate } from '../data/userDate';
 import {
+  appendDiscographyPage,
   endDateStamp,
   flattenAlbums,
   loadArtistWithRelations,
@@ -42,6 +43,8 @@ import {
   mapTracksPayload,
   mapTracker,
   nowDateTimeStr,
+  REPAIR_POLL_MS,
+  repairPending,
 } from '../data/musicTransportCore';
 import { mediaCardPalette, palette, radius, spacing } from '../theme';
 
@@ -189,6 +192,10 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
   const [confirm, setConfirm] = useState(null);
   const [dateValue, setDateValue] = useState(nowDateTimeStr);
   const [history, setHistory] = useState({ rows: [], loading: false });
+  // Set while the server is still filling in this artist or album.
+  const [artistRepairing, setArtistRepairing] = useState(false);
+  const [albumRepairing, setAlbumRepairing] = useState(false);
+  const repairAttempts = useRef({ artist: 0, album: 0 });
 
   const run = useCallback(async (action, payload, errorLabel) => {
     if (!serverMode) return null;
@@ -206,8 +213,10 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     if (!serverMode || !artistId) return undefined;
     let active = true;
     setLoadingArtist(true);
+    repairAttempts.current.artist = 0;
     loadArtistWithRelations(transport, artistId).then(({ artist: payload, relations }) => {
       if (!active) return;
+      setArtistRepairing(repairPending(payload));
       const next = mapArtistPayload(payload);
       if (next && relations) next.relations = {
         members: (relations.members || []).map(relationModel),
@@ -229,11 +238,13 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     if (!serverMode || !albumId) return undefined;
     let active = true;
     setLoadingAlbum(true);
+    repairAttempts.current.album = 0;
     Promise.all([
       transport.loadAlbum({ albumId }),
       transport.loadAlbumTracks({ albumId }),
     ]).then(([albumPayload, trackPayload]) => {
       if (!active) return;
+      setAlbumRepairing(repairPending(trackPayload));
       const mappedTracks = mapTracksPayload(trackPayload);
       setAlbum(mapAlbumPayload(albumPayload));
       setTracks(mappedTracks);
@@ -255,6 +266,54 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     });
     return () => { active = false; };
   }, [albumId, reloadToken, serverMode, transport]);
+
+  // Quiet reloads while the server fills in a new artist or album.
+  useEffect(() => {
+    if (!serverMode || !artistId || !artistRepairing) return undefined;
+    let active = true;
+    const timer = setTimeout(() => {
+      repairAttempts.current.artist += 1;
+      loadArtistWithRelations(transport, artistId).then(({ artist: payload, relations }) => {
+        if (!active) return;
+        const next = mapArtistPayload(payload);
+        if (next && relations) next.relations = {
+          members: (relations.members || []).map(relationModel),
+          alsoIn: (relations.also_in || []).map(relationModel),
+        };
+        setArtist(next);
+        setArtistRepairing(repairPending(payload, repairAttempts.current.artist));
+      }).catch(() => {
+        if (active) setArtistRepairing(false);
+      });
+    }, REPAIR_POLL_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [artistId, artistRepairing, artist, serverMode, transport]);
+
+  useEffect(() => {
+    if (!serverMode || !albumId || !albumRepairing) return undefined;
+    let active = true;
+    const timer = setTimeout(() => {
+      repairAttempts.current.album += 1;
+      Promise.all([
+        transport.loadAlbum({ albumId }),
+        transport.loadAlbumTracks({ albumId }),
+      ]).then(([albumPayload, trackPayload]) => {
+        if (!active) return;
+        setAlbum(mapAlbumPayload(albumPayload));
+        setTracks(mapTracksPayload(trackPayload));
+        setAlbumRepairing(repairPending(trackPayload, repairAttempts.current.album));
+      }).catch(() => {
+        if (active) setAlbumRepairing(false);
+      });
+    }, REPAIR_POLL_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [albumId, albumRepairing, album, tracks, serverMode, transport]);
 
   useEffect(() => {
     if (!serverMode || !showId) return undefined;
@@ -501,6 +560,18 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     if (result === REQUEST_FAILED) return;
     setNotice(`Synced ${countLabel(Number(result?.synced_albums) || 0, 'release', 'releases')} from MusicBrainz.`);
     await reloadArtist();
+  }
+
+  // The artist arrives with each release-type group's first page; the rest
+  // load a page at a time, as on the web page.
+  async function loadMoreAlbums(group) {
+    const payload = await run('loadArtistAlbums', {
+      artistId: artistRemoteId,
+      group: group.label,
+      offset: group.nextOffset,
+    }, 'More releases could not be loaded.');
+    if (!payload || payload === REQUEST_FAILED) return;
+    setArtist(current => appendDiscographyPage(current, payload));
   }
 
   async function syncArtistMembers() {
@@ -880,7 +951,8 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
             onHistory={() => openHistory('artist', { title: artist.name })}
             onRate={rateArtist}
             onOpenNotes={() => openTracking('artist', artist)}
-            onSyncMembers={artistRemoteId ? syncArtistMembers : null} />
+            onSyncMembers={artistRemoteId ? syncArtistMembers : null}
+            onMoreAlbums={artistRemoteId ? loadMoreAlbums : null} />
           {artist.relations.members.length || artist.relations.alsoIn.length
             ? null
             : <EmptyPanel title="No band relations yet"
@@ -932,7 +1004,10 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
             onChooseRelease={albumRemoteId && album.hasReleaseGroup ? openReleases : null} />
           {tracks.length
             ? null
-            : <EmptyPanel title="No tracks yet"
+            : albumRepairing
+              ? <EmptyPanel title="Loading tracks"
+                copy="Fetching them from MusicBrainz." />
+              : <EmptyPanel title="No tracks yet"
               copy="Sync the album metadata to rebuild the tracklist from MusicBrainz."
               actionLabel={albumRemoteId ? 'Sync metadata' : null}
               onAction={syncAlbumMetadata} />}

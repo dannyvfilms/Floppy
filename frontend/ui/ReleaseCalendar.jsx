@@ -1,6 +1,7 @@
 import { Modal, ModalCloseButton } from './Modal';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -10,8 +11,12 @@ import {
   View,
 } from 'react-native';
 import { Badge } from './Badge';
+import { DropdownBackItem, DropdownItem, DropdownMenu } from './DropdownMenu';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
+import { normalizeCalendarStatuses, toggleCalendarStatus } from './calendarFilterState';
+import { cardTypography } from './cardTypography';
+import { CardRow } from './CardRow';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -21,6 +26,7 @@ const DEFAULT_PALETTE = {
   surfaceMutedSoft: 'rgba(82, 82, 91, 0.4)',
   surfaceHover: '#3f3f46',
   border: '#3f3f46',
+  surfaceBorder: '#454d59',
   text: '#fafafa',
   textSecondary: '#d4d4d8',
   textMuted: '#a1a1aa',
@@ -153,9 +159,15 @@ export function ReleaseCalendar({
   onOpenRelease,
   onFiltersChange,
   onMenuAction,
+  renderSettingsSheet,
+  renderRailControls,
+  hideToolbarControls = false,
+  mobile = false,
+  monthLoading = false,
+  initialLoading = false,
 }) {
   const { width } = useWindowDimensions();
-  const compact = width < 768;
+  const compact = mobile || width < 768;
   const colors = { ...DEFAULT_PALETTE, ...(palette || {}) };
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
   const menuCopy = { ...MENU_LABELS, ...(menu?.labels || {}) };
@@ -185,36 +197,33 @@ export function ReleaseCalendar({
       ? initialFilters.selectedTypes.filter((value) => allTypes.includes(value))
       : allTypes,
   );
+  const statusOptions = useMemo(() => {
+    const options = new Map();
+    Object.values(statusesByType).flat().forEach(status => {
+      const previous = options.get(status.value);
+      options.set(status.value, { ...status, inMonth: status.inMonth || previous?.inMonth });
+    });
+    return [...options.values()];
+  }, [statusesByType]);
   const [selectedStatusesByType, setSelectedStatusesByType] = useState(() =>
-    initialFilters?.selectedStatusesByType &&
-    typeof initialFilters.selectedStatusesByType === 'object'
-      ? Object.fromEntries(
-          Object.entries(allStatusesByType).map(([type, statuses]) => {
-            const saved = initialFilters.selectedStatusesByType[type];
-            return [
-              type,
-              Array.isArray(saved)
-                ? saved.filter((status) => statuses.includes(status))
-                : statuses,
-            ];
-          }),
-        )
-      : allStatusesByType,
-  );
-  const [selectedReleaseTypes, setSelectedReleaseTypes] = useState(() =>
-    Array.isArray(initialFilters?.selectedReleaseTypes)
-      ? initialFilters.selectedReleaseTypes.filter((value) =>
-          allReleaseTypes.includes(value),
-        )
-      : allReleaseTypes,
-  );
+    normalizeCalendarStatuses(allStatusesByType, initialFilters?.selectedStatusesByType));
+  // Release-date filtering is no longer exposed; discard any legacy restriction.
+  const selectedReleaseTypes = allReleaseTypes;
   const [activeDay, setActiveDay] = useState(() => {
     const value = Number(selectedDay);
     return daysInMonth.includes(value) ? value : daysInMonth[0] || 1;
   });
-  const [view, setView] = useState(initialView === 'list' ? 'list' : 'grid');
+  useLayoutEffect(() => {
+    const value = Number(selectedDay);
+    setActiveDay(daysInMonth.includes(value) ? value : daysInMonth[0] || 1);
+  }, [month, year]);
+  const [viewState, setView] = useState(initialView === 'list' ? 'list' : 'grid');
+  const view = compact ? 'grid' : viewState;
   const [agendaOpen, setAgendaOpen] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterPanel, setFilterPanel] = useState(null);
+  const [filterAnchor, setFilterAnchor] = useState(null);
+  const filterRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(menu?.weekStart || 'monday');
   const [layoutWidth, setLayoutWidth] = useState(0);
@@ -247,8 +256,10 @@ export function ReleaseCalendar({
   }, [releases, selectedTypes, selectedStatusesByType, selectedReleaseTypes]);
 
   const selectedReleases = visibleByDay[String(activeDay)] || [];
-  const tagCounts = { all: selectedReleases.length };
-  selectedReleases.forEach((release) => {
+  const availableReleases = (releases[String(activeDay)] || []).filter((release) =>
+    releasePasses(release, allTypes, selectedStatusesByType, selectedReleaseTypes));
+  const tagCounts = { all: availableReleases.length };
+  availableReleases.forEach((release) => {
     const group = groupFor(release.mediaType);
     tagCounts[group] = (tagCounts[group] || 0) + 1;
   });
@@ -260,7 +271,6 @@ export function ReleaseCalendar({
   function commitFilters(nextTypes, nextStatuses, nextReleaseTypes) {
     setSelectedTypes(nextTypes);
     setSelectedStatusesByType(nextStatuses);
-    setSelectedReleaseTypes(nextReleaseTypes);
     notifyFilters({
       selectedTypes: nextTypes,
       selectedStatusesByType: nextStatuses,
@@ -275,23 +285,8 @@ export function ReleaseCalendar({
     commitFilters(nextTypes, selectedStatusesByType, selectedReleaseTypes);
   }
 
-  function toggleStatus(mediaType, value) {
-    const current = selectedStatusesByType[mediaType] || [];
-    const statuses = current.includes(value)
-      ? current.filter((status) => status !== value)
-      : [...current, value];
-    const nextStatuses = {
-      ...selectedStatusesByType,
-      [mediaType]: statuses,
-    };
-    commitFilters(selectedTypes, nextStatuses, selectedReleaseTypes);
-  }
-
-  function toggleReleaseType(value) {
-    const nextReleaseTypes = selectedReleaseTypes.includes(value)
-      ? selectedReleaseTypes.filter((type) => type !== value)
-      : [...selectedReleaseTypes, value];
-    commitFilters(selectedTypes, selectedStatusesByType, nextReleaseTypes);
+  function toggleStatus(value) {
+    commitFilters(selectedTypes, toggleCalendarStatus(allStatusesByType, selectedStatusesByType, value), allReleaseTypes);
   }
 
   function clearFilters() {
@@ -343,28 +338,8 @@ export function ReleaseCalendar({
     return `${selectedTypes.length}/${allTypes.length}`;
   }
 
-  function summaryForReleaseTypes() {
-    const total = allReleaseTypes.length;
-    const selected = selectedReleaseTypes.length;
-    if (!total || selected === total) {
-      return copy.all;
-    }
-    if (!selected) {
-      return copy.none;
-    }
-    const match = releaseTypes.find((item) => item.value === selectedReleaseTypes[0]);
-    return selected === 1 && match ? match.label : `${selected}/${total}`;
-  }
-
   function filterSummary() {
-    const parts = [summaryForTypes()];
-    if (hasPartialStatus()) {
-      parts.push(copy.status);
-    }
-    if (selectedReleaseTypes.length < allReleaseTypes.length) {
-      parts.push(summaryForReleaseTypes());
-    }
-    return parts.join(' · ');
+    return [summaryForTypes(), ...(hasPartialStatus() ? [copy.status] : [])].join(' · ');
   }
 
   function navigate(url) {
@@ -416,6 +391,10 @@ export function ReleaseCalendar({
       return;
     }
     if (key === 'today') {
+      if (today && today.month === month && today.year === year) {
+        setActiveDay(today.day);
+        setAgendaOpen(true);
+      }
       if (onMenuAction) {
         onMenuAction({ key });
       } else {
@@ -473,10 +452,6 @@ export function ReleaseCalendar({
       );
   }
 
-  const todayMonthLabel = today
-    ? new Date(today.year, today.month - 1, 1).toLocaleString(undefined, { month: 'short' }).toUpperCase()
-    : '';
-
   const listDays = Object.keys(visibleByDay)
     .map(Number)
     .filter((day) => (visibleByDay[String(day)] || []).length > 0)
@@ -485,10 +460,38 @@ export function ReleaseCalendar({
   const tagTypes = mediaTypes
     .filter((item) => item.value !== 'season')
     .map((item) => ({ ...item, group: groupFor(item.value) }))
+    .filter((item) => tagCounts[item.group] > 0)
     .sort((left, right) => compareText(
       left.shortLabel || left.label,
       right.shortLabel || right.label,
     ));
+
+  const menuContent = <View style={styles.menuBody}>
+    <MenuRow label={menuCopy.today} onPress={() => menuAction('today')} styles={styles} />
+    <MenuRow label={menuCopy.fetch} onPress={() => menuAction('fetch')} styles={styles} />
+    <MenuRow label={menuCopy.download} onPress={() => menuAction('download')} styles={styles} />
+    <View style={styles.menuGroup}>
+      <Text style={styles.menuGroupLabel}>{menuCopy.weekStart}</Text>
+      <View style={styles.menuGroupActions}>
+        {['monday', 'sunday'].map((value) => <Pressable
+          key={value}
+          accessibilityRole="button"
+          accessibilityState={{ selected: weekStart === value }}
+          accessibilityLabel={menuCopy[value]}
+          onPress={() => menuAction('weekStart', value)}
+          style={({ pressed }) => [
+            styles.menuChoice,
+            weekStart === value && styles.menuChoiceSelected,
+            pressed && styles.pressed,
+          ]}>
+          <Text style={[
+            styles.menuChoiceText,
+            weekStart === value && styles.menuChoiceTextSelected,
+          ]}>{menuCopy[value]}</Text>
+        </Pressable>)}
+      </View>
+    </View>
+  </View>;
 
   return <View style={[styles.root, view === 'list' && styles.rootList]}>
     {showRegionNotice && regionUnset && regionNotice ? <View style={styles.regionNotice}>
@@ -501,62 +504,54 @@ export function ReleaseCalendar({
         <Text style={styles.regionNoticeLinkText}>{copy.preferences || 'Preferences'}</Text>
       </Pressable> : null}
     </View> : null}
-    <View style={styles.toolbar}>
-      <View style={styles.toolbarLeading}>
+    {!compact || !hideToolbarControls ? <View style={styles.toolbar}>
+      {compact && !hideToolbarControls ? <Pressable ref={filterRef} accessibilityRole="button" disabled={initialLoading}
+        accessibilityLabel={`${copy.filters}: ${filterSummary()}`}
+        onPress={() => filterRef.current?.measureInWindow?.((x, y, width, height) => {
+          setFilterAnchor({ x, y, width, height }); setFilterPanel(null); setFilterOpen(true);
+        })}
+        style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+        <Icon spec={actionIcons.funnel} size={20} color={colors.textSecondary} />
+      </Pressable> : null}
+      {!compact ? <View style={styles.toolbarLeading}>
         <View style={styles.monthNavigation}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={copy.previousMonth}
+            disabled={monthLoading}
             onPress={() => navigate(navigation.previous)}
             style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
             <Text style={styles.navText}>‹</Text>
           </Pressable>
           <Text style={styles.monthTitle}>{monthName} {year}</Text>
+          {monthLoading ? <ActivityIndicator size="small" color={colors.textMuted} accessibilityLabel="Loading calendar" /> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={copy.nextMonth}
+            disabled={monthLoading}
             onPress={() => navigate(navigation.next)}
             style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
             <Text style={styles.navText}>›</Text>
           </Pressable>
         </View>
-
-        {today && !compact ? <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={menuCopy.today}
-          onPress={goToToday}
-          style={({ pressed }) => [styles.todayChip, pressed && styles.pressed]}>
-          <Text style={styles.todayDay}>{today.day}</Text>
-          <Text style={styles.todayMonth}>{todayMonthLabel}</Text>
-        </Pressable> : null}
-      </View>
-
+      </View> : null}
       <View style={styles.toolbarActions}>
-        {today && compact ? <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={menuCopy.today}
-          onPress={goToToday}
-          style={({ pressed }) => [styles.todayChip, pressed && styles.pressed]}>
-          <Text style={styles.todayDay}>{today.day}</Text>
-          <Text style={styles.todayMonth}>{todayMonthLabel}</Text>
-        </Pressable> : null}
-        <Pressable
-          accessibilityRole="button"
+        {!compact ? <Pressable ref={filterRef} accessibilityRole="button"
           accessibilityLabel={`${copy.filters}: ${filterSummary()}`}
-          onPress={() => setFilterOpen(true)}
+          onPress={() => filterRef.current?.measureInWindow?.((x, y, width, height) => {
+            setFilterAnchor({ x, y, width, height }); setFilterPanel(null); setFilterOpen(true);
+          })}
           style={({ pressed }) => [styles.toolbarButton, pressed && styles.pressed]}>
           <Text numberOfLines={1} style={styles.toolbarButtonText}>{filterSummary()}</Text>
           <Text aria-hidden style={styles.toolbarChevron}>▾</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={menuCopy.menu}
-          accessibilityState={{ expanded: menuOpen }}
-          onPress={() => setMenuOpen(true)}
+        </Pressable> : null}
+        {hideToolbarControls ? <View style={styles.railPlaceholder} /> : <Pressable disabled={initialLoading}
+          accessibilityRole="button" accessibilityLabel={menuCopy.menu}
+          accessibilityState={{ expanded: menuOpen }} onPress={() => setMenuOpen(true)}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
           <Icon spec={actionIcons.settings} size={20} color={colors.textSecondary} />
-        </Pressable>
-        <View style={styles.viewToggle} accessibilityRole="tablist">
+        </Pressable>}
+        {!compact ? <View style={styles.viewToggle} accessibilityRole="tablist">
           {['grid', 'list'].map((item) => <Pressable
             key={item}
             accessibilityRole="tab"
@@ -576,9 +571,9 @@ export function ReleaseCalendar({
                 {item === 'grid' ? copy.viewMonth : copy.viewList}
               </Text>}
           </Pressable>)}
-        </View>
+        </View> : null}
       </View>
-    </View>
+    </View> : null}
 
     {view === 'list' ? <View style={styles.listStack}>
       {listDays.map((day) => {
@@ -615,6 +610,25 @@ export function ReleaseCalendar({
     </View> : <View ref={layoutRef} style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}
       onLayout={event => setLayoutWidth(event.nativeEvent.layout.width)}>
       <View style={styles.monthCard}>
+        {compact ? <View style={styles.mobileCalendarHeader}>
+          <View style={styles.agendaHeading}>
+            <View style={styles.mobileDateLine}>
+              <Text style={styles.agendaTitle}>{dayLabels[String(activeDay)] ? `${monthName} ${activeDay}, ${year}` : copy.agenda}</Text>
+              {monthLoading ? <ActivityIndicator size="small" color={colors.textMuted} accessibilityLabel="Loading calendar" /> : null}
+            </View>
+            <Text style={styles.agendaCount}>{initialLoading ? ' ' : `${selectedReleases.length} ${selectedReleases.length === 1 ? copy.release : copy.releases}`}</Text>
+          </View>
+          <View style={styles.mobileNavigation}>
+            <Pressable accessibilityRole="button" accessibilityLabel={copy.previousMonth} disabled={monthLoading}
+              onPress={() => navigate(navigation.previous)} style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
+              <Text style={styles.navText}>‹</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={copy.nextMonth} disabled={monthLoading}
+              onPress={() => navigate(navigation.next)} style={({ pressed }) => [styles.navButton, pressed && styles.pressed]}>
+              <Text style={styles.navText}>›</Text>
+            </Pressable>
+          </View>
+        </View> : null}
         <View style={styles.weekHeaderRow}>
           {weekdayHeaders.map((header) => <Text key={header} style={styles.weekHeader}>{header}</Text>)}
         </View>
@@ -650,7 +664,7 @@ export function ReleaseCalendar({
                   compact && styles.dayNumberCompact, compact && isToday && styles.dayNumberToday]}>
                   <Text style={[styles.dayNumberText, compact && styles.dayNumberTextCompact]}>{day}</Text>
                 </View>
-                {dayReleases.length > 4 ? <View style={styles.moreBadge}>
+                {!compact && dayReleases.length > 4 ? <View style={styles.moreBadge}>
                   <Text style={styles.moreText}>+{dayReleases.length - 4}</Text>
                 </View> : null}
               </Pressable>;
@@ -660,7 +674,7 @@ export function ReleaseCalendar({
       </View>
 
       {agendaOpen ? <View style={[styles.agendaCard, { width: compact ? '100%' : agendaWidth }]}>
-        <View style={styles.agendaHeader}>
+        {!compact ? <View style={styles.agendaHeader}>
           <View style={styles.agendaHeading}>
             <Text style={styles.agendaTitle}>
               {dayLabels[String(activeDay)] ? `${monthName} ${activeDay}, ${year}` : copy.agenda}
@@ -676,9 +690,9 @@ export function ReleaseCalendar({
             style={({ pressed }) => [styles.agendaClose, pressed && styles.pressed]}>
             <Text style={styles.agendaCloseText}>×</Text>
           </ModalCloseButton>
-        </View>
+        </View> : null}
 
-        <ScrollView
+        {!initialLoading ? <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tagRow}
@@ -694,10 +708,10 @@ export function ReleaseCalendar({
             selected={isGroupSelected(item.group)}
             onPress={() => selectGroup(item.group)}
             styles={styles} />)}
-        </ScrollView>
+        </ScrollView> : null}
 
         <View style={styles.agendaBody}>
-          {selectedReleases.length === 0 ? <View style={styles.emptyCard}>
+          {initialLoading ? null : selectedReleases.length === 0 ? <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>{copy.noDayReleases}</Text>
           </View> : agendaGroups().map((section, index) => <View
             key={section.group}
@@ -716,78 +730,31 @@ export function ReleaseCalendar({
       </View> : null}
     </View>}
 
-    <Modal
-      visible={filterOpen}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setFilterOpen(false)}>
-      <View style={styles.overlay}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={copy.close}
-          style={styles.backdrop}
-          onPress={() => setFilterOpen(false)} />
-        <View style={styles.sheet} accessibilityViewIsModal>
-          <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>{copy.filters}</Text>
-            <ModalCloseButton
-              accessibilityRole="button"
-              accessibilityLabel={copy.close}
-              onPress={() => setFilterOpen(false)}
-              style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}>
-              <Text style={styles.sheetCloseText}>×</Text>
-            </ModalCloseButton>
-          </View>
-          <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent}>
-            <FilterSection title={copy.mediaTypes} styles={styles}>
-              {mediaTypes.map((item) => <OptionRow
-                key={item.value}
-                label={item.label}
-                checked={selectedTypes.includes(item.value)}
-                onPress={() => toggleType(item.value)}
-                styles={styles} />)}
-            </FilterSection>
+    {renderRailControls ? renderRailControls({ mediaTypes, statusOptions, selectedTypes,
+      selectedStatusesByType, toggleType: initialLoading ? () => {} : toggleType,
+      toggleStatus: initialLoading ? () => {} : toggleStatus,
+      clearFilters: initialLoading ? () => {} : clearFilters,
+      labels: copy, menuLabels: menuCopy, weekStart, menuAction, today }) : null}
+    <DropdownMenu open={filterOpen} onClose={() => setFilterOpen(false)} anchor={filterAnchor}
+      align="start" estimatedHeight={300} palette={colors} closeLabel={copy.close}>
+      <ScrollView>
+        {filterPanel ? <DropdownBackItem label={filterPanel === 'media' ? copy.mediaTypes : copy.status}
+          onPress={() => setFilterPanel(null)} palette={colors} /> : <>
+          <DropdownItem label={copy.mediaTypes} chevron onPress={() => setFilterPanel('media')} palette={colors} />
+          <DropdownItem label={copy.status} chevron onPress={() => setFilterPanel('status')} palette={colors} />
+          <DropdownItem label={copy.clearAll} accessibilityRole="button" onPress={clearFilters} palette={colors} />
+        </>}
+        {filterPanel === 'media' ? mediaTypes.map(item => <DropdownItem key={item.value} label={item.label}
+          accessibilityRole="checkbox" checked={selectedTypes.includes(item.value)}
+          onPress={() => toggleType(item.value)} palette={colors} />) : null}
+        {filterPanel === 'status' ? statusOptions.map(status => <DropdownItem key={status.value}
+          label={status.label} accessibilityRole="checkbox"
+          checked={Object.values(selectedStatusesByType).some(values => values.includes(status.value))}
+          onPress={() => toggleStatus(status.value)} palette={colors} />) : null}
+      </ScrollView>
+    </DropdownMenu>
 
-            {mediaTypes.map((item) => {
-              const statuses = statusesByType[item.value] || [];
-              if (!statuses.length) {
-                return null;
-              }
-              return <FilterSection
-                key={`${item.value}-status`}
-                title={`${item.shortLabel || item.label} · ${copy.status}`}
-                styles={styles}>
-                {statuses.map((status) => <OptionRow
-                  key={status.value}
-                  label={status.inMonth ? `${status.label} •` : status.label}
-                  checked={(selectedStatusesByType[item.value] || []).includes(status.value)}
-                  onPress={() => toggleStatus(item.value, status.value)}
-                  styles={styles} />)}
-              </FilterSection>;
-            })}
-
-            {releaseTypes.length ? <FilterSection title={copy.movieReleaseDates} styles={styles}>
-              {releaseTypes.map((item) => <OptionRow
-                key={item.value}
-                label={item.label}
-                checked={selectedReleaseTypes.includes(item.value)}
-                onPress={() => toggleReleaseType(item.value)}
-                styles={styles} />)}
-            </FilterSection> : null}
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copy.clearAll}
-              onPress={clearFilters}
-              style={({ pressed }) => [styles.clearAll, pressed && styles.pressed]}>
-              <Text style={styles.clearAllText}>{copy.clearAll}</Text>
-            </Pressable>
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-
-    <Modal
+    {renderSettingsSheet ? renderSettingsSheet({ open: menuOpen, onClose: () => setMenuOpen(false), title: menuCopy.menu, children: menuContent }) : <Modal
       visible={menuOpen}
       transparent
       animationType="fade"
@@ -809,35 +776,10 @@ export function ReleaseCalendar({
               <Text style={styles.sheetCloseText}>×</Text>
             </ModalCloseButton>
           </View>
-          <View style={styles.menuBody}>
-            <MenuRow label={menuCopy.today} onPress={() => menuAction('today')} styles={styles} />
-            <MenuRow label={menuCopy.fetch} onPress={() => menuAction('fetch')} styles={styles} />
-            <MenuRow label={menuCopy.download} onPress={() => menuAction('download')} styles={styles} />
-            <View style={styles.menuGroup}>
-              <Text style={styles.menuGroupLabel}>{menuCopy.weekStart}</Text>
-              <View style={styles.menuGroupActions}>
-                {['monday', 'sunday'].map((value) => <Pressable
-                  key={value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: weekStart === value }}
-                  accessibilityLabel={menuCopy[value]}
-                  onPress={() => menuAction('weekStart', value)}
-                  style={({ pressed }) => [
-                    styles.menuChoice,
-                    weekStart === value && styles.menuChoiceSelected,
-                    pressed && styles.pressed,
-                  ]}>
-                  <Text style={[
-                    styles.menuChoiceText,
-                    weekStart === value && styles.menuChoiceTextSelected,
-                  ]}>{menuCopy[value]}</Text>
-                </Pressable>)}
-              </View>
-            </View>
-          </View>
+          {menuContent}
         </View>
       </View>
-    </Modal>
+    </Modal>}
   </View>;
 }
 
@@ -892,27 +834,6 @@ function FilterChip({ label, selected, onPress, styles }) {
   </Pressable>;
 }
 
-function FilterSection({ title, children, styles }) {
-  return <View style={styles.filterSection}>
-    <Text style={styles.filterSectionTitle}>{title}</Text>
-    {children}
-  </View>;
-}
-
-function OptionRow({ label, checked, onPress, styles }) {
-  return <Pressable
-    accessibilityRole="checkbox"
-    accessibilityLabel={label}
-    accessibilityState={{ checked }}
-    onPress={onPress}
-    style={({ pressed }) => [styles.optionRow, pressed && styles.pressed]}>
-    <Text style={styles.optionLabel}>{label}</Text>
-    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-      {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
-    </View>
-  </Pressable>;
-}
-
 function MenuRow({ label, onPress, styles }) {
   return <Pressable
     accessibilityRole="menuitem"
@@ -932,34 +853,22 @@ function ReleaseRow({
   showMedia = false,
   onPress,
 }) {
-  return <Pressable
-    accessibilityRole="link"
-    accessibilityLabel={release.title}
-    onPress={onPress}
-    style={({ pressed }) => [styles.releaseRow, pressed && styles.pressed]}>
-    {release.image ? <Image
+  const metadata = [
+    ...(showMedia ? [release.mediaLabel] : []),
+    ...release.cardLines,
+    (showMedia && release.listSubtitle) || release.subtitle || copy.noDayReleases,
+  ].filter(Boolean).join(' · ');
+  return <CardRow accessibilityLabel={release.title} onPress={onPress}
+    leading={release.image ? <Image
       source={{ uri: release.image }}
       resizeMode="cover"
       accessible={false}
       style={styles.releaseArtwork} /> : <View style={[styles.releaseArtwork, styles.artworkPlaceholder]}>
       <Text numberOfLines={1} style={styles.artworkPlaceholderText}>{release.title}</Text>
-    </View>}
-    <View style={styles.releaseBody}>
+    </View>}>
       <Text numberOfLines={1} style={styles.releaseTitle}>{showMedia && release.listTitle ? release.listTitle : release.title}</Text>
-      {release.cardLines.length && !showMedia ? <Text numberOfLines={1} style={styles.releaseLines}>
-        {release.cardLines.join(' · ')}
-      </Text> : null}
-      <View style={styles.releaseMeta}>
-        {showMedia ? <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>{release.mediaLabel}</Text> : null}
-        {showMedia && release.cardLines.length ? <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>
-          {release.cardLines.join(' · ')}
-        </Text> : null}
-        <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: showMedia ? colors.link : colors.textMuted }]}>
-          {(showMedia && release.listSubtitle) || release.subtitle || copy.noDayReleases}
-        </Text>
-      </View>
-    </View>
-  </Pressable>;
+      <Text numberOfLines={1} style={[styles.releaseSubtitle, { color: colors.textMuted }]}>{metadata}</Text>
+  </CardRow>;
 }
 
 function createStyles(colors, compact) {
@@ -968,12 +877,13 @@ function createStyles(colors, compact) {
     // List view sits in the same padded surface card as the release calendar.
     rootList: { backgroundColor: colors.surface, borderRadius: 8, padding: 24 },
     toolbarLeading: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+    railPlaceholder: { width: 40 },
     toolbar: {
-      flexDirection: compact ? 'column' : 'row',
+      flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
-      justifyContent: compact ? 'center' : 'space-between',
-      gap: compact ? 16 : 8,
+      justifyContent: 'space-between',
+      gap: 8,
     },
     monthNavigation: {
       flexDirection: 'row',
@@ -997,8 +907,8 @@ function createStyles(colors, compact) {
       lineHeight: 28,
       fontWeight: '600',
       textAlign: 'center',
-      minWidth: 160,
-      paddingHorizontal: 16,
+      minWidth: compact ? 110 : 160,
+      paddingHorizontal: compact ? 4 : 16,
     },
     toolbarActions: {
       flexDirection: 'row',
@@ -1097,16 +1007,22 @@ function createStyles(colors, compact) {
     viewTabSelected: { backgroundColor: colors.accentStrong },
     viewTabText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
     viewTabTextSelected: { color: colors.accentText },
-    layout: { gap: compact ? 16 : 12 },
+    layout: { gap: compact ? 0 : 12 },
     layoutWithAgenda: { flexDirection: 'row', alignItems: 'flex-start' },
     monthCard: {
       flex: 1,
       minWidth: 0,
       backgroundColor: colors.surface,
       borderRadius: 12,
+      ...(compact ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } : {}),
       padding: compact ? 8 : 24,
+      // Mobile: the grid-to-divider and divider-to-filter gaps match the header-to-grid gap.
+      paddingBottom: compact ? 16 : 24,
       gap: 8,
     },
+    mobileCalendarHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 5 },
+    mobileDateLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    mobileNavigation: { flexDirection: 'row', alignItems: 'center' },
     weekHeaderRow: { flexDirection: 'row', gap: compact ? 4 : 6 },
     weekHeader: {
       flex: 1,
@@ -1169,7 +1085,7 @@ function createStyles(colors, compact) {
       minWidth: 0,
       paddingHorizontal: 0,
       paddingVertical: 0,
-      borderRadius: 12,
+      borderRadius: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       justifyContent: 'center',
     },
@@ -1190,6 +1106,7 @@ function createStyles(colors, compact) {
       width: compact ? '100%' : 336,
       backgroundColor: colors.surface,
       borderRadius: 12,
+      ...(compact ? { borderTopLeftRadius: 0, borderTopRightRadius: 0, borderTopWidth: 1, borderTopColor: colors.surfaceBorder } : {}),
       overflow: 'hidden',
     },
     agendaHeader: {
@@ -1202,8 +1119,8 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surfaceMutedSoft,
     },
     agendaHeading: { flexShrink: 1, gap: 2 },
-    agendaTitle: { color: colors.text, fontSize: 16, lineHeight: 20, fontWeight: '500' },
-    agendaCount: { color: colors.textMuted, fontSize: 12, lineHeight: 16 },
+    agendaTitle: { color: colors.text, ...cardTypography.title },
+    agendaCount: { color: colors.textMuted, ...cardTypography.secondary },
     agendaClose: {
       width: 32,
       height: 32,
@@ -1218,7 +1135,8 @@ function createStyles(colors, compact) {
       alignItems: 'center',
       gap: 6,
       paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingTop: compact ? 16 : 8,
+      paddingBottom: 8,
     },
     filterChip: {
       minHeight: 34,
@@ -1232,13 +1150,13 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
     },
     filterChipSelected: {
-      borderColor: colors.accent,
+      borderColor: 'transparent',
       backgroundColor: colors.accentStrong,
     },
     filterChipText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500', lineHeight: 20 },
     filterChipTextSelected: { color: colors.accentText },
-    agendaBody: { padding: 12, gap: 8 },
-    agendaSection: { gap: 4 },
+    agendaBody: { paddingVertical: 12, gap: 8 },
+    agendaSection: { gap: 0 },
     agendaSectionDivider: {
       borderTopWidth: 1,
       borderTopColor: colors.border,
@@ -1246,9 +1164,8 @@ function createStyles(colors, compact) {
     },
     agendaSectionTitle: {
       color: colors.textSecondary,
-      fontSize: 12,
-      fontWeight: '700',
-      paddingHorizontal: 4,
+      ...cardTypography.item,
+      paddingHorizontal: 16,
       paddingVertical: 2,
     },
     emptyCard: {
@@ -1257,29 +1174,14 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
     },
     emptyText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
-    releaseRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      padding: 8,
-      borderRadius: 8,
-    },
     releaseArtwork: {
       width: 40,
-      height: 40,
+      aspectRatio: 2 / 3,
       borderRadius: 6,
       backgroundColor: colors.surfaceStrong,
     },
-    releaseBody: { flex: 1, minWidth: 0, gap: 2 },
-    releaseTitle: { color: colors.text, fontSize: 14, fontWeight: '600' },
-    releaseLines: { color: colors.textMuted, fontSize: 11 },
-    releaseMeta: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      flexWrap: 'wrap',
-    },
-    releaseSubtitle: { flexShrink: 1, fontSize: 11 },
+    releaseTitle: { color: colors.text, ...cardTypography.rowTitle },
+    releaseSubtitle: { flexShrink: 1, ...cardTypography.rowMeta },
     listStack: { gap: 24 },
     // Day cards match the release list: muted card, gray-600 header (indigo-600
     // for today), roomy body.
@@ -1299,7 +1201,7 @@ function createStyles(colors, compact) {
     },
     listDayHeaderToday: { backgroundColor: '#4f46e5' },
     listDayTitle: { color: '#f3f4f6', fontSize: 16, lineHeight: 24, fontWeight: '500' },
-    listDayBody: { padding: 16, gap: 12 },
+    listDayBody: { gap: 0 },
     overlay: {
       flex: 1,
       justifyContent: compact ? 'flex-end' : 'center',

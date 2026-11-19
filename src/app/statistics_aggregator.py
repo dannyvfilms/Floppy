@@ -488,12 +488,14 @@ def _aggregate_minutes_per_media_type_from_days(
     *,
     build_missing=False,
     build_days=None,
+    missing_days=None,
 ):
     """Add up ``minutes_by_type`` across the range's day payloads.
 
     ``build_days(days)`` builds and caches a batch of missing days, as in
     ``_walk_days``; without it a missing day is built alone when
-    ``build_missing`` is set.
+    ``build_missing`` is set. Days still without a payload are appended to
+    ``missing_days`` when given.
     """
     minutes_by_type = defaultdict(float)
     if not day_list:
@@ -515,6 +517,8 @@ def _aggregate_minutes_per_media_type_from_days(
             if not day_stats and build_missing:
                 day_stats = build_stats_for_day(user.id, day)
             if not day_stats:
+                if missing_days is not None:
+                    missing_days.append(day)
                 continue
 
             for media_type, minutes in (
@@ -562,7 +566,7 @@ def _has_dateless_movie_or_episode_activity(user) -> bool:
         return True
     Episode = apps.get_model("app", "Episode")
     return Episode.objects.filter(
-        related_season__user=user, end_date__isnull=True
+        Episode.watch_q(), related_season__user=user, end_date__isnull=True
     ).exists()
 
 
@@ -678,6 +682,11 @@ def _build_combined_hours_charts(day_minutes_by_type, hour_minutes):
         MediaTypes.MUSIC.value,
         MediaTypes.PODCAST.value,
         MediaTypes.VIDEO.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOARDGAME.value,
+        MediaTypes.BOOK.value,
+        MediaTypes.COMIC.value,
+        MediaTypes.MANGA.value,
     )
 
     merged_day_minutes: defaultdict = defaultdict(float)
@@ -790,6 +799,7 @@ class _RangeAccumulators:
         "anime_genres",
         "day_minutes_by_type",
         "day_play_counts",
+        "day_reading_units",
         "game_decades",
         "game_genres",
         "game_rollups",
@@ -822,6 +832,7 @@ class _RangeAccumulators:
         )
         self.day_play_counts = defaultdict(dict)
         self.day_minutes_by_type = defaultdict(dict)
+        self.day_reading_units = defaultdict(dict)
         self.listening_minutes_total = 0
         self.movie_genres = _play_rollup()
         self.tv_genres = _play_rollup()
@@ -918,10 +929,12 @@ def _walk_days(
     build_days,
     clock,
     timings,
+    missing_days=None,
 ):
     """Read the range's day payloads 50 at a time and merge each into ``acc``.
 
-    Returns the credit backfill hints of the days it had to build.
+    Returns the credit backfill hints of the days it had to build. Days with
+    no payload (not built yet) are appended to ``missing_days`` when given.
     """
     credit_backfill_hints = 0
     # Day payloads built moments ago by the caller (e.g. a full refresh) are
@@ -955,6 +968,8 @@ def _walk_days(
                         day_stats.get("backfill", {}).get("missing_credits") or 0,
                     )
             if not day_stats:
+                if missing_days is not None:
+                    missing_days.append(day)
                 continue
             _merge_day(acc, day, day_stats)
         clock.mark("day_merge")
@@ -1197,9 +1212,13 @@ def _merge_day(acc, day, day_stats):
     for media_type, minutes in day_stats.get("daily_minutes_by_type", {}).items():
         acc.day_minutes_by_type[media_type][day_iso] = minutes
 
+    for media_type, units in day_stats.get("daily_reading_units", {}).items():
+        acc.day_reading_units[media_type][day_iso] = units
+
     _merge_rollups(acc, day_stats)
 
     daily_minutes = day_stats.get("daily_minutes_by_type", {}) or {}
+    reading_units = day_stats.get("daily_reading_units", {}) or {}
     plays_total = sum(totals.get("plays_by_type", {}).values())
     activity_total = plays_total
     # Same rule as the total, kept per media type so the heatmap can
@@ -1210,7 +1229,9 @@ def _merge_day(acc, day, day_stats):
         if plays
     }
     for media_type in _NON_PLAY_ACTIVITY_TYPES:
-        if daily_minutes.get(media_type, 0):
+        if (
+            daily_minutes.get(media_type, 0) or reading_units.get(media_type, 0)
+        ) and not by_type.get(media_type):
             activity_total += 1
             by_type[media_type] = by_type.get(media_type, 0) + 1
     if activity_total == 0 and sum(daily_minutes.values()) > 0:
@@ -1719,7 +1740,11 @@ def _build_hours_per_media_type(acc, user):
     hours_per_media_type = {}
     for media_type, total_minutes in acc.minutes_by_type.items():
         if media_type == MediaTypes.BOARDGAME.value:
-            hours_per_media_type[media_type] = _plays_label(total_minutes)
+            plays = int(acc.plays_by_type.get(media_type, 0))
+            hours_per_media_type[media_type] = (
+                f"{plays} play{'s' if plays != 1 else ''} · "
+                f"{stats._format_hours_minutes(total_minutes, user.duration_format)}"
+            )
         else:
             hours_per_media_type[media_type] = stats._format_hours_minutes(
                 total_minutes, user.duration_format
@@ -2320,7 +2345,7 @@ def _build_reading_consumption(acc, user, media_type, start_date, end_date, row_
     completion_label = _READING_COMPLETION_LABELS.get(media_type, "Items Finished")
     release_label = _READING_RELEASE_LABELS.get(media_type, "Items Released")
     color = config.get_stats_color(media_type)
-    units_by_day = acc.day_minutes_by_type.get(media_type, {})
+    units_by_day = acc.day_reading_units.get(media_type, {})
     unit_total = sum(units_by_day.values()) if units_by_day else 0
 
     completed_lengths, completed_datetimes = _reading_completions(
@@ -2888,6 +2913,7 @@ def _aggregate_statistics_from_days(
     timings: dict | None = None,
     pass_memo: dict | None = None,
     build_days=None,
+    missing_days: list | None = None,
 ):
     """Build one range's statistics from its cached day payloads.
 
@@ -2902,7 +2928,8 @@ def _aggregate_statistics_from_days(
     per pass and handed to each range as copies). It is never cached or
     published. ``build_days(days)`` builds and caches a batch of missing days
     and returns their credit hints; with it a missing day is found by the read
-    that would have fetched it anyway.
+    that would have fetched it anyway. ``missing_days`` collects the days that
+    still had no payload, so a caller need not read the range again to ask.
     """
     clock = _PhaseClock(timings)
     pass_memo = {} if pass_memo is None else pass_memo
@@ -2923,6 +2950,7 @@ def _aggregate_statistics_from_days(
         build_days=build_days,
         clock=clock,
         timings=timings,
+        missing_days=missing_days,
     )
 
     active_types = _active_media_types(user, acc)

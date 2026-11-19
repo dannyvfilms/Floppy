@@ -150,6 +150,7 @@
   </div>
   {% if not react_row.props.model.actions %}
   {# Track Modal #}
+  <template x-teleport="body">
   <div x-show="trackOpen"
        x-cloak
        @keydown.escape.window="trackOpen = false"
@@ -160,6 +161,7 @@
       <div id="{% component_id 'track' item media.id %}"></div>
     </div>
   </div>
+  </template>
 
   {# Lists Modal #}
   {% endif %}

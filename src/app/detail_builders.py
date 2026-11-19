@@ -978,10 +978,13 @@ def _build_detail_link_entry(label, url, brand_key):
     }
 
 
-def _build_detail_link_sections(
+def build_detail_link_sections(
     media_metadata, media_type, identity_provider, display_provider, item=None
 ):
-    """Return grouped source and external link chips for the media detail action row."""
+    """Return grouped source and external link chips for the media detail action row.
+
+    Shared by the media, season and music detail pages and the detail API.
+    """
     if not isinstance(media_metadata, dict):
         return []
 
@@ -1202,8 +1205,11 @@ def _build_detail_person_rows(media_metadata, item=None):
             cast[:20],
             view_all_url=view_all_url,
             view_all_text=view_all_text,
+            card_width_class="w-44",
         ),
-        "crew_row": _build_static_row("detail-crew", "Crew", crew[:20]),
+        "crew_row": _build_static_row(
+            "detail-crew", "Crew", crew[:20], card_width_class="w-44"
+        ),
         "seasons_row": _build_static_row(
             "detail-seasons", "Seasons", (media_metadata.get("related") or {}).get("seasons") or [],
             card_width_class="w-44",

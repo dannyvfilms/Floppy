@@ -367,14 +367,17 @@ def _mark_discover_stale_without_refresh(user_id: int, media_type: str) -> list[
     return targets
 
 
-def _invalidate_discover_after_action(
+def invalidate_discover_after_action(
     user_id: int,
     media_type: str,
     *,
     discover_debug: bool,
     feedback_change: bool,
 ) -> list[str]:
-    """Invalidate Discover after a quick action, avoiding debug-mode task overlap."""
+    """Invalidate Discover after a quick action, avoiding debug-mode task overlap.
+
+    Shared with the Discover API in api/fork_views_discover.py.
+    """
     if discover_debug:
         return _mark_discover_stale_without_refresh(user_id, media_type)
     if feedback_change:
@@ -523,6 +526,8 @@ def _discover_provider_error_response(error, title, active_media_type):
 @discover_enabled_required
 def discover_action(request):
     """Handle Discover quick actions and return the updated rows fragment."""
+    # Lazy and through the barrel on purpose: tests patch
+    # app.views.ensure_item_metadata*, and app.views imports this module.
     from app import views as view_barrel
 
     request_id = uuid4().hex[:8]
@@ -576,7 +581,7 @@ def discover_action(request):
             if instance:
                 with suppress_media_cache_change_signals():
                     instance.delete()
-                view_barrel._invalidate_discover_after_action(
+                invalidate_discover_after_action(
                     request.user.id,
                     side_effect.get("media_type"),
                     discover_debug=discover_debug,
@@ -590,7 +595,7 @@ def discover_action(request):
             if feedback:
                 media_type = feedback.item.media_type
                 feedback.delete()
-                view_barrel._invalidate_discover_after_action(
+                invalidate_discover_after_action(
                     request.user.id,
                     media_type,
                     discover_debug=discover_debug,
@@ -743,7 +748,7 @@ def discover_action(request):
                 item=hydrated.item,
                 feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
             ).delete()
-            view_barrel._invalidate_discover_after_action(
+            invalidate_discover_after_action(
                 request.user.id,
                 candidate_media_type,
                 discover_debug=discover_debug,
@@ -812,7 +817,7 @@ def discover_action(request):
                     instance.show = hydrated.podcast_show
             with suppress_media_cache_change_signals():
                 instance.save()
-            view_barrel._invalidate_discover_after_action(
+            invalidate_discover_after_action(
                 request.user.id,
                 candidate_media_type,
                 discover_debug=discover_debug,
@@ -872,7 +877,7 @@ def discover_action(request):
                 "row_key": row_key,
             },
         )
-        view_barrel._invalidate_discover_after_action(
+        invalidate_discover_after_action(
             request.user.id,
             candidate_media_type,
             discover_debug=discover_debug,
@@ -995,8 +1000,6 @@ def _build_track_modal_discover_tab_context(user, metadata_item):
 @discover_enabled_required
 def discover_toggle_hidden(request):
     """Toggle the hidden status of an item from Discover."""
-    from app import views as view_barrel
-
     item_id = request.POST.get("item_id")
     action = request.POST.get("action")
     if action not in {"hide", "unhide"}:
@@ -1020,7 +1023,7 @@ def discover_toggle_hidden(request):
         ).delete()
         message = f'Showing "{item.title}" in Discover.'
 
-    view_barrel._invalidate_discover_after_action(
+    invalidate_discover_after_action(
         request.user.id,
         item.library_media_type or item.media_type,
         discover_debug=False,

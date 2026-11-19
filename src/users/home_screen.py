@@ -1801,6 +1801,7 @@ def _music_shell_items_bulk(
                     media_id=mid,
                     source=Sources.MANUAL.value,
                     media_type=MediaTypes.MUSIC.value,
+                    library_media_type=MediaTypes.MUSIC.value,
                     title=specs_map[mid][1],
                     image=specs_map[mid][2] or settings.IMG_NONE,
                 )
@@ -1820,6 +1821,7 @@ def _music_shell_items_bulk(
                 media_id=mid,
                 source=Sources.MANUAL.value,
                 media_type=MediaTypes.MUSIC.value,
+                library_media_type=MediaTypes.MUSIC.value,
                 title=specs_map[mid][1],
                 image=specs_map[mid][2] or settings.IMG_NONE,
             )
@@ -2191,6 +2193,7 @@ def _podcast_show_shell_items_bulk(
             media_id=show.podcast_uuid,
             source=show.source,
             media_type=MediaTypes.PODCAST.value,
+            library_media_type=MediaTypes.PODCAST.value,
             title=show.title,
             image=show.image or settings.IMG_NONE,
         )

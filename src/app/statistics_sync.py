@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when the shape of a published payload changes; older snapshots are
 # served until the next sync replaces them.
-SNAPSHOT_SCHEMA_VERSION = 21
+SNAPSHOT_SCHEMA_VERSION = 22
 
 # Cheap ranges rebuilt on every sync, in this order.
 HOT_RANGES = (
@@ -204,7 +204,7 @@ def _pending_key(user_id: int) -> str:
 def _day_epoch_key(user_id: int) -> str:
     # Written without a TTL, so volatile-lru never evicts it: its absence means
     # the cache was flushed and every day payload has to be checked.
-    return f"stats:sync:day_epoch:{user_id}"
+    return f"stats:sync:day_epoch:v{SNAPSHOT_SCHEMA_VERSION}:{user_id}"
 
 
 def _eager_mode() -> bool:
@@ -981,10 +981,7 @@ def _build_days(
     lease_token: str | None = None,
 ) -> int:
     """Build day payloads in slices; clear each slice's dirty rows as it lands."""
-    from app.statistics_day_builder import (
-        _build_prefetch_for_range,
-        build_stats_for_day,
-    )
+    from app.statistics_day_builder import SpanPrefetches, build_stats_for_day
     from app.statistics_refresh import _enqueue_collected_backfills
 
     credit_hints = 0
@@ -995,7 +992,8 @@ def _build_days(
         if lease_token is not None and not _renew_lease(user.id, lease_token):
             raise _LostLeaseError
         chunk = days[offset : offset + size]
-        prefetch = _build_prefetch_for_range(user, chunk)
+        # Nearby days share one prefetch; a far-off dirty day gets its own.
+        prefetches = SpanPrefetches(user, chunk)
         collector = {
             "runtime_item_ids": set(),
             "genre_item_ids": set(),
@@ -1016,7 +1014,7 @@ def _build_days(
                 user.id,
                 day,
                 user=user,
-                prefetch=prefetch,
+                prefetch=prefetches.for_day(day),
                 defer_cache_write=True,
                 backfill_collector=collector,
             )
