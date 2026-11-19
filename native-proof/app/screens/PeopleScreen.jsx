@@ -6,6 +6,7 @@ import { LightboxDialog } from '../../../frontend/ui/People';
 import { PeopleToolbar } from '../../../frontend/ui/PeopleToolbar';
 import { Screen, Section } from '../components/Screen';
 import { createPeopleTransport } from '../data/peopleTransport';
+import { appendCreditPage, keepLoadedCredits } from '../data/peopleTransportCore';
 import { enrichServerCard, routeCardHref } from '../data/serverCardCore';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
@@ -16,7 +17,7 @@ export const surface = {
   status: 'in_progress',
   title: 'People, studios and credits',
   where: 'Person and studio pages, watched and filmography credit rails, filter and sort toolbar',
-  note: 'Person and studio pages load /api/v1/people/{source}/{id}/ and /api/v1/studios/{source}/{id}/ (the web profile views as JSON, token or session) and render the shared hero, watched, filmography and studio title rails. The filmography toolbar (sort, direction, rated, collected, department, year, genre) re-requests the profile with those filters. Loading, empty, error with retry and signed-out states are real; there is no sample content. Route params: { identity: { kind: "person" | "studio", source, personId | studioId } } (flat params are accepted too). Cast, crew, gallery and extras rails render only when a caller passes them in route params. Browser, iOS and Android runtime passes were not run.',
+  note: 'Person and studio pages load /api/v1/people/{source}/{id}/ and /api/v1/studios/{source}/{id}/ (the web profile views as JSON, token or session) and render the shared hero, watched, filmography and studio title rails. The filmography toolbar (sort, direction, rated, collected, department, year, genre) re-requests the profile with those filters. Credits arrive 60 at a time; Show more under each grid asks for the next page (section + watched_page / credits_page). Loading, empty, error with retry and signed-out states are real; there is no sample content. Route params: { identity: { kind: "person" | "studio", source, personId | studioId } } (flat params are accepted too). Cast, crew, gallery and extras rails render only when a caller passes them in route params. Browser, iOS and Android runtime passes were not run.',
 };
 
 // While the server builds play totals (talentPending), ask again this often,
@@ -69,6 +70,11 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
   const [attempt, setAttempt] = useState(0);
   const [talentPoll, setTalentPoll] = useState(0);
   const pollState = useRef({ key: '', count: 0, quiet: false });
+  // Which grid is loading its next page ('watched' | 'filmography' | '').
+  const [loadingMore, setLoadingMore] = useState('');
+  // Bumped by every full load, so a late "Show more" answer for old filters
+  // is dropped instead of appended.
+  const loadGeneration = useRef(0);
   const [lightbox, setLightbox] = useState({ visible: false, index: 0 });
 
   useEffect(() => {
@@ -83,6 +89,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
       return undefined;
     }
     let active = true;
+    loadGeneration.current += 1;
+    setLoadingMore('');
     const quiet = pollState.current.quiet;
     pollState.current.quiet = false;
     // A filter change keeps the page on screen while the new credits load.
@@ -93,7 +101,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
       : transport.loadPerson({ ...identity, filters });
     Promise.resolve(request).then(data => {
       if (!active) return;
-      setProfile(data);
+      setProfile(current => (quiet ? keepLoadedCredits(current, data) : data));
       setMode('ready');
     }).catch(requestError => {
       // A background refresh for play totals never replaces a page on screen.
@@ -122,6 +130,24 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     }, TALENT_POLL_MS);
     return () => clearTimeout(timer);
   }, [profile, pollKey, talentPoll]);
+
+  // The next page of one credit grid, added below what is on screen.
+  const loadMoreCredits = useCallback(section => {
+    const next = section === 'watched' ? profile?.watchedNextPage : profile?.filmographyNextPage;
+    if (!next || loadingMore || !identity || identity.kind !== 'person') return;
+    const generation = loadGeneration.current;
+    setLoadingMore(section);
+    Promise.resolve(transport.loadPerson({ ...identity, filters, page: { section, page: next } }))
+      .then(data => {
+        if (generation !== loadGeneration.current) return;
+        setProfile(current => appendCreditPage(current, data, section));
+      })
+      // The button stays, so the viewer can try again.
+      .catch(() => {})
+      .finally(() => {
+        if (generation === loadGeneration.current) setLoadingMore('');
+      });
+  }, [profile, loadingMore, identity, transport, filters]);
 
   const openCredit = useCallback(entry => {
     navigate?.('Detail', {
@@ -192,6 +218,11 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
       labels={labels}
       watched={data.watched || []}
       filmography={data.filmography || []}
+      watchedTotal={data.watchedTotal}
+      filmographyTotal={data.filmographyTotal}
+      loadingMore={loadingMore}
+      onLoadMoreWatched={data.watchedNextPage ? () => loadMoreCredits('watched') : undefined}
+      onLoadMoreFilmography={data.filmographyNextPage ? () => loadMoreCredits('filmography') : undefined}
       cast={params?.cast || data.cast || []}
       crew={params?.crew || data.crew || []}
       isAuthor={data.isAuthor}
