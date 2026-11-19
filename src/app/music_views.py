@@ -14,14 +14,13 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext, gettext_noop
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from app import music_page_repair
+from app import music_artist_page, music_page_repair
 from app.detail_builders import build_detail_link_sections
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import BulkEpisodeTrackForm, MusicTrackNotesForm
 from app.log_safety import exception_summary
 from app.models import (
     Album,
-    AlbumTracker,
     Artist,
     CollectionEntry,
     Item,
@@ -689,9 +688,8 @@ def _queue_artist_relation_image_prefetch(artist, band_members, member_of_bands)
 def _render_music_artist_details(request, artist):
     """Render a music artist through the shared media details template."""
     from app.helpers import get_artist_collection_stats
-    from app.models import AlbumTracker, ArtistTracker
+    from app.models import ArtistTracker
     from app.providers import musicbrainz
-    from app.services.music import build_discography_groups, canonicalize_albums
 
     # The page draws what is stored. Resolving an MBID, merging duplicate
     # albums, syncing the discography and members, and fetching MusicBrainz
@@ -699,54 +697,13 @@ def _render_music_artist_details(request, artist):
     repair_reasons = music_page_repair.artist_repair_reasons(artist)
     repair_polling = music_page_repair.queue_artist_repair(artist, repair_reasons)
 
-    raw_albums = list(
-        Album.objects.filter(
-            models.Q(artist=artist) | models.Q(artist_credits__artist=artist),
-        )
-        .select_related("artist")
-        .prefetch_related("artist_credits__artist")
-        .distinct()
-        .order_by("-release_date", "title"),
+    # Every album counts towards the totals; only the first page of each
+    # release-type group is drawn, and only those read their plays.
+    all_albums = music_artist_page.artist_albums(request.user, artist)
+    discography_groups = music_artist_page.discography_page(
+        request.user,
+        all_albums,
     )
-    all_albums_by_id = {}
-    for canonical_album in canonicalize_albums(raw_albums, user=request.user):
-        all_albums_by_id[canonical_album.id] = canonical_album
-    all_albums = list(all_albums_by_id.values())
-
-    user_music_entries = list(
-        Music.objects.filter(
-            models.Q(album__artist=artist)
-            | models.Q(album__artist_credits__artist=artist),
-            user=request.user,
-        ).select_related("album", "item"),
-    )
-
-    play_counts_by_music_id = _play_counts_by_music_id(user_music_entries)
-    album_play_counts = {}
-    total_plays = 0
-    for music in user_music_entries:
-        if music.album_id:
-            play_count = play_counts_by_music_id.get(music.id, 0)
-            album_play_counts[music.album_id] = (
-                album_play_counts.get(music.album_id, 0) + play_count
-            )
-            total_plays += play_count
-
-    album_trackers = AlbumTracker.objects.filter(
-        user=request.user,
-        album__in=all_albums,
-    ).select_related("album")
-    album_scores = {
-        tracker.album_id: tracker.score
-        for tracker in album_trackers
-        if tracker.score is not None
-    }
-
-    for album in all_albums:
-        album.play_count = album_play_counts.get(album.id, 0)
-        album.score = album_scores.get(album.id)
-
-    discography_groups = build_discography_groups(all_albums)
     missing_cover_count = sum(1 for album in all_albums if not album.image)
 
     artist_tracker = ArtistTracker.objects.filter(
@@ -754,8 +711,8 @@ def _render_music_artist_details(request, artist):
         artist=artist,
     ).first()
 
-    first_listened, last_listened, collapse_same_day = _music_activity_date_range(
-        user_music_entries,
+    total_plays, first_listened, last_listened, collapse_same_day = (
+        music_artist_page.artist_play_totals(request.user, artist)
     )
     artist_activity_subtitle = _build_music_artist_activity_subtitle(
         artist_tracker,
@@ -1560,56 +1517,17 @@ def prefetch_artist_covers(request, artist_id):
     This runs after the artist page loads to avoid blocking the initial render.
     Returns the updated album grid HTML.
     """
-    from app.services.music import build_discography_groups
     from app.tasks import prefetch_album_covers_batch
 
     artist = get_object_or_404(Artist, id=artist_id)
 
-    all_albums = list(
-        Album.objects.filter(
-            models.Q(artist=artist) | models.Q(artist_credits__artist=artist),
-        )
-        .distinct()
-        .select_related("artist")
-        .prefetch_related("artist_credits__artist")
-        .order_by("-release_date", "title"),
+    all_albums = music_artist_page.artist_albums(request.user, artist, merge=False)
+    # Groups the viewer expanded keep their length when the covers redraw.
+    discography_groups = music_artist_page.discography_page(
+        request.user,
+        all_albums,
+        shown=music_artist_page.parse_shown(request.GET.getlist("shown")),
     )
-
-    user_music_entries = (
-        Music.objects.filter(
-            user=request.user,
-        )
-        .filter(
-            models.Q(album__artist=artist)
-            | models.Q(album__artist_credits__artist=artist),
-        )
-        .select_related("album")
-    )
-
-    play_counts_by_music_id = _play_counts_by_music_id(user_music_entries)
-    album_play_counts = {}
-    for music in user_music_entries:
-        if music.album_id:
-            play_count = play_counts_by_music_id.get(music.id, 0)
-            album_play_counts[music.album_id] = (
-                album_play_counts.get(music.album_id, 0) + play_count
-            )
-
-    album_trackers = AlbumTracker.objects.filter(
-        user=request.user,
-        album__in=all_albums,
-    ).select_related("album")
-    album_scores = {
-        tracker.album_id: tracker.score
-        for tracker in album_trackers
-        if tracker.score is not None
-    }
-
-    for album in all_albums:
-        album.play_count = album_play_counts.get(album.id, 0)
-        album.score = album_scores.get(album.id)
-
-    discography_groups = build_discography_groups(all_albums)
     missing_cover_count = sum(1 for album in all_albums if not album.image)
 
     poll_for_covers = missing_cover_count > 0
@@ -1648,6 +1566,34 @@ def prefetch_artist_covers(request, artist_id):
             "next_attempt": attempt + 1,
             "user": request.user,
         },
+    )
+
+
+@require_GET
+def artist_discography_more(request, artist_id):
+    """Redraw one release-type group on the artist page one page longer.
+
+    The group comes back as one grid from its first album, so the cards
+    line up as they would had the page drawn them all; it is bounded by what
+    the viewer asked to see, a page at a time.
+    """
+    artist = get_object_or_404(Artist, id=artist_id)
+    try:
+        offset = max(int(request.GET.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        offset = 0
+    group = music_artist_page.discography_group_slice(
+        request.user,
+        music_artist_page.artist_albums(request.user, artist, merge=False),
+        request.GET.get("group", ""),
+        limit=offset + music_artist_page.ARTIST_ALBUM_PAGE_SIZE,
+    )
+    if group is None:
+        raise Http404
+    return render(
+        request,
+        "app/components/artist_discography_group_albums.html",
+        {"group": group, "artist": artist, "user": request.user},
     )
 
 
