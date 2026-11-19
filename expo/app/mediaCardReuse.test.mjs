@@ -6,7 +6,7 @@ import test from 'node:test';
 // A component that draws a poster with its own title gradient is a second media card. Build the card
 // from a model (frontend/ui/cardModels.js) instead; MediaCard owns the gradient (CardScrim).
 const root = new URL('../../', import.meta.url).pathname;
-const SCAN = ['frontend', 'native-proof/app'];
+const SCAN = ['frontend', 'expo/app'];
 
 // Pieces that are deliberately not the media card, each with its reason. Anything else that draws its
 // own card gradient fails here. Add to this list only by decision, never to silence the test.

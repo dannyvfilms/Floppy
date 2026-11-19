@@ -62,7 +62,7 @@ and list-reorder controls from the same action specs, with explicit `onAction`,
 `onReorder` and reveal callbacks; touch reveals the buttons and hover reveals them
 where the platform reports hover. It never posts, fetches or opens a popup itself.
 `frontend/ui/MediaCardActionHost.jsx` is the native popup shell for modal actions,
-while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlot.jsx`
+while the browser keeps `ModalHost.jsx`. `expo/app/surfaces/MediaCardSlot.jsx`
 renders the card and the callback contract on Home, Discover and Library with demo
 library items.
 
@@ -205,7 +205,7 @@ own poster and gradient. What a model can configure beyond the basics: `subtitle
 actions and callbacks it is given (`frontend/ui/cardMenu.js`) and installed once per app
 (`cardMenuHost.js`), so every Expo screen gets the same menu in the same order.
 
-Expo is guarded the way the web templates are: `native-proof/app/mediaCardReuse.test.mjs` fails if
+Expo is guarded the way the web templates are: `expo/app/mediaCardReuse.test.mjs` fails if
 a component other than the card imports the card gradient or draws its own. Its `FOLLOW_UPS` list
 names what still has to move (today the Detail episode cards) and can only shrink.
 

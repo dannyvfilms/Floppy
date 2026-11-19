@@ -79,7 +79,7 @@ why the platforms differ (for example "native mounts only nearby cards; web alre
 lazy-loads images"). A reader who is asked or challenged later should find the reason
 next to the code, not only in a PR. Also list the carve-out in the register entry.
 
-- Before editing, trace which component each surface (web adapter, `native-proof/`,
+- Before editing, trace which component each surface (web adapter, `expo/`,
   and any platform-specific file) actually imports. Do not assume a shared component is
   active everywhere. `npm run check:page-parity` shows the registry state.
 - Platform-specific appearance is fine. Platform-specific feature loss is not, unless
@@ -506,6 +506,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   Report browser, iOS and Android evidence independently; builds do not establish
   runtime verification. An unresolved external blocker leaves the task incomplete.
 - Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
+- Expo build progress per page and component (React Native vs DOM, shared vs unique, owner sign-off): `python3 scripts/expo_dashboard.py --serve`; how to read it and how a sign-off is recorded: `docs/ui/expo-dashboard.md`. Never add or edit a `- Sign-off:` line in the register yourself; it is the owner's.
 - Provider pages use the shared provider model and page components; see
   `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
   use its behavior as a migration source, not a universal dependency. See

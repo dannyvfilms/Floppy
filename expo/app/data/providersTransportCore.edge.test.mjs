@@ -92,7 +92,7 @@ test('the local providers transport answers every action with the sign-in reason
 test('link actions call the connect start, poll and cancel endpoints', async () => {
   const calls = [];
   const actions = createRemoteProvidersActions(async (path, options) => { calls.push({ path, options }); return {}; });
-  await actions.startLink('trakt', { returnTo: 'floppy-native-proof://connect/trakt' });
+  await actions.startLink('trakt', { returnTo: 'floppy-expo://connect/trakt' });
   await actions.pollLink('trakt');
   await actions.cancelLink('trakt');
   assert.deepEqual(calls.map(call => call.path), [
@@ -101,6 +101,6 @@ test('link actions call the connect start, poll and cancel endpoints', async () 
     '/api/v1/providers/trakt/connect/cancel/',
   ]);
   assert.equal(calls[0].options.method, 'POST');
-  assert.equal(calls[0].options.body.returnTo, 'floppy-native-proof://connect/trakt');
+  assert.equal(calls[0].options.body.returnTo, 'floppy-expo://connect/trakt');
   assert.equal(calls[1].options?.method, undefined);
 });

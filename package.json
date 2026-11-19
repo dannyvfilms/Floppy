@@ -20,6 +20,6 @@
     "test:ui-render": "node --test --test-force-exit scripts/cardRenderCost.test.mjs scripts/globalSearchSuggestions.test.mjs scripts/historyFirstView.test.mjs scripts/rootStyle.test.mjs",
     "check:page-parity": "node scripts/check_page_parity.mjs",
     "check:page-parity:strict": "node scripts/check_page_parity.mjs --strict",
-    "start:native": "npm --prefix native-proof run start -- --lan"
+    "start:native": "npm --prefix expo run start -- --lan"
   }
 }

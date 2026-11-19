@@ -33,7 +33,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | REST API | `src/api/` (endpoints in `src/api/fork_views_*.py`, routes in `src/api/fork_urls.py`) | `docs/architecture/api-scopes.md` |
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
-| React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `native-proof/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `expo/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 
 ### Names that do not explain themselves

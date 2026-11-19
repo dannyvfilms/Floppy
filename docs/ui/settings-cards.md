@@ -141,8 +141,8 @@ fallback or an automatic conversion of every provider at once.
 Android 15 Pixel 7 AVD rendered the shared card and chip on Settings. iOS, the
 help dialog, links and VoiceOver/TalkBack remain **unverified**.
 The former `SettingsCardSlot` demo adapter was deleted. Native now reaches the shared
-settings composition through `native-proof/app/surfaces/CardsSettingsSlot.jsx`
-(`SettingsCardsView`), and `native-proof/app/screens/AuthScreen.jsx` renders the shared
+settings composition through `expo/app/surfaces/CardsSettingsSlot.jsx`
+(`SettingsCardsView`), and `expo/app/screens/AuthScreen.jsx` renders the shared
 `Chip`; both take theme values from the native theme. A bundle or `expo export` compile
 is a build check, not runtime evidence. CSS variables, server
 body slots and DOM dialog events stay in the web adapter. Do not label this component

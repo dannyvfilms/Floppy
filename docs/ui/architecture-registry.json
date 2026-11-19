@@ -72,11 +72,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -92,11 +92,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -112,11 +112,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -132,11 +132,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -4308,7 +4308,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Pure JavaScript with no platform API, moved from native-proof/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
+          "evidence": "Pure JavaScript with no platform API, moved from expo/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
         },
         "android": {
           "status": "unverified",
@@ -6017,7 +6017,7 @@
     },
     "frontend/ui/homeRowWatcher.web.js": {
       "register": "HOME",
-      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: native-proof/app/data/homeRowWatcherCore.js."
+      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: expo/app/data/homeRowWatcherCore.js."
     },
     "frontend/ui/rootStyle.web.js": {
       "register": "TOKENS",

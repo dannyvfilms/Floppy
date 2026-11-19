@@ -16,7 +16,7 @@ export const surface = {
   status: 'ported',
   title: 'Provider detail: connect, credentials, webhooks, import, schedules',
   where: 'Providers, one provider (web: /settings/providers/<slug>)',
-  note: 'Renders the shared ProviderPageView with ProviderSettingsView bodies from GET /api/v1/providers/<slug>/. Credentials are write-only. Trakt, Storyteller and WeTrakr connect with an in-app device code (start/poll JSON); Trakt, Simkl, Plex, MAL, AniList and TMDB open the provider sign-in in the browser and return through the app scheme (floppy-native-proof://connect/<slug>). The screen refetches on return and when the app comes to the foreground.',
+  note: 'Renders the shared ProviderPageView with ProviderSettingsView bodies from GET /api/v1/providers/<slug>/. Credentials are write-only. Trakt, Storyteller and WeTrakr connect with an in-app device code (start/poll JSON); Trakt, Simkl, Plex, MAL, AniList and TMDB open the provider sign-in in the browser and return through the app scheme (floppy-expo://connect/<slug>). The screen refetches on return and when the app comes to the foreground.',
 };
 
 const SIGNED_OUT = 'Sign in to your Floppy server to manage providers.';
@@ -55,7 +55,7 @@ export default function ProviderDetailScreen({ params, onBack, navigate }) {
   // client or a store build; Expo Go and the web preview use another).
   const returnTo = (() => {
     const url = ExpoLinking.createURL(`connect/${slug}`);
-    return /^floppy-native-proof:\/\//.test(url) ? url : undefined;
+    return /^floppy-expo:\/\//.test(url) ? url : undefined;
   })();
   useEffect(() => {
     const subscription = ExpoLinking.addEventListener('url', event => {

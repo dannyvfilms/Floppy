@@ -337,7 +337,7 @@ function DayGrid({ entries, layout, ...cardProps }) {
 
 // A waiting day loads itself once the platform reports it on or near the
 // screen. `watchDay(key, node, onChange)` is the same contract Home uses for
-// its rows (frontend/ui/homeRowWatcher.web.js, native-proof homeRowWatcherCore):
+// its rows (frontend/ui/homeRowWatcher.web.js, expo homeRowWatcherCore):
 // it calls `onChange('visible' | 'near' | 'far')` and returns a stop function.
 // One automatic request per day; a failed day keeps its Retry button.
 function useWaitingDayRef(day, watchDay, onLoadDay) {

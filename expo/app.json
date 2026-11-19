@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Floppy Native Proof",
-    "slug": "floppy-native-proof",
-    "scheme": "floppy-native-proof",
+    "slug": "floppy-expo",
+    "scheme": "floppy-expo",
     "version": "1.0.0",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -22,7 +22,7 @@
       ]
     },
     "experiments": {
-      "baseUrl": "/static/native-proof"
+      "baseUrl": "/static/expo"
     },
     "plugins": [
       [

@@ -1,12 +1,12 @@
 {
-  "name": "floppy-native-proof",
+  "name": "floppy-expo",
   "private": true,
   "version": "0.0.1",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "export": "expo export",
-    "export:django": "expo export --platform web --output-dir ../src/static/native-proof",
+    "export:django": "expo export --platform web --output-dir ../src/static/expo",
     "test:transport": "node --no-warnings --test \"app/**/*.test.mjs\"",
     "export:search-preview": "EXPO_PUBLIC_SEARCH_PREVIEW=1 expo export --platform web --output-dir ../.floppy/expo-search-preview"
   },

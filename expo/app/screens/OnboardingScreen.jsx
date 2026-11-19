@@ -225,7 +225,7 @@ export default function OnboardingScreen({ params, onFinish, onBack, navigate })
     const connection = <ProviderLinkCard label={source.name} needsServerUrl={source.slug === 'storyteller'}
       palette={wizardPalette} buttonPalette={integrationButtonPalette()}
       onStart={values => providersTransport.startLink(providerSlug, {
-        ...values, ...(/^floppy-native-proof:\/\//.test(returnUrl) ? { returnTo: returnUrl } : {}),
+        ...values, ...(/^floppy-expo:\/\//.test(returnUrl) ? { returnTo: returnUrl } : {}),
       })}
       onPoll={() => providersTransport.pollLink(providerSlug)}
       onCancel={() => providersTransport.cancelLink(providerSlug)}

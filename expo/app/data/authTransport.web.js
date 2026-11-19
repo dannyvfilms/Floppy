@@ -10,10 +10,10 @@ import {
 import { createAccountTransport } from './authAccountCore';
 import { setActiveAuthSession } from './authSession';
 
-// The Expo web export is served by Django under `<prefix>/static/native-proof/`.
+// The Expo web export is served by Django under `<prefix>/static/expo/`.
 // The credential is the same-origin session cookie set by the Floppy login, so
 // nothing is stored here; the CSRF value is read from its cookie on each write.
-const EXPORT_PATH = '/static/native-proof';
+const EXPORT_PATH = '/static/expo';
 const CSRF_COOKIE = 'csrftoken';
 
 function sitePrefix() {

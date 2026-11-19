@@ -50,8 +50,8 @@ src/logs/
 reports/
 wiki/
 node_modules/
-/native-proof/
-/src/static/native-proof/
+/expo/
+/src/static/expo/
 .pytest_cache/
 .ruff_cache/
 
