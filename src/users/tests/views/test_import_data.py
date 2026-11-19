@@ -310,16 +310,17 @@ class ImportDataViewTests(TestCase):
             activity, f'name="next" value="{provider_url}"', status_code=286
         )
 
-        import time
-
-        started = time.monotonic()
-        response = self.client.post(
-            reverse("bulk_delete_by_import_source", args=["game", "steam"]),
-            {"next": provider_url},
-        )
-        # ~12 s before the per-row refreshes were batched; guards the regression.
-        self.assertLess(time.monotonic() - started, 9)
-
+        # Statistics are marked once for the whole delete, not once per row
+        # (1,275 calls and ~12 s before the refresh was batched).
+        with (
+            patch("app.statistics_cache.invalidate_statistics_cache") as whole,
+            patch("app.statistics_cache.invalidate_statistics_days") as days,
+        ):
+            response = self.client.post(
+                reverse("bulk_delete_by_import_source", args=["game", "steam"]),
+                {"next": provider_url},
+            )
+        self.assertEqual(whole.call_count + days.call_count, 1)
         self.assertRedirects(response, provider_url, fetch_redirect_response=False)
         self.assertFalse(Game.objects.filter(user=self.user).exists())
         self.assertFalse(ImportRun.objects.filter(pk=steam_run.pk).exists())
