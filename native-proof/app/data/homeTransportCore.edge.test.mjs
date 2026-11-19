@@ -7,6 +7,7 @@ import {
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from './homeTransportCore.js';
+import { assertFields, recorded } from './recordedAnswers.mjs';
 
 test('homeQuery defaults to live presentation with deferred rows', () => {
   assert.deepEqual(homeQuery(), { presentation: 1, deferred: 1 });
@@ -141,4 +142,39 @@ test('the local home transport answers every action with the sign-in reason', as
   assert.deepEqual(await transport.loadRow(), local);
   assert.deepEqual(await transport.sortRow(), local);
   assert.deepEqual(await transport.refreshCovers(), local);
+});
+
+test('recorded Home answers carry every field Home and its cards read', () => {
+  const home = recorded('home');
+  assertFields(home, {
+    groups: 'array', deferredGroups: 'array', showMediaTypeHeaders: 'boolean', readOnly: 'boolean', labels: 'object',
+  }, 'home');
+  home.deferredGroups.forEach((group, index) => assertFields(group, {
+    label: 'string', mediaType: 'string', rowIds: 'array',
+  }, `home.deferredGroups[${index}]`));
+  const screen = homeScreenFromPayload(home);
+  assert.equal(screen.deferredGroups.length, home.deferredGroups.length);
+
+  const page = recorded('home-row-movie');
+  assertFields(page, { row: 'object' }, 'home row');
+  assertFields(page.row, {
+    rowId: ['number', 'string'], title: 'string', items: 'array', total: 'number', loadedCount: 'number', seed: ['number', 'string', 'null'],
+  }, 'home row.row');
+  assert.ok(page.row.items.length > 0);
+  page.row.items.forEach((item, index) => {
+    const where = `home row.items[${index}]`;
+    assertFields(item, { id: 'string', card: 'object' }, where);
+    assertFields(item.card, {
+      title: 'string', href: 'string', image: 'object', mediaType: 'string', shape: 'string',
+      quickStatus: ['object', 'null'], rating: ['object', 'null'], statusChip: ['object', 'null'],
+    }, `${where}.card`);
+  });
+  const tracked = page.row.items.map(item => item.card).filter(card => card.quickStatus?.tracked);
+  assert.ok(tracked.length > 0, 'the Movies row shows tracked cards');
+  tracked.forEach(card => {
+    assertFields(card.quickStatus, { status: 'string', tracked: 'boolean', identity: 'object' }, `${card.title}.quickStatus`);
+  });
+  const merged = mergeHomeRowPage({ items: [] }, page.row);
+  assert.equal(merged.items.length, page.row.items.length);
+  assert.equal(merged.total, page.row.total);
 });

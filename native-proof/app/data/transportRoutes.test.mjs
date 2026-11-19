@@ -196,6 +196,8 @@ test('music transport uses the authenticated request facade', async () => {
 
   await transport.loadArtistRelations({ artistId: 9 });
   assert.equal(calls[0].path, '/api/v1/music/artists/9/relations/');
+  await transport.loadArtistAlbums({ artistId: 9, group: 'EP + Live', offset: 24 });
+  assert.equal(calls.pop().path, '/api/v1/music/artists/9/albums/?group=EP+%2B+Live&offset=24');
 
   await transport.syncArtistMembers({ artistId: 9 });
   assert.equal(calls[1].path, '/api/v1/music/artists/9/sync-members/');

@@ -26,6 +26,7 @@ import { MusicView } from '../../../frontend/pages/MusicView';
 import { createMusicTransport } from '../data/musicTransport';
 import { formatUserDate } from '../data/userDate';
 import {
+  appendDiscographyPage,
   endDateStamp,
   flattenAlbums,
   loadArtistWithRelations,
@@ -561,6 +562,18 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
     await reloadArtist();
   }
 
+  // The artist arrives with each release-type group's first page; the rest
+  // load a page at a time, as on the web page.
+  async function loadMoreAlbums(group) {
+    const payload = await run('loadArtistAlbums', {
+      artistId: artistRemoteId,
+      group: group.label,
+      offset: group.nextOffset,
+    }, 'More releases could not be loaded.');
+    if (!payload || payload === REQUEST_FAILED) return;
+    setArtist(current => appendDiscographyPage(current, payload));
+  }
+
   async function syncArtistMembers() {
     const result = await run('syncArtistMembers', { artistId: artistRemoteId }, 'Member sync failed.');
     if (result === REQUEST_FAILED) return;
@@ -938,7 +951,8 @@ export default function MusicScreen({ params, transport: injectedTransport }) {
             onHistory={() => openHistory('artist', { title: artist.name })}
             onRate={rateArtist}
             onOpenNotes={() => openTracking('artist', artist)}
-            onSyncMembers={artistRemoteId ? syncArtistMembers : null} />
+            onSyncMembers={artistRemoteId ? syncArtistMembers : null}
+            onMoreAlbums={artistRemoteId ? loadMoreAlbums : null} />
           {artist.relations.members.length || artist.relations.alsoIn.length
             ? null
             : <EmptyPanel title="No band relations yet"

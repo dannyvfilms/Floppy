@@ -217,10 +217,10 @@ BULK_WRITE_SITES = {
     ("integrations/mal_sync.py", "reconcile_stale_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
     ("integrations/oauth_models.py", "OAuthClient.revoke", UNKNOWN): _not_tracking(
@@ -234,6 +234,12 @@ BULK_WRITE_SITES = {
     ),
     ("integrations/wetrakr_views.py", "_stop_bindings", UNKNOWN): _not_tracking(
         "outbound sync deliveries"
+    ),
+    ("app/models/item.py", "ItemQuerySet.bulk_create", UNKNOWN): _not_tracking(
+        "items (it only fills each item's library bucket, then defers)"
+    ),
+    ("app/models/item.py", "ItemQuerySet.bulk_update", UNKNOWN): _not_tracking(
+        "items (it only fills each item's library bucket, then defers)"
     ),
     ("lists/models.py", "CustomListItemManager.bulk_create", UNKNOWN): _not_tracking(
         "list items (list views read them live)"

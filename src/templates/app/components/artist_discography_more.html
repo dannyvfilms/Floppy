@@ -1,0 +1,13 @@
+{% load i18n ui_tags %}
+{# How far this group is shown (the cover poller keeps it) and its next page. #}
+<div>
+  <input type="hidden" name="shown" value="{{ group.shown }}:{{ group.label }}">
+  {% if group.more_query %}
+    <div class="flex justify-center pt-4">
+      {% url 'artist_discography_more' artist.id as more_url %}
+      {% translate "Show more" as more_label %}
+      {% blocktranslate trimmed asvar remaining_label with value_1=group.remaining %}({{ value_1 }} remaining){% endblocktranslate %}
+      {% button more_label|add:" "|add:remaining_label "surface" "sm" hx_get=more_url|add:"?"|add:group.more_query hx_target="closest [data-discography-group]" hx_swap="outerHTML" %}
+    </div>
+  {% endif %}
+</div>
