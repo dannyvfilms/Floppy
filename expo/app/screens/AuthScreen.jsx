@@ -59,7 +59,8 @@ const authPalette = {
   badgeHover: palette.surfaceMuted,
   overlay: 'rgba(0, 0, 0, 0.65)',
   radius: 12,
-  inputBackground: '#39404b',
+  inputBackground: palette.surfaceStrong,
+  fieldBorder: palette.surfaceBorder,
   focusStyle: {},
 };
 

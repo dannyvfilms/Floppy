@@ -3,6 +3,7 @@ import App from '../../App';
 import { subscribeTheme } from '../themeState';
 import RailPreview from './rail-preview';
 import SearchPreview from './search-preview';
+import SheetPreview from './sheet-preview';
 
 export default function Index() {
   // A theme change re-renders the whole app in place (new element, same
@@ -10,5 +11,6 @@ export default function Index() {
   const [, setVersion] = useState(0);
   useEffect(() => subscribeTheme(() => setVersion(count => count + 1)), []);
   if (process.env.EXPO_PUBLIC_SEARCH_PREVIEW === '1') return <SearchPreview />;
+  if (process.env.EXPO_PUBLIC_SHEET_PREVIEW === '1') return <SheetPreview />;
   return process.env.EXPO_PUBLIC_RAIL_PREVIEW === '1' ? <RailPreview /> : <App />;
 }
