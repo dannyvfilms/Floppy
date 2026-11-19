@@ -8,6 +8,7 @@
        {% else %}
          hx-trigger="load delay:500ms, every 5s"
        {% endif %}
+       hx-include="#discography-container [name='shown']"
        hx-target="#discography-container"
        hx-swap="outerHTML"
      {% endif %}>

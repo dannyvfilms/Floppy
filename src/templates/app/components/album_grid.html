@@ -6,7 +6,7 @@
      data-music-albums-root data-props-id="{{ albums_react.id }}" x-ignore>
   <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
   {% for album in albums_react.props.albums %}
-    {% include "app/components/card_shell.html" with href=album.href title=album.title image=album.image aspect="1/1" %}
+    {% include "app/components/card_shell.html" with href=album.href title=album.title image=album.image aspect="1/1" media_type="music" %}
   {% endfor %}
   </div>
 </div>

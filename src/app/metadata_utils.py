@@ -149,7 +149,7 @@ def backfill_sources(sources):
     return tuple(source for source in sources if source != Sources.HARDCOVER.value)
 
 
-def _coerce_list(value, *, allow_scalar: bool = True) -> list:
+def _coerce_truthy_list(value, *, allow_scalar: bool = True) -> list:
     if isinstance(value, list):
         return value
     if allow_scalar and value:
@@ -274,18 +274,18 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         "synopsis": payload.get("synopsis") or "",
         "source_url": payload.get("source_url") or "",
         "country": details.get("country") or "",
-        "languages": _coerce_list(details.get("languages")),
-        "platforms": _coerce_list(details.get("platforms"), allow_scalar=False),
+        "languages": _coerce_truthy_list(details.get("languages")),
+        "platforms": _coerce_truthy_list(details.get("platforms"), allow_scalar=False),
         "format": details.get("format") or "",
         "status": details.get("status") or "",
-        "studios": _coerce_list(details.get("studios"), allow_scalar=False),
-        "themes": _coerce_list(details.get("themes"), allow_scalar=False),
+        "studios": _coerce_truthy_list(details.get("studios"), allow_scalar=False),
+        "themes": _coerce_truthy_list(details.get("themes"), allow_scalar=False),
         "authors": authors,
         "number_of_pages": number_of_pages,
         "publishers": publishers,
-        "isbn": _coerce_list(details.get("isbn"), allow_scalar=False),
+        "isbn": _coerce_truthy_list(details.get("isbn"), allow_scalar=False),
         "source_material": details.get("source") or "",
-        "creators": _coerce_list(details.get("people"), allow_scalar=False),
+        "creators": _coerce_truthy_list(details.get("people"), allow_scalar=False),
         "runtime": details.get("runtime") or "",
         "provider_episode_count": _coerce_episode_count(raw_episode_count),
         "provider_popularity": payload.get("provider_popularity"),
@@ -294,7 +294,7 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
             "provider_rating_count",
             payload.get("score_count"),
         ),
-        "provider_keywords": _coerce_list(
+        "provider_keywords": _coerce_truthy_list(
             payload.get("provider_keywords"),
             allow_scalar=False,
         ),

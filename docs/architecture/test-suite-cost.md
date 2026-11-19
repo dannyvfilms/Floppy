@@ -103,6 +103,23 @@ the cache in `setUp`. Regrouping also surfaced a real bug in
 the serving thread.
 
 
+## Test mode and eager Celery: the paths the suite skips
+
+`config.test_settings` sets `TESTING` and runs Celery eagerly so that a save
+does not run provider work inline. About thirty production lines check one of
+those flags and then do less, so the suite never ran what a server runs after a
+write: the calendar reload, the season's episode runtime backfill, importer
+enrichment. Two shipped faults lived there (#1827, and the 15,000-query
+Statistics path). `config.tests.test_test_mode_branches` lists every such line
+with the test that turns the flag off and checks the production path, or the
+reason the test path is a stand-in (fakeredis, the anime mapping fixture,
+start-up work). Those tests patch the task's `delay` or `apply_async` and
+assert the task, its arguments and its queue; they never run the provider call.
+A new check of `TESTING`, `CELERY_TASK_ALWAYS_EAGER` or `IS_PROD` fails the
+ratchet until it is listed with a covering test. The branches stay: removing
+them would make eager Celery run every backfill inside ordinary tests.
+
+
 ## November 12, 2026: publish-gate evidence
 
 [PR #1917](https://github.com/dannyvfilms/Floppy/pull/1917) moved

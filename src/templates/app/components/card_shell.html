@@ -2,9 +2,9 @@
 First paint for a card that React draws (frontend/ui/MediaCard.web.jsx or a view built on it): poster and title
 only, so the grid has its shape before the script runs. React replaces it on mount. This is the one place
 server markup draws a card face.
-Args: `bare` (true when the host element already is the `.media-card` root, as the mount hosts below are), `href` (optional), `title`, `image` (a ready URL, may be empty), `aspect` ("2/3", "1/1", "3/2" or "16/9").
+Args: `media_type` (optional, written as `data-media-type` so a card keeps the attribute the page's CSS and tests read), `bare` (true when the host element already is the `.media-card` root, as the mount hosts below are), `href` (optional), `title`, `image` (a ready URL, may be empty), `aspect` ("2/3", "1/1", "3/2" or "16/9").
 {% endcomment %}
-{% if not bare %}<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group">{% endif %}
+{% if not bare %}<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group"{% if media_type %} data-media-type="{{ media_type }}"{% endif %}>{% endif %}
   <div class="media-card-visual relative">
     <a{% if href %} href="{{ href }}"{% endif %}>
       <img loading="lazy" decoding="sync" alt="{{ title }}"

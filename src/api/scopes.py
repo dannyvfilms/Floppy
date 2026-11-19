@@ -177,6 +177,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_music.MusicSongPlayView": {"POST": "music:write"},
     "api.fork_views_music.MusicTrackScoreView": {"PATCH": "music:write"},
     "api.fork_views_music.MusicBulkPlaysView": {"POST": "music:write"},
+    "api.fork_views_music.MusicArtistAlbumsView": {"GET": "music:read"},
     "api.fork_views_music.MusicArtistRelationsView": {"GET": "music:read"},
     "api.fork_views_music.MusicArtistMembersSyncView": {"POST": "music:write"},
     "api.fork_views_music.MusicAlbumSyncView": {"POST": "music:write"},

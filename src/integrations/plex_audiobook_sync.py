@@ -14,6 +14,7 @@ import logging
 from django.conf import settings
 from django.utils import timezone
 
+from app.helpers import coerce_int as _coerce_int
 from app.models import Book, Item, MediaTypes, Sources, Status
 from app.services.synced_status import keep_held_status
 from integrations import plex_cover
@@ -37,13 +38,6 @@ def stable_media_id(machine_identifier, album_rating_key):
     """
     value = f"{machine_identifier}::{album_rating_key}"
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
-
-
-def _coerce_int(value, default=0):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def _tag_list(payload, key):
@@ -87,9 +81,9 @@ def track_progress_minutes(tracks):
     counted = 0
 
     for track in tracks:
-        duration = _coerce_int(track.get("duration"))
-        offset = _coerce_int(track.get("viewOffset"))
-        views = _coerce_int(track.get("viewCount"))
+        duration = _coerce_int(track.get("duration"), 0)
+        offset = _coerce_int(track.get("viewOffset"), 0)
+        views = _coerce_int(track.get("viewCount"), 0)
         if duration <= 0:
             continue
         counted += 1
@@ -114,7 +108,7 @@ def track_progress_minutes(tracks):
 
 def _last_viewed_at(tracks):
     """Return the most recent listen timestamp across an album's tracks."""
-    stamps = [_coerce_int(track.get("lastViewedAt")) for track in tracks]
+    stamps = [_coerce_int(track.get("lastViewedAt"), 0) for track in tracks]
     latest = max((stamp for stamp in stamps if stamp > 0), default=0)
     if not latest:
         return None

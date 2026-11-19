@@ -45,6 +45,9 @@ systems: [Catppuccin](https://python.catppuccin.com/docs/catppuccin/palette.html
 [Gruvbox](https://github.com/morhetz/gruvbox). `html.glass` adds a fixed translucent cinema treatment.
 `html.custom` inherits the dark defaults; `base.html` adds the seven validated
 colours plus bounded radius, blur and surface-opacity values as inline variables.
+Glass and custom blur every `bg-[var(--color-surface)]` element, and a blurred element becomes the
+containing block for `position: fixed` children (#1205, #1443). A track modal inside a card, row or
+table must therefore `x-teleport="body"` (as the episode and table-cell modals do) rather than sit inline.
 `users.appearance` is the allowlist and validation boundary for those values.
 
 `--color-accent-contrast` is the foreground for controls filled with

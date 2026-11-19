@@ -291,6 +291,13 @@ class DetailCatalogueCensus(TestCase):
                 size,
                 [
                     ("web", f"/person/tmdb/{person_id}/census"),
+                    # The next page of the filmography grid, as the web grid
+                    # asks for it on scroll (49-A).
+                    (
+                        "web more",
+                        f"/person/tmdb/{person_id}/census"
+                        "?section=filmography&credits_page=2&fragment=1",
+                    ),
                     ("api detail", f"/api/v1/people/tmdb/{person_id}/"),
                 ],
             )

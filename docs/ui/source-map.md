@@ -552,7 +552,7 @@ pending. These checks do not establish complete page parity.
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
-- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
+- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`, `onOpenTitle`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
@@ -717,7 +717,9 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
 - `src/templates/app/components/artist_discography_container.html`
-- `src/templates/app/components/artist_discography_groups.html`
+- `src/templates/app/components/artist_discography_groups.html` (each release-type group shows its first 24 albums; the heading counts every album in the group)
+- `src/templates/app/components/artist_discography_more.html` (a group's "Show more" button, the shared React `button`, and the hidden length the cover poller sends back so an expanded group stays expanded)
+- `src/templates/app/components/artist_discography_group_albums.html` (a group's album grid island and its button; `artist_discography_more` returns it one page longer, as one grid from the first album so rows stay aligned)
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`
@@ -755,12 +757,13 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 
 The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
 
-- `src/templates/app/components/detail_carousel_fragment.html`
+- `src/templates/app/components/detail_carousel_fragment.html` (also the detail-page title logo; on a season page it links to the show because it hides the title link; `Legacy` until the web detail hero migrates)
 - `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)

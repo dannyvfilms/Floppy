@@ -215,5 +215,15 @@ Skip what is already owned:
       remove_on_match: no
 ```
 
+### How current a smart list is
+
+A smart list's items are saved rows that Floppy keeps up to date from the
+list's rules. Every read of a smart list (`GET /api/v1/lists/{list_id}/`,
+`/items/`, `/export/`, and the public RSS and Radarr/Sonarr feeds) answers
+from those saved rows straight away and queues a background refresh, at most
+once a minute per list. A change the rows missed, or a rule that moves with
+the date such as "released in the last 30 days", shows up on the next poll a
+minute or so later. Polling more often than once a minute adds no work.
+
 The plugin's own option reference lives on the FlexGet wiki under
 `Plugins/List/floppy_list`.
