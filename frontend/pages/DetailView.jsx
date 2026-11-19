@@ -102,6 +102,7 @@ export function DetailView({
   error = '',
   onRetry,
   onOpenItem,
+  onOpenTitle,
   onOpenExternal,
   onOpenVideo,
   onLoadMore,
@@ -180,9 +181,9 @@ export function DetailView({
       <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View> : !hideContent ? <>
       {part !== 'sections' ? <>
-        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} actions={actionsSlot} viewport={heroViewport} /> : <>
+        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} onOpenTitle={onOpenTitle} actions={actionsSlot} viewport={heroViewport} /> : <>
           <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
-          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork}
+          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} onOpenTitle={onOpenTitle}
             compact={Boolean(heroViewport) && width < 768} viewportWidth={heroViewport?.width || width} />
           {actionsSlot || <DetailActions model={model} labels={labels} palette={palette} />}
         </>}

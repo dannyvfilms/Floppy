@@ -68,7 +68,7 @@ function Artwork({ artwork, palette, title, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>{frame}</Pressable>;
 }
 
-export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, compact = false, viewportWidth }) {
+export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, onOpenTitle, compact = false, viewportWidth }) {
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const { width } = useWindowDimensions();
@@ -82,7 +82,10 @@ export function DetailHeader({ model, labels, palette, showArtwork = false, onPr
     <View style={[styles.headerBody, compact && { minWidth: 0 }]}>
       {model?.subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{model.subtitle}</Text> : null}
       <View style={styles.titleRow}>
-        <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>
+        {/* A season's title is its show's name and opens the show, like the web title link. */}
+        {onOpenTitle ? <Pressable accessibilityRole="link" onPress={onOpenTitle}>
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>
+        </Pressable> : <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>}
         <AltTitle text={model?.altTitle} label={text.altTitle} palette={colors} />
       </View>
       {model?.publicView ? <View style={styles.publicBadge}>
@@ -148,7 +151,7 @@ export function DetailHero({ model, palette, onOpenVideo }) {
   </View>;
 }
 
-export function DetailMobileHero({ model, palette, onOpenItem, actions, viewport }) {
+export function DetailMobileHero({ model, palette, onOpenItem, onOpenTitle, actions, viewport }) {
   const colors = resolvePalette(palette);
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const { width, height } = useWindowDimensions();
@@ -165,11 +168,16 @@ export function DetailMobileHero({ model, palette, onOpenItem, actions, viewport
     {/* Native action rows use a 12-point gap; web's action gap is 8px. */}
     <View style={[styles.mobileHeroContent, { paddingLeft: layout.gutterLeft, paddingRight: layout.gutterRight,
       paddingTop: Math.max(0, (logo && sharpEnd != null ? sharpEnd - layout.topBleed - 6 : layout.line) - (logo ? layout.logoHeight : 70)) }]}>
-      {logo ? <Image source={{ uri: logo }} resizeMode="contain"
-        style={{ width: layout.logoWidth, height: layout.logoHeight, marginBottom: 4 }}
-        onLoad={event => { const size = event.nativeEvent?.source; if (size?.width && size?.height) setLogoAspect(size.width / size.height); }}
-        accessibilityLabel={`${model.title} logo`} /> :
-        <Text accessibilityRole="header" style={[styles.mobileHeroTitle, { minHeight: 70 }]}>{model.title}</Text>}
+      {/* A season's logo/title is its show's name and opens the show, like the web title link. */}
+      {(() => {
+        const titleNode = logo ? <Image source={{ uri: logo }} resizeMode="contain"
+          style={{ width: layout.logoWidth, height: layout.logoHeight, marginBottom: 4 }}
+          onLoad={event => { const size = event.nativeEvent?.source; if (size?.width && size?.height) setLogoAspect(size.width / size.height); }}
+          accessibilityLabel={`${model.title} logo`} /> :
+          <Text accessibilityRole="header" style={[styles.mobileHeroTitle, { minHeight: 70 }]}>{model.title}</Text>;
+        return onOpenTitle ? <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpenTitle}
+          style={styles.mobileHeroLogoLink}>{titleNode}</Pressable> : titleNode;
+      })()}
       {model.activityText ? <DetailActivitySubtitle text={model.activityText} color="#fff" style={styles.mobileHeroMeta} /> : null}
       {model.mobileMeta ? <Text style={styles.mobileHeroMeta}>{model.mobileMeta}</Text> : null}
       {model.seasonLabel ? <View style={styles.seasonSelector}>
@@ -330,6 +338,7 @@ const styles = StyleSheet.create({
   mobileHero: { overflow: 'visible' },
   mobileHeroContent: { alignItems: 'center', gap: 8, paddingBottom: 8 },
   mobileHeroActions: { alignSelf: 'stretch' },
+  mobileHeroLogoLink: { alignItems: 'center' },
   mobileHeroTitle: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   mobileHeroMeta: { color: '#fff', fontSize: 14, textAlign: 'center', textShadowColor: '#000', textShadowRadius: 4 },
   seasonSelector: { alignItems: 'center', zIndex: 2 },
