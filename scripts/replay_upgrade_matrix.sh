@@ -159,8 +159,9 @@ start_postgres() {
   )"
   [[ -n "$REPLAY_PORT" ]] || die "Failed to determine postgres host port."
 
+  # The image starts a socket-only init server first; TCP answers only from the final one.
   for _ in $(seq 1 30); do
-    if docker exec "$REPLAY_CONTAINER" pg_isready -U postgres -d postgres >/dev/null 2>&1; then
+    if docker exec "$REPLAY_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d postgres >/dev/null 2>&1; then
       return
     fi
     sleep 1
