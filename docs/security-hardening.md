@@ -72,7 +72,8 @@ re-run the supported job if its result is still needed. On rollback, stop new
 publishers/workers first; old workers accept JSON, but do not resume accepting
 pickle on an untrusted broker.
 
-If a worker logs a rejected pickle message whose method is `ping`, it is a
+Floppy logs a refused pickle message as one WARNING an hour, not a CRITICAL
+traceback. If a worker reports one, or logs a rejected pickle `ping`, it is a
 Celery control command, not evidence of a failed Xbox sync or a queued task.
 Floppy's health-check ping uses the JSON-configured Celery app. Check for old
 Floppy processes, other Celery applications, monitoring tools, and custom
