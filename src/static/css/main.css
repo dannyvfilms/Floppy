@@ -5482,6 +5482,11 @@
       height: calc(var(--spacing) * 11);
     }
   }
+  .md\:h-7 {
+    @media (width >= 48rem) {
+      height: calc(var(--spacing) * 7);
+    }
+  }
   .md\:h-9 {
     @media (width >= 48rem) {
       height: calc(var(--spacing) * 9);
@@ -5545,6 +5550,11 @@
   .md\:w-5\/12 {
     @media (width >= 48rem) {
       width: calc(5/12 * 100%);
+    }
+  }
+  .md\:w-7 {
+    @media (width >= 48rem) {
+      width: calc(var(--spacing) * 7);
     }
   }
   .md\:w-9 {

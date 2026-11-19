@@ -446,6 +446,7 @@ def get_score(score, count):
         "value": value,
         "suffix": "%",
         "count": count,
+        "sentiment": score.get("sentiment"),
         "certified": bool(score.get("certified")),
     }
 

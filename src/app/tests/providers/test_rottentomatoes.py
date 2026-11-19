@@ -70,7 +70,13 @@ class RottenTomatoesScores(TestCase):
         self.assertTrue(response["exact"])
         self.assertEqual(
             response["tomatometer"],
-            {"value": "83", "suffix": "%", "count": "480 reviews", "certified": True},
+            {
+                "value": "83",
+                "suffix": "%",
+                "count": "480 reviews",
+                "sentiment": None,
+                "certified": True,
+            },
         )
         self.assertEqual(
             response["popcornmeter"],
@@ -78,6 +84,7 @@ class RottenTomatoesScores(TestCase):
                 "value": "90",
                 "suffix": "%",
                 "count": "10,000+ Ratings",
+                "sentiment": None,
                 "certified": False,
             },
         )
