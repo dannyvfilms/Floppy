@@ -1,5 +1,6 @@
 import { actionIcons } from './actionIcons';
 import { Icon } from './Icon';
+import { Title } from './Title';
 import { Modal } from './Modal';
 import { DropdownMenu } from './DropdownMenu';
 import { toggleDropdownSelection } from './dropdownMetrics';
@@ -136,7 +137,7 @@ export function SelectField({
         <Pressable accessibilityRole="button" accessibilityLabel={defaultLabels.close} onPress={() => setOpen(false)} style={styles.backdrop} />
         <View accessibilityViewIsModal style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.dialogHeader}>
-            <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{label}</Text>
+            <Title size="compact" color={colors.text} style={styles.dialogTitle}>{label}</Title>
             <Pressable accessibilityRole="button" accessibilityLabel={`${defaultLabels.closeAction}: ${label}`}
               onPress={() => setOpen(false)} style={({ pressed }) => [styles.close, pressed && { opacity: 0.7 }]}>
               <Text style={[styles.closeText, { color: colors.accent }]}>{defaultLabels.closeAction}</Text>
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
   dialog: { width: '100%', maxWidth: 300, alignSelf: 'center', maxHeight: '80%',
     borderWidth: 1, borderRadius: 12, paddingVertical: 8 },
   dialogHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
-  dialogTitle: { flexShrink: 1, fontSize: 16, fontWeight: '600' },
+  dialogTitle: { flexShrink: 1 },
   close: { paddingVertical: 4, paddingHorizontal: 4 },
   closeText: { fontSize: 13, fontWeight: '600' },
   options: { maxHeight: 420 },

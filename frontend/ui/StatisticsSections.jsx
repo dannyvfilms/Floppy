@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { MediaCard } from './MediaCard';
 import { rankedRowModel } from './cardModels';
+import { Title } from './Title';
 import { StatisticsState } from './StatisticsSummary';
 import { StatisticsHoursChart } from './StatisticsCharts';
 
@@ -495,7 +496,7 @@ export function StatisticsMediaTypeOverview({
   }]}>
     <View style={styles.overviewHeader}>
       <Text style={[styles.overviewEyebrow, { color: colors.textMuted }]}>{model.typeLabel}</Text>
-      <Text accessibilityRole="header" style={[styles.overviewHeading, { color: colors.text }]}>{model.title || copy.overviewTitle}</Text>
+      <Title size="bar" color={colors.text} style={styles.overviewHeading}>{model.title || copy.overviewTitle}</Title>
       {model.rangeLabel ? <Text style={[styles.overviewRange, { color: colors.textMuted }]}>{model.rangeLabel}</Text> : null}
     </View>
     {!hasContent
@@ -614,7 +615,7 @@ const styles = StyleSheet.create({
   overviewCard: { width: '100%' },
   overviewHeader: { gap: 4, marginBottom: 24 },
   overviewEyebrow: { fontSize: 14, lineHeight: 20, letterSpacing: 1.4, textTransform: 'uppercase' },
-  overviewHeading: { fontSize: 24, lineHeight: 32, fontWeight: '600' },
+  overviewHeading: { lineHeight: 32 },
   overviewRange: { fontSize: 14, lineHeight: 20 },
   overviewBody: { gap: 16 },
   factGrid: { flexDirection: 'row', gap: 16 },

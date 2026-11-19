@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { actionIcons } from './actionIcons';
+import { Title } from './Title';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 
@@ -75,7 +76,7 @@ export function PeopleToolbar({ filters, labels = {}, palette = {}, onChange, te
       <Pressable accessibilityRole="button" accessibilityLabel={copy.close || 'Close'}
         onPress={() => setOpen(null)} style={styles.backdrop} />
       <View style={[styles.sheet, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        <Text accessibilityRole="header" style={[styles.sheetTitle, { color: palette.text }]}>{title}</Text>
+        <Title color={palette.text}>{title}</Title>
         <ScrollView contentContainerStyle={styles.sheetBody}>{children}</ScrollView>
       </View>
     </View>
@@ -135,8 +136,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { ...StyleSheet.absoluteFillObject },
   sheet: { maxHeight: '80%', borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 1, padding: 20, gap: 12 },
-  sheetTitle: { fontSize: 18, fontWeight: '700' },
-  sheetBody: { gap: 14, paddingBottom: 8 },
+    sheetBody: { gap: 14, paddingBottom: 8 },
   group: { gap: 4, minWidth: 0 },
   groupLabel: { fontSize: 12, fontWeight: '600', lineHeight: 16 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingRight: 8 },

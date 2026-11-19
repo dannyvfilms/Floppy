@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
+import { Title } from '../../../frontend/ui/Title';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { musicTrackRowModel, podcastEpisodeRowModel } from '../../../frontend/ui/cardModels';
@@ -758,7 +759,7 @@ export function SheetModal({ open, title, subtitle, children, onClose }) {
       <View accessibilityViewIsModal style={styles.modalSheet}>
         <View style={styles.modalHeader}>
           <View style={styles.modalHeading}>
-            <Text role="heading" aria-level={2} style={styles.modalTitle}>{title}</Text>
+            <Title color={palette.text}>{title}</Title>
             {subtitle ? <Text style={styles.modalSubtitle}>{subtitle}</Text> : null}
           </View>
           <ModalCloseButton accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalClose}>
@@ -937,8 +938,7 @@ const styles = StyleSheet.create({
   modalSheet: { width: '100%', maxWidth: 560, maxHeight: '88%', borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.background, overflow: 'hidden' },
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   modalHeading: { flex: 1, gap: 2 },
-  modalTitle: { color: palette.text, fontSize: 17, fontWeight: '700' },
-  modalSubtitle: { color: palette.textMuted, fontSize: 12 },
+    modalSubtitle: { color: palette.textMuted, fontSize: 12 },
   modalClose: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   modalCloseText: { color: palette.textMuted, fontSize: 22, lineHeight: 24 },
   modalBody: { padding: spacing.lg, gap: spacing.md },

@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { Title } from './Title';
 import { actionIcons } from './actionIcons';
 
 const defaultPalette = {
@@ -50,7 +51,7 @@ export function ListHeader({
   return (
     <View style={styles.header}>
       <View style={styles.titleRow}>
-        <Text role="heading" aria-level={1} style={[styles.title, { color: colors.text }]}>{list.name}</Text>
+        <Title size="heading" level={1} color={colors.text}>{list.name}</Title>
       </View>
       <View style={styles.metaRow}>
         <Text style={[styles.meta, { color: colors.textMuted }]}>
@@ -161,7 +162,6 @@ export function ListHeader({
 const styles = StyleSheet.create({
   header: { gap: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { fontSize: 24, fontWeight: '700' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   meta: { fontSize: 13 },
   description: { fontSize: 14, lineHeight: 20 },

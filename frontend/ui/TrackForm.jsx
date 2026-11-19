@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { Title } from './Title';
 import { ModalCloseButton } from './Modal';
 import { DateTimePicker } from './DateTimePicker';
 import {
@@ -120,7 +121,7 @@ function fieldType(field) {
 function HeaderBar({ title, subtitle, closeLabel, onClose, closeRef, palette }) {
   return <View style={[styles.bar, { backgroundColor: palette.surface, borderColor: palette.border }]}>
     <View style={styles.barText}>
-      <Text accessibilityRole="header" numberOfLines={2} style={[styles.barTitle, { color: palette.text }]}>{title}</Text>
+      <Title size="bar" numberOfLines={2} color={palette.text}>{title}</Title>
       {subtitle ? <Text style={[styles.barSubtitle, { color: palette.textMuted }]}>{subtitle}</Text> : null}
     </View>
     {onClose ? <ModalCloseButton ref={closeRef} accessibilityRole="button" accessibilityLabel={closeLabel}
@@ -381,8 +382,7 @@ const styles = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
     paddingHorizontal: 28, paddingVertical: 16, borderBottomWidth: 1 },
   barText: { flexShrink: 1, minWidth: 0 },
-  barTitle: { fontSize: 24, fontWeight: '700' },
-  barSubtitle: { fontSize: 14, marginTop: 2 },
+    barSubtitle: { fontSize: 14, marginTop: 2 },
   barClose: { padding: 4, borderRadius: 6 },
   serverError: { paddingHorizontal: 24, paddingTop: 12 },
   generalSide: { gap: 20 },
