@@ -1,3 +1,4 @@
+import { Title } from '../../../frontend/ui/Title';
 import { Modal, ModalCloseButton } from '../../../frontend/ui/Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -131,7 +132,7 @@ export function BarcodeScannerModal({
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.heading}>
-          <Text role="heading" aria-level={1} style={styles.title}>{labels.title}</Text>
+          <Title size="sheet" level={1} color={palette.text}>{labels.title}</Title>
           <Text style={styles.help}>{labels.help}</Text>
         </View>
         <ModalCloseButton accessibilityRole="button" accessibilityLabel={labels.cancel}
@@ -214,8 +215,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.background, paddingTop: 56, paddingBottom: 24, gap: spacing.md },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingHorizontal: spacing.lg },
   heading: { flex: 1, gap: 4 },
-  title: { color: palette.text, fontSize: 22, fontWeight: '700' },
-  help: { color: palette.textMuted, fontSize: 13, lineHeight: 18 },
+    help: { color: palette.textMuted, fontSize: 13, lineHeight: 18 },
   close: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: palette.surface },
   closeText: { color: palette.text, fontSize: 24, lineHeight: 26 },
   cameraFrame: { flex: 1, minHeight: 260, backgroundColor: palette.surface, overflow: 'hidden' },

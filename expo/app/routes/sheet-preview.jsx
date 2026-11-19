@@ -9,7 +9,7 @@ export default function SheetPreview() {
     <Pressable accessibilityRole="button" onPress={() => setOpen(true)} style={{ padding: 16, backgroundColor: '#292929', borderRadius: 14 }}>
       <Text style={{ color: 'white', fontSize: 18 }}>Open sheet</Text>
     </Pressable>
-    <AdaptivePresentationSheet isPresented={open} onDismiss={() => setOpen(false)} onClose={() => setOpen(false)} title="Usage" containerColor="#111111">
+    <AdaptivePresentationSheet isPresented={open} onDismiss={() => setOpen(false)} onClose={() => setOpen(false)} title={process.env.EXPO_PUBLIC_SHEET_TITLE || 'Lists'} containerColor="#111111">
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 48 }}>
         {['Context', 'Plan usage', 'Weekly limits', 'Limit resets'].map((title, index) => <View key={title} style={{ marginBottom: 30 }}>
           <Text style={{ color: '#a4a29c', fontSize: 18, marginBottom: 12 }}>{title}</Text>

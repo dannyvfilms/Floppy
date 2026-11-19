@@ -25,6 +25,7 @@ import {
 import { libraryMediaTypeOptions } from '../data/libraryTransportCore';
 import { ListDetailPageView } from '../../../frontend/pages/ListDetailPageView';
 import { Button } from '../../../frontend/ui/Button';
+import { Title } from '../../../frontend/ui/Title';
 import { Icon, SearchIcon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
@@ -248,7 +249,7 @@ function DialogFrame({ title, subtitle, onClose, children }) {
       <View style={[styles.dialogPanel, { backgroundColor: palette.surface, borderColor: palette.border }]}>
         <View style={styles.dialogHeader}>
           <View style={styles.dialogHeading}>
-            <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: palette.text }]}>{title}</Text>
+            <Title size="sheet" color={palette.text}>{title}</Title>
             {subtitle ? <Text style={[styles.dialogSubtitle, { color: palette.textMuted }]}>{subtitle}</Text> : null}
           </View>
           <Button label="Close" tone="surface" onPress={onClose} palette={palette} />
@@ -1482,8 +1483,7 @@ const styles = StyleSheet.create({
   dialogPanel: { width: '100%', maxWidth: 560, maxHeight: '88%', borderWidth: 1, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
   dialogHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
   dialogHeading: { flex: 1, minWidth: 0, gap: 2 },
-  dialogTitle: { fontSize: 20, fontWeight: '700' },
-  dialogSubtitle: { fontSize: 12, lineHeight: 17 },
+    dialogSubtitle: { fontSize: 12, lineHeight: 17 },
   dialogBody: { fontSize: 13, lineHeight: 18 },
   dialogEmpty: { alignItems: 'center', gap: 6, paddingVertical: 24 },
   dialogEmptyTitle: { fontSize: 16, fontWeight: '600' },
