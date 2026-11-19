@@ -89,7 +89,8 @@ class ArtistDiscographyPagesTests(TestCase):
         self.assertIn("data-discography-group", html)
         self.assertIn(f'value="{PAGE + 6}:Album"', html)
         self.assertNotIn("Show more", html)
-        self.assertIn("10 plays", html)
+        # The play count travels in the album props; React draws "10 plays" from it.
+        self.assertIn('"plays": 10', html)
 
     def test_show_more_for_an_unknown_group_is_not_found(self, _repair):
         response = self.client.get(

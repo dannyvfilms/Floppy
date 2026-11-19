@@ -1,110 +1,11 @@
-
 {% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
 {% for tracker in media_list %}
-  <div {% if forloop.last and media_list.has_next %} hx-get="{% url 'medialist' media_type %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:200px" hx-swap="afterend" hx-include="#filter-form" hx-indicator="#loading-indicator" class="pagination-trigger" data-page="{{ media_list.next_page_number }}" {% endif %}
-       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group hover:ring-2 hover:ring-indigo-500 transition-all search-result-card{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
-       data-media-type="{{ MediaTypes.MUSIC.value }}"
-       x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
-       @click.capture="tapToReveal($event)"
-       @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
-           @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
-       :class="revealed ? 'media-card-revealed' : ''">
-    <div class="relative">
-      <a href="{{ tracker.artist|music_artist_url }}">
-        {# Artist photo (from Wikipedia) #}
-        {% if tracker.artist.image and tracker.artist.image != IMG_NONE %}
-          <img loading="lazy" decoding="sync" alt="{{ tracker.artist.name }}"
-               class="media-card-poster w-full aspect-[2/3] bg-[var(--color-surface-alt)] object-cover"
-               src="{{ tracker.artist.image|image_url }}">
-        {% else %}
-          <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
-            {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}
-          </div>
-        {% endif %}
-      </a>
-
-      {# Status chip #}
-      <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden">
-        {% with status_value=tracker.status %}
-          <div class="w-4 h-4 {{ status_value|status_color }}">
-            {% if status_value == Status.COMPLETED.value %}
-              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
-            {% elif status_value == Status.IN_PROGRESS.value %}
-              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
-            {% elif status_value == Status.PAUSED.value %}
-              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
-            {% elif status_value == Status.PLANNING.value %}
-              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
-            {% elif status_value == Status.DROPPED.value %}
-              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
-            {% endif %}
-          </div>
-        {% endwith %}
-      </div>
-
-      {# Hover overlay with actions #}
-      <div class="media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out{% if user.clickable_media_cards %} pointer-coarse:hidden{% endif %}"
-            :class="revealed ? 'opacity-100 pointer-events-auto media-card-overlay-revealed' : 'opacity-0 pointer-events-none'">
-        {# Darkening background layer #}
-        <div class="absolute inset-0 bg-black/50 z-0"></div>
-        
-        <a href="{{ tracker.artist|music_artist_url }}" class="absolute inset-0 z-0"></a>
-
-        <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
-          {# Track Button #}
-          <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                  title="{% translate "Edit tracking" %}"
-                  hx-get="{% url 'artist_track_modal' tracker.artist.id %}"
-                  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                  hx-target="#artist-track-modal-{{ tracker.artist.id }}"
-                  hx-trigger="click once"
-                  @click="trackOpen = true">
-            {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
-          </button>
-
-          {# View Artist Button #}
-          <a href="{{ tracker.artist|music_artist_url }}"
-             class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-             title="{% translate "View artist" %}">
-            {% include "app/icons/person.svg" with classes="w-4 h-4" %}
-          </a>
-
-          {# History Button #}
-          <a href="{% url 'history' %}?artist={{ tracker.artist.id }}"
-             class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-             title="{% translate "View listening history" %}">
-            {% include "app/icons/history.svg" with classes="w-4 h-4" %}
-          </a>
-        </div>
-      </div>
-    </div>
-
-    <div class="media-card-body p-3 bg-card-body">
-      <div class="media-card-title-row flex items-center gap-2 min-w-0">
-        <a href="{{ tracker.artist|music_artist_url }}"
-           class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
-           title="{{ tracker.artist.name }}">{{ tracker.artist.name }}</a>
-        {% url 'update_artist_score' tracker.artist.id as rate_url %}
-        {% include "app/components/media_card_rating.html" with rating_value=tracker.score rate_url=rate_url rating_media_type="music" %}
-      </div>
-      {% card_lines 'music' tracker.artist tracker %}
-    </div>
-
-    {# Track Modal #}
-    <template x-teleport="body">
-    <div x-show="trackOpen"
-         @mousedown.self="trackOpen = false"
-         x-cloak
-         @keydown.escape.window="trackOpen = false"
-         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
-           style="width: min(96vw, 72rem);">
-        <div id="artist-track-modal-{{ tracker.artist.id }}"></div>
-      </div>
-    </div>
-    </template>
-  </div>
+  {% if forloop.last and media_list.has_next %}
+    {% include "app/components/music_tracker_card.html" with kind="artist" tracker=tracker is_last=True next_page=media_list.next_page_number %}
+  {% else %}
+    {% include "app/components/music_tracker_card.html" with kind="artist" tracker=tracker %}
+  {% endif %}
 {% endfor %}

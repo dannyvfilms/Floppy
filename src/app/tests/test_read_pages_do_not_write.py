@@ -371,7 +371,7 @@ class ReadPagesDoNotWriteTests(TestCase):
                 self._check("api", path)
 
 
-# The GET endpoints the Expo app's transports call (native-proof/ and the
+# The GET endpoints the Expo app's transports call (expo/ and the
 # shared frontend/ transports), without the ones that need an object id.
 API_READ_PATHS = (
     "/api/v1/info/",

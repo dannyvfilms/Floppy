@@ -19,6 +19,13 @@ const shells = {
     inner: 'modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full',
     style: { width: 'min(96vw, 72rem)' },
   },
+  // A list's settings form brings its own overlay and closes itself through `showModal`.
+  list: {
+    key: 'showModal',
+    outer: '',
+    inner: '',
+    style: undefined,
+  },
   lists: {
     key: 'listsOpen',
     outer: 'fixed inset-0 bg-black/50 flex items-center justify-center z-50',

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from './MediaCard';
+import { musicAlbumCardModel } from './cardModels';
 
 const PALETTE = {
   card: '#27272a',
@@ -32,10 +33,6 @@ const DEFAULT_LABELS = {
   plays: 'plays',
 };
 
-function countLabel(count, singular, plural) {
-  return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
-}
-
 function mergePalette(palette) {
   return {
     ...PALETTE,
@@ -45,41 +42,12 @@ function mergePalette(palette) {
   };
 }
 
-function albumModel(album, labels) {
-  const trackCount = album.trackCount ?? (album.tracks ? album.tracks.length : null);
-  const parts = [];
-  if (album.releaseType) parts.push({ text: album.releaseType });
-  if (album.year) parts.push({ text: String(album.year), muted: true });
-  if (trackCount != null) {
-    parts.push({ text: countLabel(trackCount, labels.track, labels.tracks), muted: true });
-  }
-  return {
-    mediaType: 'music',
-    shape: 'square',
-    href: album.href,
-    image: { src: album.image, fallback: '', source: 'primary' },
-    title: album.title,
-    altTitle: null,
-    cornerChips: album.plays
-      ? [{ kind: 'runtime', text: countLabel(album.plays, labels.play, labels.plays) }]
-      : [],
-    lines: album.lines && album.lines.length
-      ? album.lines
-      : [{ join: 'dot', parts }],
-    rating: album.score == null ? null : {
-      label: String(album.score),
-      value: album.score,
-      scaleMax: 10,
-      rateLabel: labels.rate,
-    },
-    ratingEditable: false,
-  };
-}
-
 export function MusicAlbumCard({ album, width, labels, palette, onOpen }) {
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
+  // `variant` is the browser card's grid layout; the native card ignores it.
   return <MediaCard
-    model={albumModel(album, copy)}
+    variant="grid-square"
+    model={musicAlbumCardModel(album, copy)}
     labels={{ rate: copy.rate, close: copy.close }}
     palette={mergePalette(palette)}
     width={width}

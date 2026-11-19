@@ -13,7 +13,7 @@ from integrations.imports.helpers import MediaImportError
 
 from .base import FloppyApiTestCase
 
-APP_LINK = "floppy-native-proof://connect/trakt"
+APP_LINK = "floppy-expo://connect/trakt"
 
 
 @override_settings(URLS=["http://192.168.1.50:8000"])
@@ -219,7 +219,7 @@ class RedirectConnectTests(FloppyApiTestCase):
 
     def test_return_address_is_restricted(self):
         for bad in ("https://evil.example/x", "//evil.example", "javascript:alert(1)",
-                    "other-app://connect", "floppy-native-proof-x://a"):
+                    "other-app://connect", "floppy-expo-x://a"):
             response = self._start("anilist", {"returnTo": bad})
             self.assertEqual(response.status_code, HTTP.BAD_REQUEST, bad)
 
