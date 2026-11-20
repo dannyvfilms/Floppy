@@ -10,9 +10,20 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from app.detail_builders import build_detail_link_sections
+from app.models import CollectionEntry, Item
 from integrations import arr_library, seerr_api
 from integrations.imports import helpers
-from integrations.models import RadarrInstance, SonarrInstance
+from integrations.imports import radarr as radarr_import
+from integrations.imports import sonarr as sonarr_import
+from integrations.models import (
+    JellyfinAccount,
+    PlexAccount,
+    RadarrInstance,
+    SonarrInstance,
+    SourcePage,
+)
+from integrations.source_sync import replace_source_pages, set_source_page
 
 RADARR_GET = "integrations.imports.radarr.requests.get"
 RADARR_SEND = "integrations.imports.radarr.requests.request"
@@ -128,9 +139,12 @@ class RadarrPanelTests(TestCase):
         self.assertEqual(panel["status"], "missing")
         self.assertEqual(panel["path"], "")
 
-    def test_movie_radarr_does_not_have_gets_no_panel(self):
+    def test_movie_radarr_does_not_have_is_marked_absent(self):
         with patch(RADARR_GET, _router({"/api/v3/movie": []})):
-            self.assertEqual(self._panels(), [])
+            (panel,) = self._panels()
+        self.assertEqual(panel["status"], "absent")
+        self.assertFalse(panel["found"])
+        self.assertIsNone(panel["search"])
 
     def test_unreachable_server_becomes_an_error_panel_without_the_url(self):
         with patch(
@@ -270,9 +284,11 @@ class SonarrPanelTests(TestCase):
         self.assertEqual(panel["queue"][0]["percent"], 50)
         self.assertEqual([e["label"] for e in panel["history"]], ["Failed"])
 
-    def test_unknown_episode_gets_no_panel(self):
-        panels, _ = self._panels("episode", season=2, episode=40)
-        self.assertEqual(panels, [])
+    def test_unknown_episode_is_absent_and_links_the_series(self):
+        self.routes["/api/v3/series"][0]["titleSlug"] = "severance"
+        (panel,), _ = self._panels("episode", season=2, episode=40)
+        self.assertEqual(panel["status"], "absent")
+        self.assertEqual(panel["url"], "https://127.0.0.1:8989/series/severance")
 
     def test_season_counts_only_aired_monitored_episodes(self):
         (panel,), _ = self._panels("season", season=2)
@@ -293,9 +309,14 @@ class SonarrPanelTests(TestCase):
         (panel,), _ = self._panels("tv", source="tvdb", media_id="371572")
         self.assertEqual(panel["name"], "Sonarr")
 
-    def test_series_not_in_sonarr_gets_no_panel(self):
-        panels, _ = self._panels("tv", media_id="1")
-        self.assertEqual(panels, [])
+    def test_series_not_in_sonarr_is_marked_absent(self):
+        (panel,), _ = self._panels("tv", media_id="1")
+        self.assertEqual(panel["status"], "absent")
+        self.assertEqual(panel["url"], "")
+
+    def test_series_without_a_slug_has_no_link(self):
+        (panel,), _ = self._panels("tv")
+        self.assertEqual(panel["url"], "")
 
     def test_series_list_is_cached_between_opens(self):
         self._panels("tv")
@@ -449,7 +470,13 @@ class LibraryPanelViewTests(TestCase):
         self.assertContains(response, "Dune.mkv")
         self.assertContains(response, "Bluray-2160p")
         self.assertContains(response, "Search now")
-        self.assertNotContains(response, "Requests")
+        self.assertContains(response, 'href="https://radarr.local/movie/693134"')
+        self.assertIsNone(response.context["seerr_requests"])
+        self.assertEqual(response.context["seerr_url"], "")
+        self.assertEqual(
+            response.context["panel_props"]["panels"][0]["url"],
+            "https://radarr.local/movie/693134",
+        )
 
     def test_post_starts_the_search_and_shows_it(self):
         instance = RadarrInstance.objects.get(user=self.user)
@@ -492,6 +519,8 @@ class LibraryPanelViewTests(TestCase):
         self.assertContains(response, "Requests")
         self.assertContains(response, "maya")
         self.assertContains(response, "Approved")
+        self.assertEqual(response.context["seerr_url"], "http://seerr:5055/movie/693134")
+        self.assertContains(response, 'href="http://seerr:5055/movie/693134"')
 
     def test_episode_lists_only_requests_for_its_season(self):
         RadarrInstance.objects.all().delete()
@@ -538,7 +567,7 @@ class LibraryPanelViewTests(TestCase):
         RadarrInstance.objects.all().delete()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, "Search now")
+        self.assertEqual(response.context["panels"], [])
 
 
 class TrackModalLibraryTabTests(TestCase):
@@ -579,4 +608,233 @@ class TrackModalLibraryTabTests(TestCase):
         self.assertTrue(response.context["collection_tab_available"])
         self.assertTrue(
             response.context["library_panel_url"].endswith("?season_number=2")
+        )
+
+
+class ServerLinkGroupsTests(TestCase):
+    """Server links in the detail page's links menu come from saved data only."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="links")
+        self.user.seerr_url = "https://seerr.local/"
+        self.user.save()
+        self.radarr = RadarrInstance.objects.create(
+            user=self.user,
+            name="4K",
+            base_url="https://radarr.local/",
+            api_key=helpers.encrypt("key"),
+        )
+        self.sonarr = SonarrInstance.objects.create(
+            user=self.user,
+            base_url="https://sonarr.local",
+            api_key=helpers.encrypt("key"),
+        )
+
+    def _groups(self, media_type, media_id, source="tmdb", user=None):
+        return dict(
+            arr_library.server_link_groups(
+                user or self.user, source, media_type, media_id
+            )
+        )
+
+    def test_movie_links_seerr_and_radarr_even_without_a_file(self):
+        replace_source_pages(
+            user=self.user,
+            source="radarr",
+            source_instance_id=self.radarr.pk,
+            pages={("tmdb", "movie", "69798"): "movie/69798"},
+        )
+
+        groups = arr_library.server_link_groups(self.user, "tmdb", "movie", "69798")
+
+        self.assertEqual(
+            groups,
+            [
+                ("Requests", [("Seerr", "https://seerr.local/movie/69798", "seerr")]),
+                (
+                    "Downloads",
+                    [("Radarr (4K)", "https://radarr.local/movie/69798", "radarr")],
+                ),
+            ],
+        )
+
+    def test_season_page_links_the_sonarr_series_by_tmdb_or_tvdb(self):
+        replace_source_pages(
+            user=self.user,
+            source="sonarr",
+            source_instance_id=self.sonarr.pk,
+            pages={
+                ("tmdb", "tv", "97546"): "series/ted-lasso",
+                ("tvdb", "tv", "383203"): "series/ted-lasso",
+            },
+        )
+
+        tmdb = self._groups("season", "97546")
+        tvdb = self._groups("tv", "383203", source="tvdb")
+
+        self.assertEqual(tmdb["Requests"][0][1], "https://seerr.local/tv/97546")
+        self.assertEqual(
+            tmdb["Downloads"],
+            [("Sonarr", "https://sonarr.local/series/ted-lasso", "sonarr")],
+        )
+        self.assertEqual(tvdb["Downloads"], tmdb["Downloads"])
+        self.assertNotIn("Requests", tvdb)  # Seerr pages are by TMDB id
+
+    def test_a_deleted_instance_and_another_users_pages_do_not_link(self):
+        other = get_user_model().objects.create_user(username="other")
+        replace_source_pages(
+            user=other,
+            source="radarr",
+            source_instance_id=self.radarr.pk,
+            pages={("tmdb", "movie", "603"): "movie/603"},
+        )
+        replace_source_pages(
+            user=self.user,
+            source="radarr",
+            source_instance_id=self.radarr.pk + 100,
+            pages={("tmdb", "movie", "603"): "movie/603"},
+        )
+        self.user.seerr_url = ""
+        self.user.save()
+
+        self.assertEqual(self._groups("movie", "603"), {})
+        anonymous = MagicMock(is_authenticated=False)
+        self.assertEqual(self._groups("movie", "603", user=anonymous), {})
+
+    def test_players_link_plex_and_jellyfin(self):
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="plex",
+            machine_identifier="fallback",
+            sections=[{"uri": "http://plex.lan:32400", "machine_identifier": "abc"}],
+        )
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="http://jellyfin.lan:8096/",
+            api_key=helpers.encrypt("key"),
+            server_id="srv",
+        )
+        item = Item.objects.create(
+            media_id="603", source="tmdb", media_type="movie", title="The Matrix"
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=item,
+            plex_rating_key="42",
+            plex_uri="http://plex.lan:32400",
+        )
+        set_source_page(
+            user=self.user,
+            source="jellyfin",
+            provider="tmdb",
+            media_type="movie",
+            media_id="603",
+            path="web/#/details?id=xyz",
+        )
+
+        players = self._groups("movie", "603")["Players"]
+
+        self.assertEqual(
+            players,
+            [
+                (
+                    "Plex",
+                    "https://app.plex.tv/desktop/#!/server/abc/details"
+                    "?key=%2Flibrary%2Fmetadata%2F42",
+                    "plex",
+                ),
+                (
+                    "Jellyfin",
+                    "http://jellyfin.lan:8096/web/#/details?id=xyz&serverId=srv",
+                    "jellyfin",
+                ),
+            ],
+        )
+
+    def test_detail_link_sections_add_the_groups_only_for_a_viewer(self):
+        replace_source_pages(
+            user=self.user,
+            source="radarr",
+            source_instance_id=self.radarr.pk,
+            pages={("tmdb", "movie", "69798"): "movie/69798"},
+        )
+        metadata = {"media_id": "69798"}
+
+        with_viewer = build_detail_link_sections(
+            metadata, "movie", "tmdb", "tmdb", viewer=self.user
+        )
+        public = build_detail_link_sections(metadata, "movie", "tmdb", "tmdb")
+
+        self.assertEqual(
+            [section["title"] for section in with_viewer][-2:],
+            ["Requests", "Downloads"],
+        )
+        self.assertEqual(with_viewer[-1]["entries"][0]["brand"], "radarr")
+        self.assertFalse(
+            any(section["title"] in ("Requests", "Downloads") for section in public)
+        )
+
+
+class ReplaceSourcePagesTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="pages")
+
+    def _replace(self, pages):
+        return replace_source_pages(
+            user=self.user, source="sonarr", source_instance_id=1, pages=pages
+        )
+
+    def test_an_unchanged_library_writes_nothing_and_stale_pages_go(self):
+        self.assertEqual(self._replace({("tmdb", "tv", "1"): "series/a"}), 1)
+        self.assertEqual(self._replace({("tmdb", "tv", "1"): "series/a"}), 0)
+
+        self.assertEqual(
+            self._replace({("tmdb", "tv", "1"): "series/b", ("tmdb", "tv", "2"): "series/c"}),
+            2,
+        )
+        self.assertEqual(self._replace({("tmdb", "tv", "2"): "series/c"}), 1)
+        self.assertEqual(
+            list(SourcePage.objects.values_list("media_id", "path")),
+            [("2", "series/c")],
+        )
+
+
+class ArrImportPagesTests(TestCase):
+    """Imports record every title's page, including ones without files."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="import-pages")
+        self.radarr = RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr.local", api_key=helpers.encrypt("k")
+        )
+        self.sonarr = SonarrInstance.objects.create(
+            user=self.user, base_url="https://sonarr.local", api_key=helpers.encrypt("k")
+        )
+
+    def test_radarr_records_a_movie_without_a_file(self):
+        rows = [{"tmdbId": 603, "titleSlug": "603", "hasFile": False}]
+        with patch("integrations.imports.radarr.RadarrClient.movies", return_value=rows):
+            radarr_import.importer(None, self.user, "new")
+
+        self.assertEqual(
+            list(SourcePage.objects.values_list("source", "provider", "media_id", "path")),
+            [("radarr", "tmdb", "603", "movie/603")],
+        )
+
+    def test_sonarr_records_a_series_by_both_ids_without_files(self):
+        rows = [
+            {
+                "tmdbId": 97546,
+                "tvdbId": 383203,
+                "titleSlug": "ted-lasso",
+                "statistics": {"episodeFileCount": 0},
+            }
+        ]
+        with patch("integrations.imports.sonarr.SonarrClient.series", return_value=rows):
+            sonarr_import.importer(None, self.user, "new")
+
+        self.assertEqual(
+            sorted(SourcePage.objects.values_list("provider", "media_id", "path")),
+            [("tmdb", "97546", "series/ted-lasso"), ("tvdb", "383203", "series/ted-lasso")],
         )

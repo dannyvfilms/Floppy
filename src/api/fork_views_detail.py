@@ -801,6 +801,7 @@ class DetailPageView(drf_views.APIView):
             source,
             metadata.get("display_provider") or source,
             item=item,
+            viewer=None if public_view else viewer,
         )
         _apply_cached_hltb_link(metadata, item)
         game_lengths = _build_game_lengths_context(item) if media_type == app_models.MediaTypes.GAME.value else None

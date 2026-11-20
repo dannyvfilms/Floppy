@@ -555,7 +555,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 
 - Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`, `onOpenTitle`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
-- `src/templates/app/components/detail_action_buttons.html`
+- `src/templates/app/components/detail_action_buttons.html` (links menu also lists the viewer's Plex/Jellyfin, Seerr and Radarr/Sonarr pages as "Players"/"Requests"/"Downloads" groups; data from `integrations/arr_library.server_link_groups`, see INTEGRATION-PANELS; template unchanged)
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
@@ -567,6 +567,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
+- External-link producers: `src/app/providers/igdb.py`, `src/app/providers/tmdb.py`, and `src/app/detail_builders.py`. Steam links are game-only; IMDb Parent's Guide applies to TMDB movies/TV and any detail item with a stored `imdb_id`. Local chip marks: `src/static/img/steamdb-logo.svg`, `protondb-logo.png`, and `pcgamingwiki-logo.svg`; the guide reuses `imdb-logo.png`.
 - `expo/app/screens/DetailScreen.jsx`
 - `expo/app/surfaces/DetailSlot.jsx`
 - `expo/app/surfaces/DetailFeatures.jsx`
@@ -1296,9 +1297,11 @@ Status: `Legacy`
 
 ## INTEGRATION-PANELS
 
-Status: `Legacy`
+Status: `Partial / coexisting` (library panel React-owned on the web; Seerr request dialog/status legacy)
 
-- `src/templates/integrations/library_panel.html`
+- `frontend/ui/IntegrationPanels.jsx`
+- `frontend/ui/mountIntegrationPanels.jsx`
+- `src/templates/integrations/library_panel.html` (server fallback + props)
 - `src/templates/integrations/seerr_request.html`
 - `src/templates/integrations/seerr_status.html`
 
@@ -1417,7 +1420,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
-- `frontend/ui/IntegrationPanels.jsx`
 - `frontend/ui/ListCard.jsx`
 - `frontend/ui/ListFormView.jsx`
 - `frontend/ui/ListHeader.jsx`
