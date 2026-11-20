@@ -1089,6 +1089,8 @@ def season_details(
             MediaTypes.SEASON.value,
             source,
             source,
+            # The secondary fragment has no links menu, so it skips the lookups.
+            viewer=None if public_view or render_secondary_only else request.user,
         ),
         "detail_tag_sections": build_detail_tag_sections(
             season_metadata,

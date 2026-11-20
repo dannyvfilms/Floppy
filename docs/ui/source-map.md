@@ -94,6 +94,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
 - `frontend/ui/DropdownMenu.jsx` (`FORM-CONTROLS` shared anchored presentation, consumed by Sidebar and the opt-in SelectField popover; web and Android runtime regression unverified)
+- `frontend/ui/Title.jsx` (`FORM-CONTROLS` shared title for sheets, dialogs, form bars and pages: 16, 18, 20 and 24 pt at 600, and 24 and 28 pt at 700; consumers: `AdaptivePresentationSheet`, `Screen`, `BarcodeScannerModal`, `ListDetailScreen`, `MusicParts`, `controls/Dialog`, `SelectField`, `MediaCardFormControls`, `HistoryFeed`, `PeopleToolbar`, `BulkActions`, `TagManagement`, `TrackForm`, `SmartRules`, `StatisticsSections`, `ListHeader`, `ListRecommendationsView`, `DeviceConnect`; universal react-native, web and native; `DeviceApproval`, hero and detail headings and Home row titles keep their own)
 - `expo/app/components/AdaptivePresentationSheet.jsx`, `expo/app/components/SheetCloseButton.jsx`, `expo/app/components/SheetCloseButton.ios.jsx`, `expo/app/components/SheetHost.jsx`, `expo/app/components/SheetHost.ios.jsx`, `expo/app/components/useSheetInsets.js`, `expo/app/components/useSheetInsets.ios.js` (Expo UI sheet adapter and platform close controls; iOS applies a reduced horizontal safe-area inset to content while the close control can occupy the Duo rail; Detail actions consume it, while other modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
 - Detail Collection uses the shared embedded `CollectionCopyDialog` inside `AdaptivePresentationSheet`; Collection screen and web dialog consumers remain. `DropdownMenu` supplies the sidebar and optional `SelectField` popover; multi-select is opt-in. The native modal host isolates registration from active-entry updates and sheets host nested dialogs locally. These remain partial/coexisting until remaining consumers migrate; Duo opened the Collection sheet and selected Format, while browser, Android and multi-select runtime remain unverified.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
@@ -554,7 +555,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 
 - Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`, `onOpenTitle`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
-- `src/templates/app/components/detail_action_buttons.html`
+- `src/templates/app/components/detail_action_buttons.html` (links menu also lists the viewer's Plex/Jellyfin, Seerr and Radarr/Sonarr pages as "Players"/"Requests"/"Downloads" groups; data from `integrations/arr_library.server_link_groups`, see INTEGRATION-PANELS; template unchanged)
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
@@ -566,6 +567,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
+- External-link producers: `src/app/providers/igdb.py`, `src/app/providers/tmdb.py`, and `src/app/detail_builders.py`. Steam links are game-only; IMDb Parent's Guide applies to TMDB movies/TV and any detail item with a stored `imdb_id`. Local chip marks: `src/static/img/steamdb-logo.svg`, `protondb-logo.png`, and `pcgamingwiki-logo.svg`; the guide reuses `imdb-logo.png`.
 - `expo/app/screens/DetailScreen.jsx`
 - `expo/app/surfaces/DetailSlot.jsx`
 - `expo/app/surfaces/DetailFeatures.jsx`
@@ -1110,7 +1112,7 @@ Status: `Partial / coexisting`
 
 - `src/templates/users/components/import_activity.html`
 - `src/templates/users/components/import_activity_loader.html`
-- `src/templates/users/components/import_source_cleanup.html`
+- `src/templates/users/components/import_source_cleanup.html` (Delete all returns to the provider Activity tab and shows a pending state, #1968)
 - `src/templates/users/components/outbound_service_activity.html`
 - `src/templates/users/provider_activity.html`
 - `src/templates/users/providers/integration_activity.html`
@@ -1295,9 +1297,11 @@ Status: `Legacy`
 
 ## INTEGRATION-PANELS
 
-Status: `Legacy`
+Status: `Partial / coexisting` (library panel React-owned on the web; Seerr request dialog/status legacy)
 
-- `src/templates/integrations/library_panel.html`
+- `frontend/ui/IntegrationPanels.jsx`
+- `frontend/ui/mountIntegrationPanels.jsx`
+- `src/templates/integrations/library_panel.html` (server fallback + props)
 - `src/templates/integrations/seerr_request.html`
 - `src/templates/integrations/seerr_status.html`
 
@@ -1416,7 +1420,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
-- `frontend/ui/IntegrationPanels.jsx`
 - `frontend/ui/ListCard.jsx`
 - `frontend/ui/ListFormView.jsx`
 - `frontend/ui/ListHeader.jsx`
@@ -1452,7 +1455,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
 - `frontend/ui/Rail.jsx`
-- `frontend/ui/Rail.web.jsx`
+- `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`

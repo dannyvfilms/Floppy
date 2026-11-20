@@ -1,4 +1,5 @@
 import { Modal, ModalCloseButton } from '../Modal';
+import { Title } from '../Title';
 import React, { useEffect, useRef } from 'react';
 import {
   Pressable,
@@ -92,7 +93,7 @@ export function Dialog({
           },
         ]}>
         <View style={styles.header}>
-          <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{title}</Text>
+          <Title color={colors.text} style={styles.title}>{title}</Title>
           <ModalCloseButton
             ref={closeRef}
             accessibilityRole="button"
@@ -136,7 +137,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  title: { flex: 1, minWidth: 0, fontSize: 18, fontWeight: '600' },
+  title: { flex: 1, minWidth: 0 },
   close: {
     alignItems: 'center',
     justifyContent: 'center',

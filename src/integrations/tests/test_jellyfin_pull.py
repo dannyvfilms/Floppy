@@ -61,6 +61,45 @@ class PullJellyfinHistoryTaskTests(TestCase):
         return_value="api-key",
     )
     @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch("integrations.jellyfin_client.JellyfinClient._submit_custom_query")
+    @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
+    def test_cursor_advances_when_plugin_returns_string_rowids(
+        self,
+        mock_probe,
+        mock_query,
+        mock_library,
+        mock_decrypt_task,
+        mock_decrypt_importer,
+    ):
+        """String rowids from the plugin still move the cursor to the true max."""
+        mock_probe.return_value = True
+        mock_library.return_value = []
+        other_user_row = ["", "2024-01-02 03:04:05", "other", "item", "Movie",
+                          "X", "DirectPlay", "Web", "Laptop", "60"]
+        mock_query.return_value = [
+            ["999", *other_user_row[1:]],
+            ["2000", *other_user_row[1:]],
+        ]
+
+        pull_jellyfin_history(self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.playback_reporting_last_rowid, 2000)
+
+        mock_query.reset_mock(return_value=True)
+        mock_query.return_value = []
+        pull_jellyfin_history(self.user.id)
+        self.assertIn("rowid > 2000", mock_query.call_args.args[0])
+
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch(
+        "integrations.tasks._jellyfin_pull.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
     @patch("integrations.jellyfin_client.JellyfinClient.fetch_playback_activity")
     @patch("integrations.jellyfin_client.JellyfinClient.probe_playback_reporting")
     def test_reprobes_after_a_prior_unavailable_result(

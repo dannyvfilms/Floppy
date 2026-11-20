@@ -8237,7 +8237,7 @@ html.light .theme-toggle-icon-moon {
     color: white;
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex]) {
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex], [x-show]) {
     pointer-events: auto;
   }
   .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 {

@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import tag
 from django.urls import reverse
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect, sync_playwright
 
 from app.tests.live_server import SerialStaticLiveServerTestCase
@@ -38,9 +39,15 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             logout_url = self.live_server_url + reverse("account_logout")
             # CI Chromium sometimes opens the modifier-click tab but never loads
             # it (the tab's URL stays empty), so retry the click, not the check.
+            # Sometimes no tab opens at all (expect_page times out): retry that too.
             for attempt in range(3):
-                with context.expect_page() as opened:
-                    logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
+                try:
+                    with context.expect_page(timeout=10000) as opened:
+                        logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
+                except PlaywrightTimeout:
+                    if attempt == 2:
+                        raise
+                    continue
                 confirmation = opened.value
                 try:
                     # A new tab starts on about:blank, which already counts as

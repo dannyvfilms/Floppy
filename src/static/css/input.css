@@ -2648,7 +2648,10 @@ html.light .theme-toggle-icon-moon {
 
   /* The overlay is click-through so the carousel arrows beneath it work. Only
      its controls take clicks; wide wrappers such as the logo slot must not. */
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex]) {
+  /* Open popovers ([x-show]: links, tags, Seerr, More) take the pointer too,
+     so the gaps between their items do not fall through to the preview and
+     close them. */
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex], [x-show]) {
     pointer-events: auto;
   }
 

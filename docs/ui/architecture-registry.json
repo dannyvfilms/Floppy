@@ -644,6 +644,26 @@
         }
       }
     },
+    "frontend/ui/Title.jsx": {
+      "components": [
+        "Title"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; the web dialogs that now mount it (Dialog, history, people, bulk, tags, forms) were not re-rendered in Chromium for this change."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone Duo and iPhone 16 simulators rendered the presentation sheet title and an on-device old-versus-new comparison of every migrated title through Title (comparison route not kept). The dialog consumers were not opened one by one."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
     "frontend/ui/DropdownMenu.jsx": {
       "components": [
         "DropdownMenu",
@@ -1705,16 +1725,16 @@
       "register": "INTEGRATION-PANELS",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the existing server-rendered library_panel, seerr_request and seerr_status templates keep the browser path and progressive fallback."
+          "status": "verified",
+          "evidence": "Built-in browser and Chrome (Playwright) against local Radarr/Sonarr/Seerr stubs: ArrLibraryPanels mounts in the track modal Collection tab through mountIntegrationPanels; movie, show and not-in-Radarr states compared with the server fallback in dark and light at 1100px and 390px (heights within 1px); Open in Radarr/Sonarr/Seerr anchors open in a new tab; Search now posts and the swapped panel remounts. SeerrRequestDialog and SeerrStatusBadge are still not mounted on the web (seerr_request.html and seerr_status.html remain server-rendered)."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no simulator run, request interaction, copy feedback or VoiceOver pass."
+          "evidence": "No native screen imports these components yet and there is no API endpoint for the panel data; the shared file compiles in the UI build only. No simulator run, VoiceOver or link-opening pass."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no emulator run, request interaction, copy feedback or TalkBack pass."
+          "evidence": "No native screen imports these components yet and there is no API endpoint for the panel data; the shared file compiles in the UI build only. No emulator run, TalkBack or link-opening pass."
         }
       }
     },
@@ -5772,7 +5792,7 @@
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
-      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail, and warm the next screens of posters once the on-screen ones have loaded."
     },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",
@@ -6066,6 +6086,10 @@
     "frontend/ui/webRequest.web.js": {
       "register": "HOME",
       "purpose": "Web-only request for adapters that drive a shared transport core: same-origin JSON over Django's cookie session with the CSRF token on unsafe methods, query encoding identical to the native transport, errors carrying the HTTP status, optional AbortSignal pass-through, in-flight sharing of identical GETs (no cache, no retry) and an optional onTiming hook. Web-only because the browser signs in with the session cookie; native supplies its own request from authTransportCore.js."
+    },
+    "frontend/ui/mountIntegrationPanels.jsx": {
+      "register": "INTEGRATION-PANELS",
+      "purpose": "Mount the shared ArrLibraryPanels over the server-rendered track modal library panel: resolve theme tokens, render Open in Radarr/Sonarr/Seerr as real anchors, copy paths through the browser clipboard adapter and send Search now through the existing HTMX POST that swaps the panel; the server markup stays the fallback."
     },
     "frontend/ui/sidebarPins.web.js": {
       "register": "MEDIA-CARD",

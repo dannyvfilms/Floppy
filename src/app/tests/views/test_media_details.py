@@ -3151,6 +3151,15 @@ class MediaDetailsViewTests(TestCase):
             {entry["label"] for entry in external_section["entries"]},
             {"Letterboxd", "IMDb", "TVDB", "Wikidata"},
         )
+        guides_section = next(
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] == "Guides"
+        )
+        self.assertEqual(
+            [entry["label"] for entry in guides_section["entries"]],
+            ["IMDb Parent's Guide"],
+        )
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_link_sections_do_not_duplicate_stored_external_links(
