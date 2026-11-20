@@ -20,9 +20,9 @@ from django.utils import translation
 from app import db_diagnostics, request_timing, stall_watchdog
 from app.db_retry import (
     is_contention_error,
-    is_lock_error,
     is_retryable_error,
     read_request,
+    run_after_response,
 )
 from app.discover import tab_cache as discover_tab_cache
 from app.error_views import format_exception_traceback, render_error_page
@@ -224,9 +224,16 @@ class RequestPerformanceLoggingMiddleware:
         boundaries = provider_tally["boundaries"]
         breakdown = {
             f"{name}_ms": boundaries.get(name, 0.0) * 1000
-            for name in ("cache", "broker", "db_connect", "render", *sorted(
-                set(boundaries) - {"cache", "broker", "db_connect", "render", "db", "provider"},
-            ))
+            for name in (
+                "cache",
+                "broker",
+                "db_connect",
+                "render",
+                *sorted(
+                    set(boundaries)
+                    - {"cache", "broker", "db_connect", "render", "db", "provider"},
+                ),
+            )
         }
         # Exclusive wall spans partition elapsed time. CPU is an overlapping
         # diagnostic, not another duration to subtract from this remainder.
@@ -296,57 +303,23 @@ class DatabaseRetryMiddleware:
         """Process the request with retry logic for database errors."""
         with db_diagnostics.bind_request(request):
             if request.method in {"GET", "HEAD"}:
-                with read_request():
-                    return self._run(request)
+                with read_request() as state:
+                    response = self._run(request)
+                if state.after_response:
+                    # Saves the page did not need (remembered sort or layout)
+                    # run once the response has gone out.
+                    response._resource_closers.append(
+                        lambda: run_after_response(state.after_response)
+                    )
+                return response
             return self._run(request)
 
     def _run(self, request):
-        max_retries = 5
-        # A lock error arrives only after SQLite's busy_timeout (30 s by
-        # default) ran out, so each retry of the whole view can wait that
-        # long again; five of them outlasted the gunicorn timeout. One retry
-        # still covers a writer that just finished.
-        max_lock_retries = 1
-        base_delay = 0.1
-        backoff = 2.0
-        attempt = 0
-
-        while True:
-            try:
-                return self.get_response(request)
-            except DatabaseError as error:
-                # Only retry retryable errors while under the retry cap.
-                if not (is_contention_error(error) or is_retryable_error(error)):
-                    raise
-
-                db_diagnostics.report_database_error(error, operation="request")
-
-                if request.method != "GET":
-                    logger.exception(
-                        "Database error on %s request, not retrying",
-                        request.method,
-                    )
-                    raise
-
-                retry_cap = max_lock_retries if is_lock_error(error) else max_retries
-                if attempt >= retry_cap:
-                    response = self._contention_response(request, error)
-                    if response is not None:
-                        return response
-                    raise
-
-                error_type = "disk I/O" if "i/o" in str(error).lower() else "lock"
-                sleep_for = base_delay * (backoff**attempt)
-                logger.warning(
-                    "Retrying %s after %s error (attempt %s/%s, sleeping %.2fs)",
-                    request.path,
-                    error_type,
-                    attempt + 1,
-                    retry_cap,
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-                attempt += 1
+        # There is no retry loop here: Django turns an exception from a view
+        # or deeper middleware into a response before it reaches this frame,
+        # so a lock error is handled once, in process_exception. Retrying the
+        # whole view would also wait out SQLite's busy timeout again.
+        return self.get_response(request)
 
     def _contention_response(self, request, exception):
         if (
