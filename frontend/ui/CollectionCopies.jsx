@@ -85,12 +85,12 @@ const SWATCHES = ['#3486e8', '#df5b26', '#1c9e76', '#d99700', '#999792'];
 
 // One line of the Collection Summary's breakdown: optional colour swatch, name, optional count.
 // The Summary card and the expandable rows (Platform, Genre) both draw it.
-export function CollectionBreakdownRow({ label, count, swatch, onPress, palette: suppliedPalette }) {
+export function CollectionBreakdownRow({ label, count, value, swatch, onPress, palette: suppliedPalette }) {
   const palette = mergePalette(suppliedPalette);
   const row = <View style={styles.contextRow}>
     {swatch ? <View style={[styles.contextSwatch, { backgroundColor: swatch }]} /> : null}
     <Text style={[styles.contextRowLabel, { color: onPress ? palette.accent : palette.text }]}>{label}</Text>
-    {count > 0 ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{count}</Text> : null}
+    {count > 0 || value ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{value || count}</Text> : null}
     {onPress ? <Icon spec={actionIcons.chevronRight} size={14} color={palette.textMuted} /> : null}
   </View>;
   return onPress ? <Pressable accessibilityRole="link" accessibilityLabel={label} onPress={onPress}>{row}</Pressable> : row;
@@ -172,13 +172,13 @@ export function CollectionRow({ icon, image, tone, label, value, onPress, chevro
 
 // The Collection Summary's disclosure as a row. The row keeps its label and an arrow; opening it
 // lists the items beneath in the Summary's small breakdown style (colour swatch, name, count).
-// Every item gets a swatch; a `count` shows only when the server supplied it; `onPress` makes a link. Rows that carry values
-// instead (`value`, `icon`) open as ordinary rows. A row with no items is a plain row.
+// Every item gets a swatch (`swatch: false` omits it); a `count` shows only when the server supplied it,
+// `value` is free text in the same place (a duration, a percentage); `onPress` makes a link. Rows that carry values
+// A row with no items is a plain row.
 export function CollectionExpandRow({ icon, label, summary, items = [], palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
   const palette = mergePalette(suppliedPalette);
   if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
-  const breakdown = items.every(item => item.value === undefined);
   return <View>
     <CollectionRow icon={icon} label={label} palette={palette}
       accessibilityLabel={`${label}${summary ? `, ${summary}` : ''}, ${expanded ? 'collapse' : 'expand'}`}
@@ -190,15 +190,10 @@ export function CollectionExpandRow({ icon, label, summary, items = [], palette:
         </View>
       </View>
     </CollectionRow>
-    {expanded && breakdown ? <View style={[styles.contextBreakdown, styles.expandBreakdown, { borderColor: palette.border }]}>
-      {items.map((item, index) => <CollectionBreakdownRow key={item.key} label={item.label} count={item.count}
-        swatch={SWATCHES[index % SWATCHES.length]} onPress={item.onPress} palette={palette} />)}
+    {expanded ? <View style={[styles.contextBreakdown, styles.expandBreakdown, { borderColor: palette.border }]}>
+      {items.map((item, index) => <CollectionBreakdownRow key={item.key} label={item.label} count={item.count} value={item.value}
+        swatch={item.swatch === false ? undefined : SWATCHES[index % SWATCHES.length]} onPress={item.onPress} palette={palette} />)}
     </View> : null}
-    {expanded && !breakdown ? items.map(item => <View key={item.key}>
-      <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: icon ? 28 : 0 }]} />
-      <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
-        onPress={item.onPress} chevron={!!item.onPress} multiline />
-    </View>) : null}
   </View>;
 }
 

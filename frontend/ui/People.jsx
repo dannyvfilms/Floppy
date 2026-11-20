@@ -403,17 +403,6 @@ export function LightboxDialog({
   </Modal>;
 }
 
-// Time-to-beat rows by their label; unknown labels fall back to a clock.
-const LENGTH_ICONS = {
-  'Main Story': actionIcons.book,
-  'Main + Extras': actionIcons.list,
-  Completionist: actionIcons.star,
-  'All PlayStyles': actionIcons.fourSquare,
-  Hastily: actionIcons.historyClock,
-  Normally: actionIcons.alarmClock,
-  Completely: actionIcons.circleCheck,
-};
-
 export function MediumExtras({
   gameLengths,
   youtubeWatch,
@@ -440,12 +429,11 @@ export function MediumExtras({
       const watched = youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started;
       // The Collection Summary's disclosure: the total stays visible, the channel split opens inline.
       rows.push(<CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors}
-        items={(youtubeWatch.channels || []).map(channel => ({ key: channel.name, icon: actionIcons.play, label: channel.name, value: `${channel.percent}%` }))} />);
+        items={(youtubeWatch.channels || []).map(channel => ({ key: channel.name, label: channel.name, value: `${channel.percent}%` }))} />);
     }
     if (gameLengths?.available && gameLengths.cards?.length) {
-      const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, icon: LENGTH_ICONS[card.label] || actionIcons.alarmClock,
-        label: card.label, value: card.value }));
-      if (gameLengths.sourceLabel) items.push({ key: 'source', icon: actionIcons.externalLink, label: gameLengths.sourceLabel,
+      const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, label: card.label, value: card.value }));
+      if (gameLengths.sourceLabel) items.push({ key: 'source', swatch: false, label: gameLengths.sourceLabel,
         onPress: gameLengths.sourceUrl && onOpenSource ? () => onOpenSource(gameLengths.sourceUrl) : undefined });
       rows.push(<CollectionExpandRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat}
         summary={gameLengths.cards[0].value} items={items} palette={colors} />);
