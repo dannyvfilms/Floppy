@@ -3155,6 +3155,14 @@ def collection_field_input_props(groups, values, form_id=None):
     }
 
 
+@register.simple_tag(takes_context=True)
+def detail_sidebar_props(context, kind, title=""):
+    """Return the data the shared React sidebar cards read on the media page."""
+    from app.detail_secondary_props import web_sidebar_payload
+
+    return web_sidebar_payload(context, kind, title)
+
+
 @register.simple_tag
 def collection_copy_form_props(form, collection_fields=None):
     """Return plain descriptors for the shared collection copy editor."""

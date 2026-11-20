@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CollectionView } from '../../../frontend/pages/CollectionView';
 import { CollectionCopyDialog } from '../../../frontend/ui/CollectionCopies';
+import { renderSelectRowPicker } from '../surfaces/SelectRowPicker';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { CollectionFieldManager, CollectionFieldValueInputs } from '../../../frontend/ui/CollectionCustomFields';
@@ -514,6 +515,7 @@ export default function CollectionScreen({ navigate }) {
       onOpenItem={item => navigate?.('Detail', { item: { identity: item.identity, title: item.title, mediaType: item.mediaType } })}
       onOpenCopy={item => openCopy(items.find(entry => entry.id === item.id) || item)}>
       <CollectionCopyDialog
+        renderSelectPicker={renderSelectRowPicker}
         visible={!!selectedItem}
         item={selectedItem}
         copies={(selectedItem?.copies || []).map(copy => ({ ...copy, collectedAtLabel: formatUserDate(copy.collectedAt) }))}

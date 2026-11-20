@@ -12,6 +12,7 @@ import {
 import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { CollectionExpandRow, CollectionGroup, CollectionRow } from './CollectionCopies';
 import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
 import { actionIcons } from './actionIcons';
@@ -69,10 +70,13 @@ const DEFAULT_LABELS = {
   close: 'Close',
   timeToBeat: 'Time to Beat',
   submissions: 'submissions',
-  timeToBeatPending: 'Fetching cached time-to-beat data in the background.',
-  timeToBeatEmpty: 'Time-to-beat data is not available yet.',
+  timeToBeatPending: 'Fetching',
+  timeToBeatEmpty: 'Not available',
   watchedOnYouTube: 'Watched on YouTube',
   started: 'Started',
+  time: 'Time',
+  timePlayed: 'Time Played',
+  timeWatched: 'Time Watched',
   youtubeEstimate: 'Estimated from how far you got in each video. Your playtime is not affected.',
   readingActivity: 'Reading Activity',
   listeningTime: 'Listening Time',
@@ -407,88 +411,54 @@ export function MediumExtras({
   palette,
   onOpenSource,
   onOpenItem,
+  playedLabel,
+  variant = 'native',
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const sections = [];
 
-  if (gameLengths) {
-    sections.push(<View key="lengths" style={styles.extraSection}>
-      <View style={styles.extraHeading}>
-        <Text role="heading" aria-level={3} style={[styles.extraTitle, { color: colors.text }]}>{copy.timeToBeat}</Text>
-        {gameLengths.sourceLabel ? <Badge label={gameLengths.sourceLabel} palette={badgePalette(colors)}
-          onPress={gameLengths.sourceUrl && onOpenSource ? () => onOpenSource(gameLengths.sourceUrl) : undefined} /> : null}
-      </View>
-      {gameLengths.available ? <View style={styles.lengthGrid}>
-        {gameLengths.cards?.map((card, index) => <View key={card.label || index}
-          style={[styles.lengthCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.lengthGlyph, { color: colors.accent }]}>{card.glyph || '◷'}</Text>
-          <View style={styles.lengthCopy}>
-            <Text style={[styles.factLabel, { color: colors.textMuted }]}>{card.label}</Text>
-            <Text style={[styles.lengthValue, { color: colors.text }]}>{card.value}</Text>
-            {card.count !== undefined ? <Text style={[styles.cardMeta, { color: colors.textMuted }]}>
-              {card.count} {copy.submissions}
-            </Text> : null}
-          </View>
-        </View>)}
-      </View> : <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={{ color: colors.textSecondary }}>
-          {gameLengths.pending ? copy.timeToBeatPending : copy.timeToBeatEmpty}
-        </Text>
-      </View>}
-    </View>);
-  }
+  const group = (key, title, rows) => <CollectionGroup key={key} title={title} palette={colors} variant={variant}>{rows}</CollectionGroup>;
+  const note = (key, text) => <Text key={key} style={[styles.cardCopy, { color: colors.textMuted }]}>{text}</Text>;
 
-  if (youtubeWatch) {
-    sections.push(<View key="youtube" style={styles.extraSection}>
-      <Text role="heading" aria-level={3} style={[styles.extraTitle, { color: colors.text }]}>{copy.watchedOnYouTube}</Text>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.lengthValue, { color: colors.text }]}>
-          {youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started}
-        </Text>
-        <Text style={[styles.cardCopy, { color: colors.textMuted }]}>
-          {youtubeWatch.videos} {plural(youtubeWatch.videos, 'video', 'videos')} · {copy.youtubeEstimate}
-        </Text>
-      </View>
+  // One card for the game's time: what you played, what you watched, and how long it takes to beat.
+  if (gameLengths || youtubeWatch || playedLabel) {
+    const rows = [];
+    if (playedLabel) rows.push(<CollectionRow key="played" icon={actionIcons.play} label={copy.timePlayed} value={playedLabel} palette={colors} />);
+    if (youtubeWatch) {
+      const watched = youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started;
+      // The Collection Summary's disclosure: the total stays visible, the channel split opens inline.
+      rows.push(<CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors}
+        items={(youtubeWatch.channels || []).map(channel => ({ key: channel.name, label: channel.name, value: `${channel.percent}%` }))} />);
+    }
+    if (gameLengths?.available && gameLengths.cards?.length) {
+      const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, label: card.label, value: card.value }));
+      rows.push(<CollectionExpandRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat}
+        summary={gameLengths.cards[0].value} items={items} palette={colors}
+        // The source (HowLongToBeat) is an i button beside the label that opens its page.
+        info={gameLengths.sourceUrl && onOpenSource ? { label: gameLengths.sourceLabel || 'Source', onPress: () => onOpenSource(gameLengths.sourceUrl) } : undefined} />);
+    } else if (gameLengths) {
+      rows.push(<CollectionRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat} palette={colors} multiline
+        value={gameLengths.pending ? copy.timeToBeatPending : copy.timeToBeatEmpty} />);
+    }
+    sections.push(<View key="time" style={styles.extraSection}>
+      {group('time-rows', copy.time, rows)}
+      {youtubeWatch ? note('note', copy.youtubeEstimate) : null}
     </View>);
   }
 
   if (reading) {
-    sections.push(<View key="reading" style={styles.extraSection}>
-      <Text role="heading" aria-level={3} style={[styles.extraTitle, { color: colors.text }]}>{copy.readingActivity}</Text>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        {reading.listening ? <View style={styles.readingRow}>
-          <Text style={[styles.factLabel, { color: colors.textSecondary }]}>{copy.listeningTime}</Text>
-          <Text style={[styles.lengthValue, { color: colors.text }]}>{reading.listening}</Text>
-        </View> : null}
-        {reading.topItems?.length ? <View style={styles.readingGroup}>
-          <Text style={[styles.factLabel, { color: colors.textSecondary }]}>{copy.mostRead}</Text>
-          {reading.topItems.map((item, index) => <Pressable key={item.id || index}
-            accessibilityRole={onOpenItem ? 'link' : undefined} accessibilityLabel={item.title}
-            disabled={!onOpenItem} onPress={() => onOpenItem?.(item)}
-            style={styles.readingItem}>
-            <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{index + 1}</Text>
-            <View style={styles.fill}>
-              <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
-              <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{item.units}</Text>
-            </View>
-          </Pressable>)}
-        </View> : null}
-        {reading.topAuthors?.length ? <View style={styles.readingGroup}>
-          <Text style={[styles.factLabel, { color: colors.textSecondary }]}>{copy.topAuthors}</Text>
-          {reading.topAuthors.map((author, index) => <Pressable key={author.id || index}
-            accessibilityRole={onOpenItem ? 'link' : undefined} accessibilityLabel={author.name}
-            disabled={!onOpenItem} onPress={() => onOpenItem?.(author)} style={styles.readingItem}>
-            <View style={styles.fill}>
-              <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.link }]}>{author.name}</Text>
-              <Text style={[styles.cardMeta, { color: colors.textMuted }]}>{author.units}</Text>
-            </View>
-          </Pressable>)}
-        </View> : null}
-        {!reading.listening && !reading.topItems?.length && !reading.topAuthors?.length
-          ? <Text style={{ color: colors.textMuted }}>{copy.noReadingData}</Text> : null}
-      </View>
-    </View>);
+    const rows = [];
+    if (reading.listening) rows.push(<CollectionRow key="listening" icon={actionIcons.play} label={copy.listeningTime}
+      palette={colors} value={reading.listening} />);
+    (reading.topItems || []).forEach((item, index) => rows.push(<CollectionRow key={`item-${item.id || index}`}
+      icon={actionIcons.book} label={item.title} value={item.units} palette={colors}
+      onPress={onOpenItem ? () => onOpenItem(item) : undefined} chevron={!!onOpenItem} />));
+    (reading.topAuthors || []).forEach((author, index) => rows.push(<CollectionRow key={`author-${author.id || index}`}
+      icon={actionIcons.edit} label={author.name} value={author.units} palette={colors}
+      onPress={onOpenItem ? () => onOpenItem(author) : undefined} chevron={!!onOpenItem} />));
+    if (!rows.length) rows.push(<CollectionRow key="empty" icon={actionIcons.info} label={copy.noReadingData} palette={colors} />);
+    sections.push(group('reading', copy.readingActivity, rows));
   }
 
   if (!sections.length) return null;

@@ -248,7 +248,25 @@ class WatchedForGameTests(TestCase):
         self._video(self.other, "v4", self.game.title, "2023", 900, 900)
         self.assertEqual(
             watch.watched_for_game(self.user, self.game),
-            {"videos": 2, "seconds": 1600, "hours_label": "26m", "estimated": True},
+            {"videos": 2, "seconds": 1600, "hours_label": "26m", "channels": [], "estimated": True},
+        )
+
+    def test_splits_watch_time_by_channel(self):
+        from app.services import youtube_game_watch as watch
+
+        first = self._video(self.user, "c1", self.game.title, "2023", 750, 1000)
+        second = self._video(self.user, "c2", self.game.title, "2023", 250, 1000)
+        first.channel = "Alpha"
+        first.save()
+        second.channel = "Beta"
+        second.save()
+        channels = watch.watched_for_game(self.user, self.game)["channels"]
+        self.assertEqual(
+            channels,
+            [
+                {"name": "Alpha", "seconds": 750, "percent": 75},
+                {"name": "Beta", "seconds": 250, "percent": 25},
+            ],
         )
 
     def test_wrong_year_and_missing_tags_do_not_match(self):

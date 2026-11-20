@@ -65,6 +65,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
   );
   const [profile, setProfile] = useState(params?.profile || null);
   const [mode, setMode] = useState(params?.profile ? 'ready' : 'loading');
+  // The provider whose missing credentials caused the error, if the server named one.
+  const [errorProvider, setErrorProvider] = useState(null);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({});
   const [attempt, setAttempt] = useState(0);
@@ -96,6 +98,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     // A filter change keeps the page on screen while the new credits load.
     setMode(current => (current === 'ready' ? 'ready' : 'loading'));
     setError('');
+    setErrorProvider(null);
     const request = identity.kind === 'studio'
       ? transport.loadStudio(identity)
       : transport.loadPerson({ ...identity, filters });
@@ -109,6 +112,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
       setProfile(null);
       setMode('error');
       setError(requestError?.message || 'The server rejected the profile request.');
+      setErrorProvider(requestError?.provider || null);
     });
     return () => { active = false; };
   }, [transport, identity, filters, attempt, talentPoll, params?.profile]);
@@ -267,6 +271,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     {mode === 'error' && !extrasOnly ? <Section title="The profile could not be loaded.">
       <View style={styles.errorStack}>
         <Text accessibilityLiveRegion="polite" style={[styles.statusText, { color: palette.textSecondary }]}>{error}</Text>
+        {errorProvider ? <Button label={`Open ${errorProvider.label} settings`} palette={palette}
+          onPress={() => navigate?.('ProviderDetail', { slug: errorProvider.slug, label: errorProvider.label, tab: 'connection' })} /> : null}
         {identity ? <Button label="Try again" tone="surface" palette={palette}
           onPress={() => setAttempt(current => current + 1)} /> : null}
       </View>

@@ -129,6 +129,7 @@ export async function loadCollectionEntries(identity) {
         .filter(Boolean)
         .join(' \u00b7 ') || 'Owned copy',
       date: formatUserDate(entry.collected_at),
+      resolution: entry.resolution || '',
     })),
   };
 }

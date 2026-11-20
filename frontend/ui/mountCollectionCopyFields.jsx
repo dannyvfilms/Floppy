@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { mountRoot } from '../settings/root';
 import { CollectionContextCard, CollectionCopyEditor, CollectionEntryGroup, CollectionEpisodeList, CollectionEpisodeToggle, CollectionSectionHeading, CollectionShowMore, collectionSeasonEpisodes } from './CollectionCopies';
 
-const palette = {
+// The web theme's CSS variables as a shared-component palette (React Native Web resolves var()).
+export const palette = {
   text: 'var(--color-text)',
   textSecondary: 'var(--color-text-secondary)',
   textMuted: 'var(--color-text-muted)',
@@ -50,6 +51,8 @@ function CopyFieldsAdapter({ host, props }) {
     errors={props.errors || {}}
     palette={palette}
     canMutate
+    variant="web"
+    title={host.dataset.heading}
     onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))} />;
 }
 

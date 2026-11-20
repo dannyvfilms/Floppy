@@ -50,6 +50,8 @@ export class AuthError extends Error {
     this.name = 'AuthError';
     this.code = options.code || AUTH_ERROR_CODES.REQUEST_FAILED;
     this.status = options.status || 0;
+    // A provider that needs credentials: { slug, label }, so a screen can link to its settings.
+    this.provider = options.provider || null;
   }
 }
 
@@ -305,6 +307,12 @@ function classifyFailure(response, data, session) {
   }
   if (response.status === 429) {
     return fail(AUTH_ERROR_CODES.RATE_LIMITED, 'Too many requests. Wait a moment and try again.', { status: response.status });
+  }
+  if (response.status >= 500 && data?.errors?.provider && detail) {
+    return fail(AUTH_ERROR_CODES.SERVER, detail, {
+      status: response.status,
+      provider: { slug: data.errors.provider, label: data.errors.provider_label || data.errors.provider },
+    });
   }
   if (response.status >= 500) {
     return fail(AUTH_ERROR_CODES.SERVER, 'The Floppy server returned an error. Try again later.', { status: response.status });

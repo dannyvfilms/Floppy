@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   useWindowDimensions,
@@ -10,9 +9,8 @@ import {
 } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button.jsx';
-import { CollectionEntryGroup, CollectionSectionHeading } from './CollectionCopies';
+import { CollectionGroup, CollectionRow, CollectionSwitchRow } from './CollectionCopies';
 import { SelectField } from './SelectField';
-import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
 import { cardTypography } from './cardTypography';
 
@@ -257,61 +255,34 @@ export function CalendarLinks({
   // desktop web keeps its original single card with tabs.
   if (grouped) {
     const variant = embedded ? 'web' : 'native';
-    const group = (title, children) => <View style={styles.newSection}>
-      {title ? <CollectionSectionHeading title={title} palette={colors} variant={variant} /> : null}
-      <CollectionEntryGroup palette={colors} variant={variant}>
-        <View style={styles.newCard}>{children}</View>
-      </CollectionEntryGroup>
-    </View>;
-    const withDividers = rows => rows.map((row, index) => <View key={row.key}>
-      {index ? <View style={styles.rowDivider} /> : null}
-      {row}
-    </View>);
-    const switchRow = (key, item, selection, onToggle) => <View key={key} style={styles.switchRow}>
-      <View style={styles.rowLabel}>
-        {item.icon ? <Icon spec={item.icon} color={colors.textMuted} size={20} /> : null}
-        <Text style={styles.pickerLabel}>{item.label}</Text>
-      </View>
-      <View style={styles.switchSlot}><Switch accessibilityLabel={item.label} value={selection.includes(item.value)}
-        // Web matches the desktop OptionSwitch colors; Expo keeps the system switch look.
-        trackColor={embedded ? { false: colors.surfaceDim, true: colors.accentStrong } : { false: colors.surfaceStrong, true: colors.accent }}
-        thumbColor={embedded ? (selection.includes(item.value) ? colors.accentText : colors.textSecondary) : '#ffffff'}
-        activeThumbColor={embedded ? colors.accentText : '#ffffff'}
-        onValueChange={onToggle} /></View>
-    </View>;
-    const switchRows = (items, selection, key) => withDividers(items.map(item => switchRow(item.value, item, selection, () => {
-      const next = toggle(selection, item.value);
-      changeSelection(key, next, selectionState({ [key]: next }));
-    })));
-    const actionRow = (key, label, trailing, icon, onPress) => <Pressable key={key} accessibilityRole="button"
-      accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.switchRow, pressed && styles.pressed]}>
-      <View style={styles.rowLabel}>
-        <Icon spec={icon} color={colors.textMuted} size={20} />
-        <Text style={styles.pickerLabel}>{label}</Text>
-      </View>
-      <Text style={styles.pickerValue}>{trailing}</Text>
-    </Pressable>;
+    const shared = { ...colors, surfaceMuted: colors.surfaceDim, accentContrast: colors.accentText };
+    const switchRows = (items, selection, key) => items.map(item => <CollectionSwitchRow key={item.value}
+      icon={item.icon} label={item.label} value={selection.includes(item.value)} palette={shared} variant={variant}
+      onValueChange={() => {
+        const next = toggle(selection, item.value);
+        changeSelection(key, next, selectionState({ [key]: next }));
+      }} />);
     const mediaKey = feed === 'history' ? 'historyMediaTypes' : 'releaseMediaTypes';
     const actions = [
-      onCopyLink && exportUrl ? actionRow('copy', 'Copy Calendar', copied ? 'Copied' : 'Copy', actionIcons.link, copyLink) : null,
-      onDownload && exportUrl ? actionRow('download', 'Download Calendar', 'Download', actionIcons.download, () => onDownload(exportUrl)) : null,
-    ].filter(Boolean);
+      onCopyLink && exportUrl ? <CollectionRow key="copy" label="Copy Calendar" value={copied ? 'Copied' : 'Copy'}
+        icon={actionIcons.link} palette={shared} onPress={copyLink} /> : null,
+      onDownload && exportUrl ? <CollectionRow key="download" label="Download Calendar" value="Download"
+        icon={actionIcons.download} palette={shared} onPress={() => onDownload(exportUrl)} /> : null,
+    ];
     return <View style={styles.linksStack}>
-      {group('Calendar Links', <View style={styles.switchRow}>
-        <View style={styles.rowLabel}>
-          <Icon spec={actionIcons.calendar} color={colors.textMuted} size={20} />
-          <Text numberOfLines={1} style={styles.pickerLabel}>Calendar Type</Text>
-        </View>
-        {renderFeedPicker ? renderFeedPicker({ value: feed, options: pickerOptions, onChange: changeFeed, palette: colors }) : <SelectField label="Calendar Type" labelHidden value={feed} options={pickerOptions} displayValue={selectedPicker.displayLabel} palette={colors}
-          accessibilityLabel={`Calendar Type: ${selectedPicker.label}`}
-          onChange={event => changeFeed(event.target.value)} popover
-          triggerStyle={styles.pickerTrigger} triggerTextStyle={styles.pickerValue}
-          indicator={<Text style={styles.pickerIndicator}>⌃{'\n'}⌄</Text>} />}
-      </View>)}
-      {group('Media Types', switchRows(mediaOptions, selectedMedia, mediaKey))}
-      {feed === 'releases' && statuses.length ? group('Status', switchRows(statuses, statusesSelection, 'statuses')) : null}
-      {feed === 'releases' && releaseTypes.length ? group('Release Dates', switchRows(releaseTypes, datesSelection, 'releaseTypes')) : null}
-      {actions.length ? group(copy.ics, withDividers(actions)) : null}
+      <CollectionGroup title="Calendar Links" palette={shared} variant={variant}>
+        <CollectionRow label="Calendar Type" icon={actionIcons.calendar} palette={shared}>
+          {renderFeedPicker ? renderFeedPicker({ value: feed, options: pickerOptions, onChange: changeFeed, palette: colors }) : <SelectField label="Calendar Type" labelHidden value={feed} options={pickerOptions} displayValue={selectedPicker.displayLabel} palette={shared}
+            accessibilityLabel={`Calendar Type: ${selectedPicker.label}`}
+            onChange={event => changeFeed(event.target.value)} popover
+            triggerStyle={styles.pickerTrigger} triggerTextStyle={styles.pickerValue}
+            indicator={<Text style={styles.pickerIndicator}>⌃{'\n'}⌄</Text>} />}
+        </CollectionRow>
+      </CollectionGroup>
+      <CollectionGroup title="Media Types" palette={shared} variant={variant}>{switchRows(mediaOptions, selectedMedia, mediaKey)}</CollectionGroup>
+      {feed === 'releases' && statuses.length ? <CollectionGroup title="Status" palette={shared} variant={variant}>{switchRows(statuses, statusesSelection, 'statuses')}</CollectionGroup> : null}
+      {feed === 'releases' && releaseTypes.length ? <CollectionGroup title="Release Dates" palette={shared} variant={variant}>{switchRows(releaseTypes, datesSelection, 'releaseTypes')}</CollectionGroup> : null}
+      {actions.some(Boolean) ? <CollectionGroup title={copy.ics} palette={shared} variant={variant}>{actions}</CollectionGroup> : null}
     </View>;
   }
 
@@ -449,14 +420,6 @@ function createStyles(colors, wide, embedded) {
   const optionWidth = wide ? '32%' : '100%';
   return StyleSheet.create({
     linksStack: { gap: 20 },
-    newSection: { gap: 10 },
-    // Rows carry their own 50pt height; only Expo needs side inset (web's surface already pads 0).
-    newCard: { paddingHorizontal: embedded ? 0 : 16 },
-    rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
-    pickerLabel: { color: colors.text, ...cardTypography.title, flexShrink: 1 },
-    rowDivider: { marginLeft: 28, height: 1, backgroundColor: colors.textMuted, opacity: 0.4 },
-    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
-    switchSlot: { height: 50, justifyContent: 'center', alignItems: 'center' },
     pickerTrigger: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
     pickerValue: { color: colors.textSecondary, fontSize: 16 },
     pickerIndicator: { color: colors.textMuted, fontSize: 13, lineHeight: 8, textAlign: 'center' },

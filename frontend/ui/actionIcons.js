@@ -4,6 +4,15 @@ const root = { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'strok
 const icon = children => ({ viewBox: '0 0 24 24', root, children });
 
 export const actionIcons = {
+  disc: icon([{ tag: 'circle', attrs: { cx: '12', cy: '12', r: '10' }, children: [] }, { tag: 'circle', attrs: { cx: '12', cy: '12', r: '2' }, children: [] }]),
+  monitor: icon([{ tag: 'rect', attrs: { width: '20', height: '14', x: '2', y: '3', rx: '2' }, children: [] }, { tag: 'path', attrs: { d: 'M8 21h8M12 17v4' }, children: [] }]),
+  sun: icon([{ tag: 'circle', attrs: { cx: '12', cy: '12', r: '4' }, children: [] }, { tag: 'path', attrs: { d: 'M12 2v2M12 20v2m-6.93-15.07 1.41 1.41m11.02 11.02 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.02-11.02 1.41-1.41' }, children: [] }]),
+  audioLines: icon([{ tag: 'path', attrs: { d: 'M2 10v3M6 6v11M10 3v18M14 8v7M18 5v13M22 10v3' }, children: [] }]),
+  speaker: icon([{ tag: 'path', attrs: { d: 'M11 5 6 9H2v6h4l5 4z' }, children: [] }, { tag: 'path', attrs: { d: 'M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14' }, children: [] }]),
+  gauge: icon([{ tag: 'path', attrs: { d: 'm12 14 4-4' }, children: [] }, { tag: 'path', attrs: { d: 'M3.34 19a10 10 0 1 1 17.32 0' }, children: [] }]),
+  dollar: icon([{ tag: 'path', attrs: { d: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' }, children: [] }]),
+  building: icon([{ tag: 'path', attrs: { d: 'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z' }, children: [] }, { tag: 'path', attrs: { d: 'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4' }, children: [] }]),
+  mapPin: icon([{ tag: 'path', attrs: { d: 'M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0' }, children: [] }, { tag: 'circle', attrs: { cx: '12', cy: '10', r: '3' }, children: [] }]),
   download: icon([{ tag: 'path', attrs: { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' }, children: [] }]),
   close: icon([{ tag: 'path', attrs: { d: 'M18 6 6 18M6 6l12 12' }, children: [] }]),
   alarmClock: icon([{"tag": "circle", "attrs": {"cx": "12", "cy": "13", "r": "8"}, "children": []}, {"tag": "path", "attrs": {"d": "M12 9v4l2 2"}, "children": []}, {"tag": "path", "attrs": {"d": "M5 3 2 6"}, "children": []}, {"tag": "path", "attrs": {"d": "m22 6-3-3"}, "children": []}, {"tag": "path", "attrs": {"d": "M6.38 18.7 4 21"}, "children": []}, {"tag": "path", "attrs": {"d": "M17.64 18.67 20 21"}, "children": []}]),

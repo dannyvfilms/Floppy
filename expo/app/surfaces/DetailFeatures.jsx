@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { HistoryActivityCalendar } from '../../../frontend/ui/HistoryFeed';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
@@ -9,6 +9,7 @@ import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
 import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
+import { renderSelectRowPicker } from './SelectRowPicker';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
@@ -1054,12 +1055,16 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
     palette={palette}
     onOpenSeason={() => onOpenItem?.({ identity: { mediaType: identity.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
   /> : null;
-  const collectionSlot = isEpisode ? null : <DetailBlock title="Collection" palette={palette}
-      action={collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null}>
+  const collectionAction = collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null;
+  // iOS puts the add action in the list as a row; web and Android keep the heading's + button.
+  const addAsRow = Platform.OS === 'ios';
+  const collectionSlot = isEpisode ? null : <DetailBlock grouped title="Collection" palette={palette}
+      action={addAsRow ? null : collectionAction}>
       {collection.status === 'loading' ? <DetailLoading text="Loading" palette={palette} /> : null}
       {collection.status === 'error' ? <DetailEmpty text={collection.error} palette={palette} /> : null}
       {collection.status === 'ready' ? <DetailCollectionBlock counts={collection.counts}
-        entries={collection.entries} empty="No collection data available" palette={palette} /> : null}
+        entries={collection.entries} empty="No collection data available" palette={palette}
+        actionRow={addAsRow ? collectionAction : null} /> : null}
     </DetailBlock>;
   const notesSlot = tracking.notes.length ? <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
     onEdit={openNotes} palette={palette} /> : null;
@@ -1236,6 +1241,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       onClose={() => setCopy(current => ({ ...current, open: false }))}
       title={copy.editingId ? `Edit ${copy.editingLabel || copy.title}` : copy.title} titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <CollectionCopyDialog
+        renderSelectPicker={renderSelectRowPicker}
       embedded
       visible={copy.open}
       item={copy.open ? { title: copy.title, mediaType: copy.target?.mediaType } : null}
@@ -1298,6 +1304,9 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       ? <DetailScoreRow chips={chips} graphs={scores.graphs} onOpenLink={onOpenExternal}
         progressSlot={progressSlot} palette={palette} compact={isEpisode}>{ratingSlot}</DetailScoreRow> : null,
     sectionSlots,
+    // A game's collected platform leads the Platforms row on the Details card.
+    collectedPlatforms: identity.mediaType === 'game'
+      ? [...new Set((collection.entries || []).map(entry => entry.resolution).filter(Boolean))] : [],
     childSlots,
     noticeSlot,
     sectionsSlot,

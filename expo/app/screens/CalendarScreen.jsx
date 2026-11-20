@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import { CalendarView } from '../../../frontend/pages/CalendarView';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
-import { renderCalendarFeedPicker } from '../surfaces/CalendarFeedPicker';
+import { renderSelectRowPicker } from '../surfaces/SelectRowPicker';
 import { copyText } from '../../../frontend/ui/clipboard';
 import { Screen } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
@@ -213,7 +213,7 @@ export default function CalendarScreen({ navigate }) {
         onMenuAction={handleMenuAction} /> : null}
       links={linksProps || linksSessionRequired ? <CalendarLinks
         {...linksProps}
-        renderFeedPicker={renderCalendarFeedPicker}
+        renderFeedPicker={renderSelectRowPicker}
         sessionRequired={linksSessionRequired}
         palette={{
           ...palette,

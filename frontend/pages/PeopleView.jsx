@@ -73,6 +73,8 @@ function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid,
 
 export function PeopleView({
   part = 'full',
+  variant = 'native',
+  playedLabel,
   kind = 'person',
   person = {},
   studio = {},
@@ -231,9 +233,9 @@ export function PeopleView({
       <MediaGallery items={gallery} labels={labels} palette={colors}
         onPlay={onPlayGallery} onOpenLightbox={onOpenLightbox} />
     </View> : null}
-    {!loading && showExtras && (gameLengths || youtubeWatch || reading) ? <View style={styles.section}>
-      <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text || '#fafafa' }]}>{copy.mediumExtras}</Text>
-      <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading}
+    {!loading && showExtras && (gameLengths || youtubeWatch || reading || playedLabel) ? <View style={styles.section}>
+      {/* Each extras card carries its own grouped heading. */}
+      <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading} variant={variant} playedLabel={playedLabel}
         labels={labels} palette={colors}
         onOpenSource={onOpenSource} onOpenItem={onOpenExtra} />
     </View> : null}

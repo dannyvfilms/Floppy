@@ -7,6 +7,7 @@ import { relatedCardModel } from './cardModels';
 import { ProviderLogo } from './ProviderLogo';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
+import { CollectionGroup, CollectionRow, CollectionSectionHeading } from './CollectionCopies';
 import { DetailTrackSplit } from './DetailTrackSplit';
 
 // Shared presentation for the detail page's own controls: the track action bar,
@@ -128,10 +129,12 @@ const PHONE_HERO_MAX = 768;
 const SCORE_CARD_HEIGHT = 375 / 4;
 const SCORE_CARD_WIDTH = SCORE_CARD_HEIGHT * 16 / 9;
 
-export function DetailBlock({ title, action, palette, children }) {
+// `grouped` titles the block like the grouped cards (small muted heading) instead of the large one.
+export function DetailBlock({ title, action, palette, grouped = false, children }) {
   return <View style={styles.block}>
     <View style={styles.blockHeader}>
-      <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
+      {grouped ? <View accessibilityRole="header"><CollectionSectionHeading title={title} palette={palette} /></View>
+        : <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>}
       {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
         style={({ pressed }) => [styles.roundButton, {
           backgroundColor: pressed ? palette.accent : palette.accentStrong,
@@ -171,19 +174,18 @@ export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
   </View>;
 }
 
-export function DetailCollectionBlock({ counts = [], entries, empty, palette }) {
-  return <View style={[styles.card, { backgroundColor: palette.surface }]}>
-    {counts.map(count => <View key={count.label} style={styles.infoCell}>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{count.label}</Text>
-      <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{count.value}</Text>
-    </View>)}
-    {entries.map(entry => <View key={entry.id} style={styles.infoCell}>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{entry.title}</Text>
-      {entry.date ? <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{entry.date}</Text> : null}
-    </View>)}
-    {!counts.length && !entries.length
-      ? <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{empty}</Text> : null}
-  </View>;
+// `actionRow` (set by the iOS screen) adds the add action as the list's last row, in the accent colour
+// (the system action-row look), instead of the round + button web and Android keep in the heading.
+// With no collection data that row is all that shows.
+export function DetailCollectionBlock({ counts = [], entries, empty, palette, actionRow }) {
+  const rows = [
+    ...counts.map(count => <CollectionRow key={`count-${count.label}`} icon={actionIcons.cube} label={count.label} value={count.value} palette={palette} />),
+    ...entries.map(entry => <CollectionRow key={entry.id} icon={actionIcons.disc} label={entry.title} value={entry.date || undefined} palette={palette} />),
+  ];
+  if (actionRow) rows.push(<CollectionRow key="action" icon={actionIcons[actionRow.icon || 'plus']} tone="accent"
+    label={actionRow.label} palette={palette} onPress={actionRow.onPress} />);
+  else if (!rows.length) rows.push(<CollectionRow key="empty" icon={actionIcons.info} label={empty} palette={palette} />);
+  return <CollectionGroup palette={palette}>{rows}</CollectionGroup>;
 }
 
 const EPISODE_ACTION_ICONS = { watch: 'eyeClosed', unwatch: 'eye', collection: 'cube', lists: 'listAdd', history: 'history' };
