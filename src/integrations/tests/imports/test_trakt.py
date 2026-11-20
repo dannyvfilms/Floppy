@@ -2503,6 +2503,13 @@ class ImportTrakt(TestCase):
         )
         trakt_importer.process_dropped()
 
+        self.assertEqual(
+            [call.args[0] for call in mock_get_paginated.call_args_list],
+            [
+                "https://api.trakt.tv/users/hidden/progress_watched",
+                "https://api.trakt.tv/users/hidden/progress_watched_reset",
+            ],
+        )
         self.assertIn("11111", trakt_importer.dropped_tmdb_ids)
         self.assertIn("22222", trakt_importer.dropped_tmdb_ids)
         # Movie-type hidden entries should be ignored

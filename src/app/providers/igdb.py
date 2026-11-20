@@ -534,7 +534,7 @@ def game(media_id):
                 "recommendations": get_related(response.get("similar_games")),
             },
         }
-        external_links = {}
+        external_links = get_steam_store_links(response)
         hltb_url = get_hltb_url(response)
         if hltb_url:
             external_links["HowLongToBeat"] = hltb_url
@@ -1003,6 +1003,30 @@ def get_hltb_search_url(title):
         return None
 
     return f"https://howlongtobeat.com/?q={quote_plus(query)}"
+
+
+def get_steam_store_links(response):
+    """Return Steam ecosystem links when IGDB provides a Steam AppID."""
+    steam_app_id = get_external_ids(response).get("steam_app_id")
+    return get_steam_links_for_app_id(steam_app_id)
+
+
+def get_steam_links_for_app_id(steam_app_id):
+    """Build Steam ecosystem links from a previously normalized AppID."""
+    if steam_app_id is None:
+        return {}
+    steam_app_id = str(steam_app_id).strip()
+    if not steam_app_id.isascii() or not steam_app_id.isdigit():
+        return {}
+    return {
+        "Steam": f"https://store.steampowered.com/app/{steam_app_id}/",
+        "SteamDB": f"https://steamdb.info/app/{steam_app_id}/",
+        "ProtonDB": f"https://www.protondb.com/app/{steam_app_id}",
+        "PCGamingWiki": (
+            "https://www.pcgamingwiki.com/api/appid.php?appid="
+            f"{steam_app_id}"
+        ),
+    }
 
 
 def get_external_ids(response, hltb_url=None):

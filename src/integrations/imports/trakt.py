@@ -1865,7 +1865,9 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
         logger.info("Importing dropped shows for user %s", self.username)
         for section in ("progress_watched", "progress_watched_reset"):
-            endpoint = f"{self.user_base_url}/hidden/{section}"
+            # Hidden items are only exposed for the authenticated user, at
+            # /users/hidden/{section}; /users/me/hidden/{section} returns 404.
+            endpoint = f"{TRAKT_API_BASE_URL}/users/hidden/{section}"
             hidden_data = self._get_paginated_data(endpoint)
             for entry in hidden_data:
                 if entry.get("type") != "show":
