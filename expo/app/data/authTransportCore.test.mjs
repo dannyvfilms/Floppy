@@ -801,3 +801,26 @@ test('a scope refusal on an app token explains how to reach the screen', async (
   await assert.rejects(() => auth.request('/api/v1/lists/7/'), error => error.message === 'This list is read-only.');
   assert.equal(auth.getState().status, 'authenticated');
 });
+
+test('a database-busy 503 is retried for a safe request, honouring Retry-After', async () => {
+  const busy = () => ({ ...response({ status: 503, body: { code: 'DATABASE_BUSY', retryable: true, retry_after: 2 } }), headers: { get: () => '2', getSetCookie: () => [] } });
+  let attempts = 0;
+  const { fetchImpl, calls } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: { media_types: {} } }) },
+    { match: url => url.endsWith('/api/v1/lists/'), respond: () => (++attempts < 3 ? busy() : response({ body: { results: [] } })) },
+    { match: url => url.endsWith('/api/v1/always-busy/'), respond: busy },
+    { match: url => url.endsWith('/api/v1/write/'), respond: busy },
+  ]);
+  const waits = [];
+  const auth = createAuthTransport({ storage: createStorage(), fetchImpl, sleep: async ms => { waits.push(ms); } });
+  await auth.signInWithToken({ serverUrl: 'https://floppy.example', token: 'secret-token' });
+
+  assert.deepEqual(await auth.request('/api/v1/lists/'), { results: [] });
+  assert.deepEqual(waits, [2000, 2000]);
+
+  await assert.rejects(() => auth.request('/api/v1/always-busy/'), error => error.code === AUTH_ERROR_CODES.SERVER);
+  assert.equal(calls.filter(call => call.url.endsWith('/always-busy/')).length, 3);
+
+  await assert.rejects(() => auth.request('/api/v1/write/', { method: 'POST', body: {} }));
+  assert.equal(calls.filter(call => call.url.endsWith('/write/')).length, 1);
+});
