@@ -332,6 +332,12 @@ export default function DetailScreen({ params, onBack, navigate }) {
     });
   }
 
+  function openStudio(studio) {
+    navigate?.('People', {
+      identity: { kind: 'studio', source: studio.source || model?.identity?.source, studioId: studio.studio_id },
+    });
+  }
+
   return <Screen onBack={onBack} chrome={false} artworkBleed
     contentStyle={{ paddingTop: heroViewport.headerHeight }}>
     <DetailView
@@ -355,6 +361,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
       onRateChild={rateChild}
       onRateMain={rateMain}
       onOpenPerson={model?.identity?.source ? openPerson : undefined}
+      onOpenStudio={openStudio}
       actionsSlot={features.actionsSlot}
       scoreSlot={features.headerSlot || features.scoreSlot
         ? <>{features.headerSlot}{features.scoreSlot}</> : null}

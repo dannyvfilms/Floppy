@@ -121,6 +121,7 @@ export function DetailView({
   noticeSlot,
   ratingInScoreRow = false,
   onOpenPerson,
+  onOpenStudio,
   onOpenMetadata,
   children,
   heroViewport,
@@ -205,6 +206,7 @@ export function DetailView({
       {model.secondary ? <>
         {noticeSlot}
         <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette} collectedPlatforms={collectedPlatforms}
+          onOpenPerson={onOpenPerson} onOpenStudio={onOpenStudio}
           onOpenLink={onOpenMetadata || onOpenExternal} promote={Boolean(model.artwork?.backdrop || model.artwork?.gallery?.photos?.length)} />
       </> : <>
       {hasSections ? sections.map(section => {

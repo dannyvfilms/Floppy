@@ -8,11 +8,13 @@ import { actionIcons } from './actionIcons';
 import { MediumExtras } from './People';
 import { detailSecondaryOrder } from './detailSecondaryModel';
 
-function Value({ value, palette, onOpenLink }) {
+function Value({ value, palette, onOpenLink, onOpenPerson }) {
   const text = <Text style={[styles.factValue, styles.endText, { color: palette.textSecondary }]}>{value.text}</Text>;
-  return value.href && onOpenLink
-    ? <Pressable accessibilityRole="link" accessibilityLabel={value.text}
-      onPress={() => onOpenLink(value.href, value.identity)}>{text}</Pressable> : text;
+  // Native apps open a person in their own screen; the browser follows the href.
+  const open = value.identity && onOpenPerson ? () => onOpenPerson(value.identity)
+    : value.href && onOpenLink ? () => onOpenLink(value.href, value.identity) : null;
+  return open
+    ? <Pressable accessibilityRole="link" accessibilityLabel={value.text} onPress={open}>{text}</Pressable> : text;
 }
 
 // A detail's leading icon, by its key; unknown keys get the info glyph.
@@ -44,7 +46,7 @@ function PlatformsRow({ names, collected, counts, palette }) {
 }
 
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',
-  palette, onOpenLink, promoted = false, variant = 'native', collectedPlatforms = [], platformCounts = {}, children }) {
+  palette, onOpenLink, onOpenPerson, promoted = false, variant = 'native', collectedPlatforms = [], platformCounts = {}, children }) {
   const rows = promoted ? facts.filter(fact => !fact.promoted) : facts;
   if (promoted && !rows.length && !children) return null;
   return <View style={styles.stack}>
@@ -56,7 +58,7 @@ export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No
         palette={palette} multiline>
         <View style={styles.factValues}>
           {(fact.values || []).map((value, index) => <Value key={`${fact.key}-${index}`} value={value}
-            palette={palette} onOpenLink={onOpenLink} />)}
+            palette={palette} onOpenLink={onOpenLink} onOpenPerson={onOpenPerson} />)}
         </View>
       </CollectionRow>) : <CollectionRow key="empty" icon={actionIcons.info} label={emptyLabel} palette={palette} />}
     </CollectionGroup> : null}
@@ -79,13 +81,14 @@ export function DetailWatchProviders({ providers, region, title = 'Streaming', e
   </CollectionGroup>;
 }
 
-export function DetailStudios({ studios = [], title = 'Studios', palette, onOpenLink, variant = 'native' }) {
+// Native apps open a studio in their own screen (`onOpenStudio`); the browser follows the href.
+export function DetailStudios({ studios = [], title = 'Studios', palette, onOpenLink, onOpenStudio, variant = 'native' }) {
   if (!studios.length) return null;
   return <CollectionGroup title={title} palette={palette} variant={variant}>
     {studios.slice(0, 12).map((studio, index) => <CollectionRow key={studio.studio_id || index} icon={actionIcons.building}
       image={studio.logo || undefined} label={studio.name || 'Unknown Studio'} palette={palette}
-      onPress={studio.href && onOpenLink ? () => onOpenLink(studio.href, studio) : undefined}
-      chevron={!!(studio.href && onOpenLink)} />)}
+      onPress={onOpenStudio ? () => onOpenStudio(studio) : studio.href && onOpenLink ? () => onOpenLink(studio.href, studio) : undefined}
+      chevron={!!(onOpenStudio || (studio.href && onOpenLink))} />)}
   </CollectionGroup>;
 }
 
@@ -142,7 +145,7 @@ export function DetailTrackingHistory({ entries = [], count = entries.length + 1
 
 /** Section slots keep requests, permissions and editable content in their adapters. */
 export function DetailSecondary({ model = {}, sections = {}, layout = model.layout,
-  palette, onOpenLink, promote = false, variant = 'native', collectedPlatforms = [] }) {
+  palette, onOpenLink, onOpenPerson, onOpenStudio, promote = false, variant = 'native', collectedPlatforms = [] }) {
   const { width } = useWindowDimensions();
   const wide = width >= 768;
   const promoted = promote && width >= 600 && model.promoted?.length > 0;
@@ -152,10 +155,10 @@ export function DetailSecondary({ model = {}, sections = {}, layout = model.layo
   const showDetails = !promoted || (model.facts || []).some(fact => !fact.promoted) || (wide && providers);
   const slots = {
     details: showDetails ? <DetailMetadata facts={model.facts} title={model.labels?.details} emptyLabel={model.labels?.noDetails}
-      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant} collectedPlatforms={collectedPlatforms} platformCounts={model.platformCounts}>{wide ? providers : null}</DetailMetadata> : null,
+      palette={palette} onOpenLink={onOpenLink} onOpenPerson={onOpenPerson} promoted={promoted} variant={variant} collectedPlatforms={collectedPlatforms} platformCounts={model.platformCounts}>{wide ? providers : null}</DetailMetadata> : null,
     genres: model.genres?.length && !(wide && promote && !model.publicView)
       ? <DetailGenres genres={model.genres} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
-    studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
+    studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} onOpenStudio={onOpenStudio} variant={variant} /> : null,
     // One Time card holds played, watched and time to beat; the youtube_watch slot folds into it.
     game_lengths: model.gameLengths || model.youtubeWatch || model.playedLabel
       ? <DetailMediumExtras gameLengths={model.gameLengths} youtubeWatch={model.youtubeWatch} playedLabel={model.playedLabel}
