@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MarkdownPreview } from './MarkdownPreview';
-import { CollectionGroup, CollectionRow } from './CollectionCopies';
+import { CollectionExpandRow, CollectionGroup, CollectionRow } from './CollectionCopies';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
@@ -35,14 +35,23 @@ function factIcon(key) {
 const factLabel = label => (label && label === label.toUpperCase()
   ? label.toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase()) : label);
 
+// The collected platform if there is one, otherwise the first listed; the rest open inline.
+function PlatformsRow({ names, collected, palette }) {
+  const primary = collected[0] || names[0];
+  return <CollectionExpandRow icon={actionIcons.monitor} label={primary} summary={`${names.length} platforms`}
+    items={names.filter(name => name !== primary).map(name => ({ key: name, label: name }))} palette={palette} />;
+}
+
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',
-  palette, onOpenLink, promoted = false, variant = 'native', children }) {
+  palette, onOpenLink, promoted = false, variant = 'native', collectedPlatforms = [], children }) {
   const rows = promoted ? facts.filter(fact => !fact.promoted) : facts;
   if (promoted && !rows.length && !children) return null;
   return <View style={styles.stack}>
     {children}
     {rows.length || !promoted ? <CollectionGroup title={title} palette={palette} variant={variant}>
-      {rows.length ? rows.map(fact => <CollectionRow key={fact.key} icon={factIcon(fact.key)} label={factLabel(fact.label)}
+      {rows.length ? rows.map(fact => fact.key === 'platforms' && (fact.values || []).length > 1
+        ? <PlatformsRow key={fact.key} names={fact.values.map(value => value.text)} collected={collectedPlatforms} palette={palette} />
+        : <CollectionRow key={fact.key} icon={factIcon(fact.key)} label={factLabel(fact.label)}
         palette={palette} multiline>
         <View style={styles.factValues}>
           {(fact.values || []).map((value, index) => <Value key={`${fact.key}-${index}`} value={value}
@@ -72,8 +81,8 @@ export function DetailWatchProviders({ providers, region, title = 'Streaming', e
 export function DetailStudios({ studios = [], title = 'Studios', palette, onOpenLink, variant = 'native' }) {
   if (!studios.length) return null;
   return <CollectionGroup title={title} palette={palette} variant={variant}>
-    {studios.slice(0, 12).map((studio, index) => <CollectionRow key={studio.studio_id || index} icon={actionIcons.fourSquare}
-      label={studio.name || 'Unknown Studio'} palette={palette}
+    {studios.slice(0, 12).map((studio, index) => <CollectionRow key={studio.studio_id || index} icon={actionIcons.building}
+      image={studio.logo || undefined} label={studio.name || 'Unknown Studio'} palette={palette}
       onPress={studio.href && onOpenLink ? () => onOpenLink(studio.href, studio) : undefined}
       chevron={!!(studio.href && onOpenLink)} />)}
   </CollectionGroup>;
@@ -90,17 +99,21 @@ export function DetailPromotedFacts({ facts = [], palette }) {
   </View>;
 }
 
-export function DetailMediumExtras({ gameLengths, youtubeWatch, labels, palette, onOpenLink, variant = 'native' }) {
-  return <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch}
+export function DetailMediumExtras({ gameLengths, youtubeWatch, playedLabel, labels, palette, onOpenLink, variant = 'native' }) {
+  return <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} playedLabel={playedLabel}
     labels={labels} palette={palette} onOpenSource={onOpenLink} variant={variant} />;
 }
 
 export function DetailGenres({ genres = [], title = 'Genres', palette, onOpenLink, variant = 'native' }) {
   if (!genres.length) return null;
+  const open = genre => genre.href && onOpenLink ? () => onOpenLink(genre.href) : undefined;
+  const [first, ...rest] = genres;
   return <CollectionGroup title={title} palette={palette} variant={variant}>
-    {genres.map((genre, index) => <CollectionRow key={`${genre.label}-${index}`} icon={actionIcons.tag} label={genre.label}
-      palette={palette} onPress={genre.href && onOpenLink ? () => onOpenLink(genre.href) : undefined}
-      chevron={!!(genre.href && onOpenLink)} />)}
+    {rest.length
+      ? <CollectionExpandRow key="genres" icon={actionIcons.tag} label={first.label} summary={`${genres.length} genres`}
+        items={rest.map((genre, index) => ({ key: `${genre.label}-${index}`, label: genre.label, onPress: open(genre) }))} palette={palette} />
+      : <CollectionRow key="genre" icon={actionIcons.tag} label={first.label} palette={palette}
+        onPress={open(first)} chevron={!!open(first)} />}
   </CollectionGroup>;
 }
 
@@ -132,7 +145,7 @@ export function DetailTrackingHistory({ entries = [], count = entries.length + 1
 
 /** Section slots keep requests, permissions and editable content in their adapters. */
 export function DetailSecondary({ model = {}, sections = {}, layout = model.layout,
-  palette, onOpenLink, promote = false, variant = 'native' }) {
+  palette, onOpenLink, promote = false, variant = 'native', collectedPlatforms = [] }) {
   const { width } = useWindowDimensions();
   const wide = width >= 768;
   const promoted = promote && width >= 600 && model.promoted?.length > 0;
@@ -142,12 +155,14 @@ export function DetailSecondary({ model = {}, sections = {}, layout = model.layo
   const showDetails = !promoted || (model.facts || []).some(fact => !fact.promoted) || (wide && providers);
   const slots = {
     details: showDetails ? <DetailMetadata facts={model.facts} title={model.labels?.details} emptyLabel={model.labels?.noDetails}
-      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant}>{wide ? providers : null}</DetailMetadata> : null,
+      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant} collectedPlatforms={collectedPlatforms}>{wide ? providers : null}</DetailMetadata> : null,
     genres: model.genres?.length && !(wide && promote && !model.publicView)
       ? <DetailGenres genres={model.genres} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
     studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
-    game_lengths: model.gameLengths ? <DetailMediumExtras gameLengths={model.gameLengths} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
-    youtube_watch: model.youtubeWatch ? <DetailMediumExtras youtubeWatch={model.youtubeWatch} palette={palette} variant={variant} /> : null,
+    // One Time card holds played, watched and time to beat; the youtube_watch slot folds into it.
+    game_lengths: model.gameLengths || model.youtubeWatch || model.playedLabel
+      ? <DetailMediumExtras gameLengths={model.gameLengths} youtubeWatch={model.youtubeWatch} playedLabel={model.playedLabel}
+        palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
     ...sections,
   };
   const available = Object.keys(slots).filter(key => slots[key]);

@@ -143,7 +143,11 @@ def web_sidebar_payload(context, kind, title=""):
         for author in context.get("authors_linked") or []
     ]
     studios = [
-        {"name": studio.get("name") or gettext("Unknown Studio"), "href": studio_url(studio)}
+        {
+            "name": studio.get("name") or gettext("Unknown Studio"),
+            "href": studio_url(studio),
+            "logo": image_url(studio.get("logo")) if studio.get("logo") else "",
+        }
         for studio in (context.get("studios_linked") or [])[:12]
     ]
     region = context.get("watch_provider_region")
@@ -197,6 +201,11 @@ def web_sidebar_payload(context, kind, title=""):
             "watch_providers": providers,
             "watch_provider_region": region or "UNSET",
         },
+        "collected_platforms": [
+            entry.resolution
+            for entry in context.get("collection_entries") or []
+            if media_type == "game" and getattr(entry, "resolution", "")
+        ],
         "book_formats": context.get("book_formats") or [],
         "tag_sections": [{"title": "Genres", "entries": genres}] if genres else [],
         "titles": {

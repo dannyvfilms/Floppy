@@ -807,6 +807,9 @@ def _people_labels():
         "previous": str(_("Previous")),
         "next": str(_("Next")),
         "close": str(_("Close")),
+        "time": str(_("Time")),
+        "timePlayed": str(_("Time Played")),
+        "timeWatched": str(_("Time Watched")),
         "timeToBeat": str(_("Time to Beat")),
         "submissions": str(_("submissions")),
         "timeToBeatPending": str(_("Fetching cached time-to-beat data in the background.")),
@@ -1200,8 +1203,8 @@ def people_extras(parser, token):
     """Wrap one medium-extras section in the shared extras mount."""
     bits = token.split_contents()
     part = bits[1].strip("\"'") if len(bits) > 1 else ""
-    if part not in {"game_lengths", "youtube"}:
-        message = 'people_extras requires "game_lengths" or "youtube"'
+    if part not in {"game_lengths", "youtube", "time"}:
+        message = 'people_extras requires "game_lengths", "youtube" or "time"'
         raise template.TemplateSyntaxError(message)
     body = parser.parse(("endpeople_extras",))
     parser.delete_first_token()
@@ -1218,6 +1221,25 @@ class PeopleExtrasNode(template.Node):
 
     def render(self, context):
         """Render the shared extras view when this section has data."""
+        if self.part == "time":
+            # One Time card: played, watched on YouTube and time to beat.
+            if not _people_section_visible(context, "game", "content", "game_lengths"):
+                return self.body.render(context)
+            game_lengths = context.get("game_lengths")
+            youtube_watch = _people_youtube_props(context.get("youtube_watch"))
+            played = (context.get("activity_subtitle") or {}).get("duration_text") or ""
+            props = {
+                "kind": "extras",
+                "gameLengths": _people_game_lengths_props(
+                    game_lengths, context.get("game_lengths_pending"),
+                ) if game_lengths else None,
+                "youtubeWatch": youtube_watch,
+                "playedLabel": played.removesuffix(" played"),
+                "labels": _people_labels(),
+            }
+            if not (game_lengths or youtube_watch or played):
+                return self.body.render(context)
+            return _people_island(context, "extras", props, self.body.render(context))
         if self.part == "game_lengths":
             if not _people_section_visible(context, "game", "content", "game_lengths"):
                 return self.body.render(context)

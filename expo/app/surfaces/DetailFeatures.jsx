@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { HistoryActivityCalendar } from '../../../frontend/ui/HistoryFeed';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
@@ -1055,7 +1055,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
     palette={palette}
     onOpenSeason={() => onOpenItem?.({ identity: { mediaType: identity.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
   /> : null;
-  const collectionSlot = isEpisode ? null : <DetailBlock grouped title="Collection" palette={palette}
+  const collectionSlot = isEpisode ? null : <DetailBlock grouped actionRow={Platform.OS === 'ios'} title="Collection" palette={palette}
       action={collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null}>
       {collection.status === 'loading' ? <DetailLoading text="Loading" palette={palette} /> : null}
       {collection.status === 'error' ? <DetailEmpty text={collection.error} palette={palette} /> : null}
@@ -1300,6 +1300,9 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       ? <DetailScoreRow chips={chips} graphs={scores.graphs} onOpenLink={onOpenExternal}
         progressSlot={progressSlot} palette={palette} compact={isEpisode}>{ratingSlot}</DetailScoreRow> : null,
     sectionSlots,
+    // A game's collected platform leads the Platforms row on the Details card.
+    collectedPlatforms: identity.mediaType === 'game'
+      ? [...new Set((collection.entries || []).map(entry => entry.resolution).filter(Boolean))] : [],
     childSlots,
     noticeSlot,
     sectionsSlot,

@@ -359,6 +359,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
       scoreSlot={features.headerSlot || features.scoreSlot
         ? <>{features.headerSlot}{features.scoreSlot}</> : null}
       sectionSlots={features.sectionSlots}
+      collectedPlatforms={features.collectedPlatforms}
       childSlots={features.childSlots}
       noticeSlot={features.noticeSlot}
       ratingInScoreRow={features.ratingInScoreRow}

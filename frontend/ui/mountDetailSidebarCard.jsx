@@ -46,7 +46,7 @@ function Card({ props }) {
         ? <DetailWatchProviders providers={model.watchProviders} region={model.watchProviderRegion}
           title={model.labels?.streaming} emptyLabel={model.labels?.noWatchProviders} palette={palette} variant="web" /> : null;
       return <DetailMetadata facts={model.facts} title={model.labels?.details} emptyLabel={model.labels?.noDetails}
-        promoted={promoted} {...common}>{wide ? providers : null}</DetailMetadata>;
+        promoted={promoted} collectedPlatforms={props.payload.collected_platforms || []} {...common}>{wide ? providers : null}</DetailMetadata>;
     }
     case 'genres':
       // The genres move into the hero's tooltip when the carousel is active (wide, signed in).

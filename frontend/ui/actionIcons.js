@@ -11,6 +11,7 @@ export const actionIcons = {
   speaker: icon([{ tag: 'path', attrs: { d: 'M11 5 6 9H2v6h4l5 4z' }, children: [] }, { tag: 'path', attrs: { d: 'M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14' }, children: [] }]),
   gauge: icon([{ tag: 'path', attrs: { d: 'm12 14 4-4' }, children: [] }, { tag: 'path', attrs: { d: 'M3.34 19a10 10 0 1 1 17.32 0' }, children: [] }]),
   dollar: icon([{ tag: 'path', attrs: { d: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' }, children: [] }]),
+  building: icon([{ tag: 'path', attrs: { d: 'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z' }, children: [] }, { tag: 'path', attrs: { d: 'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4' }, children: [] }]),
   mapPin: icon([{ tag: 'path', attrs: { d: 'M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0' }, children: [] }, { tag: 'circle', attrs: { cx: '12', cy: '10', r: '3' }, children: [] }]),
   download: icon([{ tag: 'path', attrs: { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' }, children: [] }]),
   close: icon([{ tag: 'path', attrs: { d: 'M18 6 6 18M6 6l12 12' }, children: [] }]),

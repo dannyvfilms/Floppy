@@ -130,12 +130,14 @@ const SCORE_CARD_HEIGHT = 375 / 4;
 const SCORE_CARD_WIDTH = SCORE_CARD_HEIGHT * 16 / 9;
 
 // `grouped` titles the block like the grouped cards (small muted heading) instead of the large one.
-export function DetailBlock({ title, action, palette, grouped = false, children }) {
+// `actionRow` (set by the iOS screen) shows the action as a full-width accent row under the content,
+// the system action-row look, instead of the round + button that web and Android keep.
+export function DetailBlock({ title, action, palette, grouped = false, actionRow = false, children }) {
   return <View style={styles.block}>
     <View style={styles.blockHeader}>
       {grouped ? <View accessibilityRole="header"><CollectionSectionHeading title={title} palette={palette} /></View>
         : <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>}
-      {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
+      {action && !actionRow ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
         style={({ pressed }) => [styles.roundButton, {
           backgroundColor: pressed ? palette.accent : palette.accentStrong,
         }]}>
@@ -143,6 +145,10 @@ export function DetailBlock({ title, action, palette, grouped = false, children 
       </Pressable> : null}
     </View>
     {children}
+    {actionRow ? <CollectionGroup palette={palette}>
+      <CollectionRow key="action" icon={actionIcons[action.icon || 'plus']} tone="accent" label={action.label}
+        palette={palette} onPress={action.onPress} />
+    </CollectionGroup> : null}
   </View>;
 }
 

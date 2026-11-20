@@ -138,6 +138,7 @@ function Adapter({ props }) {
       variant="web"
       gameLengths={props.gameLengths}
       youtubeWatch={props.youtubeWatch}
+      playedLabel={props.playedLabel}
       labels={props.labels}
       palette={palette}
       onOpenSource={openExternal} />;

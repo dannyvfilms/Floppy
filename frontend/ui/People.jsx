@@ -12,7 +12,7 @@ import {
 import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
-import { CollectionGroup, CollectionRow } from './CollectionCopies';
+import { CollectionExpandRow, CollectionGroup, CollectionRow } from './CollectionCopies';
 import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
 import { actionIcons } from './actionIcons';
@@ -74,7 +74,9 @@ const DEFAULT_LABELS = {
   timeToBeatEmpty: 'Time-to-beat data is not available yet.',
   watchedOnYouTube: 'Watched on YouTube',
   started: 'Started',
-  youtubeTime: 'Time',
+  time: 'Time',
+  timePlayed: 'Time Played',
+  timeWatched: 'Time Watched',
   youtubeEstimate: 'Estimated from how far you got in each video. Your playtime is not affected.',
   readingActivity: 'Reading Activity',
   listeningTime: 'Listening Time',
@@ -420,6 +422,7 @@ export function MediumExtras({
   palette,
   onOpenSource,
   onOpenItem,
+  playedLabel,
   variant = 'native',
 }) {
   const copy = mergeLabels(labels);
@@ -429,34 +432,26 @@ export function MediumExtras({
   const group = (key, title, rows) => <CollectionGroup key={key} title={title} palette={colors} variant={variant}>{rows}</CollectionGroup>;
   const note = (key, text) => <Text key={key} style={[styles.cardCopy, { color: colors.textMuted }]}>{text}</Text>;
 
-  if (gameLengths) {
-    const rows = gameLengths.available
-      ? (gameLengths.cards || []).map((card, index) => <CollectionRow key={card.label || index}
-        icon={LENGTH_ICONS[card.label] || actionIcons.alarmClock} label={card.label} palette={colors} multiline>
-        <View style={styles.lengthEnd}>
-          <Text style={[styles.lengthValue, { color: colors.text }]}>{card.value}</Text>
-          {card.count !== undefined ? <Text style={[styles.cardMeta, { color: colors.textMuted }]}>
-            {card.count} {copy.submissions}
-          </Text> : null}
-        </View>
-      </CollectionRow>)
-      : [<CollectionRow key="empty" icon={actionIcons.info} palette={colors} multiline
-        label={gameLengths.pending ? copy.timeToBeatPending : copy.timeToBeatEmpty} />];
-    if (gameLengths.sourceLabel) rows.push(<CollectionRow key="source" icon={actionIcons.externalLink} label={gameLengths.sourceLabel}
-      palette={colors} onPress={gameLengths.sourceUrl && onOpenSource ? () => onOpenSource(gameLengths.sourceUrl) : undefined}
-      chevron={!!(gameLengths.sourceUrl && onOpenSource)} />);
-    sections.push(group('lengths', copy.timeToBeat, rows));
-  }
-
-  if (youtubeWatch) {
-    sections.push(<View key="youtube" style={styles.extraSection}>
-      {group('youtube-rows', copy.watchedOnYouTube, [
-        <CollectionRow key="time" icon={actionIcons.play} label={copy.youtubeTime} palette={colors}
-          value={youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started} />,
-        <CollectionRow key="videos" icon={actionIcons.list} label={plural(youtubeWatch.videos, 'Video', 'Videos')} palette={colors}
-          value={youtubeWatch.videos} />,
-      ])}
-      {note('note', copy.youtubeEstimate)}
+  // One card for the game's time: what you played, what you watched, and how long it takes to beat.
+  if (gameLengths || youtubeWatch || playedLabel) {
+    const rows = [];
+    if (playedLabel) rows.push(<CollectionRow key="played" icon={actionIcons.play} label={copy.timePlayed} value={playedLabel} palette={colors} />);
+    if (youtubeWatch) rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}
+      value={`${youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started} · ${youtubeWatch.videos} ${plural(youtubeWatch.videos, 'video', 'videos')}`} />);
+    if (gameLengths?.available && gameLengths.cards?.length) {
+      const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, icon: LENGTH_ICONS[card.label] || actionIcons.alarmClock,
+        label: card.label, value: card.value }));
+      if (gameLengths.sourceLabel) items.push({ key: 'source', icon: actionIcons.externalLink, label: gameLengths.sourceLabel,
+        onPress: gameLengths.sourceUrl && onOpenSource ? () => onOpenSource(gameLengths.sourceUrl) : undefined });
+      rows.push(<CollectionExpandRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat}
+        summary={gameLengths.cards[0].value} items={items} palette={colors} />);
+    } else if (gameLengths) {
+      rows.push(<CollectionRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat} palette={colors} multiline
+        value={gameLengths.pending ? copy.timeToBeatPending : copy.timeToBeatEmpty} />);
+    }
+    sections.push(<View key="time" style={styles.extraSection}>
+      {group('time-rows', copy.time, rows)}
+      {youtubeWatch ? note('note', copy.youtubeEstimate) : null}
     </View>);
   }
 
@@ -540,7 +535,6 @@ cardMetaWrap: { overflow: 'hidden' },
   lengthCard: { flexGrow: 1, flexBasis: 150, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 10 },
   lengthGlyph: { fontSize: 22 },
   lengthCopy: { flex: 1, minWidth: 0, gap: 1 },
-  lengthEnd: { alignItems: 'flex-end', flexShrink: 1 },
   lengthValue: { fontSize: 18, fontWeight: '700' },
   readingRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
   readingGroup: { gap: 6, marginTop: 4 },

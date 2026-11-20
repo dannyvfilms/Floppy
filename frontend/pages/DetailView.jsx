@@ -116,6 +116,7 @@ export function DetailView({
   sectionsSlot,
   childrenSlot,
   sectionSlots,
+  collectedPlatforms,
   childSlots,
   noticeSlot,
   ratingInScoreRow = false,
@@ -203,7 +204,7 @@ export function DetailView({
       </> : null}
       {model.secondary ? <>
         {noticeSlot}
-        <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette}
+        <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette} collectedPlatforms={collectedPlatforms}
           onOpenLink={onOpenMetadata || onOpenExternal} promote={Boolean(model.artwork?.backdrop || model.artwork?.gallery?.photos?.length)} />
       </> : <>
       {hasSections ? sections.map(section => {

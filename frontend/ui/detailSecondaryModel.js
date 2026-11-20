@@ -116,6 +116,9 @@ export function detailSecondaryModel(payload = {}, { formatDate = value => Strin
       sourceLabel: lengths?.source_label || '', sourceUrl: lengths?.source_url || '',
       cards: (lengths?.cards || []).map(card => ({ label: card.label, value: card.value, count: card.count, glyph: card.glyph || '◷' })),
     } : null,
+    // "12h 3min played" arrives as the activity subtitle; the card shows the duration alone.
+    playedLabel: payload.identity?.media_type === 'game'
+      ? String(payload.activity_subtitle?.duration_text || '').replace(/ played$/, '') : '',
     youtubeWatch: youtube ? { seconds: youtube.seconds, hoursLabel: youtube.hours_label || '', videos: youtube.videos || 0 } : null,
   };
 }

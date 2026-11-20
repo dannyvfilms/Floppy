@@ -1,6 +1,6 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge } from './Badge';
 import { actionIcons } from './actionIcons';
 import { Button } from './Button';
@@ -130,19 +130,21 @@ export function CollectionGroup({ title, palette: suppliedPalette, variant = 'na
   </View>;
 }
 
-function RowLabel({ icon, label, palette }) {
+function RowLabel({ icon, image, label, palette, tone }) {
+  const color = tone === 'accent' ? palette.accent : palette.text;
   return <View style={styles.rowLabel}>
-    {icon ? <Icon spec={icon} color={palette.textMuted} size={20} /> : null}
-    <Text style={[styles.rowLabelText, { color: palette.text }]}>{label}</Text>
+    {image ? <Image source={{ uri: image }} resizeMode="contain" accessibilityLabel="" style={styles.rowImage} />
+      : icon ? <Icon spec={icon} color={tone === 'accent' ? palette.accent : palette.textMuted} size={20} /> : null}
+    <Text style={[styles.rowLabelText, { color }]}>{label}</Text>
   </View>;
 }
 
 // Label on the left, any control or value on the right; a value + onPress makes the row a
 // button, and chevron marks a row that opens something. `multiline` lets long values wrap.
-export function CollectionRow({ icon, label, value, onPress, chevron = false, multiline = false, palette: suppliedPalette, children, accessibilityLabel }) {
+export function CollectionRow({ icon, image, tone, label, value, onPress, chevron = false, multiline = false, palette: suppliedPalette, children, accessibilityLabel }) {
   const palette = mergePalette(suppliedPalette);
   const content = <>
-    <RowLabel icon={icon} label={label} palette={palette} />
+    <RowLabel icon={icon} image={image} tone={tone} label={label} palette={palette} />
     {value !== undefined ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{value}</Text> : null}
     {children}
     {chevron ? <Icon spec={actionIcons.chevronRight} color={palette.textMuted} size={16} /> : null}
@@ -151,6 +153,31 @@ export function CollectionRow({ icon, label, value, onPress, chevron = false, mu
   if (!onPress) return <View style={rowStyle}>{content}</View>;
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || label} onPress={onPress}
     style={({ pressed }) => [rowStyle, pressed && { opacity: 0.72 }]}>{content}</Pressable>;
+}
+
+// The Collection Summary's disclosure as a row: the lead item and a count stay visible, the
+// rest open inline beneath it. A single item needs no disclosure and renders as a plain row.
+export function CollectionExpandRow({ icon, label, summary, items = [], palette: suppliedPalette }) {
+  const [expanded, setExpanded] = useState(false);
+  const palette = mergePalette(suppliedPalette);
+  if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
+  return <View>
+    <CollectionRow icon={icon} label={label} palette={palette}
+      accessibilityLabel={`${label}, ${summary}, ${expanded ? 'collapse' : 'expand'}`}
+      onPress={() => setExpanded(value => !value)}>
+      <View style={styles.expandEnd}>
+        <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text>
+        <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
+          <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
+        </View>
+      </View>
+    </CollectionRow>
+    {expanded ? items.map(item => <View key={item.key}>
+      <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: icon ? 28 : 0 }]} />
+      <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
+        onPress={item.onPress} chevron={!!item.onPress} multiline />
+    </View>) : null}
+  </View>;
 }
 
 export function CollectionSwitchRow({ icon, label, value, onValueChange, disabled = false, palette: suppliedPalette, variant = 'native' }) {
@@ -624,6 +651,8 @@ const styles = StyleSheet.create({
   groupSection: { gap: 10 },
   groupRows: { paddingHorizontal: 16 },
   groupRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
+  rowImage: { width: 20, height: 20, borderRadius: 4 },
+  expandEnd: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   groupRowMultiline: { paddingVertical: 8 },
   rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   rowLabelText: { ...cardTypography.title, flexShrink: 1 },
