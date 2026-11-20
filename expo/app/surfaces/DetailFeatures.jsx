@@ -9,6 +9,7 @@ import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
 import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
+import { renderSelectRowPicker } from './SelectRowPicker';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
@@ -1236,6 +1237,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       onClose={() => setCopy(current => ({ ...current, open: false }))}
       title={copy.editingId ? `Edit ${copy.editingLabel || copy.title}` : copy.title} titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <CollectionCopyDialog
+        renderSelectPicker={renderSelectRowPicker}
       embedded
       visible={copy.open}
       item={copy.open ? { title: copy.title, mediaType: copy.target?.mediaType } : null}

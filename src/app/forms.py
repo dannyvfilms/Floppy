@@ -1396,7 +1396,7 @@ class CollectionEntryForm(forms.ModelForm):
                 attrs={"placeholder": "9.99", "step": "0.01", "min": "0"},
             ),
             "purchase_location": forms.TextInput(
-                attrs={"placeholder": "Steam, NAS, Home, Storage"},
+                attrs={"placeholder": "Amazon"},
             ),
         }
 

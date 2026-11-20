@@ -1,6 +1,6 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge } from './Badge';
 import { actionIcons } from './actionIcons';
 import { Button } from './Button';
@@ -10,7 +10,7 @@ import { cardTypography } from './cardTypography';
 import { CardRow } from './CardRow';
 import { DateTimePicker } from './DateTimePicker';
 import { SelectField } from './SelectField';
-import { FormError, FormField, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';
+import { FormError, FormHeader, FormSelect } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
   text: '#fafafa',
@@ -94,18 +94,104 @@ function CollectionSection({ title, palette, variant = 'native', children }) {
 }
 
 // Both collection cards use one surface; web retains its compact dialog treatment.
-function CollectionCardSurface({ children, footer, palette, variant = 'native', padded = true, contentRef }) {
+function CollectionCardSurface({ children, footer, palette, variant = 'native', padded = true, contentRef, flushY = false }) {
   return <View style={[styles.collectionSurface, padded && styles.collectionSurfacePadded,
     variant === 'web' && styles.collectionSurfaceWeb,
     { backgroundColor: palette.surface, borderColor: palette.border }]}>
     <View ref={contentRef} style={padded ? styles.collectionSurfaceContent : variant === 'web'
-      ? [styles.entryGroupWebContent, footer && { paddingBottom: 0 }] : undefined}>{children}</View>
+      ? [styles.entryGroupWebContent, flushY && styles.entryGroupFlushY, footer && { paddingBottom: 0 }] : undefined}>{children}</View>
     {footer}
   </View>;
 }
 
-export function CollectionEntryGroup({ children, footer, contentRef, palette: suppliedPalette, variant = 'native' }) {
-  return <CollectionCardSurface palette={mergePalette(suppliedPalette)} variant={variant} padded={false} contentRef={contentRef} footer={footer}>{children}</CollectionCardSurface>;
+// flushY: rows already carry their own 50 pt height, so web drops the card's top and bottom padding.
+export function CollectionEntryGroup({ children, footer, contentRef, flushY = false, palette: suppliedPalette, variant = 'native' }) {
+  return <CollectionCardSurface palette={mergePalette(suppliedPalette)} variant={variant} padded={false} contentRef={contentRef} footer={footer} flushY={flushY}>{children}</CollectionCardSurface>;
+}
+
+// Grouped-card rows shared by Calendar Links and the Add Copy form: one card per
+// group, 50 pt rows with a leading icon + label and a trailing control, hairline dividers.
+// Expo uses the rounded surface with a 16 pt side inset; web keeps the compact bordered surface.
+export function CollectionGroup({ title, palette: suppliedPalette, variant = 'native', children }) {
+  const palette = mergePalette(suppliedPalette);
+  const rows = React.Children.toArray(children).filter(Boolean);
+  // Dividers line up with the labels, so they only indent when the rows carry icons.
+  const inset = rows.some(row => row.props?.icon) ? 28 : 0;
+  return <View style={styles.groupSection}>
+    {title ? <CollectionSectionHeading title={title} palette={palette} variant={variant} /> : null}
+    <CollectionEntryGroup palette={palette} variant={variant} flushY>
+      <View style={variant === 'native' && styles.groupRows}>
+        {rows.map((row, index) => <View key={row.key ?? index}>
+          {index ? <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: inset }]} /> : null}
+          {row}
+        </View>)}
+      </View>
+    </CollectionEntryGroup>
+  </View>;
+}
+
+function RowLabel({ icon, label, palette }) {
+  return <View style={styles.rowLabel}>
+    {icon ? <Icon spec={icon} color={palette.textMuted} size={20} /> : null}
+    <Text numberOfLines={1} style={[styles.rowLabelText, { color: palette.text }]}>{label}</Text>
+  </View>;
+}
+
+// Label on the left, any control on the right; a value + onPress makes the row a button.
+export function CollectionRow({ icon, label, value, onPress, palette: suppliedPalette, children, accessibilityLabel }) {
+  const palette = mergePalette(suppliedPalette);
+  const content = <>
+    <RowLabel icon={icon} label={label} palette={palette} />
+    {value !== undefined ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{value}</Text> : null}
+    {children}
+  </>;
+  if (!onPress) return <View style={styles.groupRow}>{content}</View>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || label} onPress={onPress}
+    style={({ pressed }) => [styles.groupRow, pressed && { opacity: 0.72 }]}>{content}</Pressable>;
+}
+
+export function CollectionSwitchRow({ icon, label, value, onValueChange, disabled = false, palette: suppliedPalette, variant = 'native' }) {
+  const palette = mergePalette(suppliedPalette);
+  const web = variant === 'web';
+  return <CollectionRow icon={icon} label={label} palette={palette}>
+    <View style={styles.switchSlot}>
+      <Switch accessibilityLabel={label} value={!!value} disabled={disabled}
+        // Web matches the desktop OptionSwitch colors; Expo keeps the system switch look.
+        trackColor={web ? { false: palette.surfaceMuted, true: palette.accentStrong } : { false: palette.surfaceStrong, true: palette.accent }}
+        thumbColor={web ? (value ? palette.accentContrast : palette.textSecondary) : '#ffffff'}
+        activeThumbColor={web ? palette.accentContrast : '#ffffff'}
+        onValueChange={onValueChange} />
+    </View>
+  </CollectionRow>;
+}
+
+// `renderPicker` lets a platform supply its own control (iOS passes the Liquid Glass
+// menu); the shared SelectField is used everywhere else.
+export function CollectionSelectRow({ icon, label, error, required = false, renderPicker, palette: suppliedPalette, ...select }) {
+  const palette = mergePalette(suppliedPalette);
+  return <View>
+    <CollectionRow icon={icon} label={required ? `${label} *` : label} palette={palette}>
+      {renderPicker ? renderPicker({ label, value: select.value, options: select.options, palette,
+        onChange: value => select.onChange?.({ target: { value } }) })
+        : <SelectField labelHidden label={label} palette={palette} {...select}
+          triggerStyle={styles.selectTrigger} triggerTextStyle={[styles.rowValue, { color: palette.textSecondary }]} />}
+    </CollectionRow>
+    {error ? <Text accessibilityLiveRegion="polite" style={[styles.rowError, { color: palette.danger }]}>{error}</Text> : null}
+  </View>;
+}
+
+export function CollectionTextRow({ icon, label, value, onChangeText, placeholder, keyboardType, editable = true, required = false, error, palette: suppliedPalette }) {
+  const palette = mergePalette(suppliedPalette);
+  return <View>
+    <CollectionRow icon={icon} label={required ? `${label} *` : label} palette={palette}>
+      <TextInput accessibilityLabel={label} aria-invalid={error ? true : undefined} editable={editable}
+        keyboardType={keyboardType} onChangeText={onChangeText} placeholder={placeholder}
+        placeholderTextColor={palette.textMuted} selectionColor={palette.accent}
+        value={value == null ? '' : String(value)}
+        style={[styles.rowInput, { color: palette.textSecondary, opacity: editable ? 1 : 0.6 }]} />
+    </CollectionRow>
+    {error ? <Text accessibilityLiveRegion="polite" style={[styles.rowError, { color: palette.danger }]}>{error}</Text> : null}
+  </View>;
 }
 
 export function CollectionShowMore({ expanded, onPress, remaining, palette: suppliedPalette, variant = 'native' }) {
@@ -196,63 +282,64 @@ export function CollectionCopySummary({ copies = [], labels: suppliedLabels, pal
   </CollectionEntryGroup>;
 }
 
-function CheckboxField({ label, value, onChange, palette, editable, help, yes = 'Yes' }) {
-  return <FormField label={label} palette={palette}>
-    <Pressable accessibilityRole="checkbox" accessibilityLabel={label}
-      accessibilityState={{ checked: !!value, disabled: !editable }}
-      disabled={!editable} onPress={() => onChange?.(!value)}
-      style={({ pressed }) => [styles.checkboxRow, {
-        borderColor: value ? palette.accent : palette.border,
-        backgroundColor: value ? `${palette.accent}22` : palette.surfaceStrong,
-        opacity: editable ? (pressed ? 0.7 : 1) : 0.6,
-      }]}>
-      <View style={[styles.checkboxBox, { borderColor: value ? palette.accent : palette.border, backgroundColor: value ? palette.accent : 'transparent' }]}>
-        {value ? <Text style={[styles.checkboxCheck, { color: palette.accentContrast }]}>✓</Text> : null}
-      </View>
-      <Text style={[styles.checkboxLabel, { color: palette.textSecondary }]}>{yes}</Text>
-    </Pressable>
-    {help ? <Text style={[styles.help, { color: palette.textMuted }]}>{help}</Text> : null}
-  </FormField>;
-}
+// Each Add Copy field's leading icon and example text. Web names are snake_case
+// and Expo's camelCase, so lookups ignore case and underscores; Platform and
+// Edition are games' use of the resolution and hdr fields.
+const COPY_FIELD_ICONS = {
+  format: actionIcons.disc,
+  resolution: actionIcons.monitor,
+  platform: actionIcons.monitor,
+  hdr: actionIcons.sun,
+  edition: actionIcons.star,
+  is3d: actionIcons.cube,
+  audiocodec: actionIcons.audioLines,
+  audiochannels: actionIcons.speaker,
+  bitrate: actionIcons.gauge,
+  purchaseprice: actionIcons.dollar,
+  location: actionIcons.mapPin,
+  purchaselocation: actionIcons.mapPin,
+  collectedat: actionIcons.calendar,
+};
+const COPY_FIELD_EXAMPLES = {
+  purchaseprice: '9.99',
+  location: 'Amazon',
+  purchaselocation: 'Amazon',
+  collectedat: 'YYYY-MM-DD',
+};
+const fieldKey = value => String(value || '').replace(/_/g, '').toLowerCase();
 
-function MediumFields({ fields = [], values, errors, labels, palette, canMutate, onChange, popover }) {
-  return <View style={styles.fieldsGrid}>
+function MediumFields({ fields = [], values, errors, palette, canMutate, onChange, popover, variant, title, renderSelectPicker }) {
+  const iconFor = field => COPY_FIELD_ICONS[fieldKey(field.label)] || COPY_FIELD_ICONS[fieldKey(field.name)] || actionIcons.page;
+  return <CollectionGroup title={title} palette={palette} variant={variant}>
     {fields.map(field => {
       if (field.type === 'select') {
-        return <View key={field.name} style={styles.fieldCell}>
-          <FormField label={field.label} required={field.required} error={errors[field.name]}
-            palette={palette}>
-            <SelectField labelHidden filter popover={popover} multiple={field.multiple} label={field.label} value={values[field.name] ?? ''}
-              options={field.options || []} palette={palette} disabled={!canMutate}
-              onChange={event => onChange?.(field.name, event.target.value)} />
-          </FormField>
-        </View>;
+        return <CollectionSelectRow key={field.name} icon={iconFor(field)} label={field.label} required={field.required}
+          error={errors[field.name]} palette={palette} filter popover={popover} multiple={field.multiple}
+          renderPicker={field.multiple ? undefined : renderSelectPicker}
+          value={values[field.name] ?? ''} options={field.options || []} disabled={!canMutate}
+          onChange={event => onChange?.(field.name, event.target.value)} />;
       }
       if (field.type === 'checkbox') {
-        return <View key={field.name} style={styles.fieldCell}>
-          <CheckboxField label={field.label} value={!!values[field.name]}
-            palette={palette} editable={canMutate} yes={labels.yes}
-            onChange={value => onChange?.(field.name, value)} />
-        </View>;
+        return <CollectionSwitchRow key={field.name} icon={iconFor(field)} label={field.label} value={!!values[field.name]}
+          palette={palette} variant={variant} disabled={!canMutate}
+          onValueChange={value => onChange?.(field.name, value)} />;
       }
       if (field.type === 'datetime') {
-        return <View key={field.name} style={styles.fieldCell}>
-          <FormField label={field.label} error={errors[field.name]} palette={palette}>
+        return <View key={field.name}>
+          <CollectionRow icon={iconFor(field)} label={field.label} palette={palette}>
             <DateTimePicker value={values[field.name] ?? ''} trackTime
               onChange={value => onChange?.(field.name, value)} palette={palette} />
-          </FormField>
+          </CollectionRow>
+          {errors[field.name] ? <Text accessibilityLiveRegion="polite" style={[styles.rowError, { color: palette.danger }]}>{errors[field.name]}</Text> : null}
         </View>;
       }
-      return <View key={field.name} style={styles.fieldCell}>
-        <FormTextField label={field.label}
-          value={values[field.name] ?? ''} required={field.required}
-          error={errors[field.name]} placeholder={field.placeholder}
-          keyboardType={field.type === 'number' ? 'decimal-pad' : 'default'}
-          editable={canMutate} palette={palette}
-          onChangeText={value => onChange?.(field.name, value)} />
-      </View>;
+      return <CollectionTextRow key={field.name} icon={iconFor(field)} label={field.label} value={values[field.name] ?? ''}
+        required={field.required} error={errors[field.name]} placeholder={COPY_FIELD_EXAMPLES[fieldKey(field.name)] || field.placeholder || field.help}
+        keyboardType={field.type === 'number' ? 'decimal-pad' : 'default'}
+        editable={canMutate} palette={palette}
+        onChangeText={value => onChange?.(field.name, value)} />;
     })}
-  </View>;
+  </CollectionGroup>;
 }
 
 export function CollectionCopyEditor({
@@ -264,6 +351,9 @@ export function CollectionCopyEditor({
   canMutate = false,
   onChange,
   popover = false,
+  variant = 'native',
+  title,
+  renderSelectPicker,
   children,
 }) {
   const labels = mergeLabels(suppliedLabels);
@@ -272,8 +362,8 @@ export function CollectionCopyEditor({
     {labels.ownerOnly}
   </Text>;
   return <View style={styles.editor}>
-    <MediumFields fields={fields} values={values} errors={errors} labels={labels}
-      palette={palette} canMutate={canMutate} onChange={onChange} popover={popover} />
+    <MediumFields fields={fields} values={values} errors={errors}
+      palette={palette} canMutate={canMutate} onChange={onChange} popover={popover} variant={variant} title={title} renderSelectPicker={renderSelectPicker} />
     {children}
   </View>;
 }
@@ -460,6 +550,7 @@ export function CollectionCopyDialog({
   onSave,
   onEdit,
   onRemove,
+  renderSelectPicker,
   children,
 }) {
   const labels = mergeLabels(suppliedLabels);
@@ -491,11 +582,9 @@ export function CollectionCopyDialog({
               canMutate={canMutate} onEdit={onEdit} onRemove={onRemove} initialLimit={copyLimit} />
           </CollectionSection> : null}
 
-          <Text style={[styles.sectionTitle, { color: palette.textMuted }]}>
-            {editingId ? labels.editCopy : copies.length ? labels.addAnother : labels.addCopy}
-          </Text>
           <CollectionCopyEditor fields={fields} values={values} errors={errors}
-            labels={labels} palette={palette} canMutate={canMutate} onChange={onChange} popover={embedded} />
+            labels={labels} palette={palette} canMutate={canMutate} onChange={onChange} popover={embedded} renderSelectPicker={renderSelectPicker}
+            title={editingId ? labels.editCopy : copies.length ? labels.addAnother : labels.addCopy} />
           {canMutate ? <CollectionSeasonCascade scope={scope} seasons={seasons} selectedSeason={selectedSeason}
             labels={labels} palette={palette} canMutate={canMutate}
             onScopeChange={onScopeChange} onSeasonChange={onSeasonChange} /> : null}
@@ -506,10 +595,13 @@ export function CollectionCopyDialog({
             {saveNote}
           </Text> : null}
         </ScrollView>
-        <View style={[styles.dialogFooter, { borderColor: palette.border }]}>
-          <Button label={labels.cancel} tone="surface" palette={palette} onPress={onClose} />
-          {canMutate ? <Button label={editingId ? labels.save : labels.addCopy}
-            palette={palette} busy={busy} disabled={busy} onPress={onSave} /> : null}
+        <View style={styles.dialogFooter}>
+          <View style={styles.footerButton}><Button label={labels.cancel} tone="ghost" size="lg" width="full" onPress={onClose} palette={{ ...palette, ghost: {
+            background: 'transparent', pressed: palette.surfaceStrong, hovered: palette.surfaceStrong,
+            text: palette.textSecondary, border: palette.border,
+          } }} /></View>
+          {canMutate ? <View style={styles.footerButton}><Button label={editingId ? labels.save : labels.addCopy} size="lg" width="full"
+            palette={palette} busy={busy} disabled={busy} onPress={onSave} /></View> : null}
         </View>
   </>;
   if (embedded) return <View style={styles.embedded}>{content}</View>;
@@ -526,6 +618,17 @@ export function CollectionCopyDialog({
 }
 
 const styles = StyleSheet.create({
+  groupSection: { gap: 10 },
+  groupRows: { paddingHorizontal: 16 },
+  groupRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
+  rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  rowLabelText: { ...cardTypography.title, flexShrink: 1 },
+  rowValue: { fontSize: 16 },
+  rowDivider: { height: 1, opacity: 0.4 },
+  rowInput: { flex: 1, minWidth: 80, fontSize: 16, textAlign: 'right', paddingVertical: 0 },
+  rowError: { fontSize: 12, lineHeight: 17, paddingBottom: 8 },
+  switchSlot: { height: 50, justifyContent: 'center', alignItems: 'center' },
+  selectTrigger: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
   contextSection: { gap: 10 },
   contextLabel: { fontSize: 15, paddingLeft: 16 },
   // Web dialogs use the same compact corners and bordered surfaces as other web cards.
@@ -555,6 +658,7 @@ const styles = StyleSheet.create({
   copyEpisodesWeb: { marginHorizontal: 0, marginTop: 12 },
   copyList: { gap: 8 },
   entryGroupWebContent: { padding: 16 },
+  entryGroupFlushY: { paddingVertical: 0 },
   copyTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   copyTitle: { ...cardTypography.rowTitle },
   copyDetail: { ...cardTypography.rowDetail },
@@ -564,13 +668,6 @@ const styles = StyleSheet.create({
   iconText: { fontSize: 17 },
   emptyCopy: { fontSize: 12, paddingVertical: 4 },
   editor: { gap: 14 },
-  fieldsGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 16 },
-  fieldCell: { flexGrow: 1, flexBasis: 240, minWidth: 0 },
-  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 8, minHeight: 44, paddingHorizontal: 10 },
-  checkboxBox: { width: 18, height: 18, borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
-  checkboxCheck: { fontSize: 12, fontWeight: '700' },
-  checkboxLabel: { fontSize: 13, fontWeight: '600' },
-  help: { fontSize: 12, lineHeight: 17 },
   readOnly: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 12, lineHeight: 17 },
   cascade: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 12 },
   cascadeNote: { fontSize: 12, lineHeight: 17 },
@@ -583,7 +680,7 @@ const styles = StyleSheet.create({
   itemTitle: { fontSize: 18, fontWeight: '700' },
   itemMeta: { fontSize: 12 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
   saveNote: { fontSize: 12, fontWeight: '600' },
-  dialogFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, borderTopWidth: 1, paddingTop: 12, marginTop: 8 },
+  dialogFooter: { flexDirection: 'row', gap: 8, paddingTop: 12 },
+  footerButton: { flex: 1 },
 });

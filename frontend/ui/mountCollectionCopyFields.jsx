@@ -50,6 +50,8 @@ function CopyFieldsAdapter({ host, props }) {
     errors={props.errors || {}}
     palette={palette}
     canMutate
+    variant="web"
+    title={host.dataset.heading}
     onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))} />;
 }
 
