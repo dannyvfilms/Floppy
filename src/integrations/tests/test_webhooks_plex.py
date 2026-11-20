@@ -2361,6 +2361,45 @@ class PlexWebhookTests(TestCase):
         )
 
     @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.search")
+    def test_episode_only_tmdb_guid_resolves_same_title_show_by_season(
+        self,
+        mock_tmdb_search,
+        mock_tv,
+    ):
+        """A new episode carries only an episode-level tmdb:// GUID (#1602).
+
+        The id is discarded as non-show, so resolution falls to the title
+        search, which must pass the played season (parentIndex, not the
+        episode index) to break a tie between same-title shows.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {"media_id": 34634, "title": "Gold Rush", "year": "2010"},
+                {"media_id": 10220, "title": "Gold Rush", "year": ""},
+            ],
+        }
+        mock_tv.side_effect = self._shows_with_seasons({"34634": 17, "10220": 1})
+        payload = {
+            "event": "media.scrobble",
+            "Metadata": {
+                "librarySectionType": "show",
+                "type": "episode",
+                "grandparentTitle": "Gold Rush",
+                "parentIndex": 17,
+                "index": 1,
+                "title": "The Most Gold Wins",
+                "year": 2026,
+                "originallyAvailableAt": "2026-10-02",
+                "Guid": [{"id": "tmdb://7772514"}],
+            },
+        }
+
+        ids = PlexWebhookProcessor().resolve_external_ids(payload)
+
+        self.assertEqual(ids.get("tmdb_id"), "34634")
+
+    @patch("app.providers.tmdb.tv")
     @patch("app.providers.tvdb.enabled", return_value=False)
     @patch("app.providers.tmdb.search")
     @patch(
