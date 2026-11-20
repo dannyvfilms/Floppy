@@ -139,6 +139,27 @@ test('a rejected token is reported as revoked, not as a missing session', async 
   assert.equal(storage.values.has('floppy.auth.session.v1'), false);
 });
 
+test('a provider that needs credentials is named on the error so a screen can link to it', async () => {
+  const storage = createStorage();
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: { media_types: {} } }) },
+    { match: url => url.endsWith('/api/v1/studios/igdb/70/'), respond: () => response({
+      status: 502,
+      body: {
+        detail: 'IGDB is not configured. Add your Twitch application\'s client ID and secret in Settings.',
+        errors: { provider: 'igdb', provider_label: 'Internet Game Database', settings_path: '/settings/providers/igdb' },
+      },
+    }) },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  await auth.signInWithToken({ serverUrl: 'https://floppy.example', token: 'secret-token' });
+  await assert.rejects(() => auth.request('/api/v1/studios/igdb/70/'), error => {
+    assert.match(error.message, /IGDB is not configured/);
+    assert.deepEqual(error.provider, { slug: 'igdb', label: 'Internet Game Database' });
+    return true;
+  });
+});
+
 test('session sign-in sends CSRF and stores only the session cookies', async () => {
   const storage = createStorage();
   const routes = sessionRoutes();
