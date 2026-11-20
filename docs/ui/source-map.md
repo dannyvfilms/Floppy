@@ -1111,7 +1111,7 @@ Status: `Partial / coexisting`
 
 - `src/templates/users/components/import_activity.html`
 - `src/templates/users/components/import_activity_loader.html`
-- `src/templates/users/components/import_source_cleanup.html`
+- `src/templates/users/components/import_source_cleanup.html` (Delete all returns to the provider Activity tab and shows a pending state, #1968)
 - `src/templates/users/components/outbound_service_activity.html`
 - `src/templates/users/provider_activity.html`
 - `src/templates/users/providers/integration_activity.html`
