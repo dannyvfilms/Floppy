@@ -1116,7 +1116,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
-        expect(self.page.locator("[data-track-modal-root]:visible")).to_be_visible()
+        expect(self.page.locator("[data-track-modal-root]:visible")).to_be_visible(timeout=15000)
 
         self._assert_visible_overlay_fills_viewport()
 

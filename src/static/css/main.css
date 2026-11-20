@@ -6201,6 +6201,18 @@
 [data-home-section-list] .sortable-chosen {
   outline: 1px solid var(--color-surface-hover);
 }
+.home-settings-row-body > div {
+  flex-wrap: wrap;
+}
+.home-settings-row-title {
+  flex: 1 1 12rem;
+}
+.home-settings-row-controls {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
 @media (max-width: 63.999rem) {
   .home-settings-row-body {
     height: auto;

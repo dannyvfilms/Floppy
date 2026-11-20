@@ -987,7 +987,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `src/templates/users/home_screen.html`
-`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives.
+`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified.
 
 ## SET-PROVIDERS
 
