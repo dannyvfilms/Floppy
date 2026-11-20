@@ -12,7 +12,9 @@ logfile_maxbytes=10MB
 logfile_backups=3
 pidfile=@@RUN_DIR@@/supervisord.pid
 childlogdir=@@LOG_DIR@@
-environment=PATH="@@VENV_DIR@@/bin:%(ENV_PATH)s",VIRTUAL_ENV="@@VENV_DIR@@"
+# HOME stays /root for the abc programs otherwise; libpq then fails to read
+# /root/.postgresql, drops each TLS handshake and floods Postgres logs (#2051).
+environment=PATH="@@VENV_DIR@@/bin:%(ENV_PATH)s",VIRTUAL_ENV="@@VENV_DIR@@",HOME="/nonexistent"
 
 [unix_http_server]
 file=@@RUN_DIR@@/supervisor.sock
