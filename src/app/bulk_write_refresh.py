@@ -526,6 +526,11 @@ BULK_WRITE_SITES = {
         UNKNOWN,
     ): IMPORTER,
     (
+        "integrations/imports/helpers.py",
+        "bulk_update_media.update",
+        UNKNOWN,
+    ): IMPORTER,
+    (
         "integrations/imports/mdblist.py",
         "MDBListImporter._process_episode_rating",
         EPISODE,

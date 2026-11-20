@@ -232,3 +232,272 @@ class ImportMAL(TestCase):
         movie = Movie.objects.get(item=movie_item, user=self.user)
         self.assertEqual(int(movie.score), 7)  # updated from MAL (was 5)
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)  # is_rewatching=True
+
+
+class ImportMALExistingTitles(TestCase):
+    """Import New brings titles Floppy already tracks forward, never back (#1942)."""
+
+    def setUp(self):
+        """Create a user and the MAL fixtures' shape."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+
+    def _track(self, media_type, media_id="1", **fields):
+        item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.MAL.value,
+            media_type=media_type,
+            title=f"Title {media_id}",
+        )
+        model = Anime if media_type == MediaTypes.ANIME.value else Manga
+        return model.objects.create(user=self.user, item=item, **fields)
+
+    def _entry(self, media_type, media_id="1", **list_status):
+        is_anime = media_type == MediaTypes.ANIME.value
+        status = {
+            "status": "watching" if is_anime else "reading",
+            "score": 0,
+            "comments": "",
+            "updated_at": "2026-11-12T16:46:00+00:00",
+            "num_times_rewatched" if is_anime else "num_times_reread": 0,
+            "is_rewatching" if is_anime else "is_rereading": False,
+            "num_episodes_watched" if is_anime else "num_chapters_read": 0,
+        }
+        status.update(list_status)
+        return {
+            "node": {
+                "id": int(media_id),
+                "title": f"Title {media_id}",
+                "main_picture": {"large": "https://example.com/a.jpg"},
+            },
+            "list_status": status,
+        }
+
+    def _run(self, anime=(), manga=(), mode="new"):
+        responses = [
+            {"data": list(anime), "paging": {}},
+            {"data": list(manga), "paging": {}},
+        ]
+        with patch(
+            "integrations.imports.mal.MyAnimeListImporter._get_whole_response",
+            side_effect=responses,
+        ):
+            return mal.importer("test", self.user, mode)[0]
+
+    def test_anime_behind_advances_progress_and_status(self):
+        row = self._track(
+            MediaTypes.ANIME.value,
+            progress=3,
+            status=Status.PLANNING.value,
+        )
+
+        counts = self._run(anime=[self._entry("anime", num_episodes_watched=7)])
+
+        row.refresh_from_db()
+        self.assertEqual(row.progress, 7)
+        self.assertEqual(row.status, Status.IN_PROGRESS.value)
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(counts["updated"], 1)
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(
+            row.history.order_by("-history_id").first().history_change_reason,
+            "MyAnimeList import",
+        )
+
+    def test_manga_behind_advances_progress(self):
+        row = self._track(MediaTypes.MANGA.value, progress=10, status=Status.IN_PROGRESS.value)
+
+        self._run(manga=[self._entry("manga", num_chapters_read=15)])
+
+        row.refresh_from_db()
+        self.assertEqual(row.progress, 15)
+        self.assertEqual(Manga.objects.filter(user=self.user).count(), 1)
+
+    def test_completed_on_mal_completes_local(self):
+        row = self._track(MediaTypes.ANIME.value, progress=3, status=Status.IN_PROGRESS.value)
+
+        self._run(
+            anime=[self._entry("anime", status="completed", num_episodes_watched=12)],
+        )
+
+        row.refresh_from_db()
+        self.assertEqual(row.status, Status.COMPLETED.value)
+        self.assertEqual(row.progress, 12)
+
+    def test_local_ahead_is_left_alone(self):
+        row = self._track(MediaTypes.ANIME.value, progress=9, status=Status.COMPLETED.value)
+
+        counts = self._run(anime=[self._entry("anime", num_episodes_watched=4)])
+
+        row.refresh_from_db()
+        self.assertEqual((row.progress, row.status), (9, Status.COMPLETED.value))
+        self.assertNotIn("updated", counts)
+        self.assertEqual(counts["unchanged"], 1)
+        self.assertEqual(row.history.count(), 1)
+
+    def test_paused_and_dropped_keep_their_status_but_gain_progress(self):
+        paused = self._track(
+            MediaTypes.ANIME.value, "1", progress=3, status=Status.PAUSED.value,
+        )
+        dropped = self._track(
+            MediaTypes.MANGA.value, "2", progress=3, status=Status.DROPPED.value,
+        )
+
+        self._run(
+            anime=[self._entry("anime", "1", num_episodes_watched=6)],
+            manga=[self._entry("manga", "2", num_chapters_read=6, status="completed")],
+        )
+
+        paused.refresh_from_db()
+        dropped.refresh_from_db()
+        self.assertEqual((paused.progress, paused.status), (6, Status.PAUSED.value))
+        self.assertEqual((dropped.progress, dropped.status), (6, Status.DROPPED.value))
+
+    def test_status_never_regresses(self):
+        completed = self._track(
+            MediaTypes.ANIME.value, "1", progress=12, status=Status.COMPLETED.value,
+        )
+        in_progress = self._track(
+            MediaTypes.ANIME.value, "2", progress=5, status=Status.IN_PROGRESS.value,
+        )
+
+        counts = self._run(
+            anime=[
+                self._entry("anime", "1", status="plan_to_watch"),
+                self._entry("anime", "2", status="plan_to_watch"),
+            ],
+        )
+
+        completed.refresh_from_db()
+        in_progress.refresh_from_db()
+        self.assertEqual(completed.status, Status.COMPLETED.value)
+        self.assertEqual(in_progress.status, Status.IN_PROGRESS.value)
+        self.assertNotIn("updated", counts)
+
+    def test_local_score_notes_and_dates_are_kept_and_gaps_filled(self):
+        kept_date = datetime(2025, 1, 2, tzinfo=UTC)
+        kept = self._track(
+            MediaTypes.ANIME.value,
+            "1",
+            progress=1,
+            status=Status.IN_PROGRESS.value,
+            score=9,
+            notes="mine",
+            start_date=kept_date,
+        )
+        empty = self._track(
+            MediaTypes.ANIME.value,
+            "2",
+            progress=1,
+            status=Status.IN_PROGRESS.value,
+        )
+        remote = {
+            "num_episodes_watched": 4,
+            "score": 6,
+            "comments": "from MAL",
+            "start_date": "2024-03-04",
+            "finish_date": "2024-05-06",
+        }
+
+        self._run(
+            anime=[
+                self._entry("anime", "1", **remote),
+                self._entry("anime", "2", **remote),
+            ],
+        )
+
+        kept.refresh_from_db()
+        empty.refresh_from_db()
+        self.assertEqual((kept.score, kept.notes, kept.start_date), (9, "mine", kept_date))
+        self.assertEqual(kept.end_date.date().isoformat(), "2024-05-06")
+        self.assertEqual((empty.score, empty.notes), (6, "from MAL"))
+        self.assertEqual(empty.start_date.date().isoformat(), "2024-03-04")
+        self.assertIsNotNone(empty.scored_at)
+
+    def test_blank_mal_fields_do_not_erase_local_values(self):
+        row = self._track(
+            MediaTypes.MANGA.value,
+            progress=2,
+            status=Status.IN_PROGRESS.value,
+            score=8,
+            notes="mine",
+        )
+
+        self._run(manga=[self._entry("manga", num_chapters_read=5)])
+
+        row.refresh_from_db()
+        self.assertEqual((row.progress, row.score, row.notes), (5, 8, "mine"))
+
+    def test_importing_the_same_snapshot_twice_writes_nothing_more(self):
+        row = self._track(MediaTypes.ANIME.value, progress=3, status=Status.PLANNING.value)
+        entry = self._entry("anime", num_episodes_watched=7, score=7)
+
+        self._run(anime=[entry])
+        history_after_first = row.history.count()
+        second = self._run(anime=[entry])
+
+        self.assertNotIn("updated", second)
+        self.assertEqual(row.history.count(), history_after_first)
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 1)
+
+    def test_deleted_titles_are_not_updated_or_recreated(self):
+        row = self._track(MediaTypes.ANIME.value, progress=3, status=Status.PLANNING.value)
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="1",
+        )
+
+        self._run(anime=[self._entry("anime", num_episodes_watched=7)])
+
+        row.refresh_from_db()
+        self.assertEqual(row.progress, 3)
+
+    def test_new_titles_still_import_alongside_updates(self):
+        self._track(MediaTypes.ANIME.value, "1", progress=1, status=Status.IN_PROGRESS.value)
+
+        counts = self._run(
+            anime=[
+                self._entry("anime", "1", num_episodes_watched=5),
+                self._entry("anime", "2", num_episodes_watched=2),
+            ],
+        )
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 2)
+        self.assertEqual((counts["created"], counts["updated"]), (1, 1))
+
+    def test_rewatch_rows_are_compared_against_the_furthest_one(self):
+        finished = self._track(
+            MediaTypes.ANIME.value, progress=12, status=Status.COMPLETED.value,
+        )
+        Anime.objects.create(
+            user=self.user, item=finished.item, progress=2, status=Status.IN_PROGRESS.value,
+        )
+
+        counts = self._run(anime=[self._entry("anime", num_episodes_watched=12, status="completed")])
+
+        self.assertNotIn("updated", counts)
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 2)
+
+    def test_update_does_not_queue_a_push_back_to_mal(self):
+        self._track(MediaTypes.ANIME.value, progress=3, status=Status.PLANNING.value)
+
+        with (
+            patch("integrations.mal_sync.per_item_sync_active", return_value=True),
+            patch("integrations.tasks.sync_mal_status.delay") as mock_delay,
+        ):
+            self._run(anime=[self._entry("anime", num_episodes_watched=7)])
+
+        mock_delay.assert_not_called()
+
+    def test_overwrite_still_replaces_the_existing_row(self):
+        row = self._track(MediaTypes.ANIME.value, progress=9, status=Status.COMPLETED.value)
+
+        self._run(anime=[self._entry("anime", num_episodes_watched=4)], mode="overwrite")
+
+        self.assertFalse(Anime.objects.filter(pk=row.pk).exists())
+        replaced = Anime.objects.get(user=self.user, item__media_id="1")
+        self.assertEqual(replaced.progress, 4)

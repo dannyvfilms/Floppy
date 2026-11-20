@@ -20,6 +20,10 @@ function grantsFullAccount(scope) {
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+// The server answers 503 with `retryable: true` while SQLite's single writer is
+// busy; a safe request is tried again this many times, waiting `Retry-After`.
+const BUSY_RETRIES = 2;
+const BUSY_RETRY_MAX_WAIT_MS = 5000;
 const SCOPE_DENIAL = /^You do not have permission to perform this action\.?$/;
 export const PASSWORD_SIGN_IN_REQUIRED = 'Sign in with your username and password to manage this. '
   + 'App sign-in through the browser can track and browse, but cannot change account settings, credentials or connections.';
@@ -353,7 +357,7 @@ function sessionFacade(session, api) {
 // `browser` is the web adapter: `{ serverUrl(), readCsrfToken() }`. The credential
 // is then the same-origin session cookie, which script can neither read nor
 // store, so sessions carry only a marker and the CSRF value is read per request.
-export function createAuthTransport({ storage, fetchImpl, onSessionChange, browser = null, now = () => Date.now() } = {}) {
+export function createAuthTransport({ storage, fetchImpl, onSessionChange, browser = null, now = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!storage || typeof storage.getItem !== 'function') {
     throw new TypeError('createAuthTransport requires a storage adapter.');
   }
@@ -498,6 +502,14 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, brows
       }
     }
     const data = response.ok && options.responseType === 'text' ? await response.text() : await readBody(response);
+    const busyRetries = options.busyRetries || 0;
+    if (response.status === 503 && data && data.retryable === true && SAFE_METHODS.has(method)
+      && busyRetries < BUSY_RETRIES && !options.signal?.aborted) {
+      const seconds = Number(response.headers?.get?.('Retry-After') ?? data.retry_after);
+      const waitMs = Math.min(BUSY_RETRY_MAX_WAIT_MS, Math.max(250, (Number.isFinite(seconds) ? seconds : 1) * 1000));
+      await sleep(waitMs);
+      return send(current, path, { ...options, busyRetries: busyRetries + 1 });
+    }
     if (response.status === 403 && current.authType === 'session' && !current.browser && isCsrfFailure(data) && !options.csrfRetried) {
       await refreshCsrf(current);
       return send(current, path, { ...options, csrfRetried: true });

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import time
 from datetime import timedelta
@@ -11,8 +12,11 @@ from typing import Any
 from django.db import OperationalError
 from django.utils import timezone
 
+from app import db_retry
 from app.log_safety import stable_hmac
 from app.models import DiscoverApiCache, DiscoverRowCache, DiscoverTasteProfile
+
+logger = logging.getLogger(__name__)
 
 
 def _params_hash(params: dict[str, Any] | None) -> str:
@@ -45,19 +49,34 @@ def set_api_cache(
     *,
     ttl_seconds: int,
 ) -> None:
-    """Persist API payload to DB-backed cache."""
+    """Persist API payload to DB-backed cache.
+
+    The payload was just fetched, so a save that cannot get the writer (a lock
+    error) is logged and skipped instead of raising and losing the response.
+    """
     now = timezone.now()
     params_hash = _params_hash(params)
-    DiscoverApiCache.objects.update_or_create(
-        provider=provider,
-        endpoint=endpoint,
-        params_hash=params_hash,
-        defaults={
-            "payload": payload,
-            "fetched_at": now,
-            "expires_at": now + timedelta(seconds=ttl_seconds),
-        },
-    )
+    try:
+        with db_retry.optional_save():
+            DiscoverApiCache.objects.update_or_create(
+                provider=provider,
+                endpoint=endpoint,
+                params_hash=params_hash,
+                defaults={
+                    "payload": payload,
+                    "fetched_at": now,
+                    "expires_at": now + timedelta(seconds=ttl_seconds),
+                },
+            )
+    except OperationalError as error:
+        if not db_retry.is_lock_error(error):
+            raise
+        logger.warning(
+            "discover_api_cache_save_skipped provider=%s endpoint=%s error=%s",
+            provider,
+            endpoint,
+            error,
+        )
 
 
 def get_row_cache(user_id: int, media_type: str, row_key: str):

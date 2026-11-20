@@ -16,7 +16,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from requests import RequestException
-from simple_history.utils import bulk_create_with_history
+from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
 import app
 from app import providers
@@ -1043,6 +1043,38 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
     project_imported_watch_state(user, projected_item_ids)
     _warm_imported_game_artwork(bulk_media_list)
     return warnings
+
+
+def bulk_update_media(rows, model, fields, user, change_reason="Import"):
+    """Write field changes to tracked rows an importer already holds, with history.
+
+    ``rows`` are persisted instances whose ``fields`` the caller has already
+    changed. Like ``bulk_create_media`` this sends no save signal: nothing is
+    pushed back to the service, no provider is asked for a length, and the
+    import task publishes the History and Statistics days from the rows noted
+    here. Each row's ``_history_date`` sets when its history entry is dated.
+    """
+    if not rows:
+        return
+    now = timezone.now()
+    for row in rows:
+        row.updated_at = now
+    update_fields = [*dict.fromkeys([*fields, "updated_at"])]
+
+    def update():
+        return bulk_update_with_history(
+            rows,
+            model,
+            update_fields,
+            batch_size=500,
+            default_user=user,
+            default_date=now,
+            default_change_reason=change_reason,
+        )
+
+    retry_on_lock(update)
+    note_bulk_rows(rows)
+    normalize_completed_entries(rows)
 
 
 def _warm_imported_game_artwork(bulk_media_list):

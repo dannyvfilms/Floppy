@@ -82,9 +82,11 @@ ALLOWED_WRITES: dict[str, dict[str, str]] = {
         ),
     },
     "saved_choice": {
-        "users/models.py:update_preference": (
+        "users/models.py:save_later": (
             "The request carries a new sort, layout or tab and the page "
-            "remembers it. Writes only when the choice changed."
+            "remembers it. Runs after the response is sent (the test client "
+            "closes the response inside the request), so no page waits for it. "
+            "Writes only when the choice changed."
         ),
     },
     "api_token": {
@@ -308,7 +310,7 @@ class ReadPagesDoNotWriteTests(TestCase):
                 again = "discover" if path.startswith("/discover") else "no_writes"
                 self._check(again, path, states=("warm",))
                 self.assertNotIn(
-                    "users/models.py:update_preference",
+                    "users/models.py:save_later",
                     {write.source for write in self._writes(path)[1]},
                 )
 
