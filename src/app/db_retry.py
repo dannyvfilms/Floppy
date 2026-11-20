@@ -141,10 +141,11 @@ BRIEF_WRITER_WAIT_MS = 50
 class _ReadRequest:
     """What one page load has learned about SQLite's writer."""
 
-    __slots__ = ("writer_busy",)
+    __slots__ = ("after_response", "writer_busy")
 
     def __init__(self):
         self.writer_busy = False
+        self.after_response = []
 
 
 _read_request: ContextVar[_ReadRequest | None] = ContextVar(
@@ -160,11 +161,34 @@ def read_request():
     could serve without. Saves wrapped in :func:`optional_save` read this.
     Tasks and commands never set it, so they keep the full wait.
     """
-    token = _read_request.set(_ReadRequest())
+    state = _ReadRequest()
+    token = _read_request.set(state)
     try:
-        yield
+        yield state
     finally:
         _read_request.reset(token)
+
+
+def after_response(callback) -> None:
+    """Run ``callback`` once this page load's response has been sent.
+
+    For a save the page does not need to render. Outside a page load it runs
+    at once.
+    """
+    state = _read_request.get()
+    if state is None:
+        callback()
+    else:
+        state.after_response.append(callback)
+
+
+def run_after_response(state_callbacks) -> None:
+    """Run callbacks queued by :func:`after_response`, one failing alone."""
+    for callback in state_callbacks:
+        try:
+            callback()
+        except Exception:
+            logger.exception("after-response save failed")
 
 
 def in_read_request() -> bool:
