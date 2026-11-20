@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
-from app.models import Item, Movie, Status
+from app.models import Episode, Item, Movie, Status
 from integrations import tasks
 from integrations.imports import plex
 from integrations.imports.helpers import MediaImportError
@@ -68,6 +68,13 @@ class PlexMarkWatchedImporterTests(TestCase):
 
     def setUp(self):
         """Connect a Plex account whose checkpoint sits an hour ago."""
+        # The recently-viewed library read finds nothing unless a test says so.
+        items = patch(
+            "integrations.imports.plex.plex_api.fetch_section_all_items",
+            return_value=([], 0),
+        )
+        items.start()
+        self.addCleanup(items.stop)
         self.user = get_user_model().objects.create_user(username="plexuser")
         self.user.plex_usernames = "plexuser"
         self.user.save(update_fields=["plex_usernames"])
@@ -239,6 +246,139 @@ class PlexMarkWatchedImporterTests(TestCase):
         movie = Movie.objects.get(user=self.user, item=item)
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertIsNotNone(movie.end_date)
+
+
+def _episode_entry(viewed_at, key="rk-ep", **extra):
+    return {
+        "type": "episode",
+        "title": "Going Back to Cali",
+        "grandparentTitle": "Yellowstone",
+        "parentIndex": 1,
+        "index": 4,
+        "guid": "tmdb://1515183",
+        "viewedAt": viewed_at,
+        "accountID": "1",
+        "ratingKey": key,
+        "key": f"/library/metadata/{key}",
+        **extra,
+    }
+
+
+_SHOW_METADATA = {
+    "media_id": "73586",
+    "title": "Yellowstone",
+    "original_title": "Yellowstone",
+    "localized_title": "Yellowstone",
+    "image": "https://example.com/show.jpg",
+    "tvdb_id": "361315",
+    "season/1": {
+        "image": "https://example.com/season1.jpg",
+        "episodes": [{"episode_number": 4, "still_path": "/episode4.jpg"}],
+    },
+}
+
+
+@patch("integrations.imports.plex.plex_api.fetch_account", return_value={"id": "1"})
+@patch("integrations.imports.plex.plex_api.fetch_metadata", return_value=None)
+@patch("integrations.imports.plex.plex_api.list_users", return_value=[])
+@patch(
+    "integrations.imports.plex.PlexWebhookProcessor._find_tv_media_id",
+    return_value=("73586", 1, 4),
+)
+@patch(
+    "integrations.imports.plex.services.get_media_metadata",
+    return_value=_SHOW_METADATA,
+)
+@patch("integrations.imports.plex.plex_api.fetch_section_all_items")
+@patch("integrations.imports.plex.plex_api.fetch_history")
+@patch(
+    "integrations.imports.plex.plex_api.list_resources",
+    return_value=[
+        {"machine_identifier": "machine", "connections": [{"uri": "http://plex"}]}
+    ],
+)
+class PlexMarkWatchedEpisodeTests(TestCase):
+    """A show's episode marked watched in Plex lands, from history or the library."""
+
+    def setUp(self):
+        """Connect a Plex account with one TV library, checkpoint an hour ago."""
+        self.user = get_user_model().objects.create_user(username="plexuser")
+        self.user.plex_usernames = "plexuser"
+        self.user.save(update_fields=["plex_usernames"])
+        self.checkpoint = timezone.now().replace(microsecond=0) - timedelta(hours=1)
+        self.ts = int(self.checkpoint.timestamp())
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="plexuser",
+            plex_account_id="1",
+            sections=[
+                {"id": "1", "machine_identifier": "machine", "type": "show"},
+            ],
+            mark_watched_checkpoint=self.checkpoint,
+        )
+
+    def _poll(self):
+        user = get_user_model().objects.get(pk=self.user.pk)
+        plex.mark_watched_importer(["all"], user, "new")
+
+    def _episodes(self):
+        return Episode.objects.filter(related_season__user=self.user)
+
+    def test_history_row_creates_the_episode(self, _res, mock_history, mock_items, *_):
+        """An episode in Plex history after the checkpoint is imported."""
+        mock_history.return_value = ([_episode_entry(self.ts + 60)], 1)
+        mock_items.return_value = ([], 0)
+
+        self._poll()
+
+        self.assertEqual(self._episodes().count(), 1)
+
+    def test_manual_mark_without_history_row_creates_the_episode(
+        self, _res, mock_history, mock_items, *_
+    ):
+        """Plex updates lastViewedAt even when it writes no history row."""
+        mock_history.return_value = ([], 0)
+        mock_items.return_value = (
+            [_episode_entry(None, lastViewedAt=self.ts + 60)],
+            1,
+        )
+
+        self._poll()
+
+        self.assertEqual(self._episodes().count(), 1)
+        self.assertEqual(
+            mock_items.call_args.kwargs["extra_params"],
+            {"type": 4, "sort": "lastViewedAt:desc"},
+        )
+
+    def test_item_already_in_history_is_not_counted_twice(
+        self, _res, mock_history, mock_items, *_
+    ):
+        """A normal play shows in history and the library; it stays one play."""
+        mock_history.return_value = ([_episode_entry(self.ts + 60)], 1)
+        mock_items.return_value = (
+            [_episode_entry(None, lastViewedAt=self.ts + 62)],
+            1,
+        )
+
+        self._poll()
+
+        self.assertEqual(self._episodes().count(), 1)
+
+    def test_item_viewed_before_checkpoint_is_ignored(
+        self, _res, mock_history, mock_items, *_
+    ):
+        """Library items last viewed before the checkpoint are not replayed."""
+        mock_history.return_value = ([], 0)
+        mock_items.return_value = (
+            [_episode_entry(None, lastViewedAt=self.ts - 60)],
+            1,
+        )
+
+        self._poll()
+
+        self.assertEqual(self._episodes().count(), 0)
 
 
 class PlexMarkWatchedScheduleTests(TestCase):

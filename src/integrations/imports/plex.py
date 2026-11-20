@@ -14,6 +14,7 @@ import app
 from app import fork_services_play_dedupe as play_dedupe
 from app.log_safety import exception_summary, presence_map
 from app.models import MediaTypes, Sources, Status
+from app.progress_log import progress
 from app.providers import services
 from app.services import grouped_anime
 from app.services.music import prefetch_album_covers
@@ -54,6 +55,10 @@ MARK_WATCHED_OVERLAP = timedelta(minutes=10)
 # How long an entry that failed to import keeps the checkpoint held back, so a
 # transient failure is retried but a permanent one cannot pin it forever.
 MARK_WATCHED_RETRY_WINDOW = timedelta(days=1)
+# Library item type codes for the recently-viewed poll (movie, episode).
+RECENTLY_VIEWED_ITEM_TYPES = {"movie": 1, "show": 4}
+# Safety stop when a server sorts never-viewed items first.
+RECENTLY_VIEWED_MAX_PAGES = 10
 
 # Matching an imported history record against a pre-existing row (e.g. one
 # already created by a live webhook, or by a Trakt import) is handled by the
@@ -100,15 +105,18 @@ def mark_watched_importer(library, user, mode):
         since=previous,
     )
     result = plex_importer.import_data()
-    logger.info(
-        "Plex watched-mark poll user_id=%s since=%s libraries=%s counts=%s "
-        "warnings=%s",
+    # A progress line, so the downloadable diagnostic report carries it (#1781).
+    # Counts only: warnings can name titles, so they stay in the worker log.
+    progress(
+        "plex_mark_watched_poll user_id=%s since=%s libraries=%s counts=%s warnings=%s",
         user.id,
         previous.isoformat(),
-        library,
+        len(library),
         dict(plex_importer.summary_counts),
-        plex_importer.warnings[:5],
+        len(plex_importer.warnings),
     )
+    if plex_importer.warnings:
+        logger.info("Plex watched-mark poll warnings: %s", plex_importer.warnings[:5])
 
     checkpoint = poll_started - MARK_WATCHED_OVERLAP
     failed_at = plex_importer.oldest_failed_viewed_at
@@ -599,6 +607,10 @@ class PlexHistoryImporter:
             connections, section.get("id"), token=section_token
         )
         self._current_section_uri = uri_used
+        if self.since_ts is not None:
+            entries = entries + self._recently_viewed_entries(
+                uri_used, section, section_type, section_token, entries
+            )
         skipped_users_before = self._skipped_user_count
 
         section_label = section.get("title") or section.get("id") or "Plex"
@@ -720,6 +732,64 @@ class PlexHistoryImporter:
         if max_items is None:
             return entries, uri_used
         return entries[:max_items], uri_used
+
+    def _recently_viewed_entries(
+        self, uri: str, section: dict, section_type: str, token, history: list[dict]
+    ) -> list[dict]:
+        """Library items viewed since the checkpoint that history does not show.
+
+        Plex may not write a history row when an item is marked watched by
+        hand (#1781), but it does update the item's ``lastViewedAt``. Each such
+        item becomes a history-shaped entry so it goes through the same
+        matching and dedupe as a real play. Items history already covers (same
+        ratingKey) are dropped, so a normal play is never counted twice.
+        """
+        item_type = RECENTLY_VIEWED_ITEM_TYPES.get(section_type)
+        section_key = section.get("key") or section.get("id")
+        if item_type is None or not section_key:
+            return []
+        covered = {str(e.get("ratingKey")) for e in history if e.get("ratingKey")}
+        page_size = settings.PLEX_HISTORY_PAGE_SIZE
+        entries: list[dict] = []
+        try:
+            for page_number in range(RECENTLY_VIEWED_MAX_PAGES):
+                page, total = plex_api.fetch_section_all_items(
+                    token or self.account.plex_token,
+                    uri,
+                    str(section_key),
+                    start=page_number * page_size,
+                    size=page_size,
+                    extra_params={"type": item_type, "sort": "lastViewedAt:desc"},
+                )
+                reached_checkpoint = False
+                for item in page:
+                    try:
+                        viewed_at = int(item.get("lastViewedAt"))
+                    except (TypeError, ValueError):
+                        continue
+                    if viewed_at <= self.since_ts:
+                        reached_checkpoint = True
+                        break
+                    if str(item.get("ratingKey")) in covered:
+                        continue
+                    entries.append(
+                        {
+                            **item,
+                            "viewedAt": viewed_at,
+                            # Item views belong to the connected account.
+                            "accountID": self._account_id or "1",
+                        }
+                    )
+                if (
+                    reached_checkpoint
+                    or len(page) < page_size
+                    or (page_number + 1) * page_size >= total
+                ):
+                    break
+        except plex_api.PlexClientError as exc:
+            # History already ran; a failure here only loses the manual marks.
+            self.warnings.append(f"Could not read recently viewed Plex items: {exc}")
+        return entries
 
     def _entries_since(self, page: list[dict]) -> tuple[list[dict], bool]:
         """Keep entries viewed after the checkpoint; history is newest first."""
