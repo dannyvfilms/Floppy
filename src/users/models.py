@@ -1770,12 +1770,12 @@ class User(AbstractUser):
         if not db_retry.in_read_request():
             self.save(update_fields=[field_name])
             return
-        pk = self.pk
         value = getattr(self, field_name)
 
         def save_later():
             try:
-                type(self).objects.filter(pk=pk).update(**{field_name: value})
+                setattr(self, field_name, value)
+                self.save(update_fields=[field_name])
             except OperationalError as error:
                 if not db_retry.is_lock_error(error):
                     raise
