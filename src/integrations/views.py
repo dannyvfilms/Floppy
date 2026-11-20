@@ -5045,6 +5045,9 @@ def library_panel(request, source, media_type, media_id):
             )
         except (seerr_api.SeerrError, helpers.MediaImportError) as exc:
             seerr_error = str(exc)
+        seerr_url = f"{user.seerr_url.rstrip('/')}/{seerr_type}/{media_id}"
+    else:
+        seerr_url = ""
 
     return render(
         request,
@@ -5055,8 +5058,38 @@ def library_panel(request, source, media_type, media_id):
             "error": error,
             "seerr_requests": seerr_requests,
             "seerr_error": seerr_error,
+            "seerr_url": seerr_url,
             "panel_url": request.path,
             "season_number": season,
             "episode_number": episode,
+            # Props for the shared ArrLibraryPanels island; the markup above is
+            # its server fallback.
+            "panel_props": {
+                "panels": panels,
+                "message": message,
+                "error": error,
+                "seerrRequests": seerr_requests,
+                "seerrError": seerr_error,
+                "seerrUrl": seerr_url,
+                "panelUrl": request.path,
+                "seasonNumber": season,
+                "episodeNumber": episode,
+                "labels": {
+                    "requests": gettext("Requests"),
+                    "notRequested": gettext("Not requested in Seerr."),
+                    "searchNow": gettext("Search now"),
+                    "copy": gettext("Copy"),
+                    "copied": gettext("Copied"),
+                    "activity": gettext("Activity"),
+                    "hasFile": gettext("Has file"),
+                    "downloading": gettext("Downloading"),
+                    "missing": gettext("Missing"),
+                    "notMonitored": gettext("Not monitored"),
+                    "episodesHaveFiles": gettext("%s of %s episodes have files"),
+                    "added": gettext("Added %s"),
+                    "openIn": gettext("Open in %s"),
+                    "notFound": gettext("Not in %s"),
+                },
+            },
         },
     )
