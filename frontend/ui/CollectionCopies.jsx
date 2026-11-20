@@ -145,21 +145,22 @@ export function CollectionGroup({ title, palette: suppliedPalette, variant = 'na
   </View>;
 }
 
-function RowLabel({ icon, image, label, palette, tone }) {
+function RowLabel({ icon, image, label, palette, tone, after }) {
   const color = tone === 'accent' ? palette.accent : palette.text;
   return <View style={styles.rowLabel}>
     {image ? <Image source={{ uri: image }} resizeMode="contain" accessibilityLabel="" style={styles.rowImage} />
       : icon ? <Icon spec={icon} color={tone === 'accent' ? palette.accent : palette.textMuted} size={20} /> : null}
     <Text style={[styles.rowLabelText, { color }]}>{label}</Text>
+    {after}
   </View>;
 }
 
 // Label on the left, any control or value on the right; a value + onPress makes the row a
 // button, and chevron marks a row that opens something. `multiline` lets long values wrap.
-export function CollectionRow({ icon, image, tone, label, value, onPress, chevron = false, multiline = false, palette: suppliedPalette, children, accessibilityLabel }) {
+export function CollectionRow({ icon, image, tone, after, label, value, onPress, chevron = false, multiline = false, palette: suppliedPalette, children, accessibilityLabel }) {
   const palette = mergePalette(suppliedPalette);
   const content = <>
-    <RowLabel icon={icon} image={image} tone={tone} label={label} palette={palette} />
+    <RowLabel icon={icon} image={image} tone={tone} after={after} label={label} palette={palette} />
     {value !== undefined ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{value}</Text> : null}
     {children}
     {chevron ? <Icon spec={actionIcons.chevronRight} color={palette.textMuted} size={16} /> : null}
@@ -175,19 +176,19 @@ export function CollectionRow({ icon, image, tone, label, value, onPress, chevro
 // Every item gets a swatch (`swatch: false` omits it); a `count` shows only when the server supplied it,
 // `value` is free text in the same place (a duration, a percentage); `onPress` makes a link. Rows that carry values
 // A row with no items is a plain row.
-// `info` ({ label, onPress }) adds a small i button beside the label that opens a link without toggling the row.
+// `info` ({ label, onPress }) adds a small i button right after the label that opens a link.
 export function CollectionExpandRow({ icon, label, summary, items = [], info, palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
   const palette = mergePalette(suppliedPalette);
   if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
   return <View>
     <CollectionRow icon={icon} label={label} palette={palette}
+      after={info ? <Pressable accessibilityRole="link" accessibilityLabel={info.label} onPress={info.onPress} hitSlop={10}>
+        <Icon spec={actionIcons.info} size={18} color={palette.textMuted} />
+      </Pressable> : undefined}
       accessibilityLabel={`${label}${summary ? `, ${summary}` : ''}, ${expanded ? 'collapse' : 'expand'}`}
       onPress={() => setExpanded(value => !value)}>
       <View style={styles.expandEnd}>
-        {info ? <Pressable accessibilityRole="link" accessibilityLabel={info.label} onPress={info.onPress} hitSlop={10}>
-          <Icon spec={actionIcons.info} size={18} color={palette.textMuted} />
-        </Pressable> : null}
         {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
         <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
           <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
