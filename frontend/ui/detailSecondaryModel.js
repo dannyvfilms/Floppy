@@ -103,11 +103,13 @@ export function detailSecondaryModel(payload = {}, { formatDate = value => Strin
   return {
     layout: payload.layout,
     publicView: Boolean(payload.public_view || payload.read_only),
-    genres: (payload.tag_sections || []).find(group => group.title === 'Genres')?.entries?.map(entry => ({ label: entry.label, href: entry.url || '' }))
+    genres: (payload.tag_sections || []).find(group => group.title === 'Genres')?.entries?.map(entry => ({ label: entry.label, href: entry.url || '',
+      count: entry.count ?? (secondary.genre_counts || {})[entry.label] }))
       || (payload.sections || []).find(section => section.id === 'genres')?.items?.map(label => ({ label: String(label), href: '' })) || [],
     facts,
     promoted,
     studios,
+    platformCounts: secondary.platform_counts || {},
     watchProviders: secondary.watch_providers ?? null,
     watchProviderRegion: secondary.watch_provider_region ?? 'UNSET',
     labels,

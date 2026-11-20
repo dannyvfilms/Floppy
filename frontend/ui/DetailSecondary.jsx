@@ -35,23 +35,23 @@ function factIcon(key) {
 const factLabel = label => (label && label === label.toUpperCase()
   ? label.toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase()) : label);
 
-// The collected platform if there is one, otherwise the first listed, with the rest opening inline.
-function PlatformsRow({ names, collected, palette }) {
-  const primary = collected[0] || names[0];
-  const rest = names.filter(name => name !== primary);
-  return <CollectionExpandRow icon={actionIcons.monitor} label="Platform" summary={`${primary} +${rest.length}`}
-    items={rest.map(name => ({ key: name, label: name, valueOnly: true }))} palette={palette} />;
+// Platform opens the Summary-style breakdown: each platform with how many of the viewer's other
+// games are collected on it. The collected platform for this game leads the list.
+function PlatformsRow({ names, collected, counts, palette }) {
+  const all = [...new Set([...collected, ...names])];
+  return <CollectionExpandRow icon={actionIcons.monitor} label="Platform" palette={palette}
+    items={all.map(name => ({ key: name, label: name, count: counts[name] || 0 }))} />;
 }
 
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',
-  palette, onOpenLink, promoted = false, variant = 'native', collectedPlatforms = [], children }) {
+  palette, onOpenLink, promoted = false, variant = 'native', collectedPlatforms = [], platformCounts = {}, children }) {
   const rows = promoted ? facts.filter(fact => !fact.promoted) : facts;
   if (promoted && !rows.length && !children) return null;
   return <View style={styles.stack}>
     {children}
     {rows.length || !promoted ? <CollectionGroup title={title} palette={palette} variant={variant}>
-      {rows.length ? rows.map(fact => fact.key === 'platforms' && (fact.values || []).length > 1
-        ? <PlatformsRow key={fact.key} names={fact.values.map(value => value.text)} collected={collectedPlatforms} palette={palette} />
+      {rows.length ? rows.map(fact => fact.key === 'platforms' && (fact.values || []).length
+        ? <PlatformsRow key={fact.key} names={fact.values.map(value => value.text)} collected={collectedPlatforms} counts={platformCounts} palette={palette} />
         : <CollectionRow key={fact.key} icon={factIcon(fact.key)} label={factLabel(fact.label)}
         palette={palette} multiline>
         <View style={styles.factValues}>
@@ -105,16 +105,12 @@ export function DetailMediumExtras({ gameLengths, youtubeWatch, playedLabel, lab
     labels={labels} palette={palette} onOpenSource={onOpenLink} variant={variant} />;
 }
 
-export function DetailGenres({ genres = [], title = 'Genres', palette, onOpenLink, variant = 'native' }) {
+// Genre opens the Summary-style breakdown: each genre with how many of the viewer's other items carry it.
+export function DetailGenres({ genres = [], title = 'Genres', palette, variant = 'native' }) {
   if (!genres.length) return null;
-  const open = genre => genre.href && onOpenLink ? () => onOpenLink(genre.href) : undefined;
-  const [first, ...rest] = genres;
   return <CollectionGroup title={title} palette={palette} variant={variant}>
-    {rest.length
-      ? <CollectionExpandRow key="genres" icon={actionIcons.tag} label="Genre" summary={`${first.label} +${rest.length}`}
-        items={rest.map((genre, index) => ({ key: `${genre.label}-${index}`, label: genre.label, valueOnly: true, onPress: open(genre) }))} palette={palette} />
-      : <CollectionRow key="genre" icon={actionIcons.tag} label={first.label} palette={palette}
-        onPress={open(first)} chevron={!!open(first)} />}
+    <CollectionExpandRow key="genres" icon={actionIcons.tag} label="Genre" palette={palette}
+      items={genres.map((genre, index) => ({ key: `${genre.label}-${index}`, label: genre.label, count: genre.count }))} />
   </CollectionGroup>;
 }
 
@@ -156,7 +152,7 @@ export function DetailSecondary({ model = {}, sections = {}, layout = model.layo
   const showDetails = !promoted || (model.facts || []).some(fact => !fact.promoted) || (wide && providers);
   const slots = {
     details: showDetails ? <DetailMetadata facts={model.facts} title={model.labels?.details} emptyLabel={model.labels?.noDetails}
-      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant} collectedPlatforms={collectedPlatforms}>{wide ? providers : null}</DetailMetadata> : null,
+      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant} collectedPlatforms={collectedPlatforms} platformCounts={model.platformCounts}>{wide ? providers : null}</DetailMetadata> : null,
     genres: model.genres?.length && !(wide && promote && !model.publicView)
       ? <DetailGenres genres={model.genres} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
     studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,

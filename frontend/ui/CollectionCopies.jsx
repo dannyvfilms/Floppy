@@ -81,6 +81,21 @@ function qualityLine(copy) {
     .filter(Boolean).join(' · ');
 }
 
+const SWATCHES = ['#3486e8', '#df5b26', '#1c9e76', '#d99700', '#999792'];
+
+// One line of the Collection Summary's breakdown: optional colour swatch, name, optional count.
+// The Summary card and the expandable rows (Platform, Genre) both draw it.
+export function CollectionBreakdownRow({ label, count, swatch, onPress, palette: suppliedPalette }) {
+  const palette = mergePalette(suppliedPalette);
+  const row = <View style={styles.contextRow}>
+    {swatch ? <View style={[styles.contextSwatch, { backgroundColor: swatch }]} /> : null}
+    <Text style={[styles.contextRowLabel, { color: onPress ? palette.accent : palette.text }]}>{label}</Text>
+    {count !== undefined ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{count}</Text> : null}
+    {onPress ? <Icon spec={actionIcons.chevronRight} size={14} color={palette.textMuted} /> : null}
+  </View>;
+  return onPress ? <Pressable accessibilityRole="link" accessibilityLabel={label} onPress={onPress}>{row}</Pressable> : row;
+}
+
 export function CollectionSectionHeading({ title, palette: suppliedPalette, variant = 'native' }) {
   const palette = mergePalette(suppliedPalette);
   return <Text style={[styles.contextLabel, variant === 'web' && styles.contextLabelWeb, { color: palette.textMuted }]}>{title}</Text>;
@@ -155,30 +170,34 @@ export function CollectionRow({ icon, image, tone, label, value, onPress, chevro
     style={({ pressed }) => [rowStyle, pressed && { opacity: 0.72 }]}>{content}</Pressable>;
 }
 
-// The Collection Summary's disclosure as a row: the lead item and a count stay visible, the
-// rest open inline beneath it. A single item needs no disclosure and renders as a plain row.
+// The Collection Summary's disclosure as a row. The row keeps its label and an arrow; opening it
+// lists the items beneath in the Summary's small breakdown style (colour swatch, name, count).
+// `items` with a `count` get a swatch; items with `onPress` are links. Rows that carry values
+// instead (`value`, `icon`) open as ordinary rows. A row with no items is a plain row.
 export function CollectionExpandRow({ icon, label, summary, items = [], palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
   const palette = mergePalette(suppliedPalette);
   if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
+  const breakdown = items.every(item => item.value === undefined);
   return <View>
     <CollectionRow icon={icon} label={label} palette={palette}
-      accessibilityLabel={`${label}, ${summary}, ${expanded ? 'collapse' : 'expand'}`}
+      accessibilityLabel={`${label}${summary ? `, ${summary}` : ''}, ${expanded ? 'collapse' : 'expand'}`}
       onPress={() => setExpanded(value => !value)}>
       <View style={styles.expandEnd}>
-        <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text>
+        {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
         <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
           <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
         </View>
       </View>
     </CollectionRow>
-    {expanded ? items.map(item => <View key={item.key}>
+    {expanded && breakdown ? <View style={[styles.contextBreakdown, styles.expandBreakdown, { borderColor: palette.border }]}>
+      {items.map((item, index) => <CollectionBreakdownRow key={item.key} label={item.label} count={item.count}
+        swatch={item.count !== undefined ? SWATCHES[index % SWATCHES.length] : undefined} onPress={item.onPress} palette={palette} />)}
+    </View> : null}
+    {expanded && !breakdown ? items.map(item => <View key={item.key}>
       <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: icon ? 28 : 0 }]} />
-      {item.valueOnly
-        // A plain list entry reads as another value of the row above, at the same text size.
-        ? <CollectionRow icon={icon} label="" value={item.label} palette={palette} onPress={item.onPress} chevron={!!item.onPress} multiline />
-        : <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
-          onPress={item.onPress} chevron={!!item.onPress} multiline />}
+      <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
+        onPress={item.onPress} chevron={!!item.onPress} multiline />
     </View>) : null}
   </View>;
 }
@@ -484,7 +503,7 @@ export function CollectionContextCard({ context, palette: suppliedPalette, varia
   });
   const sortedItems = [...itemRows.values()].sort((a, b) =>
     (a.season ?? -1) - (b.season ?? -1) || (a.episode ?? -1) - (b.episode ?? -1));
-  const colors = ['#3486e8', '#df5b26', '#1c9e76', '#d99700', '#999792'];
+  const colors = SWATCHES;
   const stats = context?.stats;
   const totalEpisodes = stats?.total_episodes || 0;
   const percent = totalEpisodes ? Math.min(100, Math.floor((stats.collected_episodes || 0) / totalEpisodes * 100)) : null;
@@ -516,11 +535,8 @@ export function CollectionContextCard({ context, palette: suppliedPalette, varia
       </Pressable>
       {expanded ? <View style={[styles.contextBreakdown, { borderColor: palette.border }]}>
         {!copies.length ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>No owned copies recorded.</Text> : null}
-        {[...groups].map(([name, count], index) => <View key={name} style={styles.contextRow}>
-          <View style={[styles.contextSwatch, { backgroundColor: colors[index % colors.length] }]} />
-          <Text style={[styles.contextRowLabel, { color: palette.text }]}>{name}</Text>
-          <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{count}</Text>
-        </View>)}
+        {[...groups].map(([name, count], index) => <CollectionBreakdownRow key={name} label={name} count={count}
+          swatch={colors[index % colors.length]} palette={palette} />)}
         {totalEpisodes > 0 ? <View style={styles.contextRow}>
           <View style={[styles.contextSwatch, { backgroundColor: palette.surfaceStrong }]} />
           <Text style={[styles.contextRowLabel, { color: palette.text }]}>Missing</Text>
@@ -654,6 +670,7 @@ const styles = StyleSheet.create({
   groupSection: { gap: 10 },
   groupRows: { paddingHorizontal: 16 },
   groupRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
+  expandBreakdown: { marginTop: 0, paddingBottom: 14 },
   rowImage: { width: 20, height: 20, borderRadius: 4 },
   expandEnd: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   groupRowMultiline: { paddingVertical: 8 },

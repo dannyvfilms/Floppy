@@ -1,8 +1,14 @@
 """The web detail sidebar's projection matches what the shared React cards read."""
 
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
 
-from app.detail_secondary_props import web_sidebar_payload
+from app.detail_secondary_props import (
+    genre_library_counts,
+    platform_collection_counts,
+    web_sidebar_payload,
+)
+from app.models import CollectionEntry, Game, Item, MediaTypes, Sources, Status
 
 
 class WebSidebarPayloadTests(SimpleTestCase):
@@ -50,3 +56,38 @@ class WebSidebarPayloadTests(SimpleTestCase):
             web_sidebar_payload({}, "heading", "Collection"),
             {"kind": "heading", "title": "Collection", "payload": {}},
         )
+
+
+class PlatformCountsTests(TestCase):
+    """Platform rows report how many other games are collected on each platform."""
+
+    def test_counts_other_games_per_listed_platform(self):
+        """The current game and other platforms are left out of each count."""
+        user = get_user_model().objects.create_user(username="counts", password="x")
+        games = [
+            Item.objects.create(
+                media_id=str(number), source=Sources.MANUAL.value,
+                media_type=MediaTypes.GAME.value, title=f"Game {number}",
+            )
+            for number in range(3)
+        ]
+        for game, platform in zip(games, ["PC (Windows)", "PC (Windows)", "Mac"], strict=True):
+            CollectionEntry.objects.create(item=game, user=user, resolution=platform)
+        counts = platform_collection_counts(user, games[0], {"platforms": ["PC (Windows)", "Mac", "Linux"]})
+        self.assertEqual(counts, {"PC (Windows)": 1, "Mac": 1, "Linux": 0})
+        self.assertEqual(platform_collection_counts(None, games[0], {"platforms": ["Mac"]}), {})
+
+    def test_counts_other_tracked_items_per_genre(self):
+        """A genre counts the viewer's other tracked items of the same type."""
+        user = get_user_model().objects.create_user(username="genres", password="x")
+        items = [
+            Item.objects.create(
+                media_id=f"g{number}", source=Sources.MANUAL.value,
+                media_type=MediaTypes.GAME.value, title=f"Game {number}", genres=genres,
+            )
+            for number, genres in enumerate([["Racing", "Action"], ["Racing"], ["Puzzle"]])
+        ]
+        for item in items:
+            Game.objects.create(item=item, user=user, status=Status.COMPLETED.value)
+        counts = genre_library_counts(user, items[0], "game", ["Racing", "Action", "Puzzle"])
+        self.assertEqual(counts, {"Racing": 1, "Action": 0, "Puzzle": 1})

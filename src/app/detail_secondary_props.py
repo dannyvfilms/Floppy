@@ -38,6 +38,47 @@ def nonempty_list(value):
     return [value] if value not in (None, "", [], {}) else []
 
 
+def platform_collection_counts(viewer, item, details):
+    """Return, per listed platform, how many of the viewer's other games are collected on it."""
+    names = [name for name in nonempty_list((details or {}).get("platforms")) if isinstance(name, str)]
+    if not getattr(viewer, "is_authenticated", False) or item is None or not names:
+        return {}
+    from django.db.models import Count
+
+    from app.models import CollectionEntry, MediaTypes
+
+    rows = (
+        CollectionEntry.objects.filter(
+            user=viewer, item__media_type=MediaTypes.GAME.value, resolution__in=names,
+        )
+        .exclude(item=item)
+        .values("resolution")
+        .annotate(games=Count("item", distinct=True))
+    )
+    return dict.fromkeys(names, 0) | {row["resolution"]: row["games"] for row in rows}
+
+
+def genre_library_counts(viewer, item, media_type, genres):
+    """Return, per genre, how many of the viewer's other items of this type carry it."""
+    names = [name for name in nonempty_list(genres) if isinstance(name, str)]
+    if not getattr(viewer, "is_authenticated", False) or item is None or not names:
+        return {}
+    from django.apps import apps
+
+    from app.models.manager import item_ids_with_json_array_value_ci
+
+    try:
+        model = apps.get_model("app", media_type)
+    except LookupError:
+        return {}
+    return {
+        name: model.objects.filter(
+            user=viewer, item_id__in=item_ids_with_json_array_value_ci("genres", name.strip().lower()),
+        ).exclude(item=item).count()
+        for name in names
+    }
+
+
 def sidebar_labels():
     """Return the sidebar's translated labels."""
     return {
@@ -161,8 +202,15 @@ def web_sidebar_payload(context, kind, title=""):
         "medialist",
         kwargs={"media_type": context.get("parent_media_type") or media_type},
     )
+    genre_counts = genre_library_counts(
+        viewer, context.get("match_item"), media_type, media.get("genres"),
+    )
     genres = [
-        {"label": gettext(genre), "url": f"{list_url}?genre={quote(str(genre))}"}
+        {
+            "label": gettext(genre),
+            "url": f"{list_url}?genre={quote(str(genre))}",
+            "count": genre_counts.get(genre, 0),
+        }
         for genre in media.get("genres") or []
     ]
     stats = context.get("collection_stats") or {}
@@ -200,6 +248,9 @@ def web_sidebar_payload(context, kind, title=""):
             },
             "watch_providers": providers,
             "watch_provider_region": region or "UNSET",
+            "platform_counts": platform_collection_counts(
+                viewer, context.get("match_item"), media.get("details"),
+            ),
         },
         "collected_platforms": [
             entry.resolution

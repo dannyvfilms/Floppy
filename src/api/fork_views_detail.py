@@ -35,7 +35,9 @@ from app.detail_builders import (
 )
 from app.detail_related import enrich_detail_related_cards, enrich_detail_seasons
 from app.detail_secondary_props import (
+    genre_library_counts,
     nonempty_list,
+    platform_collection_counts,
     primitive,
     project_details,
     sidebar_labels,
@@ -268,6 +270,8 @@ def _secondary_detail(metadata, item, source, media_type, route_media_type, view
         },
         "watch_providers": _primitive(watch_providers),
         "watch_provider_region": region,
+        "platform_counts": platform_collection_counts(viewer, item, details),
+        "genre_counts": genre_library_counts(viewer, item, media_type, metadata.get("genres")),
     }
 
 
