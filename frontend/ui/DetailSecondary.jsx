@@ -1,71 +1,82 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MarkdownPreview } from './MarkdownPreview';
-import { Badge } from './Badge';
+import { CollectionGroup, CollectionRow } from './CollectionCopies';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
 import { MediumExtras } from './People';
 import { detailSecondaryOrder } from './detailSecondaryModel';
 
-function Value({ value, palette, onOpenLink, centered = false }) {
-  const text = <Text style={[styles.value, centered && styles.centeredText, { color: palette.textSecondary }]}>{value.text}</Text>;
+function Value({ value, palette, onOpenLink }) {
+  const text = <Text style={[styles.value, styles.endText, { color: palette.textSecondary }]}>{value.text}</Text>;
   return value.href && onOpenLink
     ? <Pressable accessibilityRole="link" accessibilityLabel={value.text}
       onPress={() => onOpenLink(value.href, value.identity)}>{text}</Pressable> : text;
 }
 
+// A detail's leading icon, by its key; unknown keys get the info glyph.
+const FACT_ICONS = [
+  [/runtime|duration|length/, 'alarmClock'],
+  [/date|air|release|publish|updated|year|season/, 'calendar'],
+  [/language|country|countries|origin|locale|broadcast/, 'globe'],
+  [/status/, 'pulse'],
+  [/format|type|source/, 'disc'],
+  [/episode|chapter|volume|page|player/, 'list'],
+  [/author|people|creator|network/, 'edit'],
+  [/budget|revenue|price/, 'dollar'],
+];
+function factIcon(key) {
+  const name = String(key || '').toLowerCase();
+  return actionIcons[(FACT_ICONS.find(([pattern]) => pattern.test(name)) || [null, 'info'])[1]];
+}
+
+// The server labels some facts in capitals (RUNTIME); rows read better in title case.
+const factLabel = label => (label && label === label.toUpperCase()
+  ? label.toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase()) : label);
+
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',
-  palette, onOpenLink, promoted = false, children }) {
-  const { width } = useWindowDimensions();
+  palette, onOpenLink, promoted = false, variant = 'native', children }) {
   const rows = promoted ? facts.filter(fact => !fact.promoted) : facts;
   if (promoted && !rows.length && !children) return null;
-  return <View style={styles.section}>
-    {rows.length || !promoted ? <Text accessibilityRole="header" style={[styles.heading, { color: palette.text }]}>{title}</Text> : null}
+  return <View style={styles.stack}>
     {children}
-    {rows.length || !promoted ? <View style={[styles.card, rows.length && styles.metadataCard,
-      width < 768 && styles.centered, { backgroundColor: palette.surface }]}>
-      {rows.length ? rows.map(fact => <View key={fact.key} style={[styles.fact, width < 768 && styles.centered]}>
-        <Text style={[styles.label, width < 768 && styles.centeredText, { color: palette.textMuted, textTransform: 'none' }]}>{fact.label}</Text>
-        {fact.inline ? <View style={[styles.inlineValues, width < 768 && styles.inlineCentered]}>
-          {(fact.values || []).map((value, index) => <React.Fragment key={`${fact.key}-${index}`}>
-            <Value value={value} palette={palette} centered={width < 768} onOpenLink={onOpenLink} />
-            {index < fact.values.length - 1 ? <Text style={[styles.value, { color: palette.textSecondary }]}>, </Text> : null}
-          </React.Fragment>)}
-        </View> : (fact.values || []).map((value, index) => <Value key={`${fact.key}-${index}`} value={value} palette={palette}
-          centered={width < 768} onOpenLink={onOpenLink} />)}
-      </View>) : <Text style={[styles.value, { color: palette.textSecondary }]}>{emptyLabel}</Text>}
-    </View> : null}
+    {rows.length || !promoted ? <CollectionGroup title={title} palette={palette} variant={variant}>
+      {rows.length ? rows.map(fact => <CollectionRow key={fact.key} icon={factIcon(fact.key)} label={factLabel(fact.label)}
+        palette={palette} multiline>
+        <View style={styles.factValues}>
+          {(fact.values || []).map((value, index) => <Value key={`${fact.key}-${index}`} value={value}
+            palette={palette} onOpenLink={onOpenLink} />)}
+        </View>
+      </CollectionRow>) : <CollectionRow key="empty" icon={actionIcons.info} label={emptyLabel} palette={palette} />}
+    </CollectionGroup> : null}
   </View>;
 }
 
-export function DetailWatchProviders({ providers, region, title = 'Streaming', emptyLabel = 'No watch providers', palette }) {
+export function DetailWatchProviders({ providers, region, title = 'Streaming', emptyLabel = 'No watch providers', palette, variant = 'native' }) {
   if (region === 'UNSET' || providers === null || providers === undefined) return null;
-  return <View style={[styles.card, { backgroundColor: palette.surface }]}>
-    <Text accessibilityRole="header" style={[styles.label, { color: palette.textMuted }]}>{title}</Text>
-    <View style={styles.providers}>
-      {providers.length ? providers.map((provider, index) => provider.image
-        ? <Image key={provider.provider_id || provider.provider_name || index}
-          source={{ uri: provider.image }} resizeMode="contain" accessibilityLabel={provider.provider_name || provider.name}
-          style={styles.providerImage} />
-        : <Text key={provider.provider_id || provider.provider_name || index}
-          style={[styles.value, { color: palette.textSecondary }]}>{provider.provider_name || provider.name}</Text>)
-        : <Text style={[styles.value, { color: palette.text }]}>{emptyLabel}</Text>}
-    </View>
-  </View>;
+  return <CollectionGroup title={title} palette={palette} variant={variant}>
+    <CollectionRow icon={actionIcons.play} label={providers.length ? '' : emptyLabel} palette={palette} multiline>
+      <View style={styles.providers}>
+        {providers.map((provider, index) => provider.image
+          ? <Image key={provider.provider_id || provider.provider_name || index}
+            source={{ uri: provider.image }} resizeMode="contain" accessibilityLabel={provider.provider_name || provider.name}
+            style={styles.providerImage} />
+          : <Text key={provider.provider_id || provider.provider_name || index}
+            style={[styles.value, { color: palette.textSecondary }]}>{provider.provider_name || provider.name}</Text>)}
+      </View>
+    </CollectionRow>
+  </CollectionGroup>;
 }
 
-export function DetailStudios({ studios = [], title = 'Studios', palette, onOpenLink }) {
-  const { width } = useWindowDimensions();
+export function DetailStudios({ studios = [], title = 'Studios', palette, onOpenLink, variant = 'native' }) {
   if (!studios.length) return null;
-  return <View style={styles.section}>
-    <Text accessibilityRole="header" style={[styles.heading, { color: palette.text }]}>{title}</Text>
-    <View style={[styles.card, styles.studios, width < 600 && styles.centered, { backgroundColor: palette.surface }]}>
-      {studios.slice(0, 12).map((studio, index) => <Value key={studio.studio_id || index}
-        value={{ text: studio.name || 'Unknown Studio', href: studio.href, identity: studio }} palette={palette}
-        centered={width < 600} onOpenLink={onOpenLink} />)}
-    </View>
-  </View>;
+  return <CollectionGroup title={title} palette={palette} variant={variant}>
+    {studios.slice(0, 12).map((studio, index) => <CollectionRow key={studio.studio_id || index} icon={actionIcons.fourSquare}
+      label={studio.name || 'Unknown Studio'} palette={palette}
+      onPress={studio.href && onOpenLink ? () => onOpenLink(studio.href, studio) : undefined}
+      chevron={!!(studio.href && onOpenLink)} />)}
+  </CollectionGroup>;
 }
 
 export function DetailPromotedFacts({ facts = [], palette }) {
@@ -79,71 +90,64 @@ export function DetailPromotedFacts({ facts = [], palette }) {
   </View>;
 }
 
-export function DetailMediumExtras({ gameLengths, youtubeWatch, labels, palette, onOpenLink }) {
+export function DetailMediumExtras({ gameLengths, youtubeWatch, labels, palette, onOpenLink, variant = 'native' }) {
   return <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch}
-    labels={labels} palette={palette} onOpenSource={onOpenLink} />;
+    labels={labels} palette={palette} onOpenSource={onOpenLink} variant={variant} />;
 }
 
-export function DetailGenres({ genres = [], title = 'Genres', palette, onOpenLink }) {
+export function DetailGenres({ genres = [], title = 'Genres', palette, onOpenLink, variant = 'native' }) {
   if (!genres.length) return null;
-  return <View style={styles.section}>
-    <Text accessibilityRole="header" style={[styles.heading, { color: palette.text }]}>{title}</Text>
-    <View style={[styles.card, styles.genres, { backgroundColor: palette.surface }]}>
-      {genres.map((genre, index) => <Badge key={`${genre.label}-${index}`} label={genre.label} size="tag" tone="genre"
-        palette={{ genre: { color: palette.text, backgroundColor: 'rgba(139,92,246,.07)', borderColor: 'rgba(167,139,250,.18)', borderWidth: 1, fontWeight: '500' } }}
-        onPress={genre.href && onOpenLink ? () => onOpenLink(genre.href) : undefined} />)}
-    </View>
-  </View>;
+  return <CollectionGroup title={title} palette={palette} variant={variant}>
+    {genres.map((genre, index) => <CollectionRow key={`${genre.label}-${index}`} icon={actionIcons.tag} label={genre.label}
+      palette={palette} onPress={genre.href && onOpenLink ? () => onOpenLink(genre.href) : undefined}
+      chevron={!!(genre.href && onOpenLink)} />)}
+  </CollectionGroup>;
 }
 
 export function DetailTrackingHistory({ entries = [], count = entries.length + 1, hasMore = false,
-  title = 'Your History', repeatsLabel = 'Show Repeats', palette, onEdit, onOpenHistory }) {
+  title = 'Your History', repeatsLabel = 'Show Repeats', palette, onEdit, onOpenHistory, variant = 'native' }) {
   const [expanded, setExpanded] = React.useState(false);
   if (count < 2) return null;
-  return <View style={styles.section}>
-    <Text accessibilityRole="header" style={[styles.heading, { color: palette.text }]}>{title}</Text>
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)}
-      style={[styles.repeatsToggle, { backgroundColor: palette.surfaceStrong }]}>
-      <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}><Icon spec={actionIcons.chevronDown} size={16} color={palette.text} /></View>
-      <Text style={[styles.value, { color: palette.text }]}>{repeatsLabel} ({Math.max(0, count - 1)})</Text>
-    </Pressable>
-    {expanded ? <View style={styles.historyEntries}>
-      {entries.map(entry => <View key={entry.id} style={[styles.card, { backgroundColor: palette.surface }]}>
-        <View style={styles.historyHeading}>
-          <Text style={[styles.value, { color: entry.scoreLabel ? palette.textSecondary : palette.textMuted }]}>
-            <Text style={{ color: entry.scoreLabel ? '#facc15' : palette.textMuted }}>★ </Text>{entry.scoreLabel || 'Not rated'}
-          </Text>
-          {entry.editable && onEdit ? <Pressable accessibilityRole="button" accessibilityLabel="Edit tracking entry" onPress={() => onEdit(entry)} hitSlop={8}>
-            <Icon spec={actionIcons.edit} size={16} color={palette.textMuted} />
-          </Pressable> : null}
+  return <View style={styles.stack}>
+    <CollectionGroup title={title} palette={palette} variant={variant}>
+      <CollectionRow icon={actionIcons.repeat} label={`${repeatsLabel} (${Math.max(0, count - 1)})`} palette={palette}
+        onPress={() => setExpanded(value => !value)}>
+        <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
+          <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
         </View>
-        {[entry.statusLabel, entry.progressLabel, entry.startedLabel, entry.finishedLabel].filter(Boolean).map((line, index) =>
-          <Text key={index} style={[styles.historyCopy, { color: palette.textMuted }]}>{line}</Text>)}
-        {entry.notes ? <MarkdownPreview markdown={entry.notes} palette={palette} /> : null}
-      </View>)}
-      {hasMore && onOpenHistory ? <Button label="View all history" tone="surface" palette={palette} onPress={onOpenHistory} /> : null}
-    </View> : null}
+      </CollectionRow>
+    </CollectionGroup>
+    {expanded ? entries.map(entry => <CollectionGroup key={entry.id} palette={palette} variant={variant}>
+      <CollectionRow icon={actionIcons.star} label={entry.scoreLabel || 'Not rated'} palette={palette}
+        onPress={entry.editable && onEdit ? () => onEdit(entry) : undefined} chevron={!!(entry.editable && onEdit)}
+        accessibilityLabel={entry.editable && onEdit ? 'Edit tracking entry' : undefined} />
+      {[[entry.statusLabel, actionIcons.pulse], [entry.progressLabel, actionIcons.list],
+        [entry.startedLabel, actionIcons.calendar], [entry.finishedLabel, actionIcons.circleCheck]]
+        .filter(([line]) => line).map(([line, icon]) => <CollectionRow key={line} icon={icon} label={line} palette={palette} />)}
+      {entry.notes ? <View key="notes" style={styles.historyNotes}><MarkdownPreview markdown={entry.notes} palette={palette} /></View> : null}
+    </CollectionGroup>) : null}
+    {expanded && hasMore && onOpenHistory ? <Button label="View all history" tone="surface" palette={palette} onPress={onOpenHistory} /> : null}
   </View>;
 }
 
 /** Section slots keep requests, permissions and editable content in their adapters. */
 export function DetailSecondary({ model = {}, sections = {}, layout = model.layout,
-  palette, onOpenLink, promote = false }) {
+  palette, onOpenLink, promote = false, variant = 'native' }) {
   const { width } = useWindowDimensions();
   const wide = width >= 768;
   const promoted = promote && width >= 600 && model.promoted?.length > 0;
   const providers = model.watchProviderRegion !== 'UNSET' && Array.isArray(model.watchProviders)
     ? <DetailWatchProviders providers={model.watchProviders} region={model.watchProviderRegion}
-      title={model.labels?.streaming} emptyLabel={model.labels?.noWatchProviders} palette={palette} /> : null;
+      title={model.labels?.streaming} emptyLabel={model.labels?.noWatchProviders} palette={palette} variant={variant} /> : null;
   const showDetails = !promoted || (model.facts || []).some(fact => !fact.promoted) || (wide && providers);
   const slots = {
     details: showDetails ? <DetailMetadata facts={model.facts} title={model.labels?.details} emptyLabel={model.labels?.noDetails}
-      palette={palette} onOpenLink={onOpenLink} promoted={promoted}>{wide ? providers : null}</DetailMetadata> : null,
+      palette={palette} onOpenLink={onOpenLink} promoted={promoted} variant={variant}>{wide ? providers : null}</DetailMetadata> : null,
     genres: model.genres?.length && !(wide && promote && !model.publicView)
-      ? <DetailGenres genres={model.genres} palette={palette} onOpenLink={onOpenLink} /> : null,
-    studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} /> : null,
-    game_lengths: model.gameLengths ? <DetailMediumExtras gameLengths={model.gameLengths} palette={palette} onOpenLink={onOpenLink} /> : null,
-    youtube_watch: model.youtubeWatch ? <DetailMediumExtras youtubeWatch={model.youtubeWatch} palette={palette} /> : null,
+      ? <DetailGenres genres={model.genres} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
+    studios: model.studios?.length ? <DetailStudios studios={model.studios} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
+    game_lengths: model.gameLengths ? <DetailMediumExtras gameLengths={model.gameLengths} palette={palette} onOpenLink={onOpenLink} variant={variant} /> : null,
+    youtube_watch: model.youtubeWatch ? <DetailMediumExtras youtubeWatch={model.youtubeWatch} palette={palette} variant={variant} /> : null,
     ...sections,
   };
   const available = Object.keys(slots).filter(key => slots[key]);
@@ -167,11 +171,6 @@ export function DetailSecondary({ model = {}, sections = {}, layout = model.layo
 }
 
 const styles = StyleSheet.create({
-  genres: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8 },
-  repeatsToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  historyEntries: { gap: 8 },
-  historyHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  historyCopy: { fontSize: 12, lineHeight: 16 },
   secondary: { gap: 24, width: '100%' },
   columns: { gap: 24, minWidth: 0 },
   columnsWide: { flexDirection: 'row', gap: 40, alignItems: 'flex-start' },
@@ -182,19 +181,12 @@ const styles = StyleSheet.create({
   fullSection: { width: '100%' },
   content: { minWidth: 0, gap: 32 },
   contentWide: { flex: 1 },
-  section: { gap: 16, minWidth: 0 },
-  heading: { fontSize: 20, lineHeight: 28, fontWeight: '700' },
-  card: { padding: 16, borderRadius: 8, gap: 8 },
-  metadataCard: { gap: 16, paddingBottom: 32 },
-  fact: { width: '100%', gap: 0 },
-  centered: { alignItems: 'center' },
-  centeredText: { textAlign: 'center' },
-  inlineValues: { flexDirection: 'row', flexWrap: 'wrap' },
-  inlineCentered: { justifyContent: 'center' },
-  label: { fontSize: 14, lineHeight: 20, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
+  stack: { gap: 24, minWidth: 0 },
+  factValues: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
+  endText: { textAlign: 'right' },
+  historyNotes: { paddingVertical: 12 },
   value: { fontSize: 14, lineHeight: 20 },
-  studios: { gap: 4 },
-  providers: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-evenly', gap: 8 },
+  providers: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
   providerImage: { width: 40, height: 40, borderRadius: 6 },
   promoted: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 32, rowGap: 16,
     paddingBottom: 20, marginBottom: 4, borderBottomWidth: 1 },

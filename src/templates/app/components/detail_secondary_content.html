@@ -20,7 +20,8 @@
         {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value %}
           {% if user_medias|length > 1 %}
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-xl font-bold">{% translate "Your History" %}</h2>
+          {% translate "Your History" as history_title %}{% detail_sidebar_props "heading" history_title as history_heading %}{{ history_heading|json_script:"detail-sidebar-history-heading" }}
+          <div data-detail-sidebar-card-root data-props-id="detail-sidebar-history-heading"><h2 class="text-xl font-bold">{{ history_title }}</h2></div>
         </div>
 
         <div class="space-y-4 mb-6">
@@ -148,6 +149,8 @@
       {# Media Details #}
       <div {% detail_section_attrs user detail_family "sidebar" "details" %}
            class="detail-sidebar-details">
+      {% detail_sidebar_props "details" as details_props %}{{ details_props|json_script:"detail-sidebar-details-props" }}
+      <div data-detail-sidebar-card-root data-props-id="detail-sidebar-details-props">
       <h2 class="detail-sidebar-details-heading text-xl font-bold mb-4">{% translate "Details" %}</h2>
       <div class="hidden md:block">
         {% include "app/components/detail_watch_providers.html" with placement="desktop" %}
@@ -232,11 +235,14 @@
         {% endif %}
       </div>
       </div>
+      </div>
 
       {% if media.genres %}
         <div {% detail_section_attrs user detail_family "sidebar" "genres" %}
              class="detail-sidebar-genres{% if not public_view|default:False %} detail-sidebar-genres--in-tooltip{% endif %}">
         {% url 'medialist' media_type=parent_media_type|default:media_type as genre_list_url %}
+        {% detail_sidebar_props "genres" as genres_props %}{{ genres_props|json_script:"detail-sidebar-genres-props" }}
+        <div data-detail-sidebar-card-root data-props-id="detail-sidebar-genres-props">
         <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Genres" %}</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-wrap gap-2 justify-center md:justify-start">
@@ -246,11 +252,14 @@
           </div>
         </div>
         </div>
+        </div>
       {% endif %}
 
       {% if studios_linked %}
         <div {% detail_section_attrs user detail_family "sidebar" "studios" %}
              class="detail-sidebar-studios">
+        {% detail_sidebar_props "studios" as studios_props %}{{ studios_props|json_script:"detail-sidebar-studios-props" }}
+        <div data-detail-sidebar-card-root data-props-id="detail-sidebar-studios-props">
         <h2 class="detail-sidebar-studios-heading text-xl font-bold mb-4 mt-6">{% translate "Studios" %}</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-col gap-1">
@@ -263,13 +272,15 @@
           </div>
         </div>
         </div>
+        </div>
       {% endif %}
 
       {# Collection #}
       {% if not public_view and media_type != MediaTypes.PODCAST.value %}
         <div {% detail_section_attrs user detail_family "sidebar" "collection" %}>
         <div class="flex items-center justify-between mb-4 mt-6">
-          <h2 class="text-xl font-bold">{% translate "Collection" %}</h2>
+          {% translate "Collection" as collection_title %}{% detail_sidebar_props "heading" collection_title as collection_heading %}{{ collection_heading|json_script:"detail-sidebar-collection-heading" }}
+          <div data-detail-sidebar-card-root data-props-id="detail-sidebar-collection-heading"><h2 class="text-xl font-bold">{{ collection_title }}</h2></div>
           <div x-data="{ collectionOpen: false }">
             <button class="p-2 text-white rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
                     hx-get="{% media_view_url 'collection_modal' media %}"
@@ -289,8 +300,11 @@
             </div>
           </div>
         </div>
-        <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
-          {# Collection statistics for TV shows/Anime or Seasons #}
+        {% detail_sidebar_props "collection" as collection_props %}{{ collection_props|json_script:"detail-sidebar-collection-props" }}
+        <div class="space-y-3">
+          {% if collection_stats or not collection_entries and not collection_entry %}
+          <div data-detail-sidebar-card-root data-props-id="detail-sidebar-collection-props">
+          <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           {% if collection_stats %}
             {% if media_type == MediaTypes.SEASON.value %}
               {# For seasons, only show episode stats #}
@@ -335,7 +349,13 @@
             {% endif %}
           {% endif %}
           
-          {# Collection metadata details #}
+          {% if not collection_stats %}<p class="text-[var(--color-text-muted)] text-sm">{% translate "No collection data available" %}</p>{% endif %}
+          </div>
+          </div>
+          {% endif %}
+          {% if collection_entries or collection_entry %}
+          {% detail_sidebar_props "heading" as collection_entries_props %}{{ collection_entries_props|json_script:"detail-sidebar-collection-entries" }}
+          <div class="rounded-md border border-gray-700 bg-[var(--color-surface-muted)] p-3" data-collection-entry-group-root data-props-id="detail-sidebar-collection-entries">
           {% if collection_entries %}
             <div>
               {% for owned_entry in collection_entries %}
@@ -349,8 +369,8 @@
               {% endif %}
               {% include "app/components/collection_entry_summary.html" with collection_entry=collection_entry media_type=media_type user=user source_style_game_meta=True flat_list=True is_last=True entry_quality_label="" %}
             </div>
-          {% elif not collection_stats %}
-            <p class="text-[var(--color-text-muted)] text-sm">{% translate "No collection data available" %}</p>
+          {% endif %}
+          </div>
           {% endif %}
         </div>
         </div>

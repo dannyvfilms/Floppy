@@ -1055,7 +1055,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
     palette={palette}
     onOpenSeason={() => onOpenItem?.({ identity: { mediaType: identity.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
   /> : null;
-  const collectionSlot = isEpisode ? null : <DetailBlock title="Collection" palette={palette}
+  const collectionSlot = isEpisode ? null : <DetailBlock grouped title="Collection" palette={palette}
       action={collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null}>
       {collection.status === 'loading' ? <DetailLoading text="Loading" palette={palette} /> : null}
       {collection.status === 'error' ? <DetailEmpty text={collection.error} palette={palette} /> : null}

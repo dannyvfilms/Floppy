@@ -133,21 +133,24 @@ export function CollectionGroup({ title, palette: suppliedPalette, variant = 'na
 function RowLabel({ icon, label, palette }) {
   return <View style={styles.rowLabel}>
     {icon ? <Icon spec={icon} color={palette.textMuted} size={20} /> : null}
-    <Text numberOfLines={1} style={[styles.rowLabelText, { color: palette.text }]}>{label}</Text>
+    <Text style={[styles.rowLabelText, { color: palette.text }]}>{label}</Text>
   </View>;
 }
 
-// Label on the left, any control on the right; a value + onPress makes the row a button.
-export function CollectionRow({ icon, label, value, onPress, palette: suppliedPalette, children, accessibilityLabel }) {
+// Label on the left, any control or value on the right; a value + onPress makes the row a
+// button, and chevron marks a row that opens something. `multiline` lets long values wrap.
+export function CollectionRow({ icon, label, value, onPress, chevron = false, multiline = false, palette: suppliedPalette, children, accessibilityLabel }) {
   const palette = mergePalette(suppliedPalette);
   const content = <>
     <RowLabel icon={icon} label={label} palette={palette} />
     {value !== undefined ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{value}</Text> : null}
     {children}
+    {chevron ? <Icon spec={actionIcons.chevronRight} color={palette.textMuted} size={16} /> : null}
   </>;
-  if (!onPress) return <View style={styles.groupRow}>{content}</View>;
+  const rowStyle = [styles.groupRow, multiline && styles.groupRowMultiline];
+  if (!onPress) return <View style={rowStyle}>{content}</View>;
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || label} onPress={onPress}
-    style={({ pressed }) => [styles.groupRow, pressed && { opacity: 0.72 }]}>{content}</Pressable>;
+    style={({ pressed }) => [rowStyle, pressed && { opacity: 0.72 }]}>{content}</Pressable>;
 }
 
 export function CollectionSwitchRow({ icon, label, value, onValueChange, disabled = false, palette: suppliedPalette, variant = 'native' }) {
@@ -621,6 +624,7 @@ const styles = StyleSheet.create({
   groupSection: { gap: 10 },
   groupRows: { paddingHorizontal: 16 },
   groupRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 50 },
+  groupRowMultiline: { paddingVertical: 8 },
   rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   rowLabelText: { ...cardTypography.title, flexShrink: 1 },
   rowValue: { fontSize: 16 },

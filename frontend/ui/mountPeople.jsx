@@ -135,6 +135,7 @@ function Adapter({ props }) {
   if (props.kind === 'extras') {
     return <PeopleView
       part="extras"
+      variant="web"
       gameLengths={props.gameLengths}
       youtubeWatch={props.youtubeWatch}
       labels={props.labels}

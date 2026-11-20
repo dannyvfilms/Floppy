@@ -6094,6 +6094,10 @@
     "frontend/ui/sidebarPins.web.js": {
       "register": "MEDIA-CARD",
       "purpose": "Browser transport for the account's sidebar pins, used by the list card's Pin to sidebar button. Expo has no sidebar to pin to."
+    },
+    "frontend/ui/mountDetailSidebarCard.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter that renders the shared Details, Streaming, Genres and Studios cards (and the grouped section headings for Your History and Collection) from the page's server-projected data, replacing the server-rendered card in place. The Django wrapper keeps layout ordering, permissions and the no-JS fallback; the adapter mirrors the legacy carousel rule that hides promoted facts and genres."
     }
   }
 }

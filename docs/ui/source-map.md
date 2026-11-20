@@ -872,6 +872,8 @@ Shared CalendarLinks accepts a session-required state from CalendarScreen. Calen
 
 Add Copy fields (`CollectionCopyEditor`, mounted on web by `mountCollectionCopyFields.jsx` and on Expo by `CollectionCopyDialog`) render through the grouped rows extracted from CalendarLinks (`CollectionGroup`, `CollectionRow`, `CollectionSwitchRow`, `CollectionSelectRow`, `CollectionTextRow` in `CollectionCopies.jsx`).
 
+The Media Details sidebar cards render through the grouped rows (see the component register): web mounts `frontend/ui/mountDetailSidebarCard.jsx` over the Django cards in `src/templates/app/components/detail_secondary_content.html`, using `{% detail_sidebar_props %}` from `src/app/detail_secondary_props.py`; Expo reaches the same `DetailSecondary` and `MediumExtras` through `DetailView`.
+
 - `expo/app/surfaces/CalendarSlot.jsx`: passes `surfaceMutedSoft` to shared `ReleaseCalendar`; current 375x812 browser pair verifies blank-day fill, with subtitle wrapping still Partial. iOS/Android not verified, Primitives; browser ownership unchanged.
 
 Status: `Partial / coexisting`
@@ -1523,6 +1525,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountCheckInState.jsx`
 - `frontend/ui/mountCollectionBrowser.jsx`
 - `frontend/ui/mountCollectionCopyFields.jsx`
+- `frontend/ui/mountDetailSidebarCard.jsx`
 - `frontend/ui/mountCollectionFields.jsx`
 - `frontend/ui/mountCopyField.jsx`
 - `frontend/ui/mountDateTimePicker.jsx`

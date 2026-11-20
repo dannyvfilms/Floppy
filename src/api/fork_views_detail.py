@@ -1,8 +1,6 @@
 """Structured, permission-aware detail data for non-browser clients."""
 
 import logging
-from datetime import date, datetime
-from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.apps import apps
@@ -11,7 +9,6 @@ from django.db.models.functions import Coalesce, Greatest
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.translation import gettext, ngettext
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
@@ -37,20 +34,20 @@ from app.detail_builders import (
     build_detail_link_sections,
 )
 from app.detail_related import enrich_detail_related_cards, enrich_detail_seasons
+from app.detail_secondary_props import (
+    nonempty_list,
+    primitive,
+    project_details,
+    sidebar_labels,
+)
 from app.models import CollectionEntry, Episode, Item, MediaTypes
 from app.providers import manual, services, tmdb
 from app.services import metadata_resolution, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import build_detail_tag_sections
 from app.templatetags.app_tags import (
-    country_code,
-    detail_promoted_facts,
-    iso_date_format,
     media_url,
-    safe_count,
     slug,
-    translate_detail_value,
-    translate_language_code,
 )
 from integrations import seerr_api
 from integrations.imports import helpers as import_helpers
@@ -99,10 +96,7 @@ def _owned_media(user, item):
     return queryset.filter(user=user).first()
 
 
-def _nonempty_list(value):
-    if isinstance(value, (tuple, list)):
-        return [entry for entry in value if entry not in (None, "", [], {})]
-    return [value] if value not in (None, "", [], {}) else []
+_nonempty_list = nonempty_list
 
 
 def _tracking_entries(viewer, item, *, public_view, can_write, media_type, tracked=None):
@@ -170,19 +164,7 @@ def _tracking_entries(viewer, item, *, public_view, can_write, media_type, track
     } for entry in entries], count
 
 
-def _primitive(value):
-    """Convert builder output to JSON-safe values without leaking model objects."""
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, dict):
-        return {str(key): _primitive(entry) for key, entry in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_primitive(entry) for entry in value]
-    return str(value)
+_primitive = primitive
 
 
 def _secondary_detail(metadata, item, source, media_type, route_media_type, viewer, book_formats):
@@ -270,69 +252,11 @@ def _secondary_detail(metadata, item, source, media_type, route_media_type, view
                 merged.setdefault(provider["provider_id"], provider)
             watch_providers = sorted(merged.values(), key=lambda provider: provider.get("display_priority", 999))
 
-    details = metadata.get("details") or {}
-    if not isinstance(details, dict):
-        details = {}
-    display_details = {}
-    for key, value in details.items():
-        if key in {"first_air_date", "last_air_date"}:
-            display = user_date_format(value, viewer) if viewer else value
-            if key == "first_air_date" and details.get("last_air_date"):
-                end = details["last_air_date"]
-                display = f"{display} \u2013 {user_date_format(end, viewer) if viewer else end}"
-        elif key in {"total_runtime", "runtime"} and details.get("episodes"):
-            count = details["episodes"]
-            display = str(value if value is not None else gettext("Unknown")) + " · " + ngettext("%(count)s episode", "%(count)s episodes", safe_count(count)) % {"count": count}
-        elif key in {"start_date", "end_date", "publish_date", "release_date", "last_updated"}:
-            display = iso_date_format(value, viewer)
-        elif key == "language":
-            display = translate_language_code(value)
-        elif key in {"season", "broadcast", "source", "players"}:
-            display = translate_detail_value(value)
-        elif key == "format" and media_type == "anime":
-            display = gettext("Anime")
-        elif key in {"format", "status", "country", "countries", "production_countries", "origin_country", "languages"}:
-            display = [gettext(str(entry)) if entry else gettext("Unknown") for entry in value] if isinstance(value, list) else gettext(str(value)) if value else gettext("Unknown")
-        else:
-            display = value
-        display_details[key] = _primitive(display)
-    promotion = detail_promoted_facts(media_type, details)
-    for field in promotion["fields"]:
-        key, value = field["key"], field["value"]
-        if key == "locale":
-            languages = ", ".join(translate_detail_value(entry) for entry in _nonempty_list(value.get("languages")))
-            countries = ", ".join(translate_detail_value(country_code(entry)) for entry in _nonempty_list(value.get("country")))
-            display = f"{languages} ({countries})" if languages and countries else languages or countries
-        elif key == "air_dates":
-            display = " \u2013 ".join(str(user_date_format(entry, viewer) if viewer else entry) for entry in value if entry)
-        elif key == "release_date":
-            display = iso_date_format(value, viewer)
-        elif key == "episodes":
-            display = ngettext("%(count)s episode", "%(count)s episodes", safe_count(value)) % {"count": value}
-        elif key == "total_runtime" and media_type == "tv" and details.get("episodes"):
-            count = details["episodes"]
-            display = str(value) + " · " + ngettext("%(count)s episode", "%(count)s episodes", safe_count(count)) % {"count": count}
-        elif isinstance(value, list):
-            display = ", ".join(str(entry) for entry in value)
-        else:
-            display = display_details.get(key, value)
-        field["display_value"] = _primitive(display)
+    details, display_details, promotion = project_details(metadata.get("details"), media_type, viewer)
     return {
         "details": _primitive(details),
         "display_details": display_details,
-        "labels": {
-            "unknown": gettext("Unknown"),
-            "airDates": gettext("AIR DATES"),
-            "runtime": gettext("RUNTIME"),
-            "anime": gettext("Anime"),
-            "format": gettext("Format"),
-            "author": gettext("AUTHOR"),
-            "authors": gettext("AUTHORs"),
-            "details": gettext("Details"),
-            "noDetails": gettext("No details available"),
-            "streaming": gettext("STREAMING"),
-            "noWatchProviders": gettext("No watch providers"),
-        },
+        "labels": sidebar_labels(),
         "authors_linked": authors,
         "studios_linked": studios,
         "author_detail_keys": ["author", "authors", "people"],
@@ -1902,7 +1826,7 @@ class MediaActivityTimelineView(drf_views.APIView):
 
         from app import history_processor
         from app.models import BasicMedia
-        from users.templatetags.user_tags import user_date_format, user_datetime_format
+        from users.templatetags.user_tags import user_datetime_format
 
         lookup_type = media_type
         if season_number is not None:

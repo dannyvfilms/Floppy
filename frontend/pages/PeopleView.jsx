@@ -73,6 +73,7 @@ function CreditGrid({ items, title, summary, emptyLabel, renderItem, renderGrid,
 
 export function PeopleView({
   part = 'full',
+  variant = 'native',
   kind = 'person',
   person = {},
   studio = {},
@@ -233,7 +234,7 @@ export function PeopleView({
     </View> : null}
     {!loading && showExtras && (gameLengths || youtubeWatch || reading) ? <View style={styles.section}>
       <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text || '#fafafa' }]}>{copy.mediumExtras}</Text>
-      <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading}
+      <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading} variant={variant}
         labels={labels} palette={colors}
         onOpenSource={onOpenSource} onOpenItem={onOpenExtra} />
     </View> : null}
