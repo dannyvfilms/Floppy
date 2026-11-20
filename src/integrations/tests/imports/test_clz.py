@@ -667,6 +667,26 @@ class CLZNativeExportTests(TestCase):
 
         self.assertEqual(len(records), 1)
 
+    def test_user_defined_fields_come_through_by_name(self):
+        """Each udf value is named by its definition, not merged into one list."""
+        udf = (
+            '<udfdefinition uuid="a1" name="Shelf Row 1"></udfdefinition>'
+            '<udfdefinition uuid="b2" name="Shelf Row 2"></udfdefinition>'
+        )
+        values = (
+            '<udfs><udf uuid="a1"><value>Slot 1</value></udf>'
+            '<udf uuid="b2"><value>Slot 2</value></udf></udfs>'
+        )
+        record = NATIVE_RECORDS[0].replace("</comic>", values + "</comic>")
+
+        records, columns = clz.parse_xml(
+            upload("e.xml", native_export(record, udf=udf)),
+        )
+
+        self.assertEqual(records[0]["Shelf Row 1"], "Slot 1")
+        self.assertEqual(records[0]["Shelf Row 2"], "Slot 2")
+        self.assertNotIn("Udfs Udf Value", columns)
+
     def test_an_empty_envelope_is_reported(self):
         """A native export with no comics fails loudly, not as a silent import."""
         with self.assertRaisesMessage(MediaImportError, "no records"):
