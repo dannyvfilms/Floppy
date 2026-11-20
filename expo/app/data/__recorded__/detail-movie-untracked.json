@@ -191,6 +191,9 @@
       "format": "Movie",
       "release_date": "Jan. 1, 2010"
     },
+    "genre_counts": {
+      "Drama": 0
+    },
     "labels": {
       "airDates": "AIR DATES",
       "anime": "Anime",
@@ -204,6 +207,7 @@
       "streaming": "STREAMING",
       "unknown": "Unknown"
     },
+    "platform_counts": {},
     "promotion": {
       "fields": [
         {
