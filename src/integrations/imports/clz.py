@@ -361,6 +361,24 @@ def _native_record(flat):
     return record
 
 
+def _take_udfs(record, udf_names):
+    """Remove a record's ``<udfs>`` and return its values by field name.
+
+    CLZ stores a user-defined field's value under the field's uuid and its
+    name once, in ``udfdefinitions``. Flattening would merge every value into
+    one list and lose which field each belongs to.
+    """
+    values = {}
+    for udfs in record.findall("udfs"):
+        for udf in udfs:
+            name = udf_names.get(udf.get("uuid"))
+            value = (udf.findtext("value") or "").strip()
+            if name and value:
+                values[name] = value
+        record.remove(udfs)
+    return values
+
+
 def _is_record(native, stack):
     """Return whether the element that just closed is an export record."""
     if native:
@@ -381,6 +399,7 @@ def parse_xml(file, sink=None):
     columns = []
     seen = set()
     count = 0
+    udf_names = {}
     try:
         stack = []
         native = False
@@ -390,12 +409,20 @@ def parse_xml(file, sink=None):
                 if len(stack) == 1:
                     native = element.tag.lower() == NATIVE_ROOT
                 continue
+            if native and element.tag.lower() == "udfdefinitions":
+                for definition in element:
+                    uuid = definition.get("uuid")
+                    if uuid and definition.get("name"):
+                        udf_names[uuid] = definition.get("name")
             if _is_record(native, stack):
                 if len(element):
+                    udfs = _take_udfs(element, udf_names) if native else {}
                     record = {}
                     _flatten_element(element, "", record)
                     if native:
                         record = _native_record(record)
+                        for name, value in udfs.items():
+                            record.setdefault(name, value)
                     if sink is None:
                         records.append(record)
                     else:
