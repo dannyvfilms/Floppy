@@ -40,7 +40,7 @@ const factLabel = label => (label && label === label.toUpperCase()
 function PlatformsRow({ names, collected, counts, palette }) {
   const all = [...new Set([...collected, ...names])];
   return <CollectionExpandRow icon={actionIcons.monitor} label="Platform" palette={palette}
-    items={all.map(name => ({ key: name, label: name, count: counts[name] || 0 }))} />;
+    items={all.map(name => ({ key: name, label: name, count: counts[name] }))} />;
 }
 
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',

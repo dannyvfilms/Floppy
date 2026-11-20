@@ -172,7 +172,7 @@ export function CollectionRow({ icon, image, tone, label, value, onPress, chevro
 
 // The Collection Summary's disclosure as a row. The row keeps its label and an arrow; opening it
 // lists the items beneath in the Summary's small breakdown style (colour swatch, name, count).
-// `items` with a `count` get a swatch; items with `onPress` are links. Rows that carry values
+// Every item gets a swatch; a `count` shows only when the server supplied it; `onPress` makes a link. Rows that carry values
 // instead (`value`, `icon`) open as ordinary rows. A row with no items is a plain row.
 export function CollectionExpandRow({ icon, label, summary, items = [], palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
@@ -192,7 +192,7 @@ export function CollectionExpandRow({ icon, label, summary, items = [], palette:
     </CollectionRow>
     {expanded && breakdown ? <View style={[styles.contextBreakdown, styles.expandBreakdown, { borderColor: palette.border }]}>
       {items.map((item, index) => <CollectionBreakdownRow key={item.key} label={item.label} count={item.count}
-        swatch={item.count !== undefined ? SWATCHES[index % SWATCHES.length] : undefined} onPress={item.onPress} palette={palette} />)}
+        swatch={SWATCHES[index % SWATCHES.length]} onPress={item.onPress} palette={palette} />)}
     </View> : null}
     {expanded && !breakdown ? items.map(item => <View key={item.key}>
       <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: icon ? 28 : 0 }]} />
