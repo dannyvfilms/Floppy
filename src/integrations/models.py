@@ -1276,6 +1276,66 @@ class CollectionSourceState(models.Model):
         return f"{self.user}"
 
 
+class SourcePage(models.Model):
+    """Where a title lives in one of a user's servers, for the detail links menu.
+
+    Radarr/Sonarr imports record every title they manage, downloaded or not,
+    and the Jellyfin webhook records the items it reports. Keyed by provider
+    id rather than by Item, so a title Floppy has never stored still links.
+    ``path`` is relative to the server address, which is read when the link
+    is built, so changing that address does not leave stale links.
+    """
+
+    SOURCE_CHOICES = [
+        ("radarr", "Radarr"),
+        ("sonarr", "Sonarr"),
+        ("jellyfin", "Jellyfin"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="source_pages",
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    source_instance_id = models.PositiveIntegerField(
+        default=0,
+        help_text="PK of the Radarr/Sonarr instance; 0 for single-account sources",
+    )
+    provider = models.CharField(max_length=20, help_text="e.g. 'tmdb' or 'tvdb'")
+    media_type = models.CharField(max_length=20, help_text="'movie' or 'tv'")
+    media_id = models.CharField(max_length=50)
+    path = models.CharField(
+        max_length=255,
+        help_text="The title's page relative to the server, e.g. 'series/ted-lasso'",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "source",
+                    "source_instance_id",
+                    "provider",
+                    "media_type",
+                    "media_id",
+                ],
+                name="integrations_sourcepage_unique_title",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "provider", "media_type", "media_id"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this page."""
+        return f"{self.source}:{self.provider}/{self.media_id}"
+
+
 class StorytellerAccount(models.Model):
     """Store Storyteller connection settings and sync state for a user."""
 

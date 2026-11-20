@@ -141,3 +141,28 @@ class SecureCookieConfigurationTests(SimpleTestCase):
             timeout=30,
         )
         self.assertEqual(json.loads(result.stdout), [True, True, None, False, False])
+
+
+class RefusedControlMessageLogTests(SimpleTestCase):
+    def test_refused_pickle_is_one_warning_per_hour(self):
+        import logging
+
+        from app import log_safety
+
+        def record():
+            exc = ContentDisallowed("Refusing to deserialize untrusted content")
+            return logging.LogRecord(
+                "kombu.messaging", logging.CRITICAL, __file__, 1,
+                "Can't decode message body: %r", ("x",), (type(exc), exc, None),
+            )
+
+        log_safety._rejected_control_logged_at = 0.0
+        flt = log_safety.RejectedControlMessageFilter()
+        first = record()
+        self.assertTrue(flt.filter(first))
+        self.assertEqual(first.levelno, logging.WARNING)
+        self.assertIsNone(first.exc_info)
+        self.assertIn("REDIS_PREFIX", first.getMessage())
+        self.assertFalse(flt.filter(record()))
+        other = logging.LogRecord("kombu.messaging", logging.ERROR, __file__, 1, "x", (), None)
+        self.assertTrue(flt.filter(other))

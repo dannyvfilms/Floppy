@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import logging
 import re
+import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -331,3 +332,45 @@ class ConsoleNoiseFilter(logging.Filter):
         if record.name.startswith(_NOISY_LOGGER_PREFIXES):
             return False
         return not _NOISY_PATH_PATTERN.search(record.getMessage())
+
+
+_REJECTED_CONTROL_LOG_SECONDS = 3600
+_rejected_control_logged_at = 0.0
+
+
+class RejectedControlMessageFilter(logging.Filter):
+    """Turn kombu's CRITICAL traceback for a refused pickle message into one note.
+
+    Floppy accepts JSON only, so a worker refuses a pickled Celery control
+    command (``ping``) from an older or foreign process on the same broker. The
+    refusal is correct and harmless, but kombu logs it as CRITICAL with a
+    traceback and raw body on every attempt (#1963, #2050). Keep the refusal
+    visible as a single WARNING at most once an hour, saying what to check.
+    """
+
+    def filter(self, record):
+        """Replace the record for a refused control message; pass the rest."""
+        global _rejected_control_logged_at  # noqa: PLW0603 - per-process throttle
+
+        exc = record.exc_info[1] if record.exc_info else None
+        if type(exc).__name__ != "ContentDisallowed":
+            return True
+        now = time.monotonic()
+        if _rejected_control_logged_at and (
+            now - _rejected_control_logged_at < _REJECTED_CONTROL_LOG_SECONDS
+        ):
+            return False
+        _rejected_control_logged_at = now
+        record.levelno = logging.WARNING
+        record.levelname = "WARNING"
+        record.msg = (
+            "Refused a pickled broker message (usually a Celery control ping "
+            "from an old Floppy container or another Celery app on this Redis). "
+            "Floppy accepts JSON only, so nothing ran. Stop the old publisher or "
+            "give each deployment its own REDIS_PREFIX; see "
+            "docs/security-hardening.md. Shown once an hour."
+        )
+        record.args = ()
+        record.exc_info = None
+        record.exc_text = None
+        return True

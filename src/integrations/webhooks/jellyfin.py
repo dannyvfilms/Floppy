@@ -17,6 +17,7 @@ from app.services.episode_scores import set_episode_score, tracked_episode_plays
 from integrations.imports.helpers import find_item_across_buckets
 from integrations.source_sync import (
     remove_collection_source_state,
+    set_source_page,
     upsert_collection_source_state,
 )
 
@@ -378,6 +379,29 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 source=JELLYFIN_COLLECTION_SOURCE,
             )
             logger.info("Removed %s from Jellyfin collection ownership", item.title)
+        self._save_page(event_type, payload, user, item)
+
+    def _save_page(self, event_type, payload, user, item):
+        """Remember the Jellyfin page of a movie or of an episode's series.
+
+        A deleted episode leaves the series page: other episodes may remain.
+        """
+        jellyfin_item = payload.get("Item") or {}
+        if jellyfin_item.get("Type") == "Movie":
+            media_type, jellyfin_id = MediaTypes.MOVIE.value, jellyfin_item.get("Id")
+        elif event_type == "ItemAdded":
+            media_type, jellyfin_id = MediaTypes.TV.value, jellyfin_item.get("SeriesId")
+        else:
+            return
+        added = event_type == "ItemAdded" and jellyfin_id
+        set_source_page(
+            user=user,
+            source=JELLYFIN_COLLECTION_SOURCE,
+            provider=item.source,
+            media_type=media_type,
+            media_id=item.media_id,
+            path=f"web/#/details?id={jellyfin_id}" if added else "",
+        )
 
     def _resolve_collection_item(self, payload, ids, *, allow_create):
         """Resolve the canonical Item for a Jellyfin collection event."""

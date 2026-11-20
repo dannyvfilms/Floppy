@@ -126,8 +126,19 @@ def _panel(app, instance, **fields):
         "queue": [],
         "history": [],
         "search": None,
+        "url": "",
         **fields,
     }
+
+
+def _web_url(instance, path):
+    """Return the Radarr/Sonarr page for a title, on the address Floppy uses."""
+    return f"{instance.base_url.rstrip('/')}/{path}"
+
+
+def _absent_panel(app, instance, url=""):
+    """Return the panel for a connected server that lacks this title."""
+    return _panel(app, instance, found=False, status="absent", url=url)
 
 
 def _error_panel(app, instance, error):
@@ -148,7 +159,7 @@ def _radarr_panel(instance, tmdb_id):
     client = _client(RadarrClient, instance)
     row = client.movie_by_tmdb_id(tmdb_id)
     if not row:
-        return None
+        return _absent_panel("Radarr", instance)
     queue = _queue_rows(client.queue(row["id"]))
     status, label = _status(bool(row.get("hasFile")), queue)
     return _panel(
@@ -160,6 +171,7 @@ def _radarr_panel(instance, tmdb_id):
         queue=queue,
         history=_history_rows(client.history(row["id"])),
         search={"kind": "movie", "arr_id": row["id"]},
+        url=_web_url(instance, f"movie/{row.get('titleSlug') or tmdb_id}"),
         **_file_fields(row.get("movieFile")),
     )
 
@@ -187,8 +199,13 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
     client = _client(SonarrClient, instance)
     series = _series_row(client, instance, source, media_id)
     if not series:
-        return None
+        return _absent_panel("Sonarr", instance)
     series_id = series["id"]
+    url = (
+        _web_url(instance, f"series/{series['titleSlug']}")
+        if series.get("titleSlug")
+        else ""
+    )
     queue_rows = client.queue(series_id)
     fields = {"monitored": bool(series.get("monitored"))}
 
@@ -212,7 +229,7 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
                 None,
             )
             if not episode:
-                return None
+                return _absent_panel("Sonarr", instance, url)
             episode_id = episode["id"]
             queue = _queue_rows(
                 [r for r in queue_rows if r.get("episodeId") == episode_id]
@@ -248,12 +265,13 @@ def _sonarr_panel(instance, source, media_id, media_type, season, episode_number
         queue=queue,
         history=_history_rows(history),
         search=search,
+        url=url,
         **fields,
     )
 
 
 def library_panels(user, source, media_type, media_id, season=None, episode=None):
-    """Return one panel per connected Radarr/Sonarr that has this title."""
+    """Return one panel per connected Radarr/Sonarr, marking titles it lacks."""
     panels = []
     if media_type == MediaTypes.MOVIE.value and source == Sources.TMDB.value:
         for instance in user.radarr_instances.all():
@@ -315,3 +333,121 @@ def start_search(user, app, instance_id, kind, arr_id, season=None):
         logger.warning("%s search failed: %s", app, type(error).__name__)
         return f"Couldn't start the search in {app}."
     return ""
+
+
+PLEX_WEB = "https://app.plex.tv/desktop/#!/server/{machine}/details?key=%2Flibrary%2Fmetadata%2F{key}"
+
+
+def _plex_link(user, source, item_type, media_id):
+    """Return the Plex web page for the viewer's copy, from the cached rating key."""
+    from app.models import CollectionEntry
+
+    # The copy is looked up before the account: most titles have no Plex copy,
+    # and the missing account would cost its own query on every detail page.
+    entry = (
+        CollectionEntry.objects.filter(
+            user=user,
+            item__source=source,
+            item__media_type=item_type,
+            item__media_id=str(media_id),
+            plex_rating_key__isnull=False,
+        )
+        .exclude(plex_rating_key="")
+        .values("plex_rating_key", "plex_uri")
+        .first()
+    )
+    if entry is None:
+        return None
+    account = getattr(user, "plex_account", None)
+    if account is None:
+        return None
+    # A copy is on the server whose connection URI cached it.
+    machine = next(
+        (
+            section.get("machine_identifier")
+            for section in account.sections or []
+            if isinstance(section, dict)
+            and entry["plex_uri"]
+            and section.get("uri") == entry["plex_uri"]
+        ),
+        None,
+    ) or account.machine_identifier
+    if not machine:
+        return None
+    return ("Plex", PLEX_WEB.format(machine=machine, key=entry["plex_rating_key"]), "plex")
+
+
+def server_link_groups(user, source, media_type, media_id):
+    """Return ``(title, [(label, url, brand)])`` groups for the detail links menu.
+
+    Built from saved data only, so a detail page makes no call to any server:
+    the Seerr address, the pages Radarr/Sonarr imports and the Jellyfin webhook
+    record (``SourcePage``), and the rating key Plex caches on a copy.
+    """
+    if not getattr(user, "is_authenticated", False) or source not in (
+        Sources.TMDB.value,
+        Sources.TVDB.value,
+    ):
+        return []
+    if media_type == MediaTypes.MOVIE.value:
+        arr, item_type = "radarr", MediaTypes.MOVIE.value
+    elif media_type in (
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.EPISODE.value,
+    ):
+        arr, item_type = "sonarr", MediaTypes.TV.value
+    else:
+        return []
+
+    from integrations.models import SourcePage
+
+    pages = list(
+        SourcePage.objects.filter(
+            user=user,
+            source__in=(arr, "jellyfin"),
+            provider=source,
+            media_type=item_type,
+            media_id=str(media_id),
+        ).values_list("source", "source_instance_id", "path")
+    )
+    groups = []
+
+    players = []
+    plex = _plex_link(user, source, item_type, media_id)
+    if plex:
+        players.append(plex)
+    # Emby is left out: it reports playback only, so it cannot say what is
+    # on the server.
+    jellyfin_paths = [path for app, _instance_id, path in pages if app == "jellyfin"]
+    jellyfin = getattr(user, "jellyfin_account", None) if jellyfin_paths else None
+    for path in jellyfin_paths:
+        if jellyfin is not None:
+            url = _web_url(jellyfin, path)
+            if jellyfin.server_id:
+                url += f"&serverId={jellyfin.server_id}"
+            players.append(("Jellyfin", url, "jellyfin"))
+    if players:
+        groups.append(("Players", players))
+
+    if user.seerr_url and source == Sources.TMDB.value:
+        seerr_type = "movie" if arr == "radarr" else "tv"
+        url = f"{user.seerr_url.rstrip('/')}/{seerr_type}/{media_id}"
+        groups.append(("Requests", [("Seerr", url, "seerr")]))
+
+    arr_pages = [(instance_id, path) for app, instance_id, path in pages if app == arr]
+    instances = (
+        {instance.pk: instance for instance in getattr(user, f"{arr}_instances").all()}
+        if arr_pages
+        else {}
+    )
+    label = "Radarr" if arr == "radarr" else "Sonarr"
+    downloads = []
+    for instance_id, path in arr_pages:
+        instance = instances.get(instance_id)
+        if instance is not None:
+            name = f"{label} ({instance.name})" if instance.name else label
+            downloads.append((name, _web_url(instance, path), arr))
+    if downloads:
+        groups.append(("Downloads", downloads))
+    return groups
