@@ -61,8 +61,8 @@ class WebSidebarPayloadTests(SimpleTestCase):
 class PlatformCountsTests(TestCase):
     """Platform rows report how many other games are collected on each platform."""
 
-    def test_counts_other_games_per_listed_platform(self):
-        """The current game and other platforms are left out of each count."""
+    def test_counts_games_per_listed_platform(self):
+        """Each listed platform counts the viewer's collected games, this one included."""
         user = get_user_model().objects.create_user(username="counts", password="x")
         games = [
             Item.objects.create(
@@ -74,11 +74,11 @@ class PlatformCountsTests(TestCase):
         for game, platform in zip(games, ["PC (Windows)", "PC (Windows)", "Mac"], strict=True):
             CollectionEntry.objects.create(item=game, user=user, resolution=platform)
         counts = platform_collection_counts(user, games[0], {"platforms": ["PC (Windows)", "Mac", "Linux"]})
-        self.assertEqual(counts, {"PC (Windows)": 1, "Mac": 1, "Linux": 0})
+        self.assertEqual(counts, {"PC (Windows)": 2, "Mac": 1, "Linux": 0})
         self.assertEqual(platform_collection_counts(None, games[0], {"platforms": ["Mac"]}), {})
 
     def test_counts_other_tracked_items_per_genre(self):
-        """A genre counts the viewer's other tracked items of the same type."""
+        """A genre counts the viewer's tracked items of the same type, this one included."""
         user = get_user_model().objects.create_user(username="genres", password="x")
         items = [
             Item.objects.create(
@@ -90,4 +90,4 @@ class PlatformCountsTests(TestCase):
         for item in items:
             Game.objects.create(item=item, user=user, status=Status.COMPLETED.value)
         counts = genre_library_counts(user, items[0], "game", ["Racing", "Action", "Puzzle"])
-        self.assertEqual(counts, {"Racing": 1, "Action": 0, "Puzzle": 1})
+        self.assertEqual(counts, {"Racing": 2, "Action": 1, "Puzzle": 1})

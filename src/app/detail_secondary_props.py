@@ -39,7 +39,7 @@ def nonempty_list(value):
 
 
 def platform_collection_counts(viewer, item, details):
-    """Return, per listed platform, how many of the viewer's other games are collected on it."""
+    """Return, per listed platform, how many of the viewer's games are collected on it."""
     names = [name for name in nonempty_list((details or {}).get("platforms")) if isinstance(name, str)]
     if not getattr(viewer, "is_authenticated", False) or item is None or not names:
         return {}
@@ -51,7 +51,6 @@ def platform_collection_counts(viewer, item, details):
         CollectionEntry.objects.filter(
             user=viewer, item__media_type=MediaTypes.GAME.value, resolution__in=names,
         )
-        .exclude(item=item)
         .values("resolution")
         .annotate(games=Count("item", distinct=True))
     )
@@ -59,7 +58,7 @@ def platform_collection_counts(viewer, item, details):
 
 
 def genre_library_counts(viewer, item, media_type, genres):
-    """Return, per genre, how many of the viewer's other items of this type carry it."""
+    """Return, per genre, how many of the viewer's items of this type carry it."""
     names = [name for name in nonempty_list(genres) if isinstance(name, str)]
     if not getattr(viewer, "is_authenticated", False) or item is None or not names:
         return {}
@@ -74,7 +73,7 @@ def genre_library_counts(viewer, item, media_type, genres):
     return {
         name: model.objects.filter(
             user=viewer, item_id__in=item_ids_with_json_array_value_ci("genres", name.strip().lower()),
-        ).exclude(item=item).count()
+        ).count()
         for name in names
     }
 

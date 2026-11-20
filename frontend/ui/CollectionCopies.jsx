@@ -90,7 +90,7 @@ export function CollectionBreakdownRow({ label, count, swatch, onPress, palette:
   const row = <View style={styles.contextRow}>
     {swatch ? <View style={[styles.contextSwatch, { backgroundColor: swatch }]} /> : null}
     <Text style={[styles.contextRowLabel, { color: onPress ? palette.accent : palette.text }]}>{label}</Text>
-    {count !== undefined ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{count}</Text> : null}
+    {count > 0 ? <Text style={[styles.contextMeta, { color: palette.textMuted }]}>{count}</Text> : null}
     {onPress ? <Icon spec={actionIcons.chevronRight} size={14} color={palette.textMuted} /> : null}
   </View>;
   return onPress ? <Pressable accessibilityRole="link" accessibilityLabel={label} onPress={onPress}>{row}</Pressable> : row;
