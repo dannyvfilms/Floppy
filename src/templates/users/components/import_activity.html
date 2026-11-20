@@ -223,6 +223,7 @@
                   class="mt-2"
                   onsubmit="return confirm(gettext('Remove the items this import created? This cannot be undone.'));">
               {% csrf_token %}
+              {% if return_url %}<input type="hidden" name="next" value="{{ return_url }}">{% endif %}
               <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">{% translate "Undo this import" %}</button>
             </form>
           {% endif %}
