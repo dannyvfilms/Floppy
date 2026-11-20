@@ -175,7 +175,8 @@ export function CollectionRow({ icon, image, tone, label, value, onPress, chevro
 // Every item gets a swatch (`swatch: false` omits it); a `count` shows only when the server supplied it,
 // `value` is free text in the same place (a duration, a percentage); `onPress` makes a link. Rows that carry values
 // A row with no items is a plain row.
-export function CollectionExpandRow({ icon, label, summary, items = [], palette: suppliedPalette }) {
+// `info` ({ label, onPress }) adds a small i button beside the label that opens a link without toggling the row.
+export function CollectionExpandRow({ icon, label, summary, items = [], info, palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
   const palette = mergePalette(suppliedPalette);
   if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
@@ -184,6 +185,9 @@ export function CollectionExpandRow({ icon, label, summary, items = [], palette:
       accessibilityLabel={`${label}${summary ? `, ${summary}` : ''}, ${expanded ? 'collapse' : 'expand'}`}
       onPress={() => setExpanded(value => !value)}>
       <View style={styles.expandEnd}>
+        {info ? <Pressable accessibilityRole="link" accessibilityLabel={info.label} onPress={info.onPress} hitSlop={10}>
+          <Icon spec={actionIcons.info} size={18} color={palette.textMuted} />
+        </Pressable> : null}
         {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
         <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
           <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />

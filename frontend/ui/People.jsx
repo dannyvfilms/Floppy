@@ -433,10 +433,10 @@ export function MediumExtras({
     }
     if (gameLengths?.available && gameLengths.cards?.length) {
       const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, label: card.label, value: card.value }));
-      if (gameLengths.sourceLabel) items.push({ key: 'source', swatch: false, label: gameLengths.sourceLabel,
-        onPress: gameLengths.sourceUrl && onOpenSource ? () => onOpenSource(gameLengths.sourceUrl) : undefined });
       rows.push(<CollectionExpandRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat}
-        summary={gameLengths.cards[0].value} items={items} palette={colors} />);
+        summary={gameLengths.cards[0].value} items={items} palette={colors}
+        // The source (HowLongToBeat) is an i button beside the label that opens its page.
+        info={gameLengths.sourceUrl && onOpenSource ? { label: gameLengths.sourceLabel || 'Source', onPress: () => onOpenSource(gameLengths.sourceUrl) } : undefined} />);
     } else if (gameLengths) {
       rows.push(<CollectionRow key="beat" icon={actionIcons.alarmClock} label={copy.timeToBeat} palette={colors} multiline
         value={gameLengths.pending ? copy.timeToBeatPending : copy.timeToBeatEmpty} />);
