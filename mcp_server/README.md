@@ -33,6 +33,15 @@ Configure the server with two environment variables:
   access and also authenticates webhooks and iCal. Never put it in commits,
   logs, screenshots, or shared shell history. If it is exposed, regenerate it
   in Settings → Integrations. Sent as an `X-API-Key` header.
+- `FLOPPY_MCP_ALLOWED_HOSTS` — optional comma-separated HTTP Host authorities
+  accepted by Streamable HTTP host validation. Behind a reverse proxy,
+  FastMCP's DNS-rebinding protection can reject an unlisted incoming Host with
+  HTTP 421. Allow the MCP endpoint's public authority here; this is distinct
+  from `FLOPPY_URL`, which points to the Floppy API.
+  Include a non-standard port when the proxy sends one, for example
+  `mcp.example.com,mcp.example.com:8443`.
+  This only configures Host validation; it does not authenticate clients or
+  configure TLS. Stdio users can leave it unset.
 
 The Floppy host also publishes these API references:
 
