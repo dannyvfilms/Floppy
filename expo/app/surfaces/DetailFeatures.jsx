@@ -1055,12 +1055,16 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
     palette={palette}
     onOpenSeason={() => onOpenItem?.({ identity: { mediaType: identity.libraryMediaType === 'anime' ? 'anime' : 'tv', detailType: 'season', source: identity.source, mediaId: identity.mediaId, seasonNumber: identity.seasonNumber } })}
   /> : null;
-  const collectionSlot = isEpisode ? null : <DetailBlock grouped actionRow={Platform.OS === 'ios'} title="Collection" palette={palette}
-      action={collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null}>
+  const collectionAction = collectionAddress ? { label: 'Add to collection', onPress: () => openCopyDialog() } : null;
+  // iOS puts the add action in the list as a row; web and Android keep the heading's + button.
+  const addAsRow = Platform.OS === 'ios';
+  const collectionSlot = isEpisode ? null : <DetailBlock grouped title="Collection" palette={palette}
+      action={addAsRow ? null : collectionAction}>
       {collection.status === 'loading' ? <DetailLoading text="Loading" palette={palette} /> : null}
       {collection.status === 'error' ? <DetailEmpty text={collection.error} palette={palette} /> : null}
       {collection.status === 'ready' ? <DetailCollectionBlock counts={collection.counts}
-        entries={collection.entries} empty="No collection data available" palette={palette} /> : null}
+        entries={collection.entries} empty="No collection data available" palette={palette}
+        actionRow={addAsRow ? collectionAction : null} /> : null}
     </DetailBlock>;
   const notesSlot = tracking.notes.length ? <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
     onEdit={openNotes} palette={palette} /> : null;

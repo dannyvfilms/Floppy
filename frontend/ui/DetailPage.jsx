@@ -130,14 +130,12 @@ const SCORE_CARD_HEIGHT = 375 / 4;
 const SCORE_CARD_WIDTH = SCORE_CARD_HEIGHT * 16 / 9;
 
 // `grouped` titles the block like the grouped cards (small muted heading) instead of the large one.
-// `actionRow` (set by the iOS screen) shows the action as a full-width accent row under the content,
-// the system action-row look, instead of the round + button that web and Android keep.
-export function DetailBlock({ title, action, palette, grouped = false, actionRow = false, children }) {
+export function DetailBlock({ title, action, palette, grouped = false, children }) {
   return <View style={styles.block}>
     <View style={styles.blockHeader}>
       {grouped ? <View accessibilityRole="header"><CollectionSectionHeading title={title} palette={palette} /></View>
         : <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>}
-      {action && !actionRow ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
+      {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
         style={({ pressed }) => [styles.roundButton, {
           backgroundColor: pressed ? palette.accent : palette.accentStrong,
         }]}>
@@ -145,10 +143,6 @@ export function DetailBlock({ title, action, palette, grouped = false, actionRow
       </Pressable> : null}
     </View>
     {children}
-    {actionRow ? <CollectionGroup palette={palette}>
-      <CollectionRow key="action" icon={actionIcons[action.icon || 'plus']} tone="accent" label={action.label}
-        palette={palette} onPress={action.onPress} />
-    </CollectionGroup> : null}
   </View>;
 }
 
@@ -180,14 +174,18 @@ export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
   </View>;
 }
 
-export function DetailCollectionBlock({ counts = [], entries, empty, palette }) {
+// `actionRow` (set by the iOS screen) adds the add action as the list's last row, in the accent colour
+// (the system action-row look), instead of the round + button web and Android keep in the heading.
+// With no collection data that row is all that shows.
+export function DetailCollectionBlock({ counts = [], entries, empty, palette, actionRow }) {
   const rows = [
     ...counts.map(count => <CollectionRow key={`count-${count.label}`} icon={actionIcons.cube} label={count.label} value={count.value} palette={palette} />),
     ...entries.map(entry => <CollectionRow key={entry.id} icon={actionIcons.disc} label={entry.title} value={entry.date || undefined} palette={palette} />),
   ];
-  return <CollectionGroup palette={palette}>
-    {rows.length ? rows : [<CollectionRow key="empty" icon={actionIcons.info} label={empty} palette={palette} />]}
-  </CollectionGroup>;
+  if (actionRow) rows.push(<CollectionRow key="action" icon={actionIcons[actionRow.icon || 'plus']} tone="accent"
+    label={actionRow.label} palette={palette} onPress={actionRow.onPress} />);
+  else if (!rows.length) rows.push(<CollectionRow key="empty" icon={actionIcons.info} label={empty} palette={palette} />);
+  return <CollectionGroup palette={palette}>{rows}</CollectionGroup>;
 }
 
 const EPISODE_ACTION_ICONS = { watch: 'eyeClosed', unwatch: 'eye', collection: 'cube', lists: 'listAdd', history: 'history' };

@@ -174,8 +174,11 @@ export function CollectionExpandRow({ icon, label, summary, items = [], palette:
     </CollectionRow>
     {expanded ? items.map(item => <View key={item.key}>
       <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: icon ? 28 : 0 }]} />
-      <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
-        onPress={item.onPress} chevron={!!item.onPress} multiline />
+      {item.valueOnly
+        // A plain list entry reads as another value of the row above, at the same text size.
+        ? <CollectionRow icon={icon} label="" value={item.label} palette={palette} onPress={item.onPress} chevron={!!item.onPress} multiline />
+        : <CollectionRow icon={item.icon || icon} label={item.label} value={item.value} palette={palette}
+          onPress={item.onPress} chevron={!!item.onPress} multiline />}
     </View>) : null}
   </View>;
 }

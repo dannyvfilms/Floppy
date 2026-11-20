@@ -9,7 +9,7 @@ import { MediumExtras } from './People';
 import { detailSecondaryOrder } from './detailSecondaryModel';
 
 function Value({ value, palette, onOpenLink }) {
-  const text = <Text style={[styles.value, styles.endText, { color: palette.textSecondary }]}>{value.text}</Text>;
+  const text = <Text style={[styles.factValue, styles.endText, { color: palette.textSecondary }]}>{value.text}</Text>;
   return value.href && onOpenLink
     ? <Pressable accessibilityRole="link" accessibilityLabel={value.text}
       onPress={() => onOpenLink(value.href, value.identity)}>{text}</Pressable> : text;
@@ -35,11 +35,12 @@ function factIcon(key) {
 const factLabel = label => (label && label === label.toUpperCase()
   ? label.toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase()) : label);
 
-// The collected platform if there is one, otherwise the first listed; the rest open inline.
+// The collected platform if there is one, otherwise the first listed, with the rest opening inline.
 function PlatformsRow({ names, collected, palette }) {
   const primary = collected[0] || names[0];
-  return <CollectionExpandRow icon={actionIcons.monitor} label={primary} summary={`${names.length} platforms`}
-    items={names.filter(name => name !== primary).map(name => ({ key: name, label: name }))} palette={palette} />;
+  const rest = names.filter(name => name !== primary);
+  return <CollectionExpandRow icon={actionIcons.monitor} label="Platform" summary={`${primary} +${rest.length}`}
+    items={rest.map(name => ({ key: name, label: name, valueOnly: true }))} palette={palette} />;
 }
 
 export function DetailMetadata({ facts = [], title = 'Details', emptyLabel = 'No details available',
@@ -110,8 +111,8 @@ export function DetailGenres({ genres = [], title = 'Genres', palette, onOpenLin
   const [first, ...rest] = genres;
   return <CollectionGroup title={title} palette={palette} variant={variant}>
     {rest.length
-      ? <CollectionExpandRow key="genres" icon={actionIcons.tag} label={first.label} summary={`${genres.length} genres`}
-        items={rest.map((genre, index) => ({ key: `${genre.label}-${index}`, label: genre.label, onPress: open(genre) }))} palette={palette} />
+      ? <CollectionExpandRow key="genres" icon={actionIcons.tag} label="Genre" summary={`${first.label} +${rest.length}`}
+        items={rest.map((genre, index) => ({ key: `${genre.label}-${index}`, label: genre.label, valueOnly: true, onPress: open(genre) }))} palette={palette} />
       : <CollectionRow key="genre" icon={actionIcons.tag} label={first.label} palette={palette}
         onPress={open(first)} chevron={!!open(first)} />}
   </CollectionGroup>;
@@ -199,6 +200,8 @@ const styles = StyleSheet.create({
   stack: { gap: 24, minWidth: 0 },
   factValues: { flexShrink: 1, alignItems: 'flex-end', gap: 2 },
   endText: { textAlign: 'right' },
+  // Matches the grouped rows' trailing value size (CollectionRow).
+  factValue: { fontSize: 16, lineHeight: 22 },
   historyNotes: { paddingVertical: 12 },
   value: { fontSize: 14, lineHeight: 20 },
   providers: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },

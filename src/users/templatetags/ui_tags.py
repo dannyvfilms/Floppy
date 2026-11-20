@@ -812,8 +812,8 @@ def _people_labels():
         "timeWatched": str(_("Time Watched")),
         "timeToBeat": str(_("Time to Beat")),
         "submissions": str(_("submissions")),
-        "timeToBeatPending": str(_("Fetching cached time-to-beat data in the background.")),
-        "timeToBeatEmpty": str(_("Time-to-beat data is not available yet.")),
+        "timeToBeatPending": str(_("Fetching")),
+        "timeToBeatEmpty": str(_("Not available")),
         "watchedOnYouTube": str(_("Watched on YouTube")),
         "started": str(_("Started")),
         "youtubeEstimate": str(
@@ -953,6 +953,7 @@ def _people_youtube_props(youtube_watch):
         "seconds": youtube_watch.get("seconds"),
         "hoursLabel": youtube_watch.get("hours_label") or "",
         "videos": youtube_watch.get("videos") or 0,
+        "channels": youtube_watch.get("channels") or [],
     }
 
 

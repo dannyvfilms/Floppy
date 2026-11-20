@@ -70,8 +70,8 @@ const DEFAULT_LABELS = {
   close: 'Close',
   timeToBeat: 'Time to Beat',
   submissions: 'submissions',
-  timeToBeatPending: 'Fetching cached time-to-beat data in the background.',
-  timeToBeatEmpty: 'Time-to-beat data is not available yet.',
+  timeToBeatPending: 'Fetching',
+  timeToBeatEmpty: 'Not available',
   watchedOnYouTube: 'Watched on YouTube',
   started: 'Started',
   time: 'Time',
@@ -436,8 +436,12 @@ export function MediumExtras({
   if (gameLengths || youtubeWatch || playedLabel) {
     const rows = [];
     if (playedLabel) rows.push(<CollectionRow key="played" icon={actionIcons.play} label={copy.timePlayed} value={playedLabel} palette={colors} />);
-    if (youtubeWatch) rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}
-      value={`${youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started} · ${youtubeWatch.videos} ${plural(youtubeWatch.videos, 'video', 'videos')}`} />);
+    if (youtubeWatch) {
+      const watched = youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started;
+      // The Collection Summary's disclosure: the total stays visible, the channel split opens inline.
+      rows.push(<CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors}
+        items={(youtubeWatch.channels || []).map(channel => ({ key: channel.name, icon: actionIcons.play, label: channel.name, value: `${channel.percent}%` }))} />);
+    }
     if (gameLengths?.available && gameLengths.cards?.length) {
       const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, icon: LENGTH_ICONS[card.label] || actionIcons.alarmClock,
         label: card.label, value: card.value }));
