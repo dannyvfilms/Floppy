@@ -3875,6 +3875,46 @@
           "evidence": "Shared react-native component; no Android runtime pass."
         }
       }
+    },
+    "frontend/pages/ProgressPageView.jsx": {
+      "components": [
+        "ProgressPageView"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
+    },
+    "frontend/ui/ProgressShowCard.jsx": {
+      "components": [
+        "ProgressShowCard"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4445,6 +4485,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Installs the platform press-and-hold menu for the shared card. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/pages/useProgressPage.js": {
+      "components": [
+        "useProgressPage",
+        "progressSorts"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Loading and view state imported by the web adapter; no browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
         }
       }
     }
@@ -6098,6 +6159,10 @@
     "frontend/ui/mountDetailSidebarCard.jsx": {
       "register": "OWNERSHIP",
       "purpose": "Browser adapter that renders the shared Details, Streaming, Genres and Studios cards (and the grouped section headings for Your History and Collection) from the page's server-projected data, replacing the server-rendered card in place. The Django wrapper keeps layout ordering, permissions and the no-JS fallback; the adapter mirrors the legacy carousel rule that hides promoted facts and genres."
+    },
+    "frontend/ui/mountProgressPage.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount ProgressPageView on /progress over the Django heading, loading the list and season breakdowns from same-origin /api/v1 and opening shows by their detail URL."
     }
   }
 }
