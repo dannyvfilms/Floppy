@@ -220,9 +220,11 @@ BULK_WRITE_SITES = {
     ("integrations/mal_sync_views.py", "mal_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/mal_sync_views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
-        "a MyAnimeList account's sync status"
-    ),
+    (
+        "integrations/mal_sync_views.py",
+        "mal_full_sync_retry_failed",
+        UNKNOWN,
+    ): _not_tracking("a MyAnimeList account's sync status"),
     ("integrations/oauth_models.py", "OAuthClient.revoke", UNKNOWN): _not_tracking(
         "OAuth refresh tokens"
     ),
@@ -570,6 +572,21 @@ BULK_WRITE_SITES = {
         "YamtrackImporter._apply_status_overrides",
         TV,
     ): (IMPORTER),
+    (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._flush_media_batch",
+        UNKNOWN,
+    ): (IMPORTER),
+    (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._restore_episode_order_history",
+        UNKNOWN,
+    ): _not_tracking("an EpisodeOrderChange audit timestamp"),
+    (
+        "integrations/imports/yamtrack.py",
+        "YamtrackImporter._restore_tracker_created_at",
+        UNKNOWN,
+    ): IMPORTER,
     (
         "integrations/imports/youtube_takeout.py",
         "YouTubeTakeoutImporter._add_plays",

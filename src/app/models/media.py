@@ -51,6 +51,7 @@ class ScoreMonitorField(MonitorField):
             return models.DateTimeField.pre_save(self, model_instance, add)
         return super().pre_save(model_instance, add)
 
+
 # Sentinel values on Item.runtime_minutes: 999998 means "aired but runtime
 # unknown", 999999 means "runtime completely unknown / failed lookup"
 # (see app.models.episode_runtimes.EXCLUDED_RUNTIME_SENTINELS).
@@ -125,7 +126,12 @@ class Media(models.Model):
     )
     scored_at = ScoreMonitorField(monitor="score", null=True, blank=True)
     progress = models.PositiveIntegerField(default=0)
-    progressed_at = MonitorField(monitor="progress")
+    progressed_at = MonitorField(
+        monitor="progress",
+        default=timezone.now,
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         max_length=20,
         choices=Status,
@@ -277,7 +283,9 @@ class Media(models.Model):
         def send():
             try:
                 sync_mal_status.delay(
-                    media_type=media_type, media_id=self.pk, clear_score=clear_score,
+                    media_type=media_type,
+                    media_id=self.pk,
+                    clear_score=clear_score,
                 )
             # The broker is down; the save already committed, so never raise.
             except Exception as error:
@@ -944,7 +952,9 @@ class Anime(Media):
 
     tracker = FieldTracker()
     objects = ActiveAnimeManager()
-    all_objects = ImportScopedManager()  # manager order is significant; objects must stay the default
+    all_objects = (
+        ImportScopedManager()
+    )  # manager order is significant; objects must stay the default
 
     @serialized_state_write
     def save(self, *args, **kwargs):
@@ -1140,7 +1150,8 @@ class MoviePlay(models.Model):
             models.UniqueConstraint(
                 fields=["movie", "external_id"],
                 name="app_movieplay_unique_movie_external_id",
-                condition=models.Q(external_id__isnull=False) & ~models.Q(
+                condition=models.Q(external_id__isnull=False)
+                & ~models.Q(
                     external_id="",
                 ),
             ),
