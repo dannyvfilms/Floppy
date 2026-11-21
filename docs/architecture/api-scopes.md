@@ -408,6 +408,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/providers/{slug}/test/` | POST | NEVER |
 | `/api/v1/recommendations/` | GET | `catalog:read` |
 | `/api/v1/scrobble/` | POST | `scrobble:write` |
+| `/api/v1/scrobble/completions/v1/` | GET, POST | `scrobble:write` |
 | `/api/v1/search/manual-entry/` | GET POST | GET `catalog:read`; POST NEVER |
 | `/api/v1/search/music/create/` | POST | `music:write` |
 | `/api/v1/search/parents/` | GET | `catalog:read` |

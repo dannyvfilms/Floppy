@@ -1030,6 +1030,11 @@ urlpatterns = [
         name="api_scrobble",
     ),
     re_path(
+        r"^scrobble/completions/v1/?$",
+        fork_views_scrobble.CompletionView.as_view(),
+        name="api_scrobble_movie_completion_v1",
+    ),
+    re_path(
         r"^statistics/overview/?$",
         fork_views_statistics.StatisticsOverviewView.as_view(),
         name="api_statistics_overview",

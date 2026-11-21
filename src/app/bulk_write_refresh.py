@@ -64,8 +64,9 @@ INSIDE_SHOW_SAVE = Refresh(
     changes="A show's or season's status (and its seasons or episodes) while "
     "a TV, Season or Episode row is being saved.",
     view_caches="The save that runs it ends in clear_library_view_caches "
-    "(TV.save, Season.save) or fires its own post_save signal, which clears "
-    "for the user (Episode.save).",
+    "(TV.save, Season.save) or fires the episode post_save signal, which clears "
+    "for the user. When deferred, episode status sync precedes those on-commit "
+    "cache callbacks.",
     statistics="The surrounding save's signal marks the user's change; a "
     "status is an aggregate, and any mark makes every range re-read it.",
     history=_NO_HISTORY_STATUS,
@@ -326,8 +327,8 @@ BULK_WRITE_SITES = {
         history="The calling bulk write invalidates the row's days.",
         watch_state=_WS_SCOPED,
     ),
-    ("app/models/tv.py", "Episode.save", SEASON): INSIDE_SHOW_SAVE,
-    ("app/models/tv.py", "Episode.save", TV): INSIDE_SHOW_SAVE,
+    ("app/models/tv.py", "Episode._sync_season_after_save", SEASON): INSIDE_SHOW_SAVE,
+    ("app/models/tv.py", "Episode._sync_season_after_save", TV): INSIDE_SHOW_SAVE,
     ("app/models/tv.py", "Season._sync_status_after_episode_change", SEASON): Refresh(
         changes="A season's and show's status after its episodes changed.",
         view_caches="Every caller clears afterwards: Season.save, the save and "

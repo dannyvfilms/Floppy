@@ -80,6 +80,41 @@ def _settle(receipt, digest: str, client_event_id: str) -> tuple[Response, bool]
     return (_conflict_response(client_event_id), False)
 
 
+def get_or_record_atomic_receipt(
+    user: Any,
+    client_event_id: str,
+    payload: Any,
+    execute_fn: Callable[[], Response],
+    token: IntegrationToken | None = None,
+) -> tuple[Response, bool]:
+    """Commit a user-scoped receipt together with its database-only operation.
+
+    Resolve remote inputs before calling this gateway. The unique receipt key
+    blocks contenders until commit, and SQLite holds its writer lock throughout.
+    External effects belong in an on-commit callback.
+    """
+    digest = calculate_payload_digest(payload)
+    with transaction.atomic(durable=True):
+        receipt, created = IntegrationEventReceipt.objects.get_or_create(
+            user=user,
+            binding=None,
+            client_event_id=client_event_id,
+            defaults={"token": token, "payload_digest": digest},
+        )
+        if not created:
+            return _settle(receipt, digest, client_event_id)
+
+        response = execute_fn()
+        if response.status_code >= HTTP.INTERNAL_SERVER_ERROR:
+            transaction.set_rollback(True)
+            return (response, False)
+
+        receipt.response_status_code = response.status_code
+        receipt.response_body = response.data if response.data is not None else {}
+        receipt.save(update_fields=["response_status_code", "response_body"])
+        return (response, False)
+
+
 def get_or_record_receipt(
     user: Any,
     client_event_id: str,
