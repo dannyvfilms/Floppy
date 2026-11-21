@@ -17,7 +17,11 @@ import {
 } from '../../../frontend/ui/mediaCardForms';
 import { libraryGridLayout } from '../../../frontend/ui/mediaCardSizing';
 import { mediaCardPalette, palette, spacing } from '../theme';
+import { renderSelectRowPicker } from './SelectRowPicker';
+import { brightAccent } from './brightAccent';
+import { renderMonthYearWheels, renderTimeWheels } from './TrackDatePanels';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import { trackRailItems } from './TrackPresentation';
 import { emitMediaCardChange, subscribeMediaCardChange } from './mediaCardEvents';
 import {
   createTag,
@@ -138,7 +142,10 @@ const trackLabels = {
   dateTime: {},
 };
 
+// The page theme first, as Media Details' form palette does: the card palette has no `surface`,
+// so without it the grouped Tracking rows fell back to the form's dark default in light mode.
 const formPalette = {
+  ...palette,
   ...mediaCardPalette,
   textSecondary: mediaCardPalette.textSecondary,
   surfaceStrong: palette.surfaceStrong,
@@ -149,6 +156,7 @@ const formPalette = {
   radius: 8,
   focusStyle: {},
   dateTime: mediaCardPalette,
+  accentBright: brightAccent(palette.accentStrong),
 };
 
 function updateTab(tabs, id, updater) {
@@ -218,12 +226,14 @@ function ListsAction({ action, onClose }) {
     onToggle={toggle} />;
 }
 
-function TrackAction({ action, onClose }) {
+// The host's sheet owns the section so its rail buttons and this form agree.
+function TrackAction({ action, onClose, railTabs = false, activeTab, onTabChange, onTabs }) {
   const transportReady = hasMediaCardTransport();
   const identity = action?.media || null;
   const [model, setModel] = useState(null);
   const [values, setValues] = useState({});
   const [tabs, setTabs] = useState([]);
+  useEffect(() => { onTabs?.(status === 'ready' ? tabs : []); }, [tabs, status]);
   const [tracked, setTracked] = useState(false);
   const [status, setStatus] = useState('loading');
   const [busy, setBusy] = useState(false);
@@ -360,6 +370,13 @@ function TrackAction({ action, onClose }) {
   return <TrackDialog
     open
     embedded
+    grouped
+    renderSelectPicker={renderSelectRowPicker}
+      renderMonthYearWheels={renderMonthYearWheels}
+      renderTimeWheels={renderTimeWheels}
+    railTabs={railTabs}
+    activeTab={activeTab}
+    onTabChange={onTabChange}
     model={model}
     values={values}
     errors={errors}
@@ -578,6 +595,9 @@ export default function MediaCardSlot({
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
   const [sheetMounted, setSheetMounted] = useState(false);
+  const [trackTabs, setTrackTabs] = useState([]);
+  const [trackTab, setTrackTab] = useState('general');
+  const trackRail = useMemo(() => trackRailItems(trackTabs), [trackTabs]);
   const itemKeys = items.map(item => item.key);
   const orderKey = itemKeys.join('|');
   const [order, setOrder] = useState(itemKeys);
@@ -640,6 +660,8 @@ export default function MediaCardSlot({
       return;
     }
     if (['track', 'lists'].includes(action.modal)) setSheetMounted(true);
+    // Each Tracking sheet opens on General, with no sections until its form loads.
+    if (action.modal === 'track') { setTrackTabs([]); setTrackTab('general'); }
     setPendingAction({ ...action, mediaTitle });
   }
 
@@ -795,9 +817,11 @@ export default function MediaCardSlot({
     {sheetMounted && <AdaptivePresentationSheet isPresented={['track', 'lists'].includes(pendingAction?.modal)}
       onDismiss={() => setPendingAction(null)} onClose={() => setPendingAction(null)}
       title={pendingAction?.modal === 'track' ? 'Tracking' : 'Lists'} titleColor={formPalette.text}
-      containerColor={palette.sidebar}>
-      {pendingAction?.modal === 'track' ? <View style={{ flex: 1, paddingHorizontal: 16 }}>
-        <TrackAction key={pendingAction?.target || 'track'} action={pendingAction} onClose={() => setPendingAction(null)} />
+      containerColor={palette.sidebar}
+      railItems={pendingAction?.modal === 'track' ? trackRail : null} railValue={trackTab} onRailChange={setTrackTab}>
+      {({ rail }) => pendingAction?.modal === 'track' ? <View style={{ flex: 1, paddingHorizontal: 16 }}>
+        <TrackAction key={pendingAction?.target || 'track'} action={pendingAction} onClose={() => setPendingAction(null)}
+          railTabs={rail} activeTab={trackTab} onTabChange={setTrackTab} onTabs={setTrackTabs} />
       </View> : pendingAction?.modal === 'lists' ? <ScrollView keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}>
         <ListsAction key={pendingAction?.target || 'lists'} action={pendingAction} onClose={() => setPendingAction(null)} />

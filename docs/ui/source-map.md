@@ -100,6 +100,7 @@ build artifacts. The Python composition tag is documented in the register.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
 - `AdaptivePresentationSheet.jsx` supplies the shared header and delegates rail close placement to its iOS host. The Duo sheet was inspected on device; Android and web rendering remain unverified.
 - On an iOS vertical rail, `SheetHost.ios.jsx` uses a native navigation toolbar cancellation action to place the shared sheet's close button below system status controls; the body retains its prior edge spacing. Duo runtime inspection covered the Lists sheet at half and full height and dismissal. Expo web and Android keep their existing presentation and were not runtime inspected for this change.
+- `SheetHost.ios.jsx` also takes `railItems` from `AdaptivePresentationSheet` and shows them as grouped `primaryAction` toggles under Close; `expo/app/surfaces/TrackPresentation.jsx` (`TrackPresentation`, `trackRailItems`) supplies the Tracking sections for `DetailFeatures` and `MediaCardSlot`, and the form drops its Section row while they are on the rail. The item list stays fixed while the sheet is open and the native stack is keyed on the item count, or the body loses its touch handler or goes blank (`docs/architecture/device-poses.md`). `SheetHost.jsx` (Android, web) ignores the items, so those platforms keep the Section row. iOS runtime on the closed iPhone Duo simulator; a rail-less iPhone, Android and web were not run.
 - `expo/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
 
 Status: `Partial / coexisting`
@@ -216,7 +217,7 @@ Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The 
 
 The iOS `NativeCardMenu.ios.jsx` defines the full rounded `MediaCard` as the system context-menu preview shape for Home, Library, Search and other MediaCardSlot consumers. Android's Material menu and the Expo web dropdown have no corresponding lifted preview; browser card ownership, remaining consumers and retirement conditions are unchanged. Browser, iOS and Android runtime verification are recorded separately in the component register.
 
-`expo/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` for card tracking and list actions, matching Detail on Expo iOS, Android and web. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
+`expo/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` for card tracking and list actions, matching Detail on Expo iOS, Android and web. On the iOS rail the card's Tracking sheet passes the sections as rail items (`trackRailItems`) and owns the open section, so the rail and the form agree; its form palette starts from the page theme, as Media Details' does. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
 
 Quick status uses the shared MediaCard and MediaCardActions, the browser card adapter and the Expo MediaCardSlot on Home, Library and Search. Existing fallback consumers and retirement conditions are unchanged. Manual untracked items and non-generic tracking retain their existing flow. Browser search and iOS library rendered; interaction verification and Android runtime verification remain pending separately.
 
@@ -1499,6 +1500,13 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackDialog.jsx`
 - `frontend/ui/TrackForm.jsx`
 - `frontend/ui/TrackFormTabs.jsx`
+- `frontend/ui/TrackTabsGrouped.jsx`
+- `frontend/ui/TrackDateRow.jsx`
+- `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/separatorColor.js`
+- `frontend/ui/separatorColor.web.js`
+- `frontend/ui/separatorColor.native.js`
+- `frontend/ui/trackDuration.js`
 - `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/barcodeEntry.web.js`
 - `frontend/ui/clipboard.native.js`

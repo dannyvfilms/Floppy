@@ -10,8 +10,11 @@ import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
 import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
 import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
 import { renderSelectRowPicker } from './SelectRowPicker';
+import { brightAccent } from './brightAccent';
+import { renderMonthYearWheels, renderTimeWheels } from './TrackDatePanels';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import { TrackPresentation } from './TrackPresentation';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
@@ -135,6 +138,7 @@ export const detailPagePalette = {
 
 const palette = detailPagePalette;
 const formPalette = { ...palette, ...palette.mediaCard, radius: 8, focusStyle: {}, dateTime: palette.mediaCard };
+formPalette.accentBright = brightAccent(formPalette.accent);
 
 const EMPTY_TRACK = { open: false, status: 'ready', model: null, tabs: [], values: {}, tracked: false, busy: false, serverError: '' };
 const NO_DIALOG = { kind: '', busy: false, error: '', data: null };
@@ -392,6 +396,8 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
   const title = model?.title || '';
   const [tracking, setTracking] = useState(NO_TRACKING);
   const [track, setTrack] = useState(EMPTY_TRACK);
+  const [trackTab, setTrackTab] = useState('general');
+  useEffect(() => { if (!track.open) setTrackTab('general'); }, [track.open]);
   const [dialog, setDialog] = useState(NO_DIALOG);
   const [notice, setNotice] = useState('');
   const [collection, setCollection] = useState({ status: 'loading', entries: [], counts: [], error: '' });
@@ -596,6 +602,19 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       setTrack(current => ({ ...current, busy: false, serverError: cause?.message || 'The change could not be saved.' }));
     }
   }, [identity, reload, track.identity, track.model, track.tracked]);
+
+  // Saves the form as a new entry beside the one being edited, as the web's "Save as new entry" does.
+  const saveAsNewTrack = useCallback(async values => {
+    if (!track.identity || !track.model) return;
+    setTrack(current => ({ ...current, busy: true, serverError: '' }));
+    try {
+      await saveTrack(track.identity, track.model, values, false);
+      setTrack(EMPTY_TRACK);
+      reload();
+    } catch (cause) {
+      setTrack(current => ({ ...current, busy: false, serverError: cause?.message || 'The entry could not be added.' }));
+    }
+  }, [reload, track.identity, track.model]);
 
   const removeTrack = useCallback(async () => {
     if (!track.identity || !track.model) return;
@@ -1154,21 +1173,35 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
   const childrenSlot = seasonsSlot || issuesSlot || episodesSlot;
 
   const overlays = <>
-    <AdaptivePresentationSheet isPresented={track.open} onDismiss={() => setTrack(EMPTY_TRACK)}
-      onClose={() => setTrack(EMPTY_TRACK)} title="Tracking" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
-    <View style={{ flex: 1, paddingHorizontal: 16 }}>
+    <TrackPresentation open={track.open} onClose={() => setTrack(EMPTY_TRACK)}
+      tabs={track.status === 'ready' ? track.tabs : []} activeTab={trackTab} onTabChange={setTrackTab}
+      // New entry and Edit entry follow the web's add-versus-edit flow; a loading or failed form keeps "Tracking".
+      title={track.status !== 'ready' ? 'Tracking' : track.tracked ? 'Edit Entry' : 'New Entry'}
+      titleColor={formPalette.text} containerColor={themePalette.sidebar}>
+      {({ railTabs }) => <View style={{ flex: 1 }}>
     <TrackDialog
+      grouped
+      renderSelectPicker={renderSelectRowPicker}
+      renderMonthYearWheels={renderMonthYearWheels}
+      renderTimeWheels={renderTimeWheels}
       open={track.open}
       embedded
-      model={track.status === 'ready' ? track.model : null}
+      // The web offers "Save as new entry" on a tracked entry where it offers a new entry at all.
+      model={track.status === 'ready' && track.model ? { ...track.model, repeatIdentity: {
+        ...(track.model.repeatIdentity || {}), canSaveAsNew: Boolean(track.tracked && offersNewEntry),
+        saveAsNewLabel: 'Save as New Entry' } } : null}
       values={track.values}
       status={track.status}
       serverError={track.serverError}
       busy={track.busy}
       palette={formPalette}
       tabs={track.tabs}
+      railTabs={railTabs}
+      activeTab={trackTab}
+      onTabChange={setTrackTab}
       onChange={(name, value) => setTrack(current => ({ ...current, values: { ...current.values, [name]: value } }))}
       onSubmit={submitTrack}
+      onSaveAsNew={saveAsNewTrack}
       onDelete={track.tracked ? removeTrack : undefined}
       onClose={() => setTrack(EMPTY_TRACK)}
       onRetry={() => openTrack(false, track.identity)}
@@ -1181,8 +1214,8 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
         reload(RELOAD_SCOPES.all, { artwork: true });
       }}
       onDiscoverToggle={(itemId, hidden) => setDiscoverHidden(itemId, hidden)} />
-    </View>
-    </AdaptivePresentationSheet>
+    </View>}
+    </TrackPresentation>
     <AdaptivePresentationSheet isPresented={dialog.kind === 'tags'} onDismiss={closeDialog}
       onClose={closeDialog} title="Tags" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
     <View style={{ flex: 1, paddingHorizontal: 16 }}>
