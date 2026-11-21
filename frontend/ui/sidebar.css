@@ -3,6 +3,22 @@
   display: contents;
 }
 
+/*
+ * Web-only: the closed clip is also visibility:hidden, so the sidebar measuring itself
+ * on load records no layout shift. A clipped, translated box still counts as one.
+ * Visibility flips straight away on open and waits for the slide on close. Native
+ * animates a measured height and needs nothing here.
+ */
+.sidebar-reveal-clip {
+  visibility: hidden;
+  transition: visibility 0s linear var(--sidebar-reveal-duration);
+}
+
+.sidebar-reveal-clip[data-open="true"] {
+  visibility: visible;
+  transition: visibility 0s;
+}
+
 .sidebar-reveal {
   transform: translateY(100%);
   transition: transform var(--sidebar-reveal-duration) ease-in-out;
@@ -13,7 +29,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-reveal { transition: none; }
+  .sidebar-reveal,
+  .sidebar-reveal-clip,
+  .sidebar-reveal-clip[data-open="true"] { transition: none; }
 }
 
 /* Keep a keyboard ring, but do not leave a focus ring after a pointer click. */
