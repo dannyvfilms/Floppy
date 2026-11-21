@@ -39,6 +39,8 @@ const defaultLabels = {
   allStatuses: 'All statuses',
   statuses: 'statuses',
   sort: 'Sort',
+  group: 'Group',
+  groupStyle: 'Show as',
   view: 'View',
   savedViews: 'Saved views',
   clear: 'Clear',
@@ -247,7 +249,7 @@ export function FilterBar({
   // drill-ins (a section's options, a range) and for the full variant.
   const [menu, setMenu] = useState(null);
   const [panelSearch, setPanelSearch] = useState('');
-  const triggerNodes = { filters: useRef(null), status: useRef(null), sort: useRef(null) };
+  const triggerNodes = { filters: useRef(null), status: useRef(null), sort: useRef(null), group: useRef(null) };
   const [rangeDraft, setRangeDraft] = useState(null);
   const ranges = options.ranges || [];
   const savedViews = options.savedViews || [];
@@ -258,6 +260,12 @@ export function FilterBar({
   const directionLabel = filters.direction === 'asc' ? '↑' : '↓';
   const sortValue = `${optionLabel(options.sorts, filters.sort)} ${directionLabel}`;
   const viewValue = optionLabel(options.views, filters.view);
+  // Group By is its own toolbar control, beside Sort; picking a grouping reloads the page.
+  const groupChoices = options.groupBy || [];
+  const showGroup = toolbar && groupChoices.length > 1;
+  const groupValue = filters.groupBy && filters.groupBy !== 'item'
+    ? `${copy.group}: ${optionLabel(groupChoices, filters.groupBy)}`
+    : copy.group;
 
   function emit(intent) {
     if (isDisabled) {
@@ -279,7 +287,7 @@ export function FilterBar({
     const point = event?.nativeEvent;
     setMenu(null);
     if (point?.pageX == null || point?.pageY == null) return;
-    for (const key of ['filters', 'status', 'sort']) {
+    for (const key of ['filters', 'status', 'sort', 'group']) {
       if (key === openKey) continue;
       triggerNodes[key].current?.measureInWindow?.((x, y, width, height) => {
         if (point.pageX >= x && point.pageX <= x + width && point.pageY >= y && point.pageY <= y + height) {
@@ -512,6 +520,16 @@ export function FilterBar({
         onPress={(anchor) => pressTrigger('sort', anchor)}
         styles={styles} />}
 
+      {showGroup ? <Trigger
+        label={groupValue}
+        value={groupValue}
+        expanded={menu?.key === 'group'}
+        plain
+        disabled={isDisabled}
+        onPress={(anchor) => pressTrigger('group', anchor)}
+        nodeRef={triggerNodes.group}
+        styles={styles} /> : null}
+
       {!toolbar && (views.length || savedViews.length) ? <Trigger
         label={`${copy.view}: ${viewValue || copy.savedViews}`}
         value={viewValue || copy.savedViews}
@@ -653,6 +671,18 @@ export function FilterBar({
           });
           return rows;
         })() : null}
+        {menu?.key === 'group' ? <>
+          {groupChoices.map((option) => <DropdownItem key={option.value} accessibilityRole="radio" label={option.label}
+            checked={(filters.groupBy || 'item') === option.value} palette={menuPalette}
+            onPress={() => { emit({ type: 'groupBy', value: option.value }); setMenu(null); }} />)}
+          {filters.groupBy && filters.groupBy !== 'item' && (options.groupStyles || []).length ? <>
+            <DropdownSeparator palette={menuPalette} />
+            <DropdownItem label={copy.groupStyle} disabled palette={menuPalette} />
+            {options.groupStyles.map((option) => <DropdownItem key={option.value} accessibilityRole="radio"
+              label={option.label} checked={(filters.groupStyle || 'lanes') === option.value} palette={menuPalette}
+              onPress={() => { emit({ type: 'groupStyle', value: option.value }); setMenu(null); }} />)}
+          </> : null}
+        </> : null}
       </ScrollView>
     </DropdownMenu> : null}
 

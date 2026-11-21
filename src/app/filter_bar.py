@@ -89,12 +89,6 @@ def _section_options(platforms, *, multi):
 def _sections(context, filter_data, state, *, platform_multi):
     sections = []
     show = filter_data.get
-    if show("show_group_by") and context.get("group_by_choices"):
-        sections.append(_section(
-            "groupBy", _("Group By"), "group_by",
-            _translate_options(context["group_by_choices"]),
-            clear_value="item",
-        ))
     if show("lists"):
         sections.append(_section(
             "lists", _("List"), "selectedLists",
@@ -340,8 +334,15 @@ def build_filter_bar_props(context, *, endpoint, target, form_id, surface,
         filters["direction"] = str(context["current_direction"])
     if context.get("current_layout"):
         filters["view"] = str(context["current_layout"])
-    if context.get("current_group_by"):
-        filters["fields"]["groupBy"] = str(context["current_group_by"])
+    # Group By is its own toolbar control (options.groupBy), not a Filters section.
+    group_by_options = (
+        _translate_options(context["group_by_choices"])
+        if filter_data.get("show_group_by") and context.get("group_by_choices")
+        else []
+    )
+    group_style_options = _translate_options(context.get("group_style_choices") or [])
+    filters["groupBy"] = str(context.get("current_group_by") or "item")
+    filters["groupStyle"] = str(context.get("current_group_style") or "lanes")
 
     labels = {
         "filters": str(_("Filters")),
@@ -357,6 +358,8 @@ def build_filter_bar_props(context, *, endpoint, target, form_id, surface,
         "airDate": str(_("Air date")),
         "status": str(_("Status")),
         "sort": str(_("Sort")),
+        "group": str(_("Group")),
+        "groupStyle": str(_("Show as")),
         "view": str(_("View")),
         "range": str(_("Range")),
         "savedViews": str(_("Saved views")),
@@ -389,6 +392,8 @@ def build_filter_bar_props(context, *, endpoint, target, form_id, surface,
             "savedViews": saved_view_options,
             "ranges": range_options,
             "sections": sections,
+            "groupBy": group_by_options,
+            "groupStyles": group_style_options,
         },
         "filters": filters,
         "labels": labels,

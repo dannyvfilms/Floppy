@@ -81,6 +81,8 @@ function readFilters(host, props) {
     sort: data.sort || '',
     direction: data.direction || 'asc',
     view: data.layout || 'grid',
+    groupBy: data.group_by || 'item',
+    groupStyle: data.group_style || 'lanes',
     ranges,
     fields,
     modes,
@@ -204,6 +206,15 @@ function Adapter({ host, props }) {
     }
     const data = window.Alpine?.$data(host);
     if (!data) {
+      return;
+    }
+    // A grouping change redraws the whole library, so it navigates instead of swapping in results.
+    if (intent.type === 'groupBy') {
+      data.setGroupBy?.(intent.value);
+      return;
+    }
+    if (intent.type === 'groupStyle') {
+      data.setGroupStyle?.(intent.value);
       return;
     }
     writeIntent(data, intent, props);
