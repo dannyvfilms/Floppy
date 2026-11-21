@@ -2558,6 +2558,11 @@ class Episode(models.Model):
                 .first()
             ) or (None, None)
 
+        if defer_season_sync:
+            # Update the committed season before the episode save signals repopulate
+            # or invalidate readers of its status. A rollback discards this callback.
+            transaction.on_commit(self._sync_season_after_save, robust=True)
+
         planning_entries, merged_fields = prepare_completed_entry(self)
         if merged_fields and kwargs.get("update_fields") is not None:
             kwargs["update_fields"] = tuple(
@@ -2578,11 +2583,7 @@ class Episode(models.Model):
             rating_only=True,
         ).delete()
 
-        if defer_season_sync:
-            # Season completion can consult the provider. The viewing and its
-            # delivery receipt must commit before that work or any queued credit lookup.
-            transaction.on_commit(self._sync_season_after_save, robust=True)
-        else:
+        if not defer_season_sync:
             self._sync_season_after_save()
 
     @serialized_state_write

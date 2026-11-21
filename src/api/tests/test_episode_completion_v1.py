@@ -9,7 +9,8 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
-from django.db import close_old_connections, connection, connections
+from django.db import close_old_connections, connection, connections, transaction
+from django.db.models.signals import post_save
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
@@ -211,7 +212,16 @@ class EpisodeCompletionTests(TransactionTestCase):
             )
             return original(play)
 
+        callbacks = []
+
+        def after_save(sender, instance, **kwargs):
+            # Model readers scheduled by a normal post-save receiver see the projection.
+            transaction.on_commit(lambda: callbacks.append(len(observed)))
+
+        post_save.connect(after_save, sender=Episode, weak=False)
+        self.addCleanup(post_save.disconnect, after_save, sender=Episode)
         with patch.object(Episode, "_sync_season_after_save", verify):
             response = self.send(key)
+        self.assertEqual(callbacks, [1])
         self.assertEqual(response.status_code, HTTP.OK, response.data)
         self.assertEqual(observed, [(False, HTTP.OK, response.data["play_id"])])
