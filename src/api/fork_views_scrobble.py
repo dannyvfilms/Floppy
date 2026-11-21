@@ -3,6 +3,7 @@
 # fork_views_tracking.py since it's a public integration surface rather
 # than a web-UI parity mirror. URL wiring lives in fork_urls.py.
 import logging
+from datetime import UTC
 from http import HTTPStatus as HTTP  # noqa: N814
 from uuid import UUID
 
@@ -14,8 +15,16 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 import app.providers.tmdb
-from app import live_playback
-from app.models import MediaTypes, Movie, PlaybackProgress, Sources
+from app import fork_services_episode, live_playback
+from app.models import (
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    PlaybackProgress,
+    Season,
+    Sources,
+)
 from app.providers import services
 from app.providers.services import ProviderAPIError
 from app.services.completion import select_preferred_activity_entry
@@ -45,11 +54,47 @@ _EVENT_TYPE_MAP = {
 }
 
 
-class MovieCompletionSerializer(serializers.Serializer):
-    """A dated viewing of a tracked movie."""
+class CompletionIdentitySerializer(serializers.Serializer):
+    """A TMDB movie or a canonical TMDB series, season and episode."""
 
+    media_type = serializers.ChoiceField(choices=("movie", "episode"), default="movie")
     tmdb = serializers.RegexField(r"\A[1-9][0-9]{0,19}\Z")
-    played_at = serializers.DateTimeField()
+    season_number = serializers.IntegerField(
+        min_value=0, max_value=2_147_483_647, required=False
+    )
+    episode_number = serializers.IntegerField(
+        min_value=1, max_value=2_147_483_647, required=False
+    )
+
+    def validate(self, attrs):
+        """Require both episode coordinates together and exclude them from movies."""
+        coordinates = {"season_number", "episode_number"} & attrs.keys()
+        expected = (
+            {"season_number", "episode_number"}
+            if attrs["media_type"] == "episode"
+            else set()
+        )
+        if coordinates != expected:
+            detail = "Provide season_number and episode_number only for episodes."
+            raise serializers.ValidationError(detail)
+        return attrs
+
+
+class CompletionTimestampField(serializers.DateTimeField):
+    """Require an explicit offset on the source viewing timestamp."""
+
+    def enforce_timezone(self, value):
+        """Reject naive wall-clock values before DRF applies the server timezone."""
+        if timezone.is_naive(value):
+            detail = "played_at must include a UTC offset."
+            raise serializers.ValidationError(detail)
+        return super().enforce_timezone(value)
+
+
+class CompletionSerializer(CompletionIdentitySerializer):
+    """A dated viewing and optional final resume position."""
+
+    played_at = CompletionTimestampField()
     position_seconds = serializers.IntegerField(
         min_value=0, max_value=2_147_483_647, required=False
     )
@@ -58,23 +103,75 @@ class MovieCompletionSerializer(serializers.Serializer):
     )
 
 
-class MovieCompletionCapabilitySerializer(serializers.Serializer):
-    """Capability of this receiver for the account and title."""
+class CompletionCapabilitySerializer(serializers.Serializer):
+    """Describe the exact type and supported episode coordinate."""
 
     version = serializers.IntegerField()
     media_type = serializers.CharField()
+    tmdb = serializers.CharField(required=False)
+    season_number = serializers.IntegerField(required=False)
+    episode_number = serializers.IntegerField(required=False)
 
 
-class MovieCompletionReceiptSerializer(serializers.Serializer):
-    """The acknowledgement recorded together with a movie play."""
+class CompletionReceiptSerializer(serializers.Serializer):
+    """Describe one committed viewing and its original instant."""
 
     event_id = serializers.UUIDField()
     play_id = serializers.IntegerField()
     played_at = serializers.DateTimeField()
+    media_type = serializers.CharField(required=False)
+    tmdb = serializers.CharField(required=False)
+    season_number = serializers.IntegerField(required=False)
+    episode_number = serializers.IntegerField(required=False)
 
 
-class MovieCompletionView(drf_views.APIView):
-    """Record a replay-safe completion for an existing tracked TMDB movie."""
+def _tracked_episode(user, identity):
+    """Resolve one canonical episode in this user's tracked TV library entirely locally."""
+    tmdb = identity["tmdb"]
+    season_number = identity["season_number"]
+    seasons = (
+        Season.objects.select_related("related_tv", "item")
+        .filter(
+            user=user,
+            related_tv__user=user,
+            related_tv__item__media_type="tv",
+            related_tv__item__source="tmdb",
+            related_tv__item__media_id=tmdb,
+            related_tv__active_episode_order__isnull=True,
+            item__source="tmdb",
+            item__media_type="season",
+            item__media_id=tmdb,
+            item__episode_order__isnull=True,
+            item__season_number=season_number,
+            item__episode_number__isnull=True,
+            order_archived=False,
+        )
+        .exclude(item__library_media_type="anime")
+    )
+    try:
+        season = seasons.get()
+        bucket = season.item.library_media_type
+        item = Item.objects.get(
+            source="tmdb",
+            media_type="episode",
+            media_id=tmdb,
+            episode_order__isnull=True,
+            library_media_type="episode" if bucket == "season" else bucket,
+            season_number=season_number,
+            episode_number=identity["episode_number"],
+        )
+    except (
+        Season.DoesNotExist,
+        Season.MultipleObjectsReturned,
+        Item.DoesNotExist,
+        Item.MultipleObjectsReturned,
+    ):
+        return None
+    return season, item
+
+
+class CompletionView(drf_views.APIView):
+    """Record a replay-safe completion for an existing tracked TMDB movie or episode."""
 
     @staticmethod
     def _tracked_movie(user, tmdb):
@@ -95,29 +192,38 @@ class MovieCompletionView(drf_views.APIView):
         )
 
     @staticmethod
-    def _missing():
-        return Response({"code": "MOVIE_NOT_TRACKED"}, status=HTTP.NOT_FOUND)
+    def _missing(media_type="movie"):
+        return Response(
+            {"code": f"{media_type.upper()}_NOT_TRACKED"}, status=HTTP.NOT_FOUND
+        )
 
     @extend_schema(
-        parameters=[OpenApiParameter("tmdb", str, OpenApiParameter.QUERY, required=True)],
-        responses={200: MovieCompletionCapabilitySerializer},
+        parameters=[CompletionIdentitySerializer],
+        responses={200: CompletionCapabilitySerializer},
     )
     def get(self, request):
-        """Confirm the same credential can record this movie on this route."""
+        """Confirm the credential, receiver and exact local media before a guarded POST."""
         if connection.vendor != "postgresql":
             return self._unavailable()
-        if not self._tracked_movie(request.user, request.query_params.get("tmdb")):
+        serializer = CompletionIdentitySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        identity = serializer.validated_data
+        if identity["media_type"] == "episode":
+            if not _tracked_episode(request.user, identity):
+                return self._missing("episode")
+            return Response({"version": 1, **identity})
+        if not self._tracked_movie(request.user, identity["tmdb"]):
             return self._missing()
-        return Response({"version": 1, "media_type": "movie"}, status=HTTP.OK)
+        return Response({"version": 1, "media_type": "movie"})
 
     @extend_schema(
-        request=MovieCompletionSerializer,
+        request=CompletionSerializer,
         parameters=[
             OpenApiParameter(
                 "Idempotency-Key", UUID, OpenApiParameter.HEADER, required=True
             ),
         ],
-        responses={200: MovieCompletionReceiptSerializer},
+        responses={200: CompletionReceiptSerializer},
     )
     def post(self, request):
         """Append one dated watch. Replay only the same key and payload."""
@@ -128,7 +234,7 @@ class MovieCompletionView(drf_views.APIView):
         except ValueError:
             return Response({"code": "INVALID_COMPLETION_KEY"}, status=HTTP.BAD_REQUEST)
         receipt_key = f"scrobble-completion-v1:{event_id}"
-        serializer = MovieCompletionSerializer(data=request.data)
+        serializer = CompletionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tmdb = serializer.validated_data["tmdb"]
         played_at = serializer.validated_data["played_at"]
@@ -136,16 +242,42 @@ class MovieCompletionView(drf_views.APIView):
         duration = serializer.validated_data.get("duration_seconds")
         token = request.auth if isinstance(request.auth, IntegrationToken) else None
 
+        is_episode = serializer.validated_data["media_type"] == "episode"
+        episode_identity = (
+            {
+                key: serializer.validated_data[key]
+                for key in ("media_type", "tmdb", "season_number", "episode_number")
+            }
+            if is_episode
+            else {}
+        )
+
         def stop_live_playback():
             state = live_playback.peek_user_playback_state(request.user.pk)
-            if not state or state.get("media_type") != MediaTypes.MOVIE.value:
+            expected_type = (
+                MediaTypes.EPISODE.value if is_episode else MediaTypes.MOVIE.value
+            )
+            if not state or state.get("media_type") != expected_type:
                 return
             if str(state.get("media_id")) != tmdb:
+                return
+            if is_episode and any(
+                state.get(k) != episode_identity[k]
+                for k in ("season_number", "episode_number")
+            ):
                 return
             live_playback.apply_playback_event(
                 user_id=request.user.pk,
                 event_type="media.stop",
-                playback_media_type=MediaTypes.MOVIE.value,
+                playback_media_type=expected_type,
+                **(
+                    {
+                        k: episode_identity[k]
+                        for k in ("season_number", "episode_number")
+                    }
+                    if is_episode
+                    else {}
+                ),
                 media_id=tmdb,
                 source=Sources.TMDB.value,
                 view_offset_seconds=position,
@@ -157,23 +289,47 @@ class MovieCompletionView(drf_views.APIView):
             # Keep this path local. Generic scrobbling can resolve remote
             # metadata and SQLite would hold its global writer lock here.
             with state_transaction(request.user.pk):
-                movie = self._tracked_movie(request.user, tmdb)
-                if movie is None:
-                    return self._missing()
-                play, created = movie.watch(
-                    played_at, external_id=receipt_key, entry_source="scrobble"
-                )
-                if created and movie.end_date == played_at:
+                if is_episode:
+                    target = _tracked_episode(request.user, episode_identity)
+                    if target is None:
+                        return self._missing("episode")
+                    season, item = target
+                    result = fork_services_episode.create_episode_watch(
+                        season,
+                        item,
+                        played_at,
+                        external_id=receipt_key,
+                        entry_source="scrobble",
+                        defer_season_sync=True,
+                    )
+                    play = result.episode
+                    current = (
+                        result.created
+                        and not Episode.objects.filter(
+                            related_season=season, item=item, end_date__gt=played_at
+                        ).exists()
+                    )
+                else:
+                    movie = self._tracked_movie(request.user, tmdb)
+                    if movie is None:
+                        return self._missing()
+                    play, created = movie.watch(
+                        played_at, external_id=receipt_key, entry_source="scrobble"
+                    )
+                    current = created and movie.end_date == played_at
+                    item = movie.item
+                if current:
                     if position is not None:
                         fork_views_playback.upsert_playback_progress(
-                            request.user, movie.item, position, duration, completed=True
+                            request.user, item, position, duration, completed=True
                         )
                     transaction.on_commit(stop_live_playback, robust=True)
             return Response(
                 {
                     "event_id": event_id,
                     "play_id": play.pk,
-                    "played_at": play.end_date.isoformat(),
+                    "played_at": play.end_date.astimezone(UTC).isoformat(),
+                    **episode_identity,
                 },
                 status=HTTP.OK,
             )

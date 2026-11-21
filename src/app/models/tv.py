@@ -2525,8 +2525,8 @@ class Episode(models.Model):
         return self.item.__str__()
 
     @serialized_state_write
-    def save(self, *args, **kwargs):
-        """Save the episode instance."""
+    def save(self, *args, defer_season_sync=False, **kwargs):
+        """Save the episode instance and update its season and show."""
         from app.services.completion import (
             finalize_completed_entry,
             prepare_completed_entry,
@@ -2578,6 +2578,16 @@ class Episode(models.Model):
             rating_only=True,
         ).delete()
 
+        if defer_season_sync:
+            # Season completion can consult the provider. The viewing and its
+            # delivery receipt must commit before that work or any queued credit lookup.
+            transaction.on_commit(self._sync_season_after_save, robust=True)
+        else:
+            self._sync_season_after_save()
+
+    @serialized_state_write
+    def _sync_season_after_save(self):
+        """Recalculate playback status from all committed plays for this season."""
         season_number = self.item.season_number
         if season_number is None:
             return

@@ -88,6 +88,7 @@ def create_episode_watch(
     *,
     watch_operation_id=None,
     external_id=None,
+    defer_season_sync=False,
     **episode_fields,
 ):
     """Create one Episode watch, replaying a previously claimed private token.
@@ -123,7 +124,7 @@ def create_episode_watch(
 
         try:
             with transaction.atomic():
-                episode = Episode.objects.create(
+                episode = Episode(
                     related_season=related_season,
                     item=item,
                     end_date=end_date,
@@ -131,6 +132,7 @@ def create_episode_watch(
                     external_id=external_id,
                     **episode_fields,
                 )
+                episode.save(force_insert=True, defer_season_sync=defer_season_sync)
         except IntegrityError as error:
             if operation_id is None and external_id is None:
                 raise

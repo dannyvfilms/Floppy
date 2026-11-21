@@ -230,7 +230,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     },
     "api.fork_views_podcast.PodcastEpisodeScoreView": {"PATCH": "podcasts:write"},
     "api.fork_views_scrobble.ScrobbleView": {"POST": "scrobble:write"},
-    "api.fork_views_scrobble.MovieCompletionView": {
+    "api.fork_views_scrobble.CompletionView": {
         "GET": "scrobble:write",
         "POST": "scrobble:write",
     },

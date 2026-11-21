@@ -137,19 +137,30 @@ class MovieCompletionUnavailableTests(TestCase):
         """SQLite keeps the legacy route and creates no guarded receipt."""
         user = get_user_model().objects.create_user(username="completion-sqlite")
         headers = MovieCompletionTests.token_headers(user, ["scrobble:write"])
-        self.assertEqual(
-            self.client.get(ENDPOINT, {"tmdb": "701"}, **headers).status_code,
-            HTTP.SERVICE_UNAVAILABLE,
-        )
-        self.assertEqual(
-            self.client.post(
-                ENDPOINT,
-                FIRST_PLAY,
-                content_type="application/json",
-                HTTP_IDEMPOTENCY_KEY=str(uuid4()),
-                **headers,
-            ).status_code,
-            HTTP.SERVICE_UNAVAILABLE,
-        )
+        identities = [
+            {"tmdb": "701"},
+            {
+                "media_type": "episode",
+                "tmdb": "701",
+                "season_number": 1,
+                "episode_number": 2,
+            },
+        ]
+        for identity in identities:
+            with self.subTest(identity=identity):
+                self.assertEqual(
+                    self.client.get(ENDPOINT, identity, **headers).status_code,
+                    HTTP.SERVICE_UNAVAILABLE,
+                )
+                self.assertEqual(
+                    self.client.post(
+                        ENDPOINT,
+                        {**identity, "played_at": FIRST_PLAY["played_at"]},
+                        content_type="application/json",
+                        HTTP_IDEMPOTENCY_KEY=str(uuid4()),
+                        **headers,
+                    ).status_code,
+                    HTTP.SERVICE_UNAVAILABLE,
+                )
         self.assertFalse(IntegrationEventReceipt.objects.exists())
         self.assertFalse(MoviePlay.objects.exists())
