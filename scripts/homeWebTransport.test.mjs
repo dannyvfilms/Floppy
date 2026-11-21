@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRemoteHomeActions } from '../frontend/ui/homeTransportCore.js';
 import { createWebRequest, webQueryString } from '../frontend/ui/webRequest.web.js';
-import { createHomeTransport } from '../native-proof/app/data/homeTransport.js';
-import { createAuthTransport } from '../native-proof/app/data/authTransportCore.js';
+import { createHomeTransport } from '../expo/app/data/homeTransport.js';
+import { createAuthTransport } from '../expo/app/data/authTransportCore.js';
 
 function reply(body, status = 200) {
   const text = typeof body === 'string' ? body : JSON.stringify(body);

@@ -67,6 +67,7 @@ from app.models import (
     Tag,
 )
 from app.providers import credentials, tmdb
+from app.signals import bulk_media_delete
 from app.templatetags import app_tags
 from config import run_state
 from integrations import (
@@ -2653,6 +2654,12 @@ def import_data_activity(request):
         "import_runs": import_runs,
         "import_source_media": source_media,
         "provider_navigation": bool(sources),
+        # Delete all / Undo return here, not to the all-providers page.
+        "return_url": (
+            reverse("provider_detail", args=[source]) + "?tab=activity"
+            if sources
+            else ""
+        ),
     }
     response = render(request, "users/components/import_activity.html", context)
     if not is_active:
@@ -3591,13 +3598,22 @@ def bulk_delete_by_import_source(request, media_type, source):
         else None
     )
 
-    deleted_count, _ = doomed.delete()
+    item_ids = list(doomed.values_list("item_id", flat=True))
+    with bulk_media_delete(request.user, media_type, item_ids):
+        deleted_count, _ = doomed.delete()
 
     if music_catalog_ids is not None:
         deleted_count += _sweep_untracked_music_containers(
             request.user,
             *music_catalog_ids,
         )
+
+    # A finished run with no rows left has nothing to undo; do not offer it.
+    if not _import_source_media_summary(request.user, sources={source}):
+        ImportRun.objects.filter(user=request.user, source=source).exclude(
+            status=ImportRun.Status.RUNNING,
+        ).delete()
+    cache.delete(f"import_source_media:{request.user.pk}")
 
     if deleted_count:
         messages.success(request, f"Permanently deleted {deleted_count} item(s).")

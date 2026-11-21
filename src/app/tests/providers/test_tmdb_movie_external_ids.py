@@ -72,6 +72,22 @@ class TMDBMovieExternalIDTests(TestCase):
             "https://www.imdb.com/title/tt0137523/",
         )
         self.assertIn("Letterboxd", result["external_links"])
+        self.assertEqual(
+            result["external_links"]["IMDb Parent's Guide"],
+            "https://www.imdb.com/title/tt0137523/parentalguide/",
+        )
+
+    def test_external_ids_add_parental_guide_for_movies_and_tv(self):
+        """The canonical IMDb title ID works for both movie and TV guides."""
+        expected = "https://www.imdb.com/title/tt0137523/parentalguide/"
+
+        self.assertEqual(
+            tmdb.get_external_links({"imdb_id": "tt0137523"})[
+                "IMDb Parent's Guide"
+            ],
+            expected,
+        )
+        self.assertNotIn("IMDb Parent's Guide", tmdb.get_external_links({}))
 
     @patch("app.providers.tmdb.services.api_request")
     def test_movie_without_external_ids_returns_empty_mapping(self, mock_api_request):

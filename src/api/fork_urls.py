@@ -22,6 +22,7 @@ from . import (
     fork_views_playback,
     fork_views_podcast,
     fork_views_progress_changes,
+    fork_views_progress_page,
     fork_views_provider_connect,
     fork_views_providers,
     fork_views_scrobble,
@@ -349,6 +350,11 @@ urlpatterns = [
         name="api_history_entry",
     ),
     re_path(
+        r"^progress/?$",
+        fork_views_progress_page.ProgressPageView.as_view(),
+        name="api_progress_page",
+    ),
+    re_path(
         r"^calendar/links/?$",
         fork_views_calendar.CalendarLinksView.as_view(),
         name="api_calendar_links",
@@ -442,6 +448,11 @@ urlpatterns = [
         r"^music/artists/(?P<artist_id>\d+)/?$",
         fork_views_music.MusicArtistDetailView.as_view(),
         name="api_music_artist_detail",
+    ),
+    re_path(
+        r"^music/artists/(?P<artist_id>\d+)/albums/?$",
+        fork_views_music.MusicArtistAlbumsView.as_view(),
+        name="api_music_artist_albums",
     ),
     re_path(
         r"^music/artists/(?P<artist_id>\d+)/sync-discography/?$",

@@ -4,6 +4,9 @@ export function mediaCardGridWidth(viewportWidth) {
   return Math.min(184, Math.max(128, (viewportWidth - 32 - (columns - 1) * 12) / columns));
 }
 
+// Home's compact shelf cards, and the smallest card the app draws.
+export const COMPACT_CARD_WIDTH = 110;
+
 // Home playback spans the same number of regular cards as the user's mobile
 // grid preference, or two cards on desktop. Compact phone cards use the Home
 // shelf's shared 110 pt width.

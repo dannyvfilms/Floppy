@@ -1,3 +1,4 @@
+import { RailTitle } from './RailTitle';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Spinner } from './Spinner';
@@ -166,7 +167,7 @@ export function Rail({
   const onGroupLayout = event => setGroupWidth(event.nativeEvent.layout.width);
   const groupStyle = [styles.titleLink, { maxWidth: collapseSort && rowWidth > 0 ? Math.max(rowWidth - 32, 0) : '100%' }];
   const titleContent = <>
-    <Text role="heading" aria-level={3} numberOfLines={1} style={[styles.title, compact && styles.titleCompact, { color: palette.text }]}>{title}</Text>
+    <RailTitle compact={compact} color={palette.text}>{title}</RailTitle>
     {titleDetail ? <>
       <Text aria-hidden style={[styles.bullet, compact && styles.titleCompact, { color: palette.text }]}>•</Text>
       <Text role="heading" aria-level={3} numberOfLines={1} style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>{titleDetail}</Text>
@@ -245,7 +246,6 @@ const styles = StyleSheet.create({
   headingText: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'baseline', columnGap: 8, minWidth: 0 },
   titleLink: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'baseline', columnGap: 8, flexShrink: 0, minWidth: 0 },
-  title: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 0.2, minWidth: 0 },
   titleCompact: { fontSize: 16, lineHeight: 21.6 },
   bullet: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 0 },
   detail: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 1, minWidth: 0 },

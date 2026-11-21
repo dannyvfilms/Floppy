@@ -7,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import tag
 from django.urls import reverse
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect, sync_playwright
 
 from app.tests.live_server import SerialStaticLiveServerTestCase
@@ -35,11 +36,29 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             logout = sidebar.get_by_role("link", name="Logout", exact=True)
             expect(settings).to_have_attribute("href", reverse("account"))
             expect(logout).to_have_attribute("href", reverse("account_logout"))
-            with context.expect_page() as opened:
-                logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
-            confirmation = opened.value
+            logout_url = self.live_server_url + reverse("account_logout")
+            # CI Chromium sometimes opens the modifier-click tab but never loads
+            # it (the tab's URL stays empty), so retry the click, not the check.
+            # Sometimes no tab opens at all (expect_page times out): retry that too.
+            for attempt in range(3):
+                try:
+                    with context.expect_page(timeout=10000) as opened:
+                        logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
+                except PlaywrightTimeout:
+                    if attempt == 2:
+                        raise
+                    continue
+                confirmation = opened.value
+                try:
+                    # A new tab starts on about:blank, which already counts as
+                    # loaded, so wait for the logout page's own address.
+                    expect(confirmation).to_have_url(logout_url, timeout=10000)
+                    break
+                except AssertionError:
+                    if attempt == 2:
+                        raise
+                    confirmation.close()
             confirmation.wait_for_load_state()
-            self.assertEqual(confirmation.url, self.live_server_url + reverse("account_logout"))
             self.assertEqual(context.request.get(self.live_server_url + reverse("account")).status, 200)
             confirmation.close()
             page.bring_to_front()

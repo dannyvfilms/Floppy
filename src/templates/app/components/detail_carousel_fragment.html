@@ -3,10 +3,12 @@
 {% if not inline %}
   <div id="detail-carousel-logo-slot" hx-swap-oob="innerHTML">
     {% if carousel.overview.logo_url %}
+      {% if carousel_logo_url %}<a href="{{ carousel_logo_url }}" class="detail-carousel-overview-logo-link">{% endif %}
       <img data-media-artwork
            class="detail-carousel-overview-logo"
            src="{{ carousel.overview.logo_url }}"
            alt="{% translate 'Media title logo' %}">
+      {% if carousel_logo_url %}</a>{% endif %}
     {% endif %}
   </div>
 {% endif %}

@@ -18,6 +18,7 @@ register_converter(converters.SourceChecker, "source")
 
 urlpatterns = [
     path("youtube-player", media_details_views.youtube_player, name="youtube_player"),
+    path("progress/", progress_views.progress_page, name="progress"),
     path("progress/cancel-rewatch/", progress_views.cancel_progress_rewatch, name="cancel_progress_rewatch"),
     path(
         "tv/<int:tv_id>/episode-ordering/",
@@ -381,6 +382,11 @@ urlpatterns = [
         "music/artist/<int:artist_id>/covers/",
         views.prefetch_artist_covers,
         name="prefetch_artist_covers",
+    ),
+    path(
+        "music/artist/<int:artist_id>/albums/",
+        views.artist_discography_more,
+        name="artist_discography_more",
     ),
     path(
         "music/repair/<str:kind>/<int:object_id>/",

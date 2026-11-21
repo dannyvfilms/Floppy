@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Title } from './Title';
 
 const FALLBACK_PALETTE = {
   background: '#18181b',
@@ -187,7 +188,7 @@ export function BulkActionDialog({
         borderRadius: colors.radius,
       }]}>
         <View style={styles.dialogHead}>
-          <Text role="heading" style={[styles.dialogTitle, { color: colors.text }]}>{title}</Text>
+          <Title color={colors.text} style={styles.dialogTitle}>{title}</Title>
           <Button label={copy.close} tone="surface" disabled={busy}
             onPress={onClose} palette={buttonPalette(colors)} />
         </View>
@@ -319,7 +320,7 @@ const styles = StyleSheet.create({
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 520, maxHeight: '85%', borderWidth: 1, padding: 16, gap: 12 },
   dialogHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  dialogTitle: { fontSize: 18, fontWeight: '700', flex: 1 },
+  dialogTitle: { flex: 1 },
   dialogText: { fontSize: 13, lineHeight: 19 },
   options: { maxHeight: 320 },
   optionsContent: { gap: 8 },

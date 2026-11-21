@@ -1696,9 +1696,50 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["country"], None)
         self.assertEqual(response["details"]["languages"], None)
 
+    def test_get_steam_store_links(self):
+        """Build Steam ecosystem links only from an IGDB Steam AppID."""
+        response = {
+            "external_games": [
+                {"uid": "292030", "external_game_source": igdb.ExternalGameSource.STEAM},
+                {"uid": "other", "external_game_source": igdb.ExternalGameSource.ITCH_IO},
+            ],
+        }
+        self.assertEqual(
+            igdb.get_steam_store_links(response),
+            {
+                "Steam": "https://store.steampowered.com/app/292030/",
+                "SteamDB": "https://steamdb.info/app/292030/",
+                "ProtonDB": "https://www.protondb.com/app/292030",
+                "PCGamingWiki": (
+                    "https://www.pcgamingwiki.com/api/appid.php?appid=292030"
+                ),
+            },
+        )
+        self.assertEqual(igdb.get_steam_store_links({"external_games": []}), {})
+        self.assertEqual(igdb.get_steam_store_links({}), {})
+        self.assertEqual(
+            igdb.get_steam_store_links(
+                {
+                    "external_games": [
+                        {
+                            "uid": "1116480/invalid",
+                            "external_game_source": igdb.ExternalGameSource.STEAM,
+                        },
+                    ],
+                },
+            ),
+            {},
+        )
+
+    @patch("app.providers.igdb.get_steam_dlcs", return_value=[])
     @patch("app.providers.igdb.services.api_request")
     @patch("app.providers.igdb.get_access_token", return_value="test-access-token")
-    def test_games(self, _mock_get_access_token, mock_api_request):
+    def test_games(
+        self,
+        _mock_get_access_token,
+        mock_api_request,
+        _mock_get_steam_dlcs,
+    ):
         """Test the metadata method for games."""
         igdb.cache.clear()
         mock_api_request.return_value = [
@@ -1743,13 +1784,30 @@ class Metadata(TestCase):
                 "expanded_games": [],
                 "similar_games": [],
                 "dlcs": [],
-                "external_games": [],
+                "external_games": [
+                    {
+                        "uid": "292030",
+                        "external_game_source": igdb.ExternalGameSource.STEAM,
+                    },
+                ],
                 "websites": [],
             },
         ]
 
         response = igdb.game("1942")
         self.assertEqual(response["title"], "The Witcher 3: Wild Hunt")
+        self.assertEqual(
+            response["external_links"],
+            {
+                "Steam": "https://store.steampowered.com/app/292030/",
+                "SteamDB": "https://steamdb.info/app/292030/",
+                "ProtonDB": "https://www.protondb.com/app/292030",
+                "PCGamingWiki": (
+                    "https://www.pcgamingwiki.com/api/appid.php?appid=292030"
+                ),
+                "HowLongToBeat": "https://howlongtobeat.com/?q=The+Witcher+3%3A+Wild+Hunt",
+            },
+        )
         self.assertEqual(response["score"], 9.3)
         self.assertEqual(response["score_count"], 123456)
         self.assertEqual(response["igdb_user_rating"], 8.8)

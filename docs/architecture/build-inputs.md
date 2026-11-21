@@ -44,6 +44,21 @@ pins today's bytes only.
    reference together.
 4. Run `scripts/test.sh app.tests.test_static_libraries`, then lint.
 
+## External-link marks
+
+These local images identify outbound destinations in the detail-page Links
+popover. They are not endorsements. The names and marks remain their owners'
+trademarks.
+
+| Service | Local asset | Source and rights note |
+|---|---|---|
+| SteamDB | `src/static/img/steamdb-logo.svg` | First-party inline favicon from `https://steamdb.info/`; no separate asset license was surfaced. |
+| ProtonDB | `src/static/img/protondb-logo.png` | First-party 192px PWA icon referenced by ProtonDB's manifest at `https://head.protondb.pages.dev/sites/protondb/manifest.json`; no separate asset license was surfaced. |
+| PCGamingWiki | `src/static/img/pcgamingwiki-logo.svg` | Original `PCGamingWiki_Favicon.svg` from the [file page](https://www.pcgamingwiki.com/wiki/File:PCGamingWiki_Favicon.svg) (2015). Its page exposes the site's CC BY-NC-SA 3.0 license; no separate file-specific terms were present in the supplied page dump. Attribute PCGamingWiki and honor noncommercial/share-alike terms, or obtain separate permission. |
+
+The PCGamingWiki favicon SVG is stored at
+`https://images.pcgamingwiki.com/9/93/PCGamingWiki_Favicon.svg`.
+
 ## Installer and bootstrap downloads
 
 | Input | Pin | Verified |

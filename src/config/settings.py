@@ -1645,20 +1645,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "retry_on_timeout": True,
     "health_check_interval": 30,
 }
-if _CELERY_PROCESS:
-    # Seconds an idle worker's BRPOP blocks before Kombu issues the next one. A
-    # task still arrives the moment it is queued (BRPOP returns as soon as a
-    # message lands); this only sets how often an idle worker re-asks. Kombu's
-    # 1 s made each worker wake 60 times a minute for nothing. Must stay below
-    # socket_timeout. Set CELERY_BROKER_POLLING_INTERVAL=1 for the old pace.
-    #
-    # Workers only. A short-lived caller such as the health check's ping leaves
-    # its last BRPOP on the reply queue blocking; at 10 s that stale read
-    # swallowed the next ping's replies, so web and shell processes keep
-    # Kombu's own pace.
-    CELERY_BROKER_TRANSPORT_OPTIONS["polling_interval"] = config(
-        "CELERY_BROKER_POLLING_INTERVAL", default=10, cast=float
-    )
 if REDIS_PREFIX:
     CELERY_BROKER_TRANSPORT_OPTIONS.update(
         {
@@ -1757,14 +1743,6 @@ CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
 if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
     CELERY_WORKER_MAX_MEMORY_PER_CHILD = None
 CELERY_BEAT_SYNC_EVERY = 10
-# Longest Beat sleeps between looks at the schedule. Beat still wakes exactly
-# when an entry is due; this only bounds how late it notices a schedule
-# changed in the database (a new import schedule starts up to a minute later).
-# django-celery-beat's 5 s woke Beat 12 times a minute to re-read the table.
-# Set CELERY_BEAT_MAX_LOOP_INTERVAL=5 for the old pace.
-CELERY_BEAT_MAX_LOOP_INTERVAL = config(
-    "CELERY_BEAT_MAX_LOOP_INTERVAL", default=60, cast=float
-)
 
 CELERY_TASK_TRACK_STARTED = True
 # A wedged task holds its worker for the whole limit, and with concurrency 1
@@ -2126,6 +2104,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Sweep pending watched state deliveries",
         "schedule": 60,
     },
+    # The start-up warm is not enough on a host whose other workloads churn the
+    # OS page cache: the database file drops out and a Home row or game page then
+    # costs seconds of random reads (the stall in a 16 s game detail request).
+    # Re-reading what is already cached is cheap, and touching it again keeps it
+    # in the active list so streaming I/O from other containers does not evict it.
+    "warm_database_page_cache": {
+        "task": "Warm database page cache",
+        "schedule": 60 * 10,
+        "options": {"expire_seconds": 60 * 10},
+    },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,
@@ -2154,10 +2142,6 @@ CELERY_BEAT_SCHEDULE = {
     "optimize_database_statistics": {
         "task": "Optimize database planner statistics",
         "schedule": 60 * 60 * 24,
-    },
-    "warm_database_page_cache": {
-        "task": "Warm database page cache",
-        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",

@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CODE_MAP = ROOT / "docs/architecture/code-map.md"
 
-PATH_PREFIXES = ("src/", "docs/", "scripts/", "frontend/", "native-proof/", ".github/")
+PATH_PREFIXES = ("src/", "docs/", "scripts/", "frontend/", "expo/", ".github/")
 ROOT_FILES = ("AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "README.md")
 TEST_LABEL = re.compile(r"^(?:app|api|users|lists|integrations|events|config)\.tests(?:\.\w+)+$")
 

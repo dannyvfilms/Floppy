@@ -274,6 +274,7 @@ from app.music_views import (
     album_detail,
     artist_delete,
     artist_detail,
+    artist_discography_more,
     artist_save,
     artist_track_modal,
     create_album_from_search,
@@ -998,6 +999,22 @@ def episode_details(
         episode_data["item"] = episode_item
 
     imdb_score = _build_imdb_rating_context(episode_item, MediaTypes.EPISODE.value)
+    # Score-chip source links. The TMDB episode URL is derivable from the route;
+    # the IMDb tconst is stored by imdb_ratings.sync_episode_ratings.
+    tmdb_episode_url = (
+        f"https://www.themoviedb.org/tv/{media_id}/season/{season_number}"
+        f"/episode/{episode_number}"
+        if source == Sources.TMDB.value
+        else ""
+    )
+    imdb_episode_id = (
+        (episode_item.provider_external_ids or {}).get("imdb_id")
+        if episode_item is not None
+        else None
+    )
+    imdb_episode_url = (
+        f"https://www.imdb.com/title/{imdb_episode_id}/" if imdb_episode_id else ""
+    )
 
     season_url = reverse(
         "anime_season_details"
@@ -1063,6 +1080,8 @@ def episode_details(
         "next_episode_number": next_episode_number,
         "episode_metadata": episode_metadata,
         "imdb_score": imdb_score,
+        "tmdb_episode_url": tmdb_episode_url,
+        "imdb_episode_url": imdb_episode_url,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,
@@ -1970,6 +1989,7 @@ __all__ = [
     "app_tags",
     "artist_delete",
     "artist_detail",
+    "artist_discography_more",
     "artist_save",
     "artist_track_modal",
     "bulk_collection_quick_add",

@@ -399,7 +399,9 @@ Add an importer only after checking that every write it makes takes one of the
 paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
-`queryset.update`) on anything Statistics reads, mark it.
+`queryset.update`) on anything Statistics reads, mark it, and add its row to
+`src/app/bulk_write_refresh.py` (`app.tests.test_bulk_write_refresh` fails
+until you do).
 
 ## Retired
 

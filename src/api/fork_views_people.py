@@ -6,6 +6,7 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.http import HttpResponseBadRequest
+from django.urls import reverse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
@@ -39,6 +40,20 @@ def _profile_response(request, view, *args):
     http_request.GET = query
     try:
         response = view(http_request, *args, "profile")
+    except services.ProviderNotConfiguredError as exc:
+        logger.warning("Profile provider failed: %s", exc)
+        # Say which provider needs credentials so a client can link to its settings.
+        return Response(
+            {
+                "detail": str(exc),
+                "errors": {
+                    "provider": exc.provider,
+                    "provider_label": exc.provider_label,
+                    "settings_path": reverse("provider_detail", kwargs={"slug": exc.provider}),
+                },
+            },
+            status=HTTP.BAD_GATEWAY,
+        )
     except services.ProviderAPIError as exc:
         logger.warning("Profile provider failed: %s", exc)
         return Response(

@@ -82,9 +82,11 @@ ALLOWED_WRITES: dict[str, dict[str, str]] = {
         ),
     },
     "saved_choice": {
-        "users/models.py:update_preference": (
+        "users/models.py:save_later": (
             "The request carries a new sort, layout or tab and the page "
-            "remembers it. Writes only when the choice changed."
+            "remembers it. Runs after the response is sent (the test client "
+            "closes the response inside the request), so no page waits for it. "
+            "Writes only when the choice changed."
         ),
     },
     "api_token": {
@@ -308,7 +310,7 @@ class ReadPagesDoNotWriteTests(TestCase):
                 again = "discover" if path.startswith("/discover") else "no_writes"
                 self._check(again, path, states=("warm",))
                 self.assertNotIn(
-                    "users/models.py:update_preference",
+                    "users/models.py:save_later",
                     {write.source for write in self._writes(path)[1]},
                 )
 
@@ -344,13 +346,34 @@ class ReadPagesDoNotWriteTests(TestCase):
         self._check("no_writes", "/settings/account", states=("warm",))
         self._check("no_writes", "/api/v1/user/account/")
 
+    def test_smart_list_readers(self):
+        # Tools poll these; each queues a background refresh and writes nothing.
+        from lists.models import CustomList
+
+        smart_list = CustomList.objects.create(
+            name="Guard smart list",
+            owner=self.user,
+            is_smart=True,
+            visibility="public",
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+        for path in (
+            f"/api/v1/lists/{smart_list.id}/",
+            f"/api/v1/lists/{smart_list.id}/items/",
+            f"/api/v1/lists/{smart_list.id}/export/",
+            f"/list/{smart_list.id}/rss",
+            f"/list/{smart_list.id}/json?arr=radarr",
+        ):
+            with self.subTest(path=path):
+                self._check("no_writes", path)
+
     def test_api_read_endpoints(self):
         for path in API_READ_PATHS:
             with self.subTest(path=path):
                 self._check("api", path)
 
 
-# The GET endpoints the Expo app's transports call (native-proof/ and the
+# The GET endpoints the Expo app's transports call (expo/ and the
 # shared frontend/ transports), without the ones that need an object id.
 API_READ_PATHS = (
     "/api/v1/info/",

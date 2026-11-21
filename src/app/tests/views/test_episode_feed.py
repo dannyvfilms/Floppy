@@ -741,6 +741,15 @@ class EpisodeFeedTests(TestCase):
         self.assertFalse(row["items"][0].next_episode["released"])
         self.assertIsNone(row["items"][0].next_episode["days_until"])
 
+    def test_hide_caught_up_leaves_out_airing_shows_with_nothing_released(self):
+        self._show("Waiting for renewal", watched=3)
+        behind, _ = self._show("Behind", watched=1)
+        self.row.filters = {"hide_caught_up": True}
+        self.row.save()
+        row = self._feed()
+        self.assertEqual(row["total"], 1)
+        self.assertEqual([entry.item.pk for entry in row["items"]], [behind.item_id])
+
     def test_missing_release_dates_do_not_turn_metadata_total_into_released_target(
         self,
     ):
