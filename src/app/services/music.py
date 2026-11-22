@@ -52,11 +52,100 @@ def album_for_media_id(media_id, user=None):
         )
     else:
         matches = []
+    if not matches and media_id and not media_id.startswith("album-"):
+        matches = _albums_for_stale_release_id(media_id)
     if not matches:
         return None
     # Rank every exact match first: the seed row's own group id would otherwise
     # hide a duplicate that has the same release id but no group id.
     return find_canonical_album(_preferred_album(matches, user), user=user)
+
+
+def _albums_for_stale_release_id(release_id):
+    """Find albums for a release id that no album row holds any more.
+
+    A list stores the id the album page had when the album was added. An album's
+    release id can change later (enrichment, merges), leaving the saved id on no
+    row. MusicBrainz knows the release's group, and the group id is stable. The
+    answer, including a failed or empty one, is cached for a day so a page does
+    not call MusicBrainz on every render.
+    """
+    from django.core.cache import cache
+
+    from app.providers import musicbrainz
+
+    cache_key = f"album_stale_release_group_{release_id}"
+    group_id = cache.get(cache_key)
+    if group_id is None:
+        try:
+            group_id = musicbrainz.get_release(release_id, skip_cover_art=True).get(
+                "release_group_id",
+            )
+        except Exception:
+            logger.debug("Could not resolve release %s to a group", release_id)
+            group_id = None
+        cache.set(cache_key, group_id or "", 60 * 60 * 24)
+    if not group_id:
+        return []
+    return list(
+        Album.objects.select_related("artist").filter(
+            musicbrainz_release_group_id=group_id,
+        ),
+    )
+
+
+def repair_stale_album_list_items(user, items, limit=3):
+    """Re-point list items saved under a replaced release id at the album's id.
+
+    Only items that no album row matches are looked up, at most ``limit`` per
+    call. Returns the number repaired.
+    """
+    from app.models import MediaTypes, Sources
+
+    candidates = [
+        item for item in items
+        if item.media_type == MediaTypes.MUSIC.value
+        and item.source == Sources.MUSICBRAINZ.value
+        and item.season_number is None
+        and item.episode_number is None
+        and not str(item.media_id).startswith("album-")
+    ]
+    if not candidates:
+        return 0
+    ids = [item.media_id for item in candidates]
+    known = set(
+        Album.objects.filter(musicbrainz_release_id__in=ids).values_list(
+            "musicbrainz_release_id", flat=True,
+        ),
+    ) | set(
+        Album.objects.filter(musicbrainz_release_group_id__in=ids).values_list(
+            "musicbrainz_release_group_id", flat=True,
+        ),
+    )
+    repaired = 0
+    for item in candidates:
+        if item.media_id in known or repaired >= limit:
+            continue
+        album = album_for_media_id(item.media_id, user=user)
+        new_id = album and (
+            album.musicbrainz_release_id or album.musicbrainz_release_group_id
+        )
+        if not new_id or new_id == item.media_id:
+            continue
+        taken = Item.objects.filter(
+            media_id=new_id,
+            source=item.source,
+            media_type=item.media_type,
+            library_media_type=item.library_media_type,
+            season_number=None,
+            episode_number=None,
+        ).exists()
+        if taken:
+            continue
+        item.media_id = new_id
+        item.save(update_fields=["media_id"])
+        repaired += 1
+    return repaired
 
 
 def album_trackers_for_list_items(user, items):
@@ -74,6 +163,7 @@ def album_trackers_for_list_items(user, items):
     }
     if not items_by_id:
         return {}
+    repair_stale_album_list_items(user, items_by_id.values())
     source = tracker_sources(user, MediaTypes.MUSIC.value, ROUTING_MODEL, include_albums=True)[0]
     ids = Item.objects.filter(pk__in=items_by_id).annotate(
         _tracker_id=Subquery(source.item_rows(user).order_by("-updated_at", "-pk").values("pk")[:1])
