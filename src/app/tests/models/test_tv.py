@@ -450,6 +450,160 @@ class TVStatusTests(TestCase):
             1,
         )
 
+    def _add_season(self, number, status):
+        item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test Show",
+            image="http://example.com/image.jpg",
+            season_number=number,
+        )
+        return Season.objects.create(
+            item=item,
+            user=self.user,
+            related_tv=self.tv,
+            status=status,
+        )
+
+    def _set_tv_status(self, status):
+        self.tv.status = status
+        self.tv.save()
+
+    def test_pausing_in_progress_show_pauses_only_in_progress_seasons(self):
+        """In Progress to Paused pauses every In Progress season, nothing else."""
+        self._set_tv_status(Status.IN_PROGRESS.value)
+        self.season2.status = Status.IN_PROGRESS.value
+        self.season2.save()
+        completed = self._add_season(3, Status.COMPLETED.value)
+        dropped = self._add_season(4, Status.DROPPED.value)
+        planning = self._add_season(5, Status.PLANNING.value)
+        paused = self._add_season(6, Status.PAUSED.value)
+        episode_item = Item.objects.create(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Test Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        episode = Episode.objects.create(
+            item=episode_item,
+            related_season=self.season1,
+            end_date=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+        self.season1.refresh_from_db()
+        self.season1.status = Status.IN_PROGRESS.value
+        self.season1.save()
+
+        self._set_tv_status(Status.PAUSED.value)
+
+        statuses = {
+            season.item.season_number: season.status
+            for season in Season.objects.filter(related_tv=self.tv)
+        }
+        self.assertEqual(
+            statuses,
+            {
+                1: Status.PAUSED.value,
+                2: Status.PAUSED.value,
+                3: Status.COMPLETED.value,
+                4: Status.DROPPED.value,
+                5: Status.PLANNING.value,
+                6: Status.PAUSED.value,
+            },
+        )
+        self.assertEqual(Episode.objects.filter(related_season=self.season1).count(), 1)
+        episode.refresh_from_db()
+        self.assertEqual(episode.end_date, datetime(2024, 1, 1, tzinfo=UTC))
+        self.assertEqual(
+            self.season1.history.first().history_change_reason,
+            "Show paused",
+        )
+        for untouched in (completed, dropped, planning, paused):
+            untouched.refresh_from_db()
+        self.assertEqual(planning.status, Status.PLANNING.value)
+
+    def test_pausing_from_other_statuses_leaves_seasons_alone(self):
+        """Planning, Completed and Dropped to Paused do not touch seasons."""
+        for previous in (
+            Status.PLANNING.value,
+            Status.COMPLETED.value,
+            Status.DROPPED.value,
+        ):
+            with self.subTest(previous=previous):
+                TV.objects.filter(pk=self.tv.pk).update(status=previous)
+                self.tv.refresh_from_db()
+                Season.objects.filter(pk=self.season1.pk).update(
+                    status=Status.IN_PROGRESS.value,
+                )
+                self._set_tv_status(Status.PAUSED.value)
+                self.season1.refresh_from_db()
+                self.assertEqual(self.season1.status, Status.IN_PROGRESS.value)
+
+    def test_saving_paused_show_again_does_not_touch_seasons(self):
+        """A show already Paused keeps a later In Progress season as it is."""
+        self._set_tv_status(Status.IN_PROGRESS.value)
+        self._set_tv_status(Status.PAUSED.value)
+        Season.objects.filter(pk=self.season1.pk).update(
+            status=Status.IN_PROGRESS.value,
+        )
+
+        self.tv.save()
+
+        self.season1.refresh_from_db()
+        self.assertEqual(self.season1.status, Status.IN_PROGRESS.value)
+
+    def test_pausing_one_show_leaves_other_shows_alone(self):
+        """Another show's In Progress season is not paused."""
+        other_item = Item.objects.create(
+            media_id="999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Other Show",
+            image="http://example.com/image.jpg",
+        )
+        other_tv = TV.objects.create(
+            item=other_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        other_season_item = Item.objects.create(
+            media_id="999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Other Show",
+            image="http://example.com/image.jpg",
+            season_number=1,
+        )
+        other_season = Season.objects.create(
+            item=other_season_item,
+            user=self.user,
+            related_tv=other_tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        self._set_tv_status(Status.IN_PROGRESS.value)
+
+        self._set_tv_status(Status.PAUSED.value)
+
+        other_season.refresh_from_db()
+        self.assertEqual(other_season.status, Status.IN_PROGRESS.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_resuming_paused_show_does_not_unpause_seasons(self, mock_get_metadata):
+        """Back to In Progress leaves the paused seasons as they are."""
+        mock_get_metadata.return_value = {"related": {"seasons": []}}
+        self._set_tv_status(Status.IN_PROGRESS.value)
+        self._set_tv_status(Status.PAUSED.value)
+        self.season1.refresh_from_db()
+        self.assertEqual(self.season1.status, Status.PAUSED.value)
+
+        self._set_tv_status(Status.IN_PROGRESS.value)
+
+        self.season1.refresh_from_db()
+        self.assertEqual(self.season1.status, Status.PAUSED.value)
+
     @patch("app.models.providers.services.get_media_metadata")
     def test_in_progress_status_activates_next_season(self, mock_get_metadata):
         """Test setting status to IN_PROGRESS activates an aired next season."""
