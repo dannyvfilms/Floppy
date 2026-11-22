@@ -78,9 +78,7 @@ def _albums_for_stale_release_id(release_id):
     group_id = cache.get(cache_key)
     if group_id is None:
         try:
-            group_id = musicbrainz.get_release(release_id, skip_cover_art=True).get(
-                "release_group_id",
-            )
+            group_id = musicbrainz.get_release_group_id(release_id)
         except Exception:
             logger.debug("Could not resolve release %s to a group", release_id)
             group_id = None
