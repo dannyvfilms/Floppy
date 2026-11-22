@@ -119,6 +119,24 @@ export function ListsForm({ url, vals, labels = {}, targetId, onClose }) {
     setErrors(current => ({ ...current, [list.id]: message }));
   }
 
+  // format=json makes the server answer with a result instead of a redirect, so a rejected name is an error here.
+  async function create(name) {
+    let response;
+    try {
+      response = await fetch(model.createUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: new URLSearchParams({ name, format: 'json' }),
+        headers: { 'X-CSRFToken': model.csrfToken, Accept: 'application/json' },
+      });
+    } catch {
+      throw new Error(text(labels, 'createFailed'));
+    }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || text(labels, 'createFailed'));
+    retry();
+  }
+
   return <ListsFormView
     model={model}
     membership={membership}
@@ -131,6 +149,7 @@ export function ListsForm({ url, vals, labels = {}, targetId, onClose }) {
     onTagChange={setTag}
     onToggle={toggle}
     onRetry={retry}
+    onCreate={model?.createUrl ? create : undefined}
     onClose={onClose}
     closeRef={closeButton}
     nativeID={targetId}
