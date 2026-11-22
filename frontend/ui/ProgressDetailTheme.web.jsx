@@ -75,7 +75,7 @@ function cardFrom(model, current) {
 
 let requestSequence = 0;
 
-function usePalette() {
+export function usePalette() {
   const [palette, setPalette] = useState(readPalette);
   useEffect(() => {
     const update = () => setPalette(readPalette());
