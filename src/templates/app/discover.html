@@ -37,6 +37,7 @@
       </div>
     </div>
 
+<div class="flex items-center gap-2 min-w-0">
     {% translate "Media type" as media_type_label %}{% filter_chips_react discover_media_options media_type_label as discover_chips %}{{ discover_chips.props|json_script:discover_chips.id }}
     <div data-filter-chips-root data-props-id="{{ discover_chips.id }}"
          class="ui-scroll-row ui-filter-chips"
@@ -50,6 +51,9 @@
           {% translate option.label %}
         </button>
       {% endfor %}
+    </div>
+
+    {% include "app/components/discover_navigation.html" %}
     </div>
 
     {% discover_feedback_react as discover_feedback %}
