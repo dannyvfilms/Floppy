@@ -492,6 +492,8 @@ Status: `Partial / coexisting`
 
 Status: `Legacy`
 
+- `src/templates/app/anime_seasons.html` (Anime Seasons page: MAL seasonal grid of shared search-surface media cards)
+- `src/templates/app/components/discover_navigation.html` (Anime Seasons chip beside the Discover media-type chips)
 - `src/templates/app/components/discover_row.html`
 - `src/templates/app/components/discover_row_preview.html`
 - `src/templates/app/components/discover_rows.html`
