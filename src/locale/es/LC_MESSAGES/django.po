@@ -14755,7 +14755,7 @@ msgid "Anime Seasons - Floppy"
 msgstr "Temporadas de anime - Floppy"
 
 msgid "Browse seasonal anime from MyAnimeList."
-msgstr "Explora anime de temporada de MyAnimeList."
+msgstr "Explora el anime de cada temporada en MyAnimeList."
 
 msgid "Discover sections"
 msgstr "Secciones de Descubrir"
@@ -14772,18 +14772,23 @@ msgstr "Temporada siguiente"
 msgid "Filters applied"
 msgstr "Filtros aplicados"
 
+msgctxt "anime season"
 msgid "Season"
 msgstr "Temporada"
 
+msgctxt "anime season"
 msgid "Winter"
 msgstr "Invierno"
 
+msgctxt "anime season"
 msgid "Spring"
 msgstr "Primavera"
 
+msgctxt "anime season"
 msgid "Summer"
 msgstr "Verano"
 
+msgctxt "anime season"
 msgid "Fall"
 msgstr "Otoño"
 
@@ -14805,5 +14810,11 @@ msgstr "Ordenar"
 msgid "No anime found for these filters."
 msgstr "No se encontró anime con estos filtros."
 
-msgid "MyAnimeList credentials are not configured. Add a MAL client ID in Settings."
-msgstr "Las credenciales de MyAnimeList no están configuradas. Añade un ID de cliente de MAL en Ajustes."
+msgid "MyAnimeList has no anime listed for this season yet."
+msgstr "MyAnimeList aún no tiene anime para esta temporada."
+
+msgid "Add a MyAnimeList client ID in the provider settings to browse seasonal anime."
+msgstr "Añade un ID de cliente de MyAnimeList en los ajustes del proveedor para explorar el anime de temporada."
+
+msgid "Open MyAnimeList settings"
+msgstr "Abrir ajustes de MyAnimeList"

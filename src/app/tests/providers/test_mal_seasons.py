@@ -1,11 +1,13 @@
 from unittest.mock import patch
 
+import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 
 from app.models import Sources
 from app.providers import mal
+from app.providers.services import ProviderAPIError
 
 
 class MalSeasonProviderTests(SimpleTestCase):
@@ -82,9 +84,7 @@ class MalSeasonProviderTests(SimpleTestCase):
             "GET",
             "https://api.myanimelist.net/v2/anime/season/2026/winter",
             params={
-                "fields": (
-                    "media_type,start_date,alternative_titles,mean,popularity"
-                ),
+                "fields": ("media_type,start_date,alternative_titles,mean,popularity"),
                 "limit": 100,
                 "offset": 0,
             },
@@ -108,3 +108,32 @@ class MalSeasonProviderTests(SimpleTestCase):
             mock_request.call_args_list[1].kwargs["params"]["nsfw"],
             "true",
         )
+
+    @patch("app.providers.mal.services.api_request")
+    def test_tv_specials_are_filed_as_specials(self, mock_request):
+        mock_request.return_value = {
+            "data": [{"node": {"id": 1, "title": "Recap", "media_type": "tv_special"}}],
+        }
+
+        (entry,) = mal.seasonal_anime(2026, "spring")
+
+        self.assertEqual(entry["format"], "special")
+
+    @patch("app.providers.mal.services.api_request")
+    def test_http_errors_become_provider_errors_and_are_not_cached(
+        self,
+        mock_request,
+    ):
+        response = requests.Response()
+        response.status_code = 400
+        response._content = b'{"message": "Invalid client id"}'
+        mock_request.side_effect = requests.HTTPError(response=response)
+
+        with self.assertRaises(ProviderAPIError) as raised:
+            mal.seasonal_anime(2026, "spring")
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("Invalid API key", str(raised.exception))
+        mock_request.side_effect = None
+        mock_request.return_value = {"data": []}
+        self.assertEqual(mal.seasonal_anime(2026, "spring"), [])

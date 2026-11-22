@@ -410,9 +410,6 @@
   .right-\[max\(1\.5rem\,var\(--safe-right\)\)\] {
     right: max(1.5rem, var(--safe-right));
   }
-  .right-auto {
-    right: auto;
-  }
   .bottom-0 {
     bottom: calc(var(--spacing) * 0);
   }
@@ -974,9 +971,6 @@
   .w-1\.5 {
     width: calc(var(--spacing) * 1.5);
   }
-  .w-2 {
-    width: calc(var(--spacing) * 2);
-  }
   .w-2\/5 {
     width: calc(2/5 * 100%);
   }
@@ -1057,9 +1051,6 @@
   }
   .w-64 {
     width: calc(var(--spacing) * 64);
-  }
-  .w-72 {
-    width: calc(var(--spacing) * 72);
   }
   .w-80 {
     width: calc(var(--spacing) * 80);
@@ -3202,10 +3193,6 @@
     --tw-tracking: 0.3em;
     letter-spacing: 0.3em;
   }
-  .tracking-\[0\.3em\] {
-    --tw-tracking: 0.3em;
-    letter-spacing: 0.3em;
-  }
   .tracking-\[0\.12em\] {
     --tw-tracking: 0.12em;
     letter-spacing: 0.12em;
@@ -4843,11 +4830,6 @@
       inset-inline: auto;
     }
   }
-  .sm\:right-0 {
-    @media (width >= 40rem) {
-      right: calc(var(--spacing) * 0);
-    }
-  }
   .sm\:right-4 {
     @media (width >= 40rem) {
       right: calc(var(--spacing) * 4);
@@ -5200,11 +5182,6 @@
   .sm\:gap-x-4 {
     @media (width >= 40rem) {
       column-gap: calc(var(--spacing) * 4);
-    }
-  }
-  .sm\:self-auto {
-    @media (width >= 40rem) {
-      align-self: auto;
     }
   }
   .sm\:overflow-visible {

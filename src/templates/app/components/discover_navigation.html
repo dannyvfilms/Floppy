@@ -9,7 +9,7 @@
     {% for option in discover_media_options %}
       <a href="{% url 'discover' %}?media_type={{ option.value }}" class="ui-filter-chip">{% translate option.label %}</a>
     {% endfor %}
-    <a href="{% url 'anime_seasons' %}" class="ui-filter-chip" aria-current="page" aria-pressed="true">{% translate "Anime Seasons" %}</a>
+    <a href="{% url 'anime_seasons' %}" class="ui-filter-chip" aria-current="page">{% translate "Anime Seasons" %}</a>
   </nav>
 {% else %}
   <a href="{% url 'anime_seasons' %}" class="ui-filter-chip shrink-0">{% translate "Anime Seasons" %}</a>

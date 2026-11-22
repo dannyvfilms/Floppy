@@ -12209,38 +12209,43 @@ msgid "All media supports library and Up Next rows."
 msgstr "Alle Medien unterstützt Bibliothekszeilen und „Als Nächstes“."
 
 msgid "Anime Seasons - Floppy"
-msgstr "Anime-Staffeln – Floppy"
+msgstr "Anime-Saisons - Floppy"
 
 msgid "Browse seasonal anime from MyAnimeList."
-msgstr "Durchsuche saisonale Anime von MyAnimeList."
+msgstr "Durchsuche Anime nach Saison von MyAnimeList."
 
 msgid "Discover sections"
 msgstr "Entdecken-Bereiche"
 
 msgid "Anime Seasons"
-msgstr "Anime-Staffeln"
+msgstr "Anime-Saisons"
 
 msgid "Previous season"
-msgstr "Vorherige Staffel"
+msgstr "Vorherige Saison"
 
 msgid "Next season"
-msgstr "Nächste Staffel"
+msgstr "Nächste Saison"
 
 msgid "Filters applied"
 msgstr "Filter angewendet"
 
+msgctxt "anime season"
 msgid "Season"
-msgstr "Staffel"
+msgstr "Saison"
 
+msgctxt "anime season"
 msgid "Winter"
 msgstr "Winter"
 
+msgctxt "anime season"
 msgid "Spring"
 msgstr "Frühling"
 
+msgctxt "anime season"
 msgid "Summer"
 msgstr "Sommer"
 
+msgctxt "anime season"
 msgid "Fall"
 msgstr "Herbst"
 
@@ -12262,5 +12267,11 @@ msgstr "Sortierung"
 msgid "No anime found for these filters."
 msgstr "Für diese Filter wurden keine Anime gefunden."
 
-msgid "MyAnimeList credentials are not configured. Add a MAL client ID in Settings."
-msgstr "MyAnimeList-Zugangsdaten sind nicht konfiguriert. Füge in den Einstellungen eine MAL-Client-ID hinzu."
+msgid "MyAnimeList has no anime listed for this season yet."
+msgstr "MyAnimeList listet für diese Saison noch keine Anime."
+
+msgid "Add a MyAnimeList client ID in the provider settings to browse seasonal anime."
+msgstr "Füge in den Anbieter-Einstellungen eine MyAnimeList-Client-ID hinzu, um Anime nach Saison zu durchsuchen."
+
+msgid "Open MyAnimeList settings"
+msgstr "MyAnimeList-Einstellungen öffnen"
