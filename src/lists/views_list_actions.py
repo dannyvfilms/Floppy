@@ -516,6 +516,7 @@ def lists_modal(
                 "tags": unique_tags,
                 "selectedTag": selected_tag,
                 "toggleUrl": reverse("list_item_toggle"),
+                "createUrl": reverse("list_create"),
                 "csrfToken": get_token(request),
             },
         )

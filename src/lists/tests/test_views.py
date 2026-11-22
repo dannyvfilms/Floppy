@@ -3411,11 +3411,18 @@ class ListsModalViewTests(TestCase):
         self.assertEqual(data["title"], "Test Movie")
         self.assertEqual(data["tags"], ["Movies", "Night"])
         self.assertEqual(data["toggleUrl"], reverse("list_item_toggle"))
+        self.assertEqual(data["createUrl"], reverse("list_create"))
         self.assertTrue(data["csrfToken"])
         by_name = {entry["name"]: entry for entry in data["lists"]}
         self.assertTrue(by_name["Test List 1"]["hasItem"])
         self.assertFalse(by_name["Test List 2"]["hasItem"])
         self.assertEqual(by_name["Test List 1"]["tags"], ["Movies", "Night"])
+
+    def test_modal_create_url_makes_a_list_from_a_name_alone(self):
+        """The Lists modal creates a list with only a name (issue #2116)."""
+        response = self.client.post(reverse("list_create"), {"name": "From modal"})
+        self.assertIn(response.status_code, (200, 302))
+        self.assertTrue(CustomList.objects.filter(name="From modal", owner=self.user).exists())
 
     def test_lists_modal_json_omits_smart_lists(self):
         """Smart lists cannot be edited by hand, so the form never offers them."""

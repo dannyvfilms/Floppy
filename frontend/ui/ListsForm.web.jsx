@@ -119,6 +119,23 @@ export function ListsForm({ url, vals, labels = {}, targetId, onClose }) {
     setErrors(current => ({ ...current, [list.id]: message }));
   }
 
+  // The server redirects after creating, so success is "the request went through"; reload to show the new list.
+  async function create(name) {
+    let response;
+    try {
+      response = await fetch(model.createUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: new URLSearchParams({ name }),
+        headers: { 'X-CSRFToken': model.csrfToken },
+      });
+    } catch {
+      throw new Error(text(labels, 'createFailed'));
+    }
+    if (!response.ok) throw new Error(text(labels, 'createFailed'));
+    retry();
+  }
+
   return <ListsFormView
     model={model}
     membership={membership}
@@ -131,6 +148,7 @@ export function ListsForm({ url, vals, labels = {}, targetId, onClose }) {
     onTagChange={setTag}
     onToggle={toggle}
     onRetry={retry}
+    onCreate={model?.createUrl ? create : undefined}
     onClose={onClose}
     closeRef={closeButton}
     nativeID={targetId}
