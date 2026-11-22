@@ -58,3 +58,22 @@ class StaleReleaseIdTests(TestCase):
         self.item.save()
         self.assertEqual(music.repair_stale_album_list_items(None, [self.item]), 0)
         get_release.assert_not_called()
+
+    @patch("app.providers.musicbrainz.get_release")
+    def test_unresolved_items_cost_at_most_limit_requests(self, get_release):
+        get_release.side_effect = RuntimeError("not a release")
+        items = [
+            Item.objects.create(
+                media_id=f"00000000-0000-4000-8000-{n:012d}",
+                source=Sources.MUSICBRAINZ.value,
+                media_type=MediaTypes.MUSIC.value,
+                title=f"Track {n}",
+                image="none.svg",
+            )
+            for n in range(10)
+        ]
+        music.repair_stale_album_list_items(None, items, limit=3)
+        self.assertEqual(get_release.call_count, 3)
+        # Remembered misses are free, so the next render reaches further.
+        music.repair_stale_album_list_items(None, items, limit=3)
+        self.assertEqual(get_release.call_count, 6)

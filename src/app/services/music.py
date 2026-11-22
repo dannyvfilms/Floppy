@@ -97,8 +97,9 @@ def _albums_for_stale_release_id(release_id):
 def repair_stale_album_list_items(user, items, limit=3):
     """Re-point list items saved under a replaced release id at the album's id.
 
-    Only items that no album row matches are looked up, at most ``limit`` per
-    call. Returns the number repaired.
+    Only items that no album row matches are looked up, and at most ``limit``
+    MusicBrainz requests are made per call, misses included. Returns the number
+    repaired.
     """
     from app.models import MediaTypes, Sources
 
@@ -122,10 +123,20 @@ def repair_stale_album_list_items(user, items, limit=3):
             "musicbrainz_release_group_id", flat=True,
         ),
     )
+    from django.core.cache import cache
+
     repaired = 0
+    lookups = 0
     for item in candidates:
-        if item.media_id in known or repaired >= limit:
+        if item.media_id in known:
             continue
+        # Only a cold cache costs a MusicBrainz request, so only that counts
+        # against the limit, whether the lookup then hits or misses. Recordings
+        # on a list never match an album and must not each cost a request.
+        if cache.get(f"album_stale_release_group_{item.media_id}") is None:
+            if lookups >= limit:
+                continue
+            lookups += 1
         album = album_for_media_id(item.media_id, user=user)
         new_id = album and (
             album.musicbrainz_release_id or album.musicbrainz_release_group_id
