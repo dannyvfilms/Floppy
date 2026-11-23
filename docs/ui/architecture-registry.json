@@ -2131,6 +2131,26 @@
         }
       }
     },
+    "frontend/discover/SeasonFilters.jsx": {
+      "components": [
+        "SeasonFilters"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Mounted by frontend/discover/mountDiscover.jsx (mountDiscoverSeasonFilters) over the server GET-form fallback on /discover/anime-seasons. Chromium loaded the page at 1280x900 and 375x812 against a local instance; each FilterDropdown opened, and a choice reloaded the page with only that query parameter changed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Web-only page today; no native screen renders SeasonFilters. Built only from shared React Native controls (FilterToolbar, FilterDropdown), so a native Anime Seasons screen can reuse it."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Web-only page today; no native screen renders SeasonFilters. Built only from shared React Native controls (FilterToolbar, FilterDropdown), so a native Anime Seasons screen can reuse it."
+        }
+      }
+    },
     "frontend/ui/HomeShelves.jsx": {
       "components": [
         "HomeShelves"

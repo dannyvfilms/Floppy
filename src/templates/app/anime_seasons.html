@@ -11,9 +11,7 @@
             <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Browse seasonal anime from MyAnimeList." %}</p>
         </div>
         {% include "app/components/discover_navigation.html" with anime_seasons_active=True %}
-        <div class="rounded-lg bg-[var(--color-surface)] p-4 sm:p-6"
-             x-data="{ filtersOpen: false }"
-             @keydown.escape.window="filtersOpen = false">
+        <div class="rounded-lg bg-[var(--color-surface)] p-4 sm:p-6">
             <div class="flex flex-wrap items-center gap-3">
                 <div class="flex items-center rounded-md bg-[var(--color-surface-strong)] p-1">
                     {% if previous_link %}
@@ -36,91 +34,33 @@
                         <span class="p-2 opacity-50" aria-hidden="true">{% include "app/icons/chevron-right.svg" with classes="h-5 w-5" %}</span>
                     {% endif %}
                 </div>
-                <div class="relative" @click.outside="filtersOpen = false">
-                    <button type="button"
-                            class="flex h-10 cursor-pointer items-center gap-2 rounded-md bg-[var(--color-surface-strong)] px-3 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                            @click="filtersOpen = !filtersOpen"
-                            :aria-expanded="filtersOpen.toString()"
-                            aria-expanded="false"
-                            aria-controls="anime-season-filters">
-                        {% include "app/icons/funnel.svg" with classes="h-4 w-4" %}
-                        <span>{% translate "Filters" %}</span>
-                        {% if filters_applied %}
-                            <span class="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" aria-hidden="true"></span>
-                            <span class="sr-only">{% translate "Filters applied" %}</span>
-                        {% endif %}
-                        {% include "app/icons/chevron-down.svg" with classes="h-4 w-4" %}
-                    </button>
-                    <div id="anime-season-filters"
-                         x-cloak
-                         x-show="filtersOpen"
-                         x-transition:enter="transition ease-out duration-100"
-                         x-transition:enter-start="transform opacity-0 scale-95"
-                         x-transition:enter-end="transform opacity-100 scale-100"
-                         x-transition:leave="transition ease-in duration-75"
-                         x-transition:leave-start="transform opacity-100 scale-100"
-                         x-transition:leave-end="transform opacity-0 scale-95"
-                         class="absolute left-0 z-40 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 shadow-lg">
-                        <form method="get" class="space-y-4">
-                            <div class="grid grid-cols-2 gap-3">
-                                <label class="text-sm text-[var(--color-text-secondary)]">
-                                    <span>{% translate "Season" context "anime season" %}</span>
-                                    <select name="season"
-                                            class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
-                                        {% for option in season_options %}
-                                            <option value="{{ option.value }}"
-                                                    {% if option.value == season %}selected{% endif %}>
-                                                {{ option.label }}
-                                            </option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                                <label class="text-sm text-[var(--color-text-secondary)]">
-                                    <span>{% translate "Year" %}</span>
-                                    <select name="year"
-                                            class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
-                                        {% for option in year_options %}
-                                            <option value="{{ option }}"{% if option == year %} selected{% endif %}>{{ option }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                            </div>
-                            <label class="block text-sm text-[var(--color-text-secondary)]">
-                                <span>{% translate "Format" %}</span>
-                                <select name="format"
-                                        class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
-                                    {% for option in format_options %}
+                {{ filter_props|json_script:"anime-season-filters-props" }}
+                <div data-discover-season-filters-root
+                     data-props-id="anime-season-filters-props"
+                     class="min-w-0">
+                    {% comment %}Server fallback until the shared React filter toolbar mounts.{% endcomment %}
+                    <form method="get"
+                          class="flex flex-wrap items-center gap-2"
+                          aria-label="{{ filter_props.label }}">
+                        {% for filter in filter_props.filters %}
+                            <label class="text-sm text-[var(--color-text-secondary)]">
+                                <span class="sr-only">{{ filter.label }}</span>
+                                <select name="{{ filter.name }}"
+                                        class="rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] px-3 py-2 text-[var(--color-text)]">
+                                    {% for option in filter.options %}
                                         <option value="{{ option.value }}"
-                                                {% if option.value == selected_format %}selected{% endif %}>
+                                                {% if option.value == filter.value %}selected{% endif %}>
                                             {{ option.label }}
                                         </option>
                                     {% endfor %}
                                 </select>
                             </label>
-                            <label class="block text-sm text-[var(--color-text-secondary)]">
-                                <span>{% translate "Sort" %}</span>
-                                <select name="sort"
-                                        class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
-                                    {% for option in sort_options %}
-                                        <option value="{{ option.value }}"
-                                                {% if option.value == selected_sort %}selected{% endif %}>
-                                            {{ option.label }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <div class="flex items-center justify-end gap-2 border-t border-[var(--color-border)] pt-4">
-                                <a href="{% url 'anime_seasons' %}"
-                                   class="rounded-md px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
-                                    {% translate "Clear" %}
-                                </a>
-                                <button type="submit"
-                                        class="cursor-pointer rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
-                                    {% translate "Apply" %}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                        {% endfor %}
+                        <button type="submit"
+                                class="cursor-pointer rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
+                            {% translate "Apply" %}
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

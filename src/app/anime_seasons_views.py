@@ -151,6 +151,49 @@ def _cards(user, anime):
     return cards
 
 
+def _filter_props(year, season, anime_format, sort, *, season_options, year_options):
+    """Return the props the shared React filter toolbar needs."""
+
+    def options(choices):
+        return [
+            {"value": str(choice["value"]), "label": str(choice["label"])}
+            for choice in choices
+        ]
+
+    return {
+        "label": _("Season filters"),
+        "filters": [
+            {
+                "name": "season",
+                "label": pgettext("anime season", "Season"),
+                "value": season,
+                "options": options(season_options),
+            },
+            {
+                "name": "year",
+                "label": _("Year"),
+                "value": str(year),
+                "options": [
+                    {"value": str(option), "label": str(option)}
+                    for option in year_options
+                ],
+            },
+            {
+                "name": "format",
+                "label": _("Format"),
+                "value": anime_format,
+                "options": options(_format_options()),
+            },
+            {
+                "name": "sort",
+                "label": _("Sort"),
+                "value": sort,
+                "options": options(_sort_options()),
+            },
+        ],
+    }
+
+
 def _season_link(year, season):
     """Return (year, season) when it is inside the browsable range, else None."""
     if ANIME_SEASON_MIN_YEAR <= year <= _max_year():
@@ -194,6 +237,7 @@ def anime_seasons_page(request):
         anime = [entry for entry in anime if entry["format"] == anime_format]
 
     season_options = _season_options()
+    year_options = range(_max_year(), ANIME_SEASON_MIN_YEAR - 1, -1)
     previous = adjacent_anime_cour(year, season, -1)
     following = adjacent_anime_cour(year, season, 1)
     return render(
@@ -212,12 +256,19 @@ def anime_seasons_page(request):
             ),
             "selected_format": anime_format,
             "selected_sort": sort,
-            "filters_applied": anime_format != "all" or sort != "popularity",
             "discover_media_options": _discover_media_options(request.user),
             "season_options": season_options,
             "format_options": _format_options(),
             "sort_options": _sort_options(),
-            "year_options": range(_max_year(), ANIME_SEASON_MIN_YEAR - 1, -1),
+            "year_options": year_options,
+            "filter_props": _filter_props(
+                year,
+                season,
+                anime_format,
+                sort,
+                season_options=season_options,
+                year_options=year_options,
+            ),
             "previous_link": _season_link(*previous),
             "next_link": _season_link(*following),
         },

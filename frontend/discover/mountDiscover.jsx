@@ -11,6 +11,7 @@ import {
   DiscoverState,
   DiscoverTabs,
 } from './DiscoverScreen';
+import { SeasonFilters } from './SeasonFilters';
 
 const palette = {
   text: 'var(--color-text)',
@@ -18,6 +19,7 @@ const palette = {
   textMuted: 'var(--color-text-muted)',
   surface: 'var(--color-surface)',
   surfaceStrong: 'var(--color-surface-strong)',
+  surfaceMuted: 'var(--color-surface-muted)',
   border: 'var(--color-surface-border)',
   accent: 'var(--color-accent)',
   accentText: '#ffffff',
@@ -174,4 +176,16 @@ function Feedback({ host, props }) {
 
 export function mountDiscoverFeedback(host, props) {
   return mountRoot(host, <Feedback host={host} props={props} />);
+}
+
+// Anime Seasons filters. The page is server rendered, so a choice loads the
+// same URL with that parameter changed; the other filters stay as they are.
+export function mountDiscoverSeasonFilters(host, props) {
+  function apply({ name, value }) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(name, value);
+    navigate(url.pathname + url.search);
+  }
+  return mountRoot(host, <SeasonFilters label={props.label} filters={props.filters}
+    palette={palette} onChange={apply} />);
 }

@@ -288,3 +288,33 @@ class AnimeSeasonsViewTests(TestCase):
         response = self.client.get(reverse("anime_seasons"))
 
         self.assertEqual(response.status_code, 302)
+
+    @patch("app.anime_seasons_views.credentials.is_configured", return_value=True)
+    @patch("app.anime_seasons_views.mal.seasonal_anime", return_value=[])
+    def test_filters_mount_the_shared_toolbar_over_a_get_form(
+        self,
+        _mock_seasonal_anime,
+        _mock_is_configured,
+    ):
+        response = self.client.get(
+            reverse("anime_seasons"),
+            {"year": 2024, "season": "spring", "format": "ova", "sort": "title"},
+        )
+
+        props = json.loads(
+            re.search(
+                r'<script id="anime-season-filters-props" type="application/json">'
+                r"(.*?)</script>",
+                response.content.decode(),
+                re.DOTALL,
+            ).group(1),
+        )
+        self.assertEqual(
+            {item["name"]: item["value"] for item in props["filters"]},
+            {"season": "spring", "year": "2024", "format": "ova", "sort": "title"},
+        )
+        year = next(item for item in props["filters"] if item["name"] == "year")
+        self.assertEqual(year["options"][-1], {"value": "1917", "label": "1917"})
+        self.assertContains(response, "data-discover-season-filters-root")
+        self.assertContains(response, '<form method="get"')
+        self.assertRegex(response.content.decode(), r'<option value="ova"\s+selected>')

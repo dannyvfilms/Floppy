@@ -12226,8 +12226,6 @@ msgstr "Vorherige Saison"
 msgid "Next season"
 msgstr "Nächste Saison"
 
-msgid "Filters applied"
-msgstr "Filter angewendet"
 
 msgctxt "anime season"
 msgid "Season"
@@ -12275,3 +12273,6 @@ msgstr "Füge in den Anbieter-Einstellungen eine MyAnimeList-Client-ID hinzu, um
 
 msgid "Open MyAnimeList settings"
 msgstr "MyAnimeList-Einstellungen öffnen"
+
+msgid "Season filters"
+msgstr "Saison-Filter"

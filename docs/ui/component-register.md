@@ -585,13 +585,13 @@ HomeView forwards optional card/progress renderers and row-title callbacks; the 
 
 ### DISCOVER — Recommendations and feedback
 
-- Purpose/usage: Discover tabs/rows/hidden/preview and RSS row preview.
-- Status: `Legacy`. Uses shared React pieces: media cards on every row and the shared `FilterChips` for the media-type row (`mountFilterChips.jsx`). Tabs, rows, hide/plan actions, previews and refresh banners are Alpine and HTMX.
-- Implementation: `src/templates/app/discover.html`, Discover row/card/tab/preview components.
+- Purpose/usage: Discover tabs/rows/hidden/preview, RSS row preview, and the Anime Seasons page (MAL seasonal grid at `/discover/anime-seasons`).
+- Status: `Legacy`. Uses shared React pieces: media cards on every row and the shared `FilterChips` for the media-type row (`mountFilterChips.jsx`). Anime Seasons uses shared search-surface media cards and `SeasonFilters` (`frontend/discover/SeasonFilters.jsx`: `FilterToolbar` with one `FilterDropdown` per field, mounted by `mountDiscoverSeasonFilters` over a native GET form). Tabs, rows, hide/plan actions, previews and refresh banners are Alpine and HTMX.
+- Implementation: `src/templates/app/discover.html`, `src/templates/app/anime_seasons.html`, Discover row/card/tab/preview components.
 - Contract: enabled types, hide/unhide/planning, stale/empty/refresh states and bounded fragments; cards retain declared surfaces.
-- Data: `src/app/discover_views.py`, `src/app/discover/` feedback/caches, separate REST recommendation contract.
+- Data: `src/app/discover_views.py`, `src/app/discover/` feedback/caches, separate REST recommendation contract; `src/app/anime_seasons_views.py` with `mal.seasonal_anime` for Anime Seasons.
 - Reuse/blockers: candidate/feedback values shared; poller/HTML response replacement require adapters.
-- Validation targets: `src/app/tests/discover/test_views.py`, `test_action_row_partial.py`, `src/api/tests/test_fork_discover.py`.
+- Validation targets: `src/app/tests/discover/test_views.py`, `test_action_row_partial.py`, `test_anime_seasons.py`, `src/api/tests/test_fork_discover.py`.
 
 ## Detail, tracking and ownership
 

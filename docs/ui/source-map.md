@@ -1334,6 +1334,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
+- `frontend/discover/SeasonFilters.jsx`
 - `frontend/discover/mountDiscover.jsx`
 - `frontend/errors/ApiDocs.jsx`
 - `frontend/errors/ErrorRecovery.jsx`
