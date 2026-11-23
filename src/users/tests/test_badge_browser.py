@@ -101,7 +101,7 @@ class BadgeBrowserTests(SerialStaticLiveServerTestCase):
         self.assertFalse(errors, errors)
         page.close()
 
-    def test_real_podcast_genre_badge_mounts(self):
+    def test_real_podcast_genres_mount_in_sidebar_card(self):
         from app.podcast_views import podcast_show_url
 
         user = get_user_model().objects.create_user(username="badge-proof")
@@ -110,11 +110,14 @@ class BadgeBrowserTests(SerialStaticLiveServerTestCase):
         context = self.browser.new_context(viewport={"width": 390, "height": 844})
         context.add_cookies([{"name": "sessionid", "value": self.client.cookies["sessionid"].value, "url": self.live_server_url}])
         page = context.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(self.live_server_url + podcast_show_url(show), wait_until="domcontentloaded")
-        # The genres card is a React island with one collapsed "Genre" row; the
-        # genre names appear when it is expanded.
-        genres = page.locator('[data-detail-section="genres"] [data-react-mounted]')
-        genres.wait_for(state="attached")
-        genres.get_by_text("Genre", exact=True).click()
-        genres.get_by_text("Comedy", exact=True).wait_for(state="visible")
+        # The sidebar card replaces the server's genre badges with one expandable Genre row.
+        card = page.locator('[data-detail-sidebar-card-root][data-props-id="detail-sidebar-genres-props"][data-react-mounted]')
+        card.wait_for(state="attached")
+        self.assertEqual(card.locator("[data-badge-root]").count(), 0)
+        card.get_by_label("Genre, expand").click()
+        card.get_by_text("Comedy", exact=True).wait_for()
+        self.assertFalse(errors, errors)
         context.close()
