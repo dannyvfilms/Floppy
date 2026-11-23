@@ -1615,3 +1615,5 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+
+- Track dialog short-window fix (issue #2134): `TrackForm.jsx` caps the sidebar shell height to `min(92% of the window, window - 4rem)` and `TrackFormTabs.jsx` caps the 576 px General-pane floor to the space under the header, so the footer is never clipped.
