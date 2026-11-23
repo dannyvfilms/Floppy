@@ -2399,6 +2399,94 @@ class PlexWebhookTests(TestCase):
 
         self.assertEqual(ids.get("tmdb_id"), "34634")
 
+    TRAITORS_RESULTS = {
+        "results": [
+            {"media_id": 215943, "title": "The Traitors", "origin_country": ["US"]},
+            {"media_id": 155474, "title": "The Traitors", "origin_country": ["BE"]},
+            {"media_id": 215307, "title": "The Traitors", "origin_country": ["GB"]},
+            {"media_id": 212457, "title": "The Traitors", "origin_country": ["AU"]},
+            {"media_id": 233197, "title": "The Traitors", "origin_country": ["DE"]},
+            {"media_id": 271489, "title": "The Traitors", "origin_country": []},
+        ],
+    }
+
+    @staticmethod
+    def _traitors_payload(series_title):
+        return {
+            "event": "media.scrobble",
+            "Metadata": {
+                "librarySectionType": "show",
+                "type": "episode",
+                "grandparentTitle": series_title,
+                "parentIndex": 5,
+                "index": 9,
+                "title": "Playing Chess",
+                "year": 2026,
+                "Guid": [{"id": "tmdb://7841793"}],
+            },
+        }
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.search")
+    def test_country_qualifier_in_series_title_selects_origin_country(
+        self,
+        mock_tmdb_search,
+        mock_tv,
+    ):
+        """"The Traitors (US)" is searched bare and kept to US shows (#2131)."""
+        mock_tmdb_search.return_value = self.TRAITORS_RESULTS
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"215943": 6, "155474": 5, "271489": 2},
+        )
+
+        ids = PlexWebhookProcessor().resolve_external_ids(
+            self._traitors_payload("The Traitors (US)"),
+        )
+
+        self.assertEqual(ids.get("tmdb_id"), "215943")
+        self.assertEqual(mock_tmdb_search.call_args.args[1], "The Traitors")
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.search")
+    def test_uk_qualifier_maps_to_gb_origin_country(
+        self,
+        mock_tmdb_search,
+        mock_tv,
+    ):
+        """Plex writes "UK"; TMDB lists the show's origin country as "GB"."""
+        mock_tmdb_search.return_value = self.TRAITORS_RESULTS
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"215307": 5, "271489": 2},
+        )
+
+        ids = PlexWebhookProcessor().resolve_external_ids(
+            self._traitors_payload("The Traitors (UK)"),
+        )
+
+        self.assertEqual(ids.get("tmdb_id"), "215307")
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.search")
+    def test_country_qualifier_with_no_matching_show_is_not_guessed(
+        self,
+        mock_tmdb_search,
+        mock_tv,
+    ):
+        """A qualifier no candidate carries must not fall back to another show."""
+        mock_tmdb_search.return_value = {
+            "results": [
+                {"media_id": 1, "title": "The Traitors", "origin_country": ["US"]},
+                {"media_id": 2, "title": "The Traitors", "origin_country": ["GB"]},
+            ],
+        }
+        mock_tv.side_effect = self._shows_with_seasons({"1": 6, "2": 6})
+
+        ids = PlexWebhookProcessor().resolve_external_ids(
+            self._traitors_payload("The Traitors (NZ)"),
+        )
+
+        self.assertIsNone(ids.get("tmdb_id"))
+
     @patch("app.providers.tmdb.tv")
     @patch("app.providers.tvdb.enabled", return_value=False)
     @patch("app.providers.tmdb.search")
