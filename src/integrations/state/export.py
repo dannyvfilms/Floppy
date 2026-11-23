@@ -21,7 +21,6 @@ from integrations.models import (
     SyncDirection,
 )
 from integrations.state import outbound
-from integrations.tasks._ratings import _latest_rating
 
 EXPORT_CHUNK = 500
 
@@ -211,6 +210,10 @@ def queue_library(
     play already queued (not superseded) for the same date is not queued again,
     so pressing the button twice sends nothing twice.
     """
+    # Imported here: the URL modules load this file, and the task modules they
+    # would pull in must stay out of web startup.
+    from integrations.tasks._ratings import _latest_rating
+
     hold = outbound.release_time(binding.delivery_schedule)
     total = 0
 
