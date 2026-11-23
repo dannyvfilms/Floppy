@@ -1434,6 +1434,16 @@ def get_release_for_group(release_group_id):
     return None
 
 
+def get_release_group_id(release_id):
+    """Return the release group id of a release, or None.
+
+    One small request that touches no cache, so it never fills the full
+    ``get_release`` entry with a cover-less result.
+    """
+    response = _mb_request(f"release/{release_id}", {"inc": "release-groups"})
+    return (response.get("release-group") or {}).get("id")
+
+
 def cached_release(release_id):
     """Return a stored ``get_release`` result without calling MusicBrainz, else None."""
     return (

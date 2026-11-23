@@ -228,7 +228,7 @@ class SidebarTests(FloppyApiTestCase):
         self.assertEqual(body["primary"][0]["href"], "/")
         self.assertEqual(
             [item["label"] for item in body["secondary"]],
-            ["Calendar", "Collection", "Custom", "History", "Lists", "Statistics", "Tags"],
+            ["Calendar", "Collection", "Custom", "History", "Lists", "Progress", "Statistics", "Tags"],
         )
         self.assertTrue(body["logo"]["src"].endswith("floppy-logo.png"))
         self.assertIn("icon", body["primary"][0])
