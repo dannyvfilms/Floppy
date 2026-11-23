@@ -124,13 +124,24 @@ jobs:
           path: trusted
           persist-credentials: false
 
-      - name: Pull request branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ matrix.entry.head }}
-          path: work
-          fetch-depth: 0
-          persist-credentials: false
+      - name: Fetch the exact pull request commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ matrix.entry.head }}
+          BASE_SHA: ${{ matrix.entry.base }}
+        run: |
+          # A plain fetch by SHA (read-only token passed through the environment,
+          # never written to disk) instead of the checkout action.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          git init -q work
+          cd work
+          git remote add origin "https://github.com/$REPO"
+          git fetch -q origin "$HEAD_SHA" "$BASE_SHA"
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0

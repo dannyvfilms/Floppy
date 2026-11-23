@@ -820,6 +820,10 @@ class WorkflowTests(TestCase):
             if str(step.get("uses", "")).startswith("actions/checkout"):
                 self.assertIs(step["with"]["persist-credentials"], False)
         self.assertEqual(build["steps"][0]["with"]["ref"], "latest")  # trusted script
+        # PR code arrives by plain git fetch, never through the checkout action.
+        for step in build["steps"]:
+            if str(step.get("uses", "")).startswith("actions/checkout"):
+                self.assertEqual(step["with"]["ref"], "latest")
         for step in publish["steps"]:
             if str(step.get("uses", "")).startswith("actions/checkout"):
                 self.assertEqual(step["with"]["ref"], "latest")
