@@ -158,9 +158,12 @@ class StatisticsLayoutTests(SerialStaticLiveServerTestCase):
         reveal = page.locator(".sidebar-reveal")
         expect(button).to_have_attribute("aria-expanded", "false")
         self.assertTrue(reveal.locator("..").evaluate("el => el.inert"))
+        # Hidden while closed, so the load-time measurement records no layout shift.
+        self.assertEqual(reveal.locator("..").evaluate("el => getComputedStyle(el).visibility"), "hidden")
 
         button.click()
         expect(button).to_have_attribute("aria-expanded", "true")
+        self.assertEqual(reveal.locator("..").evaluate("el => getComputedStyle(el).visibility"), "visible")
         expect(reveal.get_by_role("link", name="Statistics", exact=True)).to_be_visible()
         self.assertFalse(reveal.locator("..").evaluate("el => el.inert"))
         self.assertEqual(reveal.evaluate("el => getComputedStyle(el).transitionProperty"), "transform")
@@ -179,6 +182,7 @@ class StatisticsLayoutTests(SerialStaticLiveServerTestCase):
         expect(button).to_have_attribute("aria-expanded", "false")
         self.assertLess(float(reveal.evaluate("el => parseFloat(getComputedStyle(el).transitionDuration)")), 0.001)
         self.assertTrue(reveal.locator("..").evaluate("el => el.inert"))
+        self.assertEqual(reveal.locator("..").evaluate("el => getComputedStyle(el).visibility"), "hidden")
 
     def test_boosted_sidebar_navigation_initialises_the_page(self):
         # hx-boost swaps the body, and Alpine used to run before the externally
