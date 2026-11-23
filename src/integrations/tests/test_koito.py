@@ -577,10 +577,10 @@ class KoitoExportTests(KoitoTestCase):
         self.assertEqual(details["musicbrainz_artist"], "art-1")
         self.assertEqual(details["duration_ms"], 195000)
 
-    @patch("integrations.koito_api.get_export")
+    @patch("integrations.koito_api.iter_export")
     def test_history_import_marks_its_listens_as_imported(self, mock_export):
         """A history backfill is history, not something just listened to."""
-        mock_export.return_value = self.EXPORT
+        mock_export.return_value = self.EXPORT["listens"]
         seen = []
         original = KoitoScrobbleProcessor.process_listens
 
@@ -594,14 +594,14 @@ class KoitoExportTests(KoitoTestCase):
         self.assertEqual(seen, [True])
 
     @patch("integrations.koito_api.get_track")
-    @patch("integrations.koito_api.get_export")
+    @patch("integrations.koito_api.iter_export")
     def test_history_import_records_listens_without_hydration(
         self,
         mock_export,
         mock_track,
     ):
         """The export is pre-hydrated, so no per-track lookups are made."""
-        mock_export.return_value = self.EXPORT
+        mock_export.return_value = self.EXPORT["listens"]
 
         tasks.import_koito_history(user_id=self.user.id)
 
@@ -623,7 +623,7 @@ class KoitoExportTests(KoitoTestCase):
         self.assertEqual(music.import_run_id, run.id)
 
     @patch(
-        "integrations.koito_api.get_export",
+        "integrations.koito_api.iter_export",
         side_effect=koito_api.KoitoAuthError("bad key"),
     )
     def test_history_import_failure_marks_status_and_releases_lock(self, mock_export):
@@ -648,7 +648,7 @@ class KoitoExportTests(KoitoTestCase):
     @patch("integrations.koito_api.get_album")
     @patch("integrations.koito_api.get_track")
     @patch("integrations.koito_api.get_listens")
-    @patch("integrations.koito_api.get_export")
+    @patch("integrations.koito_api.iter_export")
     def test_stale_history_import_lock_is_reclaimed_and_import_retries(
         self,
         mock_export,
@@ -657,7 +657,7 @@ class KoitoExportTests(KoitoTestCase):
         mock_album,
     ):
         """A lock left by a worker that died mid-import is reclaimed and retried."""
-        mock_export.return_value = self.EXPORT
+        mock_export.return_value = self.EXPORT["listens"]
         mock_listens.return_value = _page(
             [_listen(time="2026-06-01T08:00:00Z", track_id=1)],
         )
@@ -696,7 +696,7 @@ class KoitoExportTests(KoitoTestCase):
     @patch("integrations.koito_api.get_album")
     @patch("integrations.koito_api.get_track")
     @patch("integrations.koito_api.get_listens")
-    @patch("integrations.koito_api.get_export")
+    @patch("integrations.koito_api.iter_export")
     def test_export_and_poll_do_not_duplicate_the_same_listen(
         self,
         mock_export,
@@ -705,7 +705,7 @@ class KoitoExportTests(KoitoTestCase):
         mock_album,
     ):
         """A listen present in both the export and a poll is recorded once."""
-        mock_export.return_value = self.EXPORT
+        mock_export.return_value = self.EXPORT["listens"]
         mock_listens.return_value = _page(
             [_listen(time="2026-06-01T08:00:00Z", track_id=1)],
         )
@@ -732,7 +732,7 @@ class KoitoReceiveOnlyTests(KoitoTestCase):
 
     @patch("integrations.koito_api.get_album", return_value={})
     @patch("integrations.koito_api.get_track", return_value={})
-    @patch("integrations.koito_api.get_export")
+    @patch("integrations.koito_api.iter_export")
     @patch("integrations.koito_api.get_listens")
     @patch("integrations.koito_api.send_to_self_hosted_pinned")
     def test_no_write_verbs_are_available_or_used(
@@ -800,3 +800,91 @@ class KoitoFanOutProbeTests(KoitoTestCase):
         tasks.poll_all_koito_accounts()
 
         mock_run.assert_not_called()
+
+
+class KoitoExportStreamTests(TestCase):
+    """The full export is read one listen at a time, whatever its size."""
+
+    @staticmethod
+    def _export_text(count):
+        listens = ",\n".join(
+            f'    {{"listened_at": "2026-07-01T12:{i % 60:02d}:00Z", '
+            '"track": {"duration": 1}, "artists": [], "album": {}, '
+            '"note": "a ] , } tricky"}'
+            for i in range(count)
+        )
+        return (
+            '{\n  "version": "1",\n  "user": "me",\n  "listens": [\n'
+            f"{listens}\n  ]\n}}\n"
+        )
+
+    def test_parser_handles_listens_split_across_read_chunks(self):
+        """A tiny read size cuts listens mid-object without losing any."""
+        import io
+
+        text = self._export_text(25)
+        with patch.object(koito_api, "EXPORT_READ_CHUNK", 37):
+            items = list(koito_api._iter_export_items(io.StringIO(text)))
+
+        self.assertEqual(len(items), 25)
+        self.assertEqual(items[0]["note"], "a ] , } tricky")
+
+    def test_parser_accepts_empty_and_bare_list_exports(self):
+        """No listens yields nothing; a bare list is read like an object export."""
+        import io
+
+        empty = '{"version": "1", "listens": []}'
+        self.assertEqual(list(koito_api._iter_export_items(io.StringIO(empty))), [])
+        self.assertEqual(
+            list(koito_api._iter_export_items(io.StringIO('[{"a": 1}, {"a": 2}]'))),
+            [{"a": 1}, {"a": 2}],
+        )
+
+    def test_parser_rejects_truncated_or_unrecognised_exports(self):
+        """A cut-off download fails loudly instead of importing a partial set."""
+        import io
+
+        truncated = self._export_text(3)[:-30]
+        with self.assertRaises(koito_api.KoitoAPIError):
+            list(koito_api._iter_export_items(io.StringIO(truncated)))
+        with self.assertRaises(koito_api.KoitoAPIError):
+            list(koito_api._iter_export_items(io.StringIO('{"version": "1"}')))
+
+    @patch("integrations.koito_api._make_api_request")
+    def test_iter_export_streams_a_body_past_the_normal_response_cap(self, mock_request):
+        """The download asks for the larger export limits and reads in pieces."""
+        body = self._export_text(40).encode()
+        response = type(
+            "Resp",
+            (),
+            {
+                "iter_content": lambda self, size: iter(
+                    [body[i : i + 100] for i in range(0, len(body), 100)]
+                ),
+                "close": lambda self: None,
+            },
+        )()
+        mock_request.return_value = response
+
+        items = list(koito_api.iter_export(BASE_URL, API_KEY))
+
+        self.assertEqual(len(items), 40)
+        limits = mock_request.call_args.kwargs["fetch_limits"]
+        self.assertEqual(limits["max_bytes"], koito_api.EXPORT_MAX_BYTES)
+        self.assertGreater(limits["total_timeout"], 60)
+
+    @patch("integrations.koito_api._make_api_request")
+    def test_iter_export_turns_a_broken_download_into_koito_error(self, mock_request):
+        """A size or time limit hit mid-download surfaces as KoitoAPIError."""
+        from integrations.safe_fetch import SelfHostedUrlError
+
+        def boom(size):
+            raise SelfHostedUrlError("response_too_large", "This server response is too large.")
+            yield  # pragma: no cover
+
+        mock_request.return_value = type(
+            "Resp", (), {"iter_content": lambda self, size: boom(size), "close": lambda self: None}
+        )()
+
+        with self.assertRaises(koito_api.KoitoAPIError):
+            list(koito_api.iter_export(BASE_URL, API_KEY))
