@@ -176,16 +176,16 @@ class GamesInTopTalentAggregationTests(TestCase):
             [person["name"] for person in dense["top_actors"]],
         )
 
-        def joined_person_queries(captured):
+        def person_credit_scans(captured):
             return [
                 entry["sql"]
                 for entry in captured.captured_queries
                 if 'FROM "app_itempersoncredit"' in entry["sql"]
-                and 'JOIN "app_person"' in entry["sql"]
+                and '"app_itempersoncredit"."sort_order"' in entry["sql"]
             ]
 
-        dense_sql = joined_person_queries(dense_queries)
-        sparse_sql = joined_person_queries(sparse_queries)
+        dense_sql = person_credit_scans(dense_queries)
+        sparse_sql = person_credit_scans(sparse_queries)
         self.assertEqual(len(dense_sql), 1)
         self.assertEqual(len(sparse_sql), 1)
         self.assertNotIn(" WHERE ", dense_sql[0].upper())
