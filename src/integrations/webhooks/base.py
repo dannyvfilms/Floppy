@@ -16,7 +16,7 @@ from app.providers import tvmaze
 from app.providers.services import ProviderAPIError
 from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
-from integrations.matching import split_title_year, title_matches
+from integrations.matching import split_title_country, split_title_year, title_matches
 from integrations.webhooks import anime_mappings, write_policy
 
 logger = logging.getLogger(__name__)
@@ -1487,13 +1487,16 @@ class BaseWebhookProcessor:
 
         This is the one title-search path for TV webhooks. ``year`` is the
         show's first-air year; a trailing "(YYYY)" in the title supplies it
-        when absent, and the provider is searched with the bare title. When
+        when absent, and a trailing country qualifier such as "(US)" keeps
+        only shows from that origin country. The provider is searched with
+        the bare title. When
         several shows share the title, the played season breaks the tie: a
         show that has no such season cannot be the one being watched. A miss
         or a remaining tie is remembered so the caller can queue the event
         for review instead of dropping it silently (issue #1279).
         """
         title, title_year = split_title_year(series_title)
+        title, country = split_title_country(title)
         if not title:
             return None
         search_results = app.providers.tmdb.search(
@@ -1501,14 +1504,21 @@ class BaseWebhookProcessor:
             title,
             page=1,
         )
+        matches = title_matches(
+            (search_results or {}).get("results") or [],
+            title,
+            year=year or title_year,
+        )
+        if country:
+            # A show with no listed origin country stays a candidate.
+            matches = [
+                result
+                for result in matches
+                if not result.get("origin_country")
+                or country in result["origin_country"]
+            ]
         candidate_ids = [
-            str(result["media_id"])
-            for result in title_matches(
-                (search_results or {}).get("results") or [],
-                title,
-                year=year or title_year,
-            )
-            if result.get("media_id")
+            str(result["media_id"]) for result in matches if result.get("media_id")
         ]
         if (
             len(candidate_ids) > 1

@@ -27,12 +27,12 @@ export default function ProvidersScreen({ onBack, navigate }) {
     let active = true;
     setState('loading');
     transport.directory({})
-      .then(payload => { if (active) { setModel(directoryFromPayload(payload)); setState('ready'); } })
+      .then(payload => { if (active) { setModel(directoryFromPayload(payload, transport.serverUrl)); setState('ready'); } })
       .catch(cause => { if (active) { setError(cause?.message || 'Providers could not be loaded.'); setState('error'); } });
     return () => { active = false; };
   }, [transport, reload]);
 
-  const fetchItems = useCallback(async ({ filters }) => directoryFromPayload(await transport.directory(filters)).items, [transport]);
+  const fetchItems = useCallback(async ({ filters }) => directoryFromPayload(await transport.directory(filters), transport.serverUrl).items, [transport]);
   const colors = integrationPalette();
   const buttons = integrationButtonPalette();
 

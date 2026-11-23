@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 _EXPORT_MODULES = {
     "export_tmdb_ratings": "integrations.tasks._ratings",
     "export_wetrakr_library": "integrations.tasks._wetrakr_export",
+    "export_simkl_library": "integrations.tasks._simkl_export",
     **dict.fromkeys(
         ("COMPACT_CHANGE_LOG_TASK_NAME", "compact_watch_state_changes"),
         "integrations.tasks._change_log",
@@ -245,6 +246,7 @@ __all__ = [
     "compact_integration_event_receipts",
     "compact_watch_state_changes",
     "deliver_watched_state",
+    "export_simkl_library",
     "export_tmdb_ratings",
     "export_wetrakr_library",
     "fetch_collection_metadata_for_item",

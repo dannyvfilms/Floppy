@@ -3,16 +3,26 @@ const slugPath = (slug, suffix = '') => `${BASE}${encodeURIComponent(slug)}/${su
 
 const array = value => (Array.isArray(value) ? value : []);
 
+// The server sends logos as site-relative paths (/static/...). Native has no
+// site to resolve them against, so they are joined to the server address.
+function absoluteLogo(serverUrl, path) {
+  if (!path || typeof path !== 'string') return path;
+  if (/^(https?:|data:)/i.test(path)) return path;
+  return `${String(serverUrl || '').replace(/\/+$/, '')}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 // The directory endpoint returns the shared directory model (filters, options,
 // items). Each item carries its connection status so the list shows health.
-export function directoryFromPayload(payload) {
+export function directoryFromPayload(payload, serverUrl = '') {
   const model = payload && typeof payload === 'object' ? payload : {};
   return {
     ...model,
     filters: { q: '', capability: '', media: '', ...(model.filters || {}) },
     capabilities: array(model.capabilities),
     media: array(model.media),
-    items: array(model.items).filter(item => item && item.slug),
+    items: array(model.items)
+      .filter(item => item && item.slug)
+      .map(item => (item.logo ? { ...item, logo: absoluteLogo(serverUrl, item.logo) } : item)),
     canPin: model.canPin !== false,
   };
 }
@@ -20,9 +30,10 @@ export function directoryFromPayload(payload) {
 // The detail endpoint returns the shared provider page model plus the pieces
 // the connection, import and activity bodies need. The shared page view renders
 // bodies only when `contentOwner` is `react`, which native always is.
-export function detailFromPayload(payload) {
+export function detailFromPayload(payload, serverUrl = '') {
   const data = payload && typeof payload === 'object' ? payload : {};
   const page = { ...(data.page || {}), contentOwner: 'react' };
+  if (page.provider?.logo) page.provider = { ...page.provider, logo: absoluteLogo(serverUrl, page.provider.logo) };
   const connection = data.connection || {};
   return {
     slug: data.slug || '',
@@ -65,10 +76,11 @@ export function credentialsBody(kind, values) {
   return { scope: kind === 'personal' ? 'personal' : 'instance', values: clean };
 }
 
-export function createRemoteProvidersActions(request) {
+export function createRemoteProvidersActions(request, serverUrl = '') {
   const send = (method, path, body) => request(path, { method, body: body === undefined ? {} : body });
   return {
     mode: 'server',
+    serverUrl,
     directory: filters => request(BASE, { query: Object.fromEntries(Object.entries(filters || {}).filter(([, value]) => value)) }),
     detail: (slug, tab) => request(slugPath(slug), { query: tab ? { tab } : undefined }),
     pin: (slug, pinned) => send('POST', `${BASE}pin/`, { provider: slug, pinned: Boolean(pinned) }),

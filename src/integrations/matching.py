@@ -4,6 +4,9 @@ import re
 import unicodedata
 
 _TRAILING_YEAR_RE = re.compile(r"\s*(?:\((\d{4})\)|\[(\d{4})\])\s*$")
+_TRAILING_COUNTRY_RE = re.compile(r"\s*\(([A-Z]{2})\)\s*$")
+# Plex writes "UK"; TMDB's origin_country uses the ISO code "GB".
+_COUNTRY_QUALIFIER_CODES = {"UK": "GB"}
 _NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
 
 
@@ -18,6 +21,20 @@ def split_title_year(value):
     if not match or match.start() == 0:
         return value, None
     return value[: match.start()], match.group(1) or match.group(2)
+
+
+def split_title_country(value):
+    """Split ``"Title (US)"`` into ``("Title", "US")``.
+
+    Plex appends a country qualifier to tell same-title shows apart. The
+    returned code is the provider's ISO origin country ("UK" becomes "GB").
+    """
+    value = (value or "").strip()
+    match = _TRAILING_COUNTRY_RE.search(value)
+    if not match or match.start() == 0:
+        return value, None
+    code = match.group(1)
+    return value[: match.start()], _COUNTRY_QUALIFIER_CODES.get(code, code)
 
 
 def normalize_title(value):
