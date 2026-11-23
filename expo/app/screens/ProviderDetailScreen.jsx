@@ -35,7 +35,7 @@ export default function ProviderDetailScreen({ params, onBack, navigate }) {
     let active = true;
     if (!detail) setState('loading');
     transport.detail(slug, tab)
-      .then(payload => { if (active) { setDetail(detailFromPayload(payload)); setState('ready'); } })
+      .then(payload => { if (active) { setDetail(detailFromPayload(payload, transport.serverUrl)); setState('ready'); } })
       .catch(cause => { if (active) { setError(cause?.message || 'This provider could not be loaded.'); setState('error'); } });
     return () => { active = false; };
     // The detail is refetched per tab and after every write.

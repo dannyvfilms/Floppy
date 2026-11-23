@@ -29,8 +29,13 @@ from app.models import (
 )
 from app.services.grouped_anime import GroupedAnimeMatch
 from integrations import tasks
-from integrations.models import CollectionSourceState, SourcePage
-from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
+from integrations.jellyfin_client import JellyfinClientError
+from integrations.models import CollectionSourceState, JellyfinAccount, SourcePage
+from integrations.webhooks.jellyfin import (
+    JELLYFIN_SERIES_ID_MISSING_KEY,
+    JellyfinWebhookProcessor,
+    jellyfin_template_outdated,
+)
 
 
 class JellyfinWebhookTests(TestCase):
@@ -46,6 +51,7 @@ class JellyfinWebhookTests(TestCase):
     def tearDown(self):
         """Clear cached playback state created by webhook tests."""
         live_playback.clear_user_playback_state(self.user.id)
+        cache.delete(JELLYFIN_SERIES_ID_MISSING_KEY.format(user_id=self.user.id))
 
     def test_invalid_token(self):
         """Test webhook with invalid token returns 401."""
@@ -162,7 +168,9 @@ class JellyfinWebhookTests(TestCase):
         )
 
     @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
-    def test_user_data_saved_rating_creates_statusless_tv(self, mock_get_media_metadata):
+    def test_user_data_saved_rating_creates_statusless_tv(
+        self, mock_get_media_metadata
+    ):
         """A series rating creates a statusless TV row without watch state."""
         mock_get_media_metadata.return_value = {
             "media_id": "1668",
@@ -593,7 +601,9 @@ class JellyfinWebhookTests(TestCase):
             title="Zombie",
             image="",
         )
-        self._send_ordered_movie_event("Play", second - timedelta(seconds=60), ticks="0")
+        self._send_ordered_movie_event(
+            "Play", second - timedelta(seconds=60), ticks="0"
+        )
         self._send_ordered_movie_event("Pause", second, ticks="16200000000")
         return PlaybackProgress.objects.get(user=self.user, item=item)
 
@@ -1659,17 +1669,26 @@ class JellyfinWebhookTests(TestCase):
         )
         season = Season.objects.create(
             item=Item.objects.create(
-                media_id="12345", source=Sources.TMDB.value,
-                media_type=MediaTypes.SEASON.value, season_number=1,
-                library_media_type=MediaTypes.TV.value, title="Flat Show",
+                media_id="12345",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+                library_media_type=MediaTypes.TV.value,
+                title="Flat Show",
             ),
-            user=self.user, related_tv=tv, status=Status.IN_PROGRESS.value,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
         )
         Episode.objects.create(
             item=Item.objects.create(
-                media_id="12345", source=Sources.TMDB.value,
-                media_type=MediaTypes.EPISODE.value, season_number=1, episode_number=8,
-                library_media_type=MediaTypes.TV.value, title="Episode 8",
+                media_id="12345",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=8,
+                library_media_type=MediaTypes.TV.value,
+                title="Episode 8",
             ),
             related_season=season,
         )
@@ -1716,7 +1735,9 @@ class JellyfinWebhookTests(TestCase):
         anime.refresh_from_db()
         self.assertEqual(anime.progress, 8)
         self.assertTrue(
-            Episode.objects.filter(related_season=season, item__episode_number=9).exists(),
+            Episode.objects.filter(
+                related_season=season, item__episode_number=9
+            ).exists(),
         )
 
     @override_settings(TVDB_API_KEY="")
@@ -2111,6 +2132,7 @@ class JellyfinWebhookTests(TestCase):
 
         mock_tv_with_seasons.side_effect = tv_with_seasons_side_effect
         mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+
         # Jellyfin's live-playback card resolution runs first and resolves
         # cleanly; the second call (from `_process_tv`) resolves the incoming
         # TVDB episode id to the wrong show; the third is
@@ -2307,6 +2329,112 @@ class JellyfinWebhookTests(TestCase):
         )
         self.assertFalse(
             CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+
+    def _episode_added_payload(self, **item_extra):
+        return {
+            "Event": "ItemAdded",
+            "Item": {
+                "Type": "Episode",
+                "Id": "ep-1",
+                "Name": "The Target",
+                "SeriesName": "The Wire",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tvdb": "1", "Imdb": "tt0749451"},
+                **item_extra,
+            },
+        }
+
+    def _add_episode(self, payload):
+        def metadata(media_type, media_id, source, *_args, **_kwargs):
+            if media_type == MediaTypes.TV.value:
+                return {"media_id": media_id, "title": "The Wire", "image": "x"}
+            return {"episode_title": "The Target", "image": "x"}
+
+        with (
+            patch(
+                "integrations.webhooks.jellyfin.services.get_media_metadata",
+                side_effect=metadata,
+            ),
+            patch.object(
+                JellyfinWebhookProcessor,
+                "_find_tv_media_id",
+                return_value=("1438", None, None),
+            ),
+        ):
+            JellyfinWebhookProcessor().process_payload(payload, self.user)
+
+    def test_episode_added_saves_series_page_from_payload(self):
+        """An episode event with SeriesId links the series page (#2108)."""
+        self._add_episode(self._episode_added_payload(SeriesId="series-9"))
+
+        page = SourcePage.objects.get(user=self.user, source="jellyfin")
+        self.assertEqual(page.path, "web/#/details?id=series-9")
+        self.assertEqual(page.media_type, MediaTypes.TV.value)
+        self.assertFalse(jellyfin_template_outdated(self.user.id))
+
+    @patch("integrations.webhooks.jellyfin.JellyfinClient")
+    @patch("integrations.webhooks.jellyfin.decrypt_or_raise", return_value="key")
+    def test_episode_added_without_series_id_asks_jellyfin(
+        self,
+        _mock_decrypt,
+        mock_client_class,
+    ):
+        """An old template falls back to the Jellyfin API for the series."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local",
+            api_key="enc",
+        )
+        mock_client_class.return_value.get_series_id.return_value = "series-api"
+
+        self._add_episode(self._episode_added_payload())
+
+        mock_client_class.return_value.get_series_id.assert_called_once_with("ep-1")
+        self.assertEqual(
+            SourcePage.objects.get(user=self.user, source="jellyfin").path,
+            "web/#/details?id=series-api",
+        )
+        self.assertTrue(jellyfin_template_outdated(self.user.id))
+
+    def test_episode_added_without_series_id_keeps_saved_page(self):
+        """No series ID and no way to look it up must not delete a link."""
+        self._add_episode(self._episode_added_payload(SeriesId="series-9"))
+
+        self._add_episode(self._episode_added_payload())
+
+        self.assertEqual(
+            SourcePage.objects.get(user=self.user, source="jellyfin").path,
+            "web/#/details?id=series-9",
+        )
+        self.assertTrue(jellyfin_template_outdated(self.user.id))
+
+    @patch("integrations.webhooks.jellyfin.JellyfinClient")
+    @patch("integrations.webhooks.jellyfin.decrypt_or_raise", return_value="key")
+    def test_episode_added_survives_jellyfin_lookup_error(
+        self,
+        _mock_decrypt,
+        mock_client_class,
+    ):
+        """A failing Jellyfin server must not break the webhook."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local",
+            api_key="enc",
+        )
+        mock_client_class.return_value.get_series_id.side_effect = JellyfinClientError(
+            "down",
+        )
+
+        self._add_episode(self._episode_added_payload())
+
+        self.assertFalse(SourcePage.objects.filter(user=self.user).exists())
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                source="jellyfin",
+            ).exists(),
         )
 
     @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
@@ -3798,7 +3926,6 @@ class JellyfinWebhookTests(TestCase):
         mock_process_media.assert_called()
         mock_resolve_image.assert_called()
 
-
     @patch("app.live_playback._attach_resolved_image")
     @patch.object(JellyfinWebhookProcessor, "_process_media", return_value=None)
     @patch("app.providers.tmdb.find")
@@ -3877,6 +4004,7 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(stopped_state["view_offset_seconds"], 700)
         mock_process_media.assert_called()
         mock_resolve_image.assert_called()
+
 
 MATRIX_METADATA = {
     "title": "The Matrix",
