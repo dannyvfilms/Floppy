@@ -1746,6 +1746,75 @@ class ImportRun(models.Model):
         return f"ImportRun({self.source}, {self.user.username}, {self.status})"
 
 
+class NetflixPendingRow(models.Model):
+    """A Netflix viewing-history row the importer could not resolve.
+
+    Netflix's CSV carries only a title and a date, so rows whose title
+    search came up empty (or whose season/episode could not be parsed) are
+    parked here instead of dropped. The review page resolves them against a
+    TMDB search or dismisses them; each row keeps its parsed season/episode
+    hints so the play can still be recorded.
+    """
+
+    class Status(models.TextChoices):
+        """Lifecycle states for a pending row."""
+
+        PENDING = "pending", "Pending"
+        RESOLVED = "resolved", "Resolved"
+        DISMISSED = "dismissed", "Dismissed"
+
+    class MediaType(models.TextChoices):
+        """The media type the row was guessed as."""
+
+        MOVIE = "movie", "Movie"
+        TV = "tv", "TV show"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="netflix_pending_rows",
+    )
+    title = models.CharField(max_length=300)
+    watched_at = models.DateField(null=True, blank=True)
+    raw_date = models.CharField(max_length=32, blank=True, default="")
+    media_type = models.CharField(max_length=16, choices=MediaType)
+    season_number = models.PositiveIntegerField(null=True, blank=True)
+    episode_number = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status,
+        default=Status.PENDING,
+    )
+    resolved_item = models.ForeignKey(
+        "app.Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Netflix pending row"
+        verbose_name_plural = "Netflix pending rows"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "title", "watched_at"],
+                condition=models.Q(status="pending"),
+                name="one_pending_netflix_row",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"NetflixPendingRow({self.title}, {self.watched_at}, {self.status})"
+
+
 class PreparedImportEntry(models.Model):
     """Sealed, ordered persistence decisions; never contains provider credentials."""
 

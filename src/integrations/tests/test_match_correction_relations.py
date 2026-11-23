@@ -79,6 +79,10 @@ NOT_MOVED_BECAUSE = {
         "Evidence of what the import matched; the correction is recorded in "
         "corrected_item."
     ),
+    "integrations.NetflixPendingRow.resolved_item": (
+        "Evidence of what the import review recorded; the play it created "
+        "moves with the correction."
+    ),
     "integrations.PlexWatchlistSyncItem.item": _SYNC_BOOKKEEPING,
     "integrations.CollectionSourceState.item": _SYNC_BOOKKEEPING,
     "integrations.ProviderStateObservation.item": _SYNC_BOOKKEEPING,

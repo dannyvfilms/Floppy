@@ -1150,6 +1150,7 @@ PR #1878: The browser file-import mount now supplies a DOM chooser to the univer
 - `src/templates/users/import_data.html`
 - `src/templates/users/components/file_import_island.html`
 - `src/templates/users/components/settings_form_island.html`
+- `src/templates/integrations/netflix_pending.html` (Netflix import's standalone review page for rows the importer could not match, see NETFLIX-REVIEW)
 
 YouTube Takeout accepts `.tgz`/`.tar.gz` in the shared `ProviderFileImportView.jsx` upload model and the retained Django fallback. A focused Chromium browser check verifies the React-mounted provider picker accept list and description; React owns the provider-page import card, while the server fallback serves legacy import surfaces. Retire the fallback when those surfaces are removed. iOS/Android remain unverified.
 
@@ -1353,6 +1354,16 @@ Status: `Legacy`
 
 - `src/static/js/matchFixReview.js`
 - `src/templates/integrations/match_fix.html`
+
+## NETFLIX-REVIEW
+
+Status: `Partial / coexisting`
+
+- `frontend/pages/NetflixReviewView.jsx` (shared, props-only row list: per-row TMDB search, S/E inputs, resolve and dismiss actions; RN primitives plus shared `Button`/`TextField`/`SelectField`)
+- `frontend/pages/mountNetflixReview.jsx` (web adapter: JSON search fetch, form POSTs through `transport.web.js`)
+- `src/templates/integrations/netflix_pending.html` (island host `data-netflix-review-root` + `netflix-review-props`; server-rendered rows stay the no-JavaScript fallback; `?show=all` keeps resolved/dismissed history)
+- `src/integrations/views.py` (`netflix_pending` incl. the `?format=json` search branch and `review_props`, `netflix_pending_resolve`, `netflix_pending_dismiss`) and `src/integrations/imports/netflix.py` (`NetflixResolver` shared with the importer)
+- `frontend/pages/registry.js` (`netflixReview` page, `legacy`: no native screen yet)
 
 ## INTEGRATION-PANELS
 

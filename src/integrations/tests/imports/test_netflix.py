@@ -1,0 +1,887 @@
+"""Tests for the Netflix viewing-history CSV importer and review page."""
+
+from datetime import date
+from io import BytesIO
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from django.urls import reverse
+
+from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
+from integrations.imports import netflix
+from integrations.imports.helpers import MediaImportError
+from integrations.models import NetflixPendingRow
+
+
+def _csv(*lines):
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _run(csv_bytes, user):
+    return netflix.NetflixImporter(BytesIO(csv_bytes), user, "new").import_data()
+
+
+class TitleSplitTests(TestCase):
+    """Title -> (query, media type, season, episode) heuristics."""
+
+    def test_episode_row_with_season_and_episode(self):
+        result = netflix._split_title(
+            "Weeds - Kleine Deals unter Nachbarn: Staffel 8: Folge 5"
+        )
+        self.assertEqual(
+            result,
+            ("Weeds - Kleine Deals unter Nachbarn", "tv", 8, 5),
+        )
+
+    def test_miniserie_row_starts_at_season_one(self):
+        self.assertEqual(
+            netflix._split_title("Some Show: Miniserie: Folge 3"),
+            ("Some Show", "tv", 1, 3),
+        )
+
+    def test_english_season_and_episode_markers(self):
+        self.assertEqual(
+            netflix._split_title("Weeds: Season 8: Episode 5"),
+            ("Weeds", "tv", 8, 5),
+        )
+
+    def test_limited_series_row_starts_at_season_one(self):
+        self.assertEqual(
+            netflix._split_title("Some Show: Limited Series: Episode 3"),
+            ("Some Show", "tv", 1, 3),
+        )
+        self.assertEqual(
+            netflix._split_title("Some Show: Limited Series"),
+            ("Some Show", "tv", 1, None),
+        )
+
+    def test_part_segment_after_series_name_is_a_season(self):
+        self.assertEqual(
+            netflix._split_title("Disenchantment: Part 5: Goodbye Bean"),
+            ("Disenchantment", "tv", 5, None),
+        )
+
+    def test_part_after_a_known_season_is_ignored(self):
+        self.assertEqual(
+            netflix._split_title("Weeds: Season 8: It's Time: Part 2"),
+            ("Weeds", "tv", 8, None),
+        )
+
+    def test_dash_teil_movie_stays_a_movie(self):
+        self.assertEqual(
+            netflix._split_title("Die Tribute von Panam - Teil 3: Vögel"),
+            ("Die Tribute von Panam - Teil 3: Vögel", "movie", None, None),
+        )
+
+    def test_episode_title_strips_labels_and_part(self):
+        self.assertEqual(
+            netflix._episode_title("Weeds: Season 8: It's Time: Part 2", "Weeds"),
+            "It's Time",
+        )
+        self.assertEqual(
+            netflix._episode_title("Weeds: Season 8: It's Time", "Weeds"),
+            "It's Time",
+        )
+        self.assertIsNone(netflix._episode_title("Arrival", "Arrival"))
+
+    def test_plain_title_is_a_movie(self):
+        self.assertEqual(
+            netflix._split_title("Arrival"),
+            ("Arrival", "movie", None, None),
+        )
+
+    def test_teil_alone_is_not_a_tv_marker(self):
+        self.assertEqual(
+            netflix._split_title("The Thing - Teil 1"),
+            ("The Thing - Teil 1", "movie", None, None),
+        )
+
+    def test_show_name_with_colon_keeps_its_second_segment(self):
+        self.assertEqual(
+            netflix._split_title("Tour de France: Unchained: Season 3: Episode 1"),
+            ("Tour de France: Unchained", "tv", 3, 1),
+        )
+
+    def test_volume_segment_is_a_season(self):
+        self.assertEqual(
+            netflix._split_title("Love, Death & Robots: Volume 3: Jibaro"),
+            ("Love, Death & Robots", "tv", 3, None),
+        )
+        self.assertEqual(
+            netflix._episode_title(
+                "Love, Death & Robots: Volume 3: Jibaro", "Love, Death & Robots",
+            ),
+            "Jibaro",
+        )
+
+    def test_volume_without_trailing_segment_keeps_movie_status(self):
+        self.assertEqual(
+            netflix._split_title("Some Film: Volume 2"),
+            ("Some Film: Volume 2", "movie", None, None),
+        )
+
+    def test_limited_series_part_segment_is_the_episode(self):
+        self.assertEqual(
+            netflix._split_title("Wild Wild Country: Limited Series: Part 6"),
+            ("Wild Wild Country", "tv", 1, 6),
+        )
+
+
+class ResolveRowTests(TestCase):
+    """The safe shortcuts resolve_row adds on top of the exact match."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+        self.resolver = netflix.NetflixResolver(self.user)
+
+    @staticmethod
+    def _show_meta(seasons):
+        return {
+            "title": "Show",
+            "related": {
+                "seasons": [
+                    {"season_number": number, "episode_count": count}
+                    for number, count in seasons
+                ],
+            },
+        }
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_ambiguous_tv_narrowed_by_known_season(self, mock_meta, mock_search):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 79744, "name": "The Rookie"},
+                {"media_id": 7583, "name": "The Rookie"},
+            ],
+        }
+        mock_meta.side_effect = [
+            self._show_meta([(season, 10) for season in range(1, 10)]),
+            self._show_meta([(1, 10)]),
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "The Rookie: Season 7: Episode 5", "The Rookie", "tv", 7, 5,
+            ),
+            ("79744", "tv", 7, 5),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_ambiguous_tv_stays_ambiguous_when_season_shares(self, mock_meta,
+                                                             mock_search):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 79744, "name": "The Rookie"},
+                {"media_id": 7583, "name": "The Rookie"},
+            ],
+        }
+        mock_meta.side_effect = [
+            self._show_meta([(7, 10)]),
+            self._show_meta([(7, 10)]),
+        ]
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "The Rookie: Season 7: Episode 5", "The Rookie", "tv", 7, 5,
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    def test_ambiguous_movie_stays_ambiguous(self, mock_search):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 1, "title": "Sinners"},
+                {"media_id": 2, "title": "Sinners"},
+            ],
+        }
+
+        self.assertIsNone(
+            self.resolver.resolve_row("Sinners", "Sinners", "movie", None, None),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    def test_movie_part_continuation(self, mock_search):
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": 93618,
+                    "title": "Mission: Impossible - Dead Reckoning Part One",
+                },
+            ],
+        }
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Mission: Impossible - Dead Reckoning",
+                "Mission: Impossible - Dead Reckoning",
+                "movie",
+                None,
+                None,
+            ),
+            ("93618", "movie", None, None),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_without_season_finds_unique_season(self, mock_meta,
+                                                        mock_search):
+        mock_search.return_value = {
+            "results": [{"media_id": 135114, "name": "Delicious in Dungeon"}],
+        }
+        mock_meta.return_value = self._show_meta([(1, 24), (2, 8)])
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Delicious in Dungeon: Episode 12",
+                "Delicious in Dungeon",
+                "tv",
+                None,
+                12,
+            ),
+            ("135114", "tv", 1, 12),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_without_season_stays_ambiguous(self, mock_meta,
+                                                     mock_search):
+        mock_search.return_value = {
+            "results": [{"media_id": 135114, "name": "Delicious in Dungeon"}],
+        }
+        mock_meta.return_value = self._show_meta([(1, 24), (2, 24)])
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Delicious in Dungeon: Episode 12",
+                "Delicious in Dungeon",
+                "tv",
+                None,
+                12,
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unlabelled_colon_row_matches_unique_episode(self, mock_meta,
+                                                         mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": [{"media_id": 64635, "name": "Chef's Table"}]},
+        ]
+        mock_meta.side_effect = [
+            self._show_meta([(1, 1), (2, 2)]),
+            {"episodes": [{"episode_number": 1, "name": "Other"}]},
+            {"episodes": [
+                {"episode_number": 1, "name": "X"},
+                {"episode_number": 2, "name": "China"},
+            ]},
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Chef's Table: China", "Chef's Table: China", "movie",
+                None, None,
+            ),
+            ("64635", "tv", 2, 2),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unlabelled_colon_row_stays_pending_when_episode_shared(
+        self, mock_meta, mock_search
+    ):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": [{"media_id": 64635, "name": "Chef's Table"}]},
+        ]
+        mock_meta.side_effect = [
+            self._show_meta([(1, 4), (2, 4)]),
+            {"episodes": [{"episode_number": 2, "name": "China"}]},
+            {"episodes": [{"episode_number": 1, "name": "China"}]},
+        ]
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Chef's Table: China", "Chef's Table: China", "movie",
+                None, None,
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    def test_tv_row_without_coordinates_never_searches(self, mock_search):
+        mock_search.return_value = {"results": [{"media_id": 1, "name": "Show"}]}
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Show: Limited Series", "Show", "tv", None, None,
+            ),
+        )
+        mock_search.assert_not_called()
+
+
+class DateTests(TestCase):
+    """Date parsing and per-file layout detection."""
+
+    def test_layout_from_day_only_component(self):
+        self.assertEqual(netflix._detect_date_layout(["11/20/26"]), "mdy")
+        self.assertEqual(netflix._detect_date_layout(["31/12/24"]), "dmy")
+        self.assertEqual(netflix._detect_date_layout(["10/7/18"]), "mdy")
+
+    def test_parse_us_style(self):
+        parsed = netflix._parse_date("11/20/26", "mdy")
+        self.assertEqual(parsed.date(), date(2026, 11, 20))
+
+    def test_parse_german_style(self):
+        parsed = netflix._parse_date("31/12/24", "dmy")
+        self.assertEqual(parsed.date(), date(2024, 12, 31))
+
+    def test_unparseable_returns_none(self):
+        self.assertIsNone(netflix._parse_date("garbage", "mdy"))
+        self.assertIsNone(netflix._parse_date("13/45/26", "mdy"))
+
+
+class NetflixImporterTests(TestCase):
+    """CSV rows -> plays, or parked pending rows."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_movie_row_creates_completed_movie(self, mock_meta, mock_search):
+        mock_search.return_value = {
+            "results": [{"media_id": 555, "title": "Arrival", "year": 2016}],
+        }
+        mock_meta.return_value = {"title": "Arrival", "image": "m.jpg"}
+
+        counts, warnings = _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+
+        self.assertEqual(counts.get(MediaTypes.MOVIE.value), 1)
+        movie = Movie.objects.get(user=self.user, item__media_id="555")
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.end_date.date(), date(2026, 11, 20))
+        self.assertEqual(NetflixPendingRow.objects.count(), 0)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_row_records_episode_play(self, mock_meta, mock_search):
+        mock_search.return_value = {
+            "results": [
+                {
+                    "media_id": 111,
+                    "title": "Weeds - Kleine Deals unter Nachbarn",
+                    "year": 2019,
+                }
+            ],
+        }
+        mock_meta.side_effect = [
+            {"title": "Weeds - Kleine Deals unter Nachbarn", "image": "t.jpg"},
+            {
+                "title": "Season 8",
+                "image": "s.jpg",
+                "max_progress": 6,
+                "episodes": [{"episode_number": 5, "title": "E5"}],
+            },
+        ]
+
+        counts, _ = _run(
+            _csv(
+                "Title,Date",
+                "Weeds - Kleine Deals unter Nachbarn: Staffel 8: Folge 5,10/7/18",
+            ),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        item = Item.objects.get(
+            media_id="111",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=8,
+            episode_number=5,
+        )
+        episode = Episode.objects.get(item=item)
+        self.assertEqual(episode.end_date.date(), date(2018, 10, 7))
+        self.assertEqual(
+            TV.objects.filter(user=self.user, item__media_id="111").count(),
+            1,
+        )
+        self.assertEqual(
+            Season.objects.filter(user=self.user, item__media_id="111").count(),
+            1,
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_english_episode_title_match_records_play(
+        self, mock_meta, mock_search
+    ):
+        mock_search.return_value = {
+            "results": [{"media_id": 111, "title": "Weeds", "year": 2019}],
+        }
+        season_meta = {
+            "title": "Season 8",
+            "image": "s.jpg",
+            "max_progress": 6,
+            "episodes": [
+                {"episode_number": 4, "name": "Some Other Episode"},
+                {"episode_number": 5, "name": "It's Time"},
+            ],
+        }
+        # The title match reads the season first; record_play then repeats
+        # the TV and season lookups (the mock bypasses the real memo).
+        mock_meta.side_effect = [
+            season_meta,
+            {"title": "Weeds", "image": "t.jpg"},
+            season_meta,
+        ]
+
+        counts, _ = _run(
+            _csv("Title,Date", "Weeds: Season 8: It's Time,10/7/18"),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        item = Item.objects.get(
+            media_id="111",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=8,
+            episode_number=5,
+        )
+        self.assertEqual(Episode.objects.filter(item=item).count(), 1)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_part_as_season_row_records_play(self, mock_meta, mock_search):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 333, "title": "Disenchantment", "year": 2018}
+            ],
+        }
+        season_meta = {
+            "title": "Part 5",
+            "image": "s.jpg",
+            "episodes": [{"episode_number": 8, "title": "Goodbye Bean"}],
+        }
+        mock_meta.side_effect = [
+            season_meta,
+            {"title": "Disenchantment", "image": "t.jpg"},
+            season_meta,
+        ]
+
+        counts, _ = _run(
+            _csv("Title,Date", "Disenchantment: Part 5: Goodbye Bean,11/20/26"),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="333",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=5,
+                episode_number=8,
+            ).count(),
+            1,
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unmatched_episode_title_becomes_pending_with_season(
+        self, mock_meta, mock_search
+    ):
+        mock_search.return_value = {
+            "results": [{"media_id": 111, "title": "Weeds", "year": 2019}],
+        }
+        mock_meta.return_value = {
+            "title": "Season 8",
+            "image": "s.jpg",
+            "episodes": [{"episode_number": 1, "name": "Pilot"}],
+        }
+
+        counts, _ = _run(
+            _csv("Title,Date", "Weeds: Season 8: Some Unknown Title,10/7/18"),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 0)
+        row = NetflixPendingRow.objects.get()
+        self.assertEqual(row.season_number, 8)
+        self.assertIsNone(row.episode_number)
+
+    @patch("integrations.imports.trakt.services.search")
+    def test_unmatched_title_becomes_pending(self, mock_search):
+        mock_search.return_value = {"results": []}
+
+        counts, warnings = _run(
+            _csv("Title,Date", "Unbekannter Film,11/20/26"), self.user
+        )
+
+        self.assertEqual(counts.get(MediaTypes.MOVIE.value), 0)
+        row = NetflixPendingRow.objects.get()
+        self.assertEqual(row.title, "Unbekannter Film")
+        self.assertEqual(row.status, NetflixPendingRow.Status.PENDING.value)
+        self.assertEqual(row.watched_at, date(2026, 11, 20))
+        self.assertIn("review", warnings)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_ambiguous_tv_row_resolved_by_known_season(self, mock_meta,
+                                                        mock_search):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 79744, "name": "The Rookie"},
+                {"media_id": 7583, "name": "The Rookie"},
+            ],
+        }
+        seasons = [
+            {"season_number": season, "episode_count": 10}
+            for season in range(1, 10)
+        ]
+
+        def meta(media_type, tmdb_id, title, season_number=None):
+            if media_type == MediaTypes.TV.value:
+                if tmdb_id == "79744":
+                    return {"title": "The Rookie", "image": "t.jpg",
+                            "related": {"seasons": seasons}}
+                return {"title": "The Rookie", "image": "t.jpg",
+                        "related": {"seasons": [
+                            {"season_number": 1, "episode_count": 10},
+                        ]}}
+            return {"image": "s.jpg",
+                    "episodes": [{"episode_number": 5, "name": "The Call"}]}
+
+        mock_meta.side_effect = meta
+
+        counts, _ = _run(
+            _csv("Title,Date", "The Rookie: Season 7: Episode 5,11/20/26"),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="79744",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=7,
+                episode_number=5,
+            ).count(),
+            1,
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_without_season_records_unique_season(self, mock_meta,
+                                                          mock_search):
+        mock_search.return_value = {
+            "results": [{"media_id": 135114, "name": "Delicious in Dungeon"}],
+        }
+        show_meta = {
+            "title": "Delicious in Dungeon",
+            "image": "t.jpg",
+            "related": {"seasons": [
+                {"season_number": 1, "episode_count": 24},
+                {"season_number": 2, "episode_count": 8},
+            ]},
+        }
+
+        def meta(media_type, tmdb_id, title, season_number=None):
+            if media_type == MediaTypes.TV.value:
+                return show_meta
+            return {"image": "s.jpg",
+                    "episodes": [{"episode_number": 12, "name": "Dinner"}]}
+
+        mock_meta.side_effect = meta
+
+        counts, _ = _run(
+            _csv("Title,Date", "Delicious in Dungeon: Episode 12,11/20/26"),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="135114",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=12,
+            ).count(),
+            1,
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unlabelled_colon_row_records_unique_tv_episode(self, mock_meta,
+                                                            mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": [{"media_id": 64635, "name": "Chef's Table"}]},
+        ]
+        show_meta = {
+            "title": "Chef's Table",
+            "image": "t.jpg",
+            "related": {"seasons": [
+                {"season_number": 1, "episode_count": 1},
+                {"season_number": 2, "episode_count": 2},
+            ]},
+        }
+
+        def meta(media_type, tmdb_id, title, season_number=None):
+            if media_type == MediaTypes.TV.value:
+                return show_meta
+            if season_number == 1:
+                return {"image": "s.jpg",
+                        "episodes": [{"episode_number": 1, "name": "Other"}]}
+            return {"image": "s.jpg",
+                    "episodes": [
+                        {"episode_number": 1, "name": "X"},
+                        {"episode_number": 2, "name": "China"},
+                    ]}
+
+        mock_meta.side_effect = meta
+
+        counts, _ = _run(
+            _csv("Title,Date", "Chef's Table: China,11/20/26"), self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        self.assertEqual(
+            Item.objects.filter(
+                media_id="64635",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=2,
+                episode_number=2,
+            ).count(),
+            1,
+        )
+
+    def test_empty_title_row_is_skipped(self):
+        counts, warnings = _run(
+            _csv("Title,Date", " ,10/7/18"), self.user
+        )
+        self.assertEqual(counts.get(MediaTypes.MOVIE.value), 0)
+        self.assertEqual(NetflixPendingRow.objects.count(), 0)
+        self.assertIn("skipped", warnings)
+
+    def test_unparseable_date_becomes_pending(self):
+        counts, _ = _run(
+            _csv("Title,Date", "Good Movie,not-a-date"), self.user
+        )
+        self.assertEqual(counts.get(MediaTypes.MOVIE.value), 0)
+        row = NetflixPendingRow.objects.get()
+        self.assertIsNone(row.watched_at)
+        self.assertEqual(row.raw_date, "not-a-date")
+
+    @patch.object(
+        netflix.NetflixResolver,
+        "_get_metadata",
+        return_value={"title": "Arrival", "image": "m.jpg"},
+    )
+    @patch(
+        "integrations.imports.trakt.services.search",
+        return_value={"results": [{"media_id": 555, "title": "Arrival"}], "count": 1},
+    )
+    def test_reimport_does_not_duplicate_plays_or_pending(
+        self, mock_search, mock_meta
+    ):
+        _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+        _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
+
+
+class NetflixPendingViewTests(TestCase):
+    """The interactive review page."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+        self.client.force_login(self.user)
+
+    def _row(self, **kwargs):
+        defaults = {
+            "user": self.user,
+            "title": "Weeds - Kleine Deals unter Nachbarn: Staffel 8: Folge 5",
+            "watched_at": date(2018, 10, 7),
+            "media_type": MediaTypes.TV.value,
+            "season_number": 8,
+            "episode_number": 5,
+        }
+        defaults.update(kwargs)
+        return NetflixPendingRow.objects.create(**defaults)
+
+    def test_pending_list_shows_only_pending_rows(self):
+        self._row()
+        done = self._row(status=NetflixPendingRow.Status.RESOLVED.value)
+        response = self.client.get(reverse("netflix_pending"))
+        self.assertContains(response, "Weeds - Kleine Deals unter Nachbarn")
+        response = self.client.get(reverse("netflix_pending") + "?show=all")
+        self.assertContains(response, "Recorded.")
+
+    def test_search_shows_provider_results(self):
+        row = self._row()
+        results = [
+            {"media_id": 100 + i, "title": f"Weeds {i}", "year": 2019}
+            for i in range(10)
+        ]
+        with patch(
+            "integrations.imports.trakt.services.search",
+            return_value={"results": results},
+        ) as mock_search:
+            response = self.client.get(
+                reverse("netflix_pending"),
+                {"search_row": row.id, "q": "Weeds", "type": "tv"},
+            )
+        # The review page must show page 1 of the provider results, capped at
+        # SEARCH_RESULT_LIMIT (the third positional argument is the page).
+        mock_search.assert_called_once_with(
+            "tv", "Weeds", 1, source="tmdb",
+        )
+        for i in range(netflix.SEARCH_RESULT_LIMIT):
+            self.assertContains(response, f'value="{100 + i}"')
+        self.assertNotContains(response, f'value="{100 + netflix.SEARCH_RESULT_LIMIT}"')
+
+    def test_search_json_for_the_react_island(self):
+        self._row()
+        with patch(
+            "integrations.imports.trakt.services.search",
+            return_value={
+                "results": [{"media_id": 111, "title": "Weeds", "year": 2019}]
+            },
+        ):
+            response = self.client.get(
+                reverse("netflix_pending"),
+                {"format": "json", "q": "Weeds", "type": "tv"},
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            payload["results"],
+            [{"media_id": 111, "title": "Weeds", "year": 2019}],
+        )
+        self.assertEqual(payload["mediaType"], "tv")
+
+    def test_review_props_render_for_the_react_island(self):
+        self._row()
+        response = self.client.get(reverse("netflix_pending"))
+        self.assertContains(response, "data-netflix-review-root")
+        self.assertContains(
+            response, 'data-props-id="netflix-review-props"'
+        )
+
+    @patch.object(
+        netflix.NetflixResolver,
+        "_get_metadata",
+        side_effect=[
+            {"title": "Weeds", "image": "t.jpg"},
+            {
+                "title": "Season 8",
+                "image": "s.jpg",
+                "max_progress": 6,
+                "episodes": [{"episode_number": 5, "title": "E5"}],
+            },
+        ],
+    )
+    def test_resolve_records_play_and_marks_row(self, mock_meta):
+        row = self._row()
+        response = self.client.post(
+            reverse("netflix_pending_resolve", args=[row.id]),
+            {
+                "media_type": "tv",
+                "tmdb_id": "111",
+                "season_number": "8",
+                "episode_number": "5",
+            },
+        )
+        row.refresh_from_db()
+        self.assertRedirects(response, reverse("netflix_pending"))
+        self.assertEqual(row.status, NetflixPendingRow.Status.RESOLVED.value)
+        self.assertIsNotNone(row.resolved_item)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(), 1
+        )
+
+    @patch.object(
+        netflix.NetflixResolver, "_get_metadata",
+        return_value={"title": "Arrival", "image": "m.jpg"},
+    )
+    def test_resolve_movie(self, mock_meta):
+        row = self._row(
+            title="Arrival",
+            media_type=MediaTypes.MOVIE.value,
+            season_number=None,
+            episode_number=None,
+        )
+        self.client.post(
+            reverse("netflix_pending_resolve", args=[row.id]),
+            {"media_type": "movie", "tmdb_id": "555"},
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.status, NetflixPendingRow.Status.RESOLVED.value)
+        self.assertEqual(
+            Movie.objects.filter(user=self.user).count(), 1
+        )
+
+    def test_dismiss(self):
+        row = self._row()
+        self.client.post(reverse("netflix_pending_dismiss", args=[row.id]))
+        row.refresh_from_db()
+        self.assertEqual(row.status, NetflixPendingRow.Status.DISMISSED.value)
+
+    def test_row_is_scoped_to_its_user(self):
+        other = get_user_model().objects.create_user(
+            username="other", password="12345"
+        )
+        row = self._row()
+        other_client = self.client
+        other_client.force_login(other)
+        response = other_client.post(
+            reverse("netflix_pending_dismiss", args=[row.id])
+        )
+        self.assertEqual(response.status_code, 404)
+        row.refresh_from_db()
+        self.assertEqual(row.status, NetflixPendingRow.Status.PENDING.value)
+
+
+class NetflixTaskTests(TestCase):
+    """Task wiring and the TMDB precondition."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+
+    @patch("app.providers.tmdb.enabled", return_value=True)
+    @patch("integrations.imports.trakt.services.search")
+    def test_task_imports_csv(self, mock_search, mock_enabled):
+        from integrations import tasks
+
+        mock_search.return_value = {"results": []}
+        message = tasks.import_netflix(
+            BytesIO(_csv("Title,Date", "Unbekannt,11/20/26")),
+            self.user.id,
+            "new",
+        )
+        self.assertIn("Netflix", message)
+        self.assertTrue(NetflixPendingRow.objects.exists())
+
+    def test_importer_raises_without_tmdb(self):
+        with patch(
+            "integrations.imports.netflix.app.providers.tmdb.enabled",
+            return_value=False,
+        ):
+            with self.assertRaises(MediaImportError):
+                netflix.importer(
+                    BytesIO(_csv("Title,Date", "Arrival,11/20/26")),
+                    self.user,
+                    "new",
+                )

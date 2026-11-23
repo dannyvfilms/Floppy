@@ -42,6 +42,7 @@ IMPORTS = {
     "xbox": ("Xbox", "games"),
     "psn": ("PlayStation", "games"),
     "imdb": ("IMDb", "screen"),
+    "netflix": ("Netflix", "screen"),
     "tvtime": ("TV Time", "screen"),
     "wetrakr": ("WeTrakr", "screen"),
     "goodreads": ("Goodreads", "reading"),
@@ -65,7 +66,7 @@ TRACKING = {
 # These import actions require a user-supplied export and cannot recur.
 FILE_ONLY_IMPORTS = frozenset({
     "clz", "yamtrack_native", "hltb", "playnite", "grouvee", "imdb", "goodreads",
-    "storygraph", "youtube", "wetrakr", "tvtime",
+    "storygraph", "youtube", "wetrakr", "tvtime", "netflix",
 })
 ONE_TIME_IMPORTS = FILE_ONLY_IMPORTS | {"mangabaka"}
 
@@ -156,6 +157,7 @@ IMPORT_MEDIA = {
     "xbox": "game",
     "psn": "game",
     "imdb": "movie tv",
+    "netflix": "movie tv",
     "tvtime": "movie tv",
     "wetrakr": "movie tv",
     "goodreads": "book",
@@ -205,6 +207,7 @@ IMPORT_DESCRIPTIONS = {
     "xbox": "Sync played games and hours from Xbox.",
     "psn": "Sync played games and hours from PlayStation.",
     "imdb": "Import ratings from IMDB.",
+    "netflix": "Import watch history from a Netflix viewing activity CSV.",
     "tvtime": "Import watch history from a TV Time data export.",
     "wetrakr": "Import history, ratings, notes and lists from a WeTrakr data export.",
     "goodreads": "Import a backup from Goodreads.",
@@ -286,6 +289,7 @@ CARD_DESCRIPTIONS = {
     "tvdb": "Find TV and anime metadata.",
     "tmdb": "Find metadata and sync ratings.",
     "trakt": "Import history and find trends.",
+    "netflix": "Import your watch history from a file.",
     "tvtime": "Import your watch history from a file.",
     "wetrakr": "Import and sync your activity.",
     "xbox": "Import your games and played hours.",

@@ -97,6 +97,7 @@ _EXPORT_MODULES = {
             "import_mangabaka",
             "import_mdblist",
             "import_media",
+            "import_netflix",
             "import_playnite",
             "import_kapowarr",
             "import_kapowarr_recurring",

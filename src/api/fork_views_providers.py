@@ -348,6 +348,7 @@ FILE_IMPORT_EXTENSIONS = {
     "playnite": (".csv",),
     "grouvee": (".json", ".zip"),
     "imdb": (".csv",),
+    "netflix": (".csv",),
     "goodreads": (".csv",),
     "hardcover": (".csv",),
     "storygraph": (".csv",),

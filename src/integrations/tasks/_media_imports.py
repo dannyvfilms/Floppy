@@ -32,6 +32,7 @@ from integrations.imports import (
     mangabaka,
     mdblist,
     mylar,
+    netflix,
     playnite,
     plex,
     pocketcasts,
@@ -477,6 +478,12 @@ def import_trakt_export(file, user_id, mode):
         user_id,
         mode,
     )
+
+
+@shared_task(name="Import from Netflix")
+def import_netflix(file, user_id, mode):
+    """Celery task for importing a Netflix viewing-history CSV."""
+    return _run_file_import(netflix.importer, file, user_id, mode)
 
 
 @shared_task(

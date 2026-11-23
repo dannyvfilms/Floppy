@@ -40,6 +40,7 @@ FILE_IMPORTS = {
     "playnite": ("import_playnite", "playnite_csv", ".csv", "Import a Playnite library backup", "Select CSV File"),
     "grouvee": ("import_grouvee", "grouvee_json", ".json,.zip", "Import games", "Select File"),
     "imdb": ("import_imdb", "imdb_csv", ".csv", "Import movies and TV shows from your ratings", "Select CSV File"),
+    "netflix": ("import_netflix", "netflix_csv", ".csv", "Import your Netflix viewing activity CSV (Title, Date). Rows that can't be matched automatically can be resolved afterwards on the review page.", "Select CSV File"),
     "goodreads": ("import_goodreads", "goodreads_csv", ".csv", "Import from Goodreads backup", "Select CSV File"),
     "youtube": ("import_youtube_takeout", "youtube_takeout", ".json,.html,.zip,.tgz,.tar.gz",
                 "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, the zip, or the .tgz archive.", "Select File", {"fields": ("mode",)}),

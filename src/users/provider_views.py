@@ -412,6 +412,13 @@ def provider_detail(request, slug):
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
         if slug in provider_ui.FILE_IMPORTS:
             context["file_import"] = provider_ui.file_import(request, slug, context["import_preferences"], context)
+        if slug == "netflix":
+            from integrations.models import NetflixPendingRow
+
+            context["netflix_pending_count"] = NetflixPendingRow.objects.filter(
+                user=request.user,
+                status=NetflixPendingRow.Status.PENDING.value,
+            ).count()
         if slug == "clz":
             preferences = context["import_preferences"]
             context["clz_import"] = {

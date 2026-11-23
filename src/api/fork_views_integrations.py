@@ -57,6 +57,7 @@ _FILE_IMPORTS = {
     "playnite": ("import_playnite", "Playnite CSV"),
     "grouvee": ("import_grouvee", "Grouvee export (JSON or zip)"),
     "imdb": ("import_imdb", "IMDB CSV"),
+    "netflix": ("import_netflix", "Netflix viewing history CSV"),
     "goodreads": ("import_goodreads", "Goodreads CSV"),
     "hardcover": ("import_hardcover", "Hardcover CSV"),
     "storygraph": ("import_storygraph", "StoryGraph CSV"),
