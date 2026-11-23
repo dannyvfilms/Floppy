@@ -249,6 +249,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_consumption_batch.ConsumptionBatchDetailView": {"GET": _R},
     "api.fork_views_library.LibraryFilterOptionsView": {"GET": _R},
     "api.fork_views_library.LibraryItemIdsView": {"GET": _R},
+    "api.fork_views_progress_page.ProgressPageView": {"GET": _R},
     "api.fork_views_library.LibraryPreferencesView": {"GET": "user:read", "PATCH": "user:write"},
     "api.fork_views_library.LibraryShareView": {"POST": "lists:write"},
     "api.fork_views_library.LibraryBulkStatusView": {"POST": _W},

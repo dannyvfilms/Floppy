@@ -193,7 +193,6 @@ export function DateTimePicker({
   markerDays = [],
   activityIntensity = {},
   inline = false,
-  presets = false,
   initialViewDate = '',
   selectableDays = null,
   onQuickAction,
@@ -461,8 +460,7 @@ export function DateTimePicker({
                 </ModalCloseButton>
               </View>
             ) : null}
-            <PanelBody
-              inline={inline}
+            <ScrollView
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={inline ? undefined : styles.panelContent}
             >
@@ -813,26 +811,8 @@ export function DateTimePicker({
                 </View>
               ) : null}
 
-              {!inline || presets ? <View style={[styles.section, { borderTopColor: palette.border }]}>
+              {!inline ? <View style={[styles.section, { borderTopColor: palette.border }]}>
                 <View style={styles.commonRow}>
-                  {/* Inline panels have no closed field, so the shortcuts that sit in it (Just finished, Start now) join the presets. */}
-                  {inline ? quickActionButtons.map(action => (
-                    <Pressable
-                      key={action.id}
-                      accessibilityRole="button"
-                      accessibilityLabel={action.label}
-                      onPress={() => onQuickAction?.(action.id)}
-                      style={({ pressed }) => [
-                        styles.commonButton,
-                        {
-                          borderColor: palette.border,
-                          backgroundColor: pressed ? palette.surfaceMuted : 'transparent',
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.commonText, { color: palette.textSecondary }]}>{action.label}</Text>
-                    </Pressable>
-                  )) : null}
                   <Pressable
                     accessibilityRole="button"
                     onPress={applyNow}
@@ -925,17 +905,12 @@ export function DateTimePicker({
                   </Text>
                 ) : null}
               </View> : null}
-            </PanelBody>
+            </ScrollView>
           </View>
         </View>
       </PickerShell>
     </View>
   );
-}
-
-// An inline panel sits inside the host's own scrolling and sizes to its content; a nested ScrollView there can collapse to no height.
-function PanelBody({ inline, children, ...scrollProps }) {
-  return inline ? <View>{children}</View> : <ScrollView {...scrollProps}>{children}</ScrollView>;
 }
 
 function PickerShell({ inline, open, close, children }) {

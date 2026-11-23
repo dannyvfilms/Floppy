@@ -62,10 +62,6 @@ function normalizeField(field) {
     min: field.min ?? null,
     max: field.max ?? null,
     step: field.step ?? null,
-    // 'minutes' marks a number the form shows as hrs and min.
-    unit: field.unit || '',
-    // The rating scale (5 or 10) a score picker offers; the value stays on the stored 0-10 scale.
-    scaleMax: field.scaleMax || null,
     placeholder: field.placeholder || '',
     // Date fields carry their shortcuts (Just Finished, Start Now, Release
     // Date) and copy-from-the-other-date wiring; dropping them hides those

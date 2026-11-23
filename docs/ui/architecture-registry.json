@@ -1323,66 +1323,6 @@
         }
       }
     },
-    "frontend/ui/TrackCalendar.jsx": {
-      "components": [
-        "TrackCalendar"
-      ],
-      "register": "DATE-TIME",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Seen on the iPhone Duo simulator inside the Tracking sheet; spacing compared with an iOS Calendar reference. No device pass for this revision."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
-        }
-      }
-    },
-    "frontend/ui/TrackDateRow.jsx": {
-      "components": [
-        "TrackDateRow"
-      ],
-      "register": "DATE-TIME",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the Tracking sheets; not yet seen on a simulator or device."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
-        }
-      }
-    },
-    "frontend/ui/TrackTabsGrouped.jsx": {
-      "components": [
-        "GroupedTabBody"
-      ],
-      "register": "MEDIA-CARD",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not rendered on web: the browser keeps the TrackFormTabs bodies because grouped is native only. Structural: the shared UI bundle builds with the import."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
-        }
-      }
-    },
     "frontend/ui/TrackFormTabs.jsx": {
       "components": [
         "TrackTabs"
@@ -3935,6 +3875,46 @@
           "evidence": "Shared react-native component; no Android runtime pass."
         }
       }
+    },
+    "frontend/pages/ProgressPageView.jsx": {
+      "components": [
+        "ProgressPageView"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
+    },
+    "frontend/ui/ProgressShowCard.jsx": {
+      "components": [
+        "ProgressShowCard"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
     }
   },
   "legacy": {},
@@ -3998,27 +3978,6 @@
         "android": {
           "status": "verified",
           "evidence": "Imported by the date-time field rendered on the Android Calendar screen; no picker interaction or timezone pass."
-        }
-      }
-    },
-    "frontend/ui/trackDuration.js": {
-      "components": [
-        "parseTrackDurationMinutes",
-        "formatTrackDuration"
-      ],
-      "register": "MEDIA-CARD",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Pure parse and format functions; the parser moved unchanged from TrackDialog, which still re-exports it. No browser pass."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled through Expo export; the hrs and min display has not been seen on a device yet."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled through Expo export; no runtime pass."
         }
       }
     },
@@ -4221,27 +4180,6 @@
         "android": {
           "status": "unverified",
           "evidence": "Shared-state unit tests pass; Android filter interaction remains unverified."
-        }
-      }
-    },
-    "frontend/ui/separatorColor.js": {
-      "components": [
-        "systemSeparatorColor",
-        "systemFillColor"
-      ],
-      "register": "FORM-CONTROLS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Returns no colour; web keeps its divider. No browser pass."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "The native variant supplies the system separator colour; seen on the iPhone Duo simulator."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Returns no colour; the grouped dividers use the literal fallback. No runtime pass."
         }
       }
     },
@@ -4547,6 +4485,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Installs the platform press-and-hold menu for the shared card. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/pages/useProgressPage.js": {
+      "components": [
+        "useProgressPage",
+        "progressSorts"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Loading and view state imported by the web adapter; no browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
         }
       }
     }
@@ -5616,52 +5575,6 @@
         }
       }
     },
-    "frontend/ui/separatorColor.web.js": {
-      "kind": "adapter",
-      "components": [
-        "systemSeparatorColor",
-        "systemFillColor"
-      ],
-      "register": "FORM-CONTROLS",
-      "purpose": "Web has no system list separator colour, so grouped-list dividers keep the web divider.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Returns no colour; no browser pass."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Not used on iOS."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Not used on Android."
-        }
-      }
-    },
-    "frontend/ui/separatorColor.native.js": {
-      "kind": "adapter",
-      "components": [
-        "systemSeparatorColor",
-        "systemFillColor"
-      ],
-      "register": "FORM-CONTROLS",
-      "purpose": "The iOS system separator colour for grouped-list dividers.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not used on web."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "PlatformColor('separator') on the iPhone Duo simulator; light appearance only."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Returns no colour on Android; the literal fallback applies."
-        }
-      }
-    },
     "frontend/ui/Modal.native.jsx": {
       "kind": "presentation",
       "components": [
@@ -6246,6 +6159,10 @@
     "frontend/ui/mountDetailSidebarCard.jsx": {
       "register": "OWNERSHIP",
       "purpose": "Browser adapter that renders the shared Details, Streaming, Genres and Studios cards (and the grouped section headings for Your History and Collection) from the page's server-projected data, replacing the server-rendered card in place. The Django wrapper keeps layout ordering, permissions and the no-JS fallback; the adapter mirrors the legacy carousel rule that hides promoted facts and genres."
+    },
+    "frontend/ui/mountProgressPage.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount ProgressPageView on /progress over the Django heading, loading the list and season breakdowns from same-origin /api/v1 and opening shows by their detail URL."
     }
   }
 }

@@ -159,23 +159,7 @@ function field(name, label, type, value, extra = {}) {
   return { name, label, type, value: value == null ? '' : String(value), ...extra };
 }
 
-// The viewer's rating scale: 5 or 10 stars, 0 when ratings are turned off, 10 when it cannot be read.
-function ratingScaleMax(prefs) {
-  const scale = Number(prefs?.preferences?.rating_scale);
-  return scale === 0 || scale === 5 || scale === 10 ? scale : 10;
-}
-
-// A runtime as minutes: 135, "135" or "2h 15m"; 0 when it cannot be read.
-function runtimeMinutes(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : 0;
-  const text = String(value || '');
-  const hours = /(\d+)\s*h/i.exec(text);
-  const minutes = /(\d+)\s*m/i.exec(text);
-  if (hours || minutes) return (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
-  return /^\d+$/.test(text.trim()) ? Number(text) : 0;
-}
-
-function trackFields(identity, detail, consumption, withTime = false, scaleMax = 10) {
+function trackFields(identity, detail, consumption, withTime = false) {
   const mediaType = identity.mediaType;
   const fields = [
     {
@@ -186,26 +170,18 @@ function trackFields(identity, detail, consumption, withTime = false, scaleMax =
       required: mediaType !== 'comicissue',
       options: mediaType === 'comicissue' ? [{ value: '', label: 'No Status' }, ...STATUS_OPTIONS] : STATUS_OPTIONS,
     },
-    // The value stays on the stored 0-10 scale; `scaleMax` (5 or 10, the viewer's preference) is what the picker offers.
-    ...(scaleMax ? [field('score', 'Score', 'number', consumption && consumption.score, { min: 0, max: 10, scaleMax })] : []),
+    field('score', 'Score', 'number', consumption && consumption.score, { min: 0, max: 10 }),
   ];
   if (PROGRESS_TYPES.has(mediaType)) {
-    // A game's progress is stored in minutes; `unit` lets the form show it as hrs and min.
     fields.push(field('progress', 'Progress', 'number', consumption?.progress ?? (mediaType === 'comicissue' ? 0 : ''), {
       min: 0,
-      unit: mediaType === 'game' ? 'minutes' : '',
       max: detail && detail.max_progress ? detail.max_progress : null,
       help: detail && detail.progress_unit ? String(detail.progress_unit) : '',
     }));
   }
   if (DATE_TYPES.has(mediaType)) {
-    // The release date and runtime feed the Release Date, Start Now and Just Finished presets.
-    const meta = (detail && detail.media_metadata) || {};
-    const release = typeof meta.release_date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(meta.release_date) ? meta.release_date.slice(0, 10) : '';
-    const minutes = runtimeMinutes(meta.runtime ?? (detail && detail.runtime));
-    const presetData = { suggestionDate: release, runtimeMinutes: minutes || '' };
-    fields.push(field('start_date', 'Start date', 'date', dateText(consumption && consumption.start_date, withTime), presetData));
-    fields.push(field('end_date', 'End date', 'date', dateText(consumption && consumption.end_date, withTime), presetData));
+    fields.push(field('start_date', 'Start date', 'date', dateText(consumption && consumption.start_date, withTime)));
+    fields.push(field('end_date', 'End date', 'date', dateText(consumption && consumption.end_date, withTime)));
   }
   if (mediaType === 'comicissue') fields.push(field('entry_source', 'Source', 'text', consumption?.entry_source ?? consumption?.source));
   return fields;
@@ -390,7 +366,6 @@ export async function loadTrack(identity, { trackTime = false, fresh = false } =
   const consumption = fresh ? null : identity.instanceId != null
     ? await request(`${mediaPath(identity)}/history/${encodeURIComponent(identity.instanceId)}/`)
     : currentConsumption(state);
-  const prefs = await request('/api/v1/user/preferences/').catch(() => null);
   const tracked = Boolean(state.tracked) && !fresh;
   const episodic = EPISODIC_TYPES.has(identity.mediaType);
   const tabs = [
@@ -421,7 +396,7 @@ export async function loadTrack(identity, { trackTime = false, fresh = false } =
       action: `${mediaPath(identity)}/`,
       deleteAction: tracked ? `${mediaPath(identity)}/` : '',
       csrfToken: config.csrfToken,
-      fields: trackFields(identity, detail, consumption, trackTime, ratingScaleMax(prefs)),
+      fields: trackFields(identity, detail, consumption, trackTime),
       notes: { value: (consumption && consumption.notes) || '', label: 'Notes' },
       submitLabel: tracked ? 'Update' : 'Add',
       deleteLabel: 'Delete',

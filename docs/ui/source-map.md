@@ -100,7 +100,6 @@ build artifacts. The Python composition tag is documented in the register.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
 - `AdaptivePresentationSheet.jsx` supplies the shared header and delegates rail close placement to its iOS host. The Duo sheet was inspected on device; Android and web rendering remain unverified.
 - On an iOS vertical rail, `SheetHost.ios.jsx` uses a native navigation toolbar cancellation action to place the shared sheet's close button below system status controls; the body retains its prior edge spacing. Duo runtime inspection covered the Lists sheet at half and full height and dismissal. Expo web and Android keep their existing presentation and were not runtime inspected for this change.
-- `SheetHost.ios.jsx` also takes `railItems` from `AdaptivePresentationSheet` and shows them as grouped `primaryAction` toggles under Close; `expo/app/surfaces/TrackPresentation.jsx` (`TrackPresentation`, `trackRailItems`) supplies the Tracking sections for `DetailFeatures` and `MediaCardSlot`, and the form drops its Section row while they are on the rail. The item list stays fixed while the sheet is open and the native stack is keyed on the item count, or the body loses its touch handler or goes blank (`docs/architecture/device-poses.md`). `SheetHost.jsx` (Android, web) ignores the items, so those platforms keep the Section row. iOS runtime on the closed iPhone Duo simulator; a rail-less iPhone, Android and web were not run.
 - `expo/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
 
 Status: `Partial / coexisting`
@@ -217,7 +216,7 @@ Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The 
 
 The iOS `NativeCardMenu.ios.jsx` defines the full rounded `MediaCard` as the system context-menu preview shape for Home, Library, Search and other MediaCardSlot consumers. Android's Material menu and the Expo web dropdown have no corresponding lifted preview; browser card ownership, remaining consumers and retirement conditions are unchanged. Browser, iOS and Android runtime verification are recorded separately in the component register.
 
-`expo/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` for card tracking and list actions, matching Detail on Expo iOS, Android and web. On the iOS rail the card's Tracking sheet passes the sections as rail items (`trackRailItems`) and owns the open section, so the rail and the form agree; its form palette starts from the page theme, as Media Details' does. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
+`expo/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` for card tracking and list actions, matching Detail on Expo iOS, Android and web. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
 
 Quick status uses the shared MediaCard and MediaCardActions, the browser card adapter and the Expo MediaCardSlot on Home, Library and Search. Existing fallback consumers and retirement conditions are unchanged. Manual untracked items and non-generic tracking retain their existing flow. Browser search and iOS library rendered; interaction verification and Android runtime verification remain pending separately.
 
@@ -817,6 +816,7 @@ Status: `Legacy`
 - `src/templates/app/components/session_history_modal.html`
 - `src/templates/app/components/session_history_row.html` (also the audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/history.html`
+- `src/templates/app/progress.html`, `src/app/progress_page.py`, `src/api/fork_views_progress_page.py` (Progress page heading and mount root; the list read for web and native), `expo/app/screens/ProgressScreen.jsx`
 - `expo/app/screens/HistoryScreen.jsx`, `expo/app/data/historyTransportCore.js` (+ `historyTransportCore.test.mjs`) (native History screen and transport; release-date mode pages by day through `limit`/`offset` on `/api/v1/history/release/`, like the activity feed)
 - `frontend/ui/historyScrollAnchor.web.js` (browser adapter: Back or reload returns History to the day the reader left; loads the waiting days down to it first).
 - `frontend/ui/historyFirstView.js` (shared first-view rule: about two screens of entries, whole days; `scripts/historyFirstView.test.mjs`). The server mirrors it in `src/app/history_views.py` (`HISTORY_FIRST_VIEW_ENTRIES`, `_first_view_day_count`). Waiting days load as they come near the screen through `HistoryFeed.web.jsx`'s own observer (1.5-screen look-ahead from `homeRowLoading.js`) on web and the Home watcher `expo/app/data/homeRowWatcherCore.js` in `HistoryScreen.jsx` on Expo. `frontend/ui/historyScrollAnchor.web.js` (browser only) returns Back to the day the reader left.
@@ -1348,6 +1348,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/ListsPageView.jsx`
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
+- `frontend/pages/ProgressPageView.jsx`, `frontend/pages/useProgressPage.js` (the Progress page composition and its loading state)
 - `frontend/pages/ProvidersView.jsx`
 - `frontend/pages/SearchPageView.jsx`
 - `frontend/pages/SettingsAboutView.jsx`
@@ -1459,6 +1460,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressChangerTheme.web.jsx`
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
+- `frontend/ui/ProgressShowCard.jsx`
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
@@ -1469,7 +1471,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Reveal.jsx`
 - `frontend/ui/Reveal.native.jsx`
 - `frontend/ui/Reveal.web.jsx`
-- Sidebar's web Reveal clips a transform-animated panel, while its native counterpart keeps the measured-height animation. The shared Sidebar and its web and Expo consumers retain their existing ownership and fallback retirement conditions; browser regression and native runtime evidence are recorded separately in the component register.
+- Sidebar's web Reveal clips a transform-animated panel, while its native counterpart keeps the measured-height animation. The web clip is `visibility: hidden` while closed so the panel's load-time measurement records no layout shift (web-only; `frontend/ui/sidebar.css`). The shared Sidebar and its web and Expo consumers retain their existing ownership and fallback retirement conditions; browser regression and native runtime evidence are recorded separately in the component register.
 - `frontend/ui/SearchResultCard.jsx`
 - `frontend/ui/SearchResultCard.native.jsx`
 - `frontend/ui/SearchResultCard.web.jsx`
@@ -1500,13 +1502,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackDialog.jsx`
 - `frontend/ui/TrackForm.jsx`
 - `frontend/ui/TrackFormTabs.jsx`
-- `frontend/ui/TrackTabsGrouped.jsx`
-- `frontend/ui/TrackDateRow.jsx`
-- `frontend/ui/TrackCalendar.jsx`
-- `frontend/ui/separatorColor.js`
-- `frontend/ui/separatorColor.web.js`
-- `frontend/ui/separatorColor.native.js`
-- `frontend/ui/trackDuration.js`
 - `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/barcodeEntry.web.js`
 - `frontend/ui/clipboard.native.js`
@@ -1558,6 +1553,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressDetail.jsx`
+- `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`

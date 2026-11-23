@@ -25,17 +25,7 @@ export function Button({
 }) {
   const content = children ?? label;
   const size = requestedSize ?? palette.size ?? 'sm';
-  // A palette may carry a tone object ({ background, pressed, ... }) under the tone's name. The app palette also
-  // has a plain `surface` colour under the same key, which is not a tone and drew the button black, so only
-  // objects with a background count. The surface tone otherwise follows the theme's own surface colours.
-  const custom = palette[tone];
-  const themedSurface = tone === 'surface' && palette.surfaceStrong ? {
-    background: palette.surfaceStrong, pressed: palette.surfaceMuted || palette.surfaceStrong,
-    hovered: palette.surfaceMuted || palette.surfaceStrong, text: palette.text || defaultTones.surface.text,
-    border: palette.border || palette.surfaceStrong,
-  } : null;
-  const colors = (custom && typeof custom === 'object' && custom.background !== undefined ? custom : null)
-    || themedSurface || defaultTones[tone] || defaultTones.primary;
+  const colors = palette[tone] || defaultTones[tone] || defaultTones.primary;
   const text = typeof content === 'string' ? content : null;
   const large = size === 'lg';
   return <Pressable

@@ -620,6 +620,7 @@ export const MediaCard = React.memo(function MediaCard({
   readOnly = false,
   onAction,
   onRate,
+  onOpen,
   variant = '',
   className = '',
 }) {
@@ -683,6 +684,7 @@ export const MediaCard = React.memo(function MediaCard({
       {model.recommend ? <div className="cursor-pointer">{art.src ? <img decoding="sync" loading="lazy" alt={model.title}
         className={imgClass} style={aspectStyle} src={art.src} data-image-source={art.source} /> : <div className={imgClass} style={aspectStyle} />}</div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} {...(model.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} onClick={(event) => {
         if (selection?.active) { event.preventDefault(); selection.toggle(); }
+        else if (onOpen) { event.preventDefault(); onOpen(); }
       }}>
         {selection?.active && <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
           <input type="checkbox" className="cursor-pointer w-5 h-5" checked={selection.selected}
@@ -734,7 +736,8 @@ export const MediaCard = React.memo(function MediaCard({
               : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
         </div> : model.recommend ? <h3 ref={titleRef} title={model.title} data-rest-title={restTitle || undefined}
           className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
-          : <a ref={titleRef} href={model.href} title={model.title} data-rest-title={restTitle || undefined} {...(model.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...(model.boost ? { 'hx-boost': 'true' } : {})}
+          : <a ref={titleRef} href={model.href} title={model.title} data-rest-title={restTitle || undefined}
+          onClick={onOpen ? (event) => { event.preventDefault(); onOpen(); } : undefined} {...(model.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})} {...(model.boost ? { 'hx-boost': 'true' } : {})}
           className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
         {model.altTitle && <AltTitle text={model.altTitle} label={copy.altTitle} />}
         {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">

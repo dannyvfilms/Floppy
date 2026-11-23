@@ -211,6 +211,16 @@ its handful of matching items is cached for
 media type of a sync pass then shares one scan; the random card choice is still
 made per range.
 
+Top talent (`statistics_talent._aggregate_top_talent`) reads credits without
+joining `app_person`, then reads each credited person's gender and name once.
+Joined, a person credited on many titles was looked up again in every 500-item
+credit batch; when a range credits most known people (All Time on a large
+library), one sequential read of `app_person` replaces the per-person lookups.
+On a 700 MB PostgreSQL library (938k credits, 230k people) All Time went from
+2.07M to 0.33M page reads with an identical payload. Page reads are the cost
+that matters on a host short of memory, where each becomes a disk read.
+`test_statistics_talent_person_lookup` holds both paths.
+
 ## Lease fencing — an expired worker is inert
 
 The lease carries a fencing token (`StatisticsSyncState.lease_token`), rotated

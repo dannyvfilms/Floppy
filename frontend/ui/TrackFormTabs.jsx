@@ -4,7 +4,6 @@ import { Icon } from './Icon';
 import { Button } from './Button';
 import { FormError, FormStatus, FormTextField } from './MediaCardFormControls';
 import { SelectField } from './SelectField';
-import { GroupedTabBody } from './TrackTabsGrouped';
 
 const DEFAULT_LABELS = {
   general: 'General',
@@ -66,13 +65,6 @@ function tabLabel(tab, labels) {
   if (tab.id === 'general') return labels.general;
   if (tab.label) return tab.label;
   return tab.id;
-}
-
-// The tab list as plain options (General first), for a menu that stands in for the strip.
-export function trackTabItems(tabs = [], suppliedLabels) {
-  const labels = labelsFor(suppliedLabels);
-  const all = tabs.some(tab => tab.id === 'general') ? tabs : [{ id: 'general', label: labels.general }, ...tabs];
-  return all.map(tab => ({ value: tab.id, label: tabLabel(tab, labels) }));
 }
 
 function SideTab({ tab, active, onSelect, palette, labels, wide }) {
@@ -285,8 +277,6 @@ function TabBody({ tab, palette, labels, handlers }) {
       <Button label={labels.retry} tone="surface" onPress={() => handlers.onRetry?.(tab.id)} palette={palette} />
     </View>;
   }
-  const grouped = handlers.grouped && GroupedTabBody({ tab, palette, labels, handlers });
-  if (grouped) return grouped;
   if (tab.kind === 'tags') return <TagsBody tab={tab} palette={palette} labels={labels}
     onTagToggle={handlers.onTagToggle} onTagCreate={handlers.onTagCreate} />;
   if (tab.kind === 'metadata') return <MetadataBody tab={tab} palette={palette} labels={labels}
@@ -312,9 +302,6 @@ export function TrackTabs({
   onArtworkSave,
   onDiscoverToggle,
   sidebar = false,
-  grouped = false,
-  hideNav = false,
-  renderSelectPicker,
 }) {
   const labels = labelsFor(suppliedLabels);
   const palette = resolvePalette(suppliedPalette);
@@ -324,7 +311,6 @@ export function TrackTabs({
   const active = allTabs.find(tab => tab.id === activeId) || allTabs[0];
   const body = <TabBody tab={active} palette={palette} labels={labels} handlers={{
     generalContent, onRetry, onTagToggle, onTagCreate, onArtworkSave, onDiscoverToggle,
-    grouped, renderSelectPicker,
   }} />;
   if (sidebar) {
     const wide = width >= 640;
@@ -339,8 +325,6 @@ export function TrackTabs({
         contentContainerStyle={[styles.sideBodyContent, wide && styles.sideBodyWide]}>{body}</ScrollView>
     </View>;
   }
-  // hideNav: a native menu in the sheet's rail picks the tab, so the strip is not drawn.
-  if (hideNav) return <View style={styles.body}>{body}</View>;
   return <View style={styles.root}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.nav}
       contentContainerStyle={styles.navContent}>

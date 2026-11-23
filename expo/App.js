@@ -18,6 +18,7 @@ import ListDetailScreen from './app/screens/ListDetailScreen';
 import ListsScreen from './app/screens/ListsScreen';
 import SearchScreen from './app/screens/SearchScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
+import ProgressScreen from './app/screens/ProgressScreen';
 import StatisticsScreen from './app/screens/StatisticsScreen';
 import ShellSlot from './app/surfaces/ShellSlot';
 import NativeRoot from './app/surfaces/NativeRoot';
@@ -42,6 +43,7 @@ const STACK_SCREENS = {
   ListDetail: ListDetailScreen,
   Lists: ListsScreen,
   History: HistoryScreen,
+  Progress: ProgressScreen,
   Statistics: StatisticsScreen,
   Search: SearchScreen,
   ...EXTRA_SCREENS,
@@ -143,6 +145,7 @@ export default function App() {
     if (path.startsWith('/history')) { navigate('History'); return; }
     if (/^\/list\/[^/]+\/?$/.test(path) && item?.id) { navigate('ListDetail', { list: { id: item.id } }); return; }
     if (path.startsWith('/lists')) { navigate('Lists'); return; }
+    if (path === '/progress' || path === '/progress/') { navigate('Progress'); return; }
     if (path.startsWith('/statistics')) { navigate('Statistics'); return; }
     if (path.startsWith('/tags')) { navigate('Tags'); return; }
     // Music artist/album detail pages map onto the Music screen; the album

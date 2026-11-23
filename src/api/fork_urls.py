@@ -22,6 +22,7 @@ from . import (
     fork_views_playback,
     fork_views_podcast,
     fork_views_progress_changes,
+    fork_views_progress_page,
     fork_views_provider_connect,
     fork_views_providers,
     fork_views_scrobble,
@@ -347,6 +348,11 @@ urlpatterns = [
         r"^history/entries/(?P<media_type>[^/]+)/(?P<instance_id>\d+)/?$",
         fork_views_history.HistoryEntryView.as_view(),
         name="api_history_entry",
+    ),
+    re_path(
+        r"^progress/?$",
+        fork_views_progress_page.ProgressPageView.as_view(),
+        name="api_progress_page",
     ),
     re_path(
         r"^calendar/links/?$",

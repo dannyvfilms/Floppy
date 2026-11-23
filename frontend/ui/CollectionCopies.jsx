@@ -10,7 +10,6 @@ import { cardTypography } from './cardTypography';
 import { CardRow } from './CardRow';
 import { DateTimePicker } from './DateTimePicker';
 import { SelectField } from './SelectField';
-import { systemSeparatorColor } from './separatorColor';
 import { FormError, FormHeader, FormSelect } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -138,8 +137,7 @@ export function CollectionGroup({ title, palette: suppliedPalette, variant = 'na
     <CollectionEntryGroup palette={palette} variant={variant} flushY>
       <View style={variant === 'native' && styles.groupRows}>
         {rows.map((row, index) => <View key={row.key ?? index}>
-          {index ? <View style={variant === 'native' ? [separatorStyle(palette), { marginLeft: inset }]
-            : [styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: inset }]} /> : null}
+          {index ? <View style={[styles.rowDivider, { backgroundColor: palette.textMuted, marginLeft: inset }]} /> : null}
           {row}
         </View>)}
       </View>
@@ -147,25 +145,11 @@ export function CollectionGroup({ title, palette: suppliedPalette, variant = 'na
   </View>;
 }
 
-// The iOS grouped-list separator: a hairline (one device pixel) in the system `separator` colour, which
-// follows light and dark by itself. Elsewhere it is the same colour spelled out (60,60,67 at 29% on light,
-// 84,84,88 at 65% on dark, chosen from the card surface). Native only; web keeps its divider.
-export function separatorStyle(palette) {
-  const system = systemSeparatorColor();
-  if (system) return { height: StyleSheet.hairlineWidth, backgroundColor: system };
-  const text = String(palette.surface || '');
-  const hex = /^#([0-9a-f]{6})$/i.exec(text);
-  if (!hex) return { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(60, 60, 67, 0.29)' };
-  const [red, green, blue] = [0, 2, 4].map(at => parseInt(hex[1].slice(at, at + 2), 16));
-  const dark = (0.299 * red + 0.587 * green + 0.114 * blue) / 255 < 0.5;
-  return { height: StyleSheet.hairlineWidth, backgroundColor: dark ? 'rgba(84, 84, 88, 0.65)' : 'rgba(60, 60, 67, 0.29)' };
-}
-
 function RowLabel({ icon, image, label, palette, tone, after }) {
-  const color = tone === 'accent' ? palette.accent : tone === 'danger' ? palette.danger : palette.text;
+  const color = tone === 'accent' ? palette.accent : palette.text;
   return <View style={styles.rowLabel}>
     {image ? <Image source={{ uri: image }} resizeMode="contain" accessibilityLabel="" style={styles.rowImage} />
-      : icon ? <Icon spec={icon} color={tone === 'accent' ? palette.accent : tone === 'danger' ? palette.danger : palette.textMuted} size={20} /> : null}
+      : icon ? <Icon spec={icon} color={tone === 'accent' ? palette.accent : palette.textMuted} size={20} /> : null}
     <Text style={[styles.rowLabelText, { color }]}>{label}</Text>
     {after}
   </View>;
