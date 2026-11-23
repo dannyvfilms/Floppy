@@ -70,6 +70,61 @@ def video_id_from_url(url):
     return candidate if VIDEO_ID_PATTERN.match(candidate) else ""
 
 
+# Takeout HTML prints the viewer's local zone as an abbreviation or ``GMT+1``.
+# Ambiguous abbreviations (IST, BST, CST outside the US) are read the US/UK way
+# for CST and left out otherwise: an unknown zone is refused, never guessed.
+ZONE_OFFSETS = {
+    "UTC": "+0000",
+    "GMT": "+0000",
+    "WET": "+0000",
+    "WEST": "+0100",
+    "CET": "+0100",
+    "CEST": "+0200",
+    "EET": "+0200",
+    "EEST": "+0300",
+    "MSK": "+0300",
+    "HST": "-1000",
+    "AKST": "-0900",
+    "AKDT": "-0800",
+    "PST": "-0800",
+    "PDT": "-0700",
+    "MST": "-0700",
+    "MDT": "-0600",
+    "CST": "-0600",
+    "CDT": "-0500",
+    "EST": "-0500",
+    "EDT": "-0400",
+    "AST": "-0400",
+    "NST": "-0330",
+    "NDT": "-0230",
+    "JST": "+0900",
+    "KST": "+0900",
+    "HKT": "+0800",
+    "SGT": "+0800",
+    "AWST": "+0800",
+    "ACST": "+0930",
+    "ACDT": "+1030",
+    "AEST": "+1000",
+    "AEDT": "+1100",
+    "NZST": "+1200",
+    "NZDT": "+1300",
+}
+GMT_OFFSET = re.compile(r"^(?:UTC|GMT)([+-])(\d{1,2})(?::?(\d{2}))?$")
+TIME_FORMATS = ("%b %d, %Y, %I:%M:%S %p %z", "%b %d, %Y, %H:%M:%S %z")
+
+
+def _zone_offset(zone):
+    """Return ``+HHMM`` for a Takeout zone label, or ``""`` when unknown."""
+    zone = zone.upper()
+    if zone in ZONE_OFFSETS:
+        return ZONE_OFFSETS[zone]
+    match = GMT_OFFSET.match(zone)
+    if match:
+        sign, hours, minutes = match.groups()
+        return f"{sign}{int(hours):02d}{minutes or '00'}"
+    return ""
+
+
 def parse_time(value):
     """Parse a Takeout ISO time (``2025-03-01T18:22:10.123Z``) into an aware datetime."""
     text = str(value or "").strip()
@@ -78,28 +133,20 @@ def parse_time(value):
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
+        # Takeout HTML uses U+202F or U+00A0 before AM/PM and between the parts.
+        text = " ".join(text.replace("\u202f", " ").replace("\xa0", " ").split())
         date_text, separator, zone = text.rpartition(" ")
-        offsets = {
-            "UTC": "+0000",
-            "GMT": "+0000",
-            "EST": "-0500",
-            "EDT": "-0400",
-            "CST": "-0600",
-            "CDT": "-0500",
-            "MST": "-0700",
-            "MDT": "-0600",
-            "PST": "-0800",
-            "PDT": "-0700",
-        }
-        if not separator or zone not in offsets:
+        offset = _zone_offset(zone) if separator else ""
+        if not offset:
             return None
-        try:
-            return datetime.strptime(
-                f"{date_text.replace(chr(0x202F), ' ')} {offsets[zone]}",
-                "%b %d, %Y, %I:%M:%S %p %z",
-            )
-        except ValueError:
-            return None
+        for time_format in TIME_FORMATS:
+            try:
+                return datetime.strptime(  # noqa: DTZ007 - both formats end in %z
+                    f"{date_text} {offset}", time_format
+                )
+            except ValueError:
+                continue
+        return None
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed, UTC)
     return parsed
