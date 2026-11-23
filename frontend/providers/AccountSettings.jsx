@@ -46,6 +46,7 @@ const defaultLabels = {
   disconnected: 'Connection removed',
   disconnectError: 'Could not disconnect. Try again.',
   edit: 'Edit connection',
+  editInstance: 'Edit',
   saveConnection: 'Save connection',
   cancel: 'Cancel',
   connected: 'Connected',
@@ -189,11 +190,13 @@ export function AccountSettings({
         </View>
         <Text style={[styles.copy, { color: colors.textMuted }]}>{instance.url}</Text>
         {instance.error ? <Text style={[styles.copy, { color: colors.danger }]}>{instance.error}</Text> : null}
-        {instance.editable && canConnect ? <Button label={labels.edit} tone="surface" width="full"
-          disabled={Boolean(pending)} onPress={() => startEdit(instance)} palette={buttons} /> : null}
-        <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
-          tone="danger-solid" width="full" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
-          onPress={() => disconnect(instance.id)} palette={buttons} />
+        <View style={styles.instanceActions}>
+          {instance.editable && canConnect ? <Button label={labels.editInstance} tone="surface" size="sm"
+            disabled={Boolean(pending)} onPress={() => startEdit(instance)} palette={buttons} /> : null}
+          <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
+            tone="danger-solid" size="sm" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
+            onPress={() => disconnect(instance.id)} palette={buttons} />
+        </View>
       </View>)}
     </View> : <Text style={[styles.copy, { color: colors.textSecondary }]}>{message}</Text>}
     {formContent || null}
@@ -234,6 +237,7 @@ const styles = StyleSheet.create({
   instances: { gap: 10 },
   instance: { gap: 6, borderWidth: 1, borderRadius: 8, padding: 10 },
   instanceHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  instanceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   instanceName: { flexShrink: 1, fontSize: 14, fontWeight: '600' },
   fields: { gap: 12 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
