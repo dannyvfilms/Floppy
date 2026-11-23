@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import TestCase
@@ -67,6 +68,8 @@ def pr(
     editable=True,
     mergeable="MERGEABLE",
     committed=timedelta(minutes=5),
+    author="o",
+    comments=(),
 ):
     """Build a PR as the GraphQL query returns it (enabled=None: no auto-merge)."""
     return {
@@ -78,6 +81,9 @@ def pr(
         "mergeable": mergeable,
         "mergeStateStatus": state,
         "headRefOid": f"sha{number}",
+        "headRefName": f"branch-{number}",
+        "author": {"login": author},
+        "comments": {"nodes": list(comments)},
         "autoMergeRequest": {"enabledAt": enabled} if enabled else None,
         "commits": {
             "nodes": [
@@ -372,6 +378,9 @@ class _FakeGh:
         self.migrating = set(migrating)
         self.updated = []
         self.calls = []
+        self.comments = []
+        self.pr_files = ["src/app/x.py"]
+        self.latest_files = ["src/app/y.py"]
 
     def __call__(self, *args):
         self.calls.append(args)
@@ -388,15 +397,23 @@ class _FakeGh:
                 }
             }
             return json.dumps({"data": data})
+        if args[1].endswith(f"...{LATEST_SHA}"):  # latest's changes since the PR
+            return json.dumps(
+                {"files": self.latest_files, "count": len(self.latest_files)}
+            )
+        if args[1].endswith("/comments"):
+            self.comments.append(args[-1].removeprefix("body="))
+            return json.dumps({"id": 99})
         if args[1].startswith(f"repos/o/r/compare/{LATEST_SHA}..."):
-            number = int(args[1].rsplit("...", 1)[1].removeprefix("sha"))
+            head = args[1].rsplit("...", 1)[1]
+            number = next(p["number"] for p in self.prs if p["headRefOid"] == head)
             behind = self.behind[number]
             if behind is None:
                 raise subprocess.CalledProcessError(1, args, stderr="boom")
             files = (
-                ["src/app/migrations/0200_x.py"]
+                ["src/app/migrations/0200_x.py", *self.pr_files]
                 if number in self.migrating
-                else ["src/app/x.py"]
+                else self.pr_files
             )
             return json.dumps({"behind": behind, "files": files, "count": len(files)})
         if args[2] == "PATCH":
@@ -429,15 +446,41 @@ FORBIDDEN = "gh: user doesn't have permission (HTTP 403)"
 class MainTests(TestCase):
     """The whole run: what it calls on GitHub and what exit code it reports."""
 
-    def run_train(self, prs, behind, refuse=(), argv=(), migrating=(), env=None):
+    def run_train(
+        self,
+        prs,
+        behind,
+        refuse=(),
+        argv=(),
+        migrating=(),
+        env=None,
+        pr_files=None,
+        latest_files=None,
+    ):
         fake = _FakeGh(prs, behind, refuse, migrating)
+        if pr_files:
+            fake.pr_files = pr_files
+        if latest_files:
+            fake.latest_files = latest_files
+        self.fake = fake
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "output"
+            code = self._run(fake, argv, {**(env or {}), "GITHUB_OUTPUT": str(out)})
+            self.ui_refresh = (
+                json.loads(out.read_text().split("ui_refresh=", 1)[1].splitlines()[0])
+                if out.exists()
+                else None
+            )
+        return code, fake
+
+    def _run(self, fake, argv, env):
         with (
             patch.object(train, "_gh", fake),
             patch.object(train, "time"),
             patch.object(train, "datetime", _Clock),
-            patch.dict("os.environ", {"GH_REPO": "o/r", **(env or {})}),
+            patch.dict("os.environ", {"GH_REPO": "o/r", **env}),
         ):
-            return train.main(["merge_train.py", *argv]), fake
+            return train.main(["merge_train.py", *argv])
 
     def test_stale_branch_is_updated_and_the_run_succeeds(self):
         code, fake = self.run_train([pr(1, state="UNKNOWN")], {1: 2})
@@ -588,6 +631,144 @@ class MainTests(TestCase):
         self.assertEqual((code, fake.updated), (0, [2]))
 
 
+UI_ENV = {"MERGE_TRAIN_REBUILD_UI": "true"}
+UI_FILES = ["frontend/ui/x.jsx", "src/static/ui/chunk-AAAA.js"]
+
+
+def marker(head, kind, minutes=5, author="o"):
+    return {
+        "body": f"<!-- merge-train-ui:{head}:{LATEST_SHA}:{kind} -->",
+        "createdAt": _iso(timedelta(minutes=minutes)),
+        "author": {"login": author},
+    }
+
+
+class UiRefreshTests(MainTests):
+    """Eligible PRs go to the isolated rebuild; everything else keeps the API path."""
+
+    HEAD = "b" * 40
+
+    def ui_pr(self, number=1, **kw):
+        record = pr(number, **kw)
+        record["headRefOid"] = self.HEAD
+        return record
+
+    def go(self, prs, behind=None, **kw):
+        kw.setdefault("env", UI_ENV)
+        kw.setdefault("pr_files", UI_FILES)
+        kw.setdefault("latest_files", ["src/static/ui/chunk-BBBB.js"])
+        return self.run_train(prs, behind or {1: 2}, **kw)
+
+    def test_overlapping_ui_changes_are_rebuilt_not_api_updated(self):
+        code, fake = self.go([self.ui_pr()])
+        self.assertEqual((code, fake.updated), (0, []))
+        self.assertEqual(
+            self.ui_refresh,
+            [
+                {
+                    "number": 1,
+                    "branch": "branch-1",
+                    "head": self.HEAD,
+                    "base": LATEST_SHA,
+                    "started_comment": "99",
+                }
+            ],
+        )
+        self.assertIn(
+            f"merge-train-ui:{self.HEAD}:{LATEST_SHA}:started", fake.comments[0]
+        )
+
+    def test_flag_off_keeps_the_existing_behaviour(self):
+        code, fake = self.go([self.ui_pr()], env={})
+        self.assertEqual((code, fake.updated, self.ui_refresh), (0, [1], []))
+        self.assertFalse(
+            any(c[1].endswith(f"...{LATEST_SHA}") for c in fake.calls if len(c) > 1)
+        )
+
+    def test_non_ui_refresh_stays_on_the_api_path_without_node(self):
+        code, fake = self.go([self.ui_pr()], pr_files=["src/app/x.py"])
+        self.assertEqual((fake.updated, self.ui_refresh), ([1], []))
+
+    def test_ui_change_only_on_one_side_is_an_ordinary_refresh(self):
+        _, fake = self.go([self.ui_pr()], latest_files=["src/app/y.py"])
+        self.assertEqual((fake.updated, self.ui_refresh), ([1], []))
+
+    def test_conflicted_ui_pr_is_attempted_instead_of_parked(self):
+        code, fake = self.go([self.ui_pr(state="DIRTY", mergeable="CONFLICTING")])
+        self.assertEqual((code, fake.updated, len(self.ui_refresh)), (0, [], 1))
+
+    def test_conflict_without_ui_changes_stays_manual(self):
+        code, fake = self.go([self.ui_pr(state="DIRTY")], pr_files=["src/app/x.py"])
+        self.assertEqual((code, self.ui_refresh), (1, []))
+
+    def test_forks_drafts_and_other_authors_are_never_rebuilt(self):
+        for label, record in {
+            "fork": self.ui_pr(fork=True),
+            "author": self.ui_pr(author="stranger"),
+        }.items():
+            with self.subTest(label):
+                self.go([record])
+                self.assertEqual(self.ui_refresh, [])
+        _, fake = self.go([self.ui_pr(draft=True)])
+        self.assertEqual((fake.updated, self.ui_refresh), ([], []))
+
+    def test_dry_run_requests_and_comments_nothing(self):
+        code, fake = self.go([self.ui_pr()], argv=["--dry-run"])
+        self.assertEqual(
+            (code, fake.updated, self.ui_refresh, fake.comments), (0, [], [], [])
+        )
+
+    def test_migration_prs_keep_the_serial_lane(self):
+        prs = [self.ui_pr(1), self.ui_pr(2, enabled="2026-10-05T02:00:00Z")]
+        prs[1]["headRefOid"] = "c" * 40
+        self.go(prs, {1: 2, 2: 2}, migrating={1, 2})
+        self.assertEqual([r["number"] for r in self.ui_refresh], [1])
+
+    def test_depth_still_bounds_parallel_refreshes(self):
+        prs = [self.ui_pr(n, enabled=f"2026-10-05T0{n}:00:00Z") for n in (1, 2, 3)]
+        for n, p in enumerate(prs, 1):
+            p["headRefOid"] = str(n) * 40
+        self.go(prs, {1: 2, 2: 2, 3: 2}, env={**UI_ENV, "MERGE_TRAIN_DEPTH": "2"})
+        self.assertEqual([r["number"] for r in self.ui_refresh], [1, 2])
+
+    def test_running_refresh_is_in_flight_and_not_repeated(self):
+        prs = [self.ui_pr(comments=[marker(self.HEAD, "started")])]
+        code, fake = self.go(prs)
+        self.assertEqual(
+            (code, fake.updated, self.ui_refresh, fake.comments), (0, [], [], [])
+        )
+
+    def test_failed_or_expired_refresh_falls_back_to_the_api_once(self):
+        for kind, minutes in (("failed", 5), ("started", 45)):
+            with self.subTest(kind):
+                prs = [self.ui_pr(comments=[marker(self.HEAD, kind, minutes)])]
+                _, fake = self.go(prs)
+                self.assertEqual((fake.updated, self.ui_refresh), ([1], []))
+
+    def test_failed_conflicted_refresh_is_parked_like_before(self):
+        prs = [self.ui_pr(state="DIRTY", comments=[marker(self.HEAD, "failed")])]
+        code, _ = self.go(prs)
+        self.assertEqual((code, self.ui_refresh), (1, []))
+
+    def test_only_the_owners_markers_count(self):
+        prs = [self.ui_pr(comments=[marker(self.HEAD, "failed", author="stranger")])]
+        self.go(prs)
+        self.assertEqual(len(self.ui_refresh), 1)
+
+    def test_marker_for_another_head_is_ignored(self):
+        self.go([self.ui_pr(comments=[marker("d" * 40, "failed")])])
+        self.assertEqual(len(self.ui_refresh), 1)
+
+    def test_failed_pr_does_not_starve_the_next_one(self):
+        second = self.ui_pr(2)
+        second["headRefOid"] = "c" * 40
+        prs = [self.ui_pr(1, comments=[marker(self.HEAD, "failed")]), second]
+        self.go(prs, {1: 2, 2: 2})
+        self.assertEqual(
+            (self.fake.updated, [r["number"] for r in self.ui_refresh]), ([1], [2])
+        )
+
+
 class WorkflowTests(TestCase):
     """The workflow wakes on queue changes and never runs a fork's code."""
 
@@ -628,3 +809,29 @@ class WorkflowTests(TestCase):
         env = self.workflow["jobs"]["merge-train"]["steps"][-1]["env"]
         self.assertNotIn("MERGE_TRAIN_BATCH", env)
         self.assertIn("MERGE_TRAIN_DEPTH", env)
+
+    def test_ui_build_is_isolated_from_secrets_and_publish_trusts_only_latest(self):
+        jobs = self.workflow["jobs"]
+        build, publish = jobs["ui-build"], jobs["ui-publish"]
+        self.assertEqual(build["permissions"], {"contents": "read"})
+        text = json.dumps(build)
+        self.assertNotIn("secrets.", text)
+        for step in build["steps"]:
+            if str(step.get("uses", "")).startswith("actions/checkout"):
+                self.assertIs(step["with"]["persist-credentials"], False)
+        self.assertEqual(build["steps"][0]["with"]["ref"], "latest")  # trusted script
+        for step in publish["steps"]:
+            if str(step.get("uses", "")).startswith("actions/checkout"):
+                self.assertEqual(step["with"]["ref"], "latest")
+            self.assertNotIn("npm", step.get("run", ""))
+            self.assertNotIn("setup-node", str(step.get("uses", "")))
+        self.assertIn("AUTO_MERGE_TOKEN", json.dumps(publish))
+        self.assertNotIn("AUTO_MERGE_TOKEN", text)
+
+    def test_planner_job_runs_no_node_and_the_flag_is_a_variable(self):
+        planner = self.workflow["jobs"]["merge-train"]
+        self.assertIn("ui_refresh", planner["outputs"])
+        env = planner["steps"][-1]["env"]
+        self.assertIn("vars.MERGE_TRAIN_REBUILD_UI", env["MERGE_TRAIN_REBUILD_UI"])
+        self.assertNotIn("npm", json.dumps(planner))
+        self.assertEqual(planner["concurrency"]["group"], "merge-train")
