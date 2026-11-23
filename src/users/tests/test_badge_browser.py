@@ -111,9 +111,10 @@ class BadgeBrowserTests(SerialStaticLiveServerTestCase):
         context.add_cookies([{"name": "sessionid", "value": self.client.cookies["sessionid"].value, "url": self.live_server_url}])
         page = context.new_page()
         page.goto(self.live_server_url + podcast_show_url(show), wait_until="domcontentloaded")
-        # The show page can render the genre row in more than one layout slot.
-        badge = page.locator("[data-badge-root][data-react-mounted]").filter(has_text="Comedy").first
-        badge.wait_for(state="attached")
-        self.assertEqual(badge.locator("> *").inner_text(), "Comedy")
-        self.assertEqual(badge.locator("> *").evaluate("e => getComputedStyle(e).height"), "24px")
+        # The genres card is a React island with one collapsed "Genre" row; the
+        # genre names appear when it is expanded.
+        genres = page.locator('[data-detail-section="genres"] [data-react-mounted]')
+        genres.wait_for(state="attached")
+        genres.get_by_text("Genre", exact=True).click()
+        genres.get_by_text("Comedy", exact=True).wait_for(state="visible")
         context.close()
