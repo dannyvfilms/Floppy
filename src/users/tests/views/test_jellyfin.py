@@ -29,7 +29,9 @@ class JellyfinWebhookEventsUpdateTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking")
+        self.assertRedirects(
+            response, reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking"
+        )
         self.user.refresh_from_db()
         self.assertTrue(self.user.jellyfin_mark_played_enabled)
         self.assertTrue(self.user.jellyfin_mark_unplayed_enabled)
@@ -117,3 +119,13 @@ class JellyfinTemplateOutdatedNoticeTests(TestCase):
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
         self.assertNotContains(response, 'data-testid="jellyfin-template-outdated"')
+
+
+class JellyfinTemplateFieldsTests(TestCase):
+    """The template users paste must carry what the webhook needs."""
+
+    def test_template_sends_series_id_for_episodes(self):
+        """Episode events need SeriesId so the series link can be saved (#2108)."""
+        from users.provider_guides import JELLYFIN_TEMPLATE
+
+        self.assertIn('"SeriesId": "{{SeriesId}}"', JELLYFIN_TEMPLATE)

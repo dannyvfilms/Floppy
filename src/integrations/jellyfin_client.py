@@ -157,6 +157,18 @@ class JellyfinClient:
             return None
         return items[0]
 
+    def get_series_id(self, item_id: str) -> str | None:
+        """Return the series ID of one episode, or None when it has none."""
+        payload = self._request(
+            "GET",
+            "/Items",
+            params={"Ids": item_id, "Fields": "SeriesId"},
+        ).json()
+        items = payload.get("Items") or []
+        if len(items) != 1:
+            return None
+        return items[0].get("SeriesId") or None
+
     def get_item_user_data(self, item_id: str):
         """Return one item's UserData for the connected user, or None.
 

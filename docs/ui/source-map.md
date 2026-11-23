@@ -100,6 +100,7 @@ build artifacts. The Python composition tag is documented in the register.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
 - `AdaptivePresentationSheet.jsx` supplies the shared header and delegates rail close placement to its iOS host. The Duo sheet was inspected on device; Android and web rendering remain unverified.
 - On an iOS vertical rail, `SheetHost.ios.jsx` uses a native navigation toolbar cancellation action to place the shared sheet's close button below system status controls; the body retains its prior edge spacing. Duo runtime inspection covered the Lists sheet at half and full height and dismissal. Expo web and Android keep their existing presentation and were not runtime inspected for this change.
+- `SheetHost.ios.jsx` also takes `railItems` from `AdaptivePresentationSheet` and shows them as grouped `primaryAction` toggles under Close; `expo/app/surfaces/TrackPresentation.jsx` (`TrackPresentation`, `trackRailItems`) supplies the Tracking sections for `DetailFeatures` and `MediaCardSlot`, and the form drops its Section row while they are on the rail. The item list stays fixed while the sheet is open and the native stack is keyed on the item count, or the body loses its touch handler or goes blank (`docs/architecture/device-poses.md`). `SheetHost.jsx` (Android, web) ignores the items, so those platforms keep the Section row. iOS runtime on the closed iPhone Duo simulator; a rail-less iPhone, Android and web were not run.
 - `expo/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
 
 Status: `Partial / coexisting`
@@ -1009,6 +1010,7 @@ Status: `Partial / coexisting`
 - `frontend/providers/mountImportPreferences.jsx`
 - `frontend/providers/ProviderMetadataView.jsx`
 - `frontend/providers/ProviderPageView.jsx`
+- `frontend/providers/mediaTagFit.js`
 - `frontend/providers/mount.jsx`
 - `frontend/providers/provider-page.css`
 - `frontend/providers/transport.web.js`
@@ -1514,6 +1516,13 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackDialog.jsx`
 - `frontend/ui/TrackForm.jsx`
 - `frontend/ui/TrackFormTabs.jsx`
+- `frontend/ui/TrackTabsGrouped.jsx`
+- `frontend/ui/TrackDateRow.jsx`
+- `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/separatorColor.js`
+- `frontend/ui/separatorColor.web.js`
+- `frontend/ui/separatorColor.native.js`
+- `frontend/ui/trackDuration.js`
 - `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/barcodeEntry.web.js`
 - `frontend/ui/clipboard.native.js`
@@ -1627,3 +1636,7 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+- 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
+- 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
+- 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
+- 2026-11-23 `frontend/ui/TrackDateRow.jsx`: Clear button in the open date panel; `expo/app/surfaces/MediaCardSlot.jsx`: tabs effect moved below the `status` state.
