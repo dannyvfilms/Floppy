@@ -96,6 +96,10 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
   Open the images, fix regressions and recapture as needed. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
+- A review artifact for a user-facing change includes at least one Expo simulator frame
+  (iOS Simulator or Android emulator, whichever is available) showing the real feature, next to
+  the web shots; web-only shots are an incomplete artifact. If no simulator can be loaded,
+  record the blocker and attempts.
 - Provide the user a review artifact for every user-facing change: a clearly labeled
   before/after comparison that shows the affected state and is linked or displayed in
   the completion message (and in the PR description when preparing a PR). A script,

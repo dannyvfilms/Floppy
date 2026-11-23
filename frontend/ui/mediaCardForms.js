@@ -19,6 +19,7 @@ export function normalizeListsModel(payload) {
     tags: Array.isArray(source.tags) ? source.tags.filter(tag => typeof tag === 'string') : [],
     selectedTag: source.selectedTag || '',
     toggleUrl: source.toggleUrl || '',
+    createUrl: source.createUrl || '',
     csrfToken: source.csrfToken || '',
   };
 }
