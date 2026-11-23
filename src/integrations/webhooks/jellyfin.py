@@ -14,7 +14,12 @@ from app.providers import services
 from app.services import metadata_resolution
 from app.services.completion import select_preferred_activity_entry
 from app.services.episode_scores import set_episode_score, tracked_episode_plays
-from integrations.imports.helpers import find_item_across_buckets
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    find_item_across_buckets,
+)
+from integrations.jellyfin_client import JellyfinClient, JellyfinClientError
 from integrations.source_sync import (
     remove_collection_source_state,
     set_source_page,
@@ -43,11 +48,25 @@ JELLYFIN_MANUAL_MARK_EVENTS = {"MarkPlayed", "MarkUnplayed"}
 # template before #1250; the Integrations page tells the user to re-copy it.
 JELLYFIN_TEMPLATE_OUTDATED_KEY = "jellyfin_template_outdated:{user_id}"
 JELLYFIN_TEMPLATE_OUTDATED_TTL = 30 * 24 * 60 * 60
+# Set while episode library events arrive without SeriesId (#2108), i.e. from
+# a template that predates the field.
+JELLYFIN_SERIES_ID_MISSING_KEY = "jellyfin_series_id_missing:{user_id}"
 
 
 def jellyfin_template_outdated(user_id) -> bool:
     """Return whether this user's Jellyfin webhook uses the old template."""
-    return bool(cache.get(JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id)))
+    return bool(
+        cache.get(JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=user_id))
+        or cache.get(JELLYFIN_SERIES_ID_MISSING_KEY.format(user_id=user_id)),
+    )
+
+
+def _note_series_id(jellyfin_item, user_id):
+    key = JELLYFIN_SERIES_ID_MISSING_KEY.format(user_id=user_id)
+    if jellyfin_item.get("SeriesId"):
+        cache.delete(key)
+    else:
+        cache.set(key, True, JELLYFIN_TEMPLATE_OUTDATED_TTL)
 
 
 def _note_template_version(payload, user_id):
@@ -427,18 +446,34 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 source_instance_id=collection_instance_id,
             )
             logger.info("Removed %s from Jellyfin collection ownership", item.title)
-        self._save_page(event_type, payload, user, item, page_instance_id)
+        self._save_page(event_type, payload, user, item, page_instance_id, account)
 
-    def _save_page(self, event_type, payload, user, item, page_instance_id=0):
+    def _save_page(
+        self,
+        event_type,
+        payload,
+        user,
+        item,
+        page_instance_id=0,
+        account=None,
+    ):
         """Remember the Jellyfin page of a movie or of an episode's series.
 
         A deleted episode leaves the series page: other episodes may remain.
+        An added episode whose series cannot be found leaves any saved page
+        alone rather than deleting it.
         """
         jellyfin_item = payload.get("Item") or {}
         if jellyfin_item.get("Type") == "Movie":
             media_type, jellyfin_id = MediaTypes.MOVIE.value, jellyfin_item.get("Id")
         elif event_type == "ItemAdded":
-            media_type, jellyfin_id = MediaTypes.TV.value, jellyfin_item.get("SeriesId")
+            media_type = MediaTypes.TV.value
+            _note_series_id(jellyfin_item, user.id)
+            jellyfin_id = jellyfin_item.get(
+                "SeriesId",
+            ) or self._lookup_series_id(account, jellyfin_item.get("Id"))
+            if not jellyfin_id:
+                return
         else:
             return
         added = event_type == "ItemAdded" and jellyfin_id
@@ -451,6 +486,28 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             path=f"web/#/details?id={jellyfin_id}" if added else "",
             source_instance_id=page_instance_id,
         )
+
+    def _lookup_series_id(self, account, episode_id):
+        """Ask the server the event came from for an episode's series ID.
+
+        Templates from before #2108 do not send SeriesId. Returns None when
+        the event matched no connection, there is no episode ID, or the server
+        cannot answer.
+        """
+        if not episode_id or account is None:
+            return None
+        if not account.base_url or not account.api_key:
+            return None
+        try:
+            client = JellyfinClient(
+                account.base_url,
+                decrypt_or_raise(account.api_key),
+                account.jellyfin_user_id or None,
+            )
+            return client.get_series_id(episode_id)
+        except (JellyfinClientError, MediaImportError):
+            logger.warning("Could not look up the Jellyfin series for an episode.")
+            return None
 
     def _resolve_collection_item(self, payload, ids, *, allow_create):
         """Resolve the canonical Item for a Jellyfin collection event."""
@@ -723,9 +780,8 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         except (ValueError, TypeError):
             return None, None
 
-        if (
-            (season_number is not None and season_number < 0)
-            or (episode_number is not None and episode_number < 0)
+        if (season_number is not None and season_number < 0) or (
+            episode_number is not None and episode_number < 0
         ):
             return None, None
 
