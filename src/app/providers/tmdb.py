@@ -459,6 +459,7 @@ def search(media_type, query, page, language=None):
                 "localized_title": get_localized_title(media),
                 "image": get_image_url(media["poster_path"]),
                 "year": get_year(media),
+                "origin_country": media.get("origin_country") or [],
             }
             for media in response["results"]
         ]
