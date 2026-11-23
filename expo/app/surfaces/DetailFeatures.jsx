@@ -38,6 +38,7 @@ import {
 import { DetailTrackingHistory } from '../../../frontend/ui/DetailSecondary';
 import { DetailEpisodeHeader } from '../../../frontend/ui/DetailEpisode';
 import { ArtworkPicker, EditionPicker } from '../../../frontend/ui/ArtworkPicker';
+import { createListTransport } from '../data/listTransport';
 import { pickCoverImage } from '../data/imagePicker';
 import { mergeScoreChips } from '../data/detailTransportCore';
 import {
@@ -157,6 +158,12 @@ const listLabels = {
   emptyTag: 'No lists with this tag.',
   emptyLists: "You haven't created any lists yet.",
   toggleFailed: "Couldn't update this list. Please try again.",
+  create: 'Create list',
+  createName: 'Name',
+  createPlaceholder: 'Movie night',
+  createSubmit: 'Create',
+  createFailed: "Couldn't create this list. Please try again.",
+  cancel: 'Cancel',
 };
 
 // Web: "Add new entry" is offered once a finished entry exists for these types,
@@ -1211,7 +1218,8 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
         </View>
       </View>)}
     </MediaCardActionHost>
-    <MediaCardActionHost open={dialog.kind === 'lists'} action={{ title: 'Lists' }} palette={formPalette} onClose={closeDialog}>
+    <AdaptivePresentationSheet isPresented={dialog.kind === 'lists'} onDismiss={closeDialog} onClose={closeDialog}
+      title="Lists" titleColor={formPalette.text} containerColor={themePalette.sidebar}>
       {dialog.kind === 'lists' && dialog.data ? <ListsForm
         model={dialog.data.model}
         membership={dialog.data.membership}
@@ -1222,11 +1230,16 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
         labels={listLabels}
         palette={formPalette}
         showHeader={false}
+        embedded
         onTagChange={() => {}}
         onRetry={() => openLists(dialog.target || identity)}
+        onCreate={async name => {
+          await createListTransport().create({ name });
+          await openLists(dialog.target || identity);
+        }}
         onClose={closeDialog}
         onToggle={toggleListMembership} /> : null}
-    </MediaCardActionHost>
+    </AdaptivePresentationSheet>
     {progress.data ? <ProgressDialog
       visible={progress.open}
       title={title}
