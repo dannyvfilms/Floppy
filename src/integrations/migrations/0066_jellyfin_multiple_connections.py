@@ -39,7 +39,7 @@ def scope_schedules_to_account(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("django_celery_beat", "0001_initial"),
-        ("integrations", "0064_sourcepage"),
+        ("integrations", "0065_simkl_account"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

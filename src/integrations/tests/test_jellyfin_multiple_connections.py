@@ -507,7 +507,7 @@ class MigrationTests(TestCase):
 
     def test_existing_user_schedules_gain_the_account_id(self):
         migration = importlib.import_module(
-            "integrations.migrations.0065_jellyfin_multiple_connections",
+            "integrations.migrations.0066_jellyfin_multiple_connections",
         )
         user = get_user_model().objects.create_user(username="migrating")
         account = _account(user, 1)
