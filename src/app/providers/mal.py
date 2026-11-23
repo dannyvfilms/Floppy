@@ -18,6 +18,10 @@ base_fields = (
 )
 RATING_FIELDS = "mean,num_scoring_users"
 RATING_CACHE_TIMEOUT = 60 * 60 * 24
+SEASONAL_CACHE_TIMEOUT = 60 * 60 * 6
+SEASONAL_PAGE_SIZE = 100
+# MAL reports TV specials separately; the seasonal grid files them as specials.
+SEASONAL_FORMAT_ALIASES = {"tv_special": "special"}
 MAX_RATING = 10
 
 
@@ -147,6 +151,65 @@ def search(media_type, query, page, *, include_nsfw=None):
 
         cache.set(cache_key, data)
 
+    return data
+
+
+def seasonal_anime(year, season):
+    """Return a cached, normalized MAL seasonal anime listing."""
+    cache_key = (
+        f"{Sources.MAL.value}_season_{year}_{season}_nsfw_{int(settings.MAL_NSFW)}"
+    )
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+
+    data = []
+    offset = 0
+    while True:
+        try:
+            response = services.api_request(
+                Sources.MAL.value,
+                "GET",
+                f"{base_url}/anime/season/{year}/{season}",
+                params={
+                    "fields": "media_type,start_date,alternative_titles,mean,popularity",
+                    "limit": SEASONAL_PAGE_SIZE,
+                    "offset": offset,
+                    **({"nsfw": "true"} if settings.MAL_NSFW else {}),
+                },
+                headers={"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")},
+            )
+        except requests.exceptions.HTTPError as error:
+            # Raises ProviderAPIError with a readable reason (e.g. invalid key).
+            handle_error(error)
+            raise
+        for entry in response.get("data", []):
+            node = entry.get("node") or {}
+            media_id = node.get("id")
+            if media_id is None:
+                continue
+            localized_title = get_localized_title(node) or node.get("title") or ""
+            media_format = (node.get("media_type") or "").lower()
+            data.append(
+                {
+                    "media_id": str(media_id),
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "title": localized_title,
+                    "original_title": node.get("title") or "",
+                    "localized_title": localized_title,
+                    "image": get_image_url(node),
+                    "release_date": node.get("start_date"),
+                    "format": SEASONAL_FORMAT_ALIASES.get(media_format, media_format),
+                    "score": node.get("mean"),
+                    "popularity_rank": node.get("popularity"),
+                },
+            )
+        if not (response.get("paging") or {}).get("next"):
+            break
+        offset += SEASONAL_PAGE_SIZE
+
+    cache.set(cache_key, data, timeout=SEASONAL_CACHE_TIMEOUT)
     return data
 
 

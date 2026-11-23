@@ -251,6 +251,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/consumptions/batch/` | POST | `watchlist:write` |
 | `/api/v1/consumptions/batch/{operation_id}/` | GET | `watchlist:read` |
 | `/api/v1/discover/` | GET | `catalog:read` |
+| `/api/v1/discover/anime-seasons/` | GET | `catalog:read` |
 | `/api/v1/discover/hidden/` | GET POST | GET `catalog:read`; POST `catalog:write` |
 | `/api/v1/discover/refresh/` | POST | `catalog:write` |
 | `/api/v1/discover/status/` | GET | `catalog:read` |

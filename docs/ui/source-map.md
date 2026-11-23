@@ -501,6 +501,7 @@ Status: `Partial / coexisting`
 
 Status: `Legacy`
 
+- `src/templates/app/anime_seasons.html`, `src/app/anime_seasons.py`, `src/app/anime_seasons_views.py` (Anime Seasons page: the mount root over server media cards in a page slot; the season read for web and native), `expo/app/screens/AnimeSeasonsScreen.jsx`
 - `src/templates/app/components/discover_row.html`
 - `src/templates/app/components/discover_row_preview.html`
 - `src/templates/app/components/discover_rows.html`
@@ -1389,6 +1390,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/LibraryPageView.jsx`
 - `frontend/pages/ListDetailPageView.jsx`
 - `frontend/pages/ListsPageView.jsx`
+- `frontend/pages/AnimeSeasonsPageView.jsx`, `frontend/pages/useAnimeSeasonsPage.js` (the Anime Seasons page composition, its filter intents and native loading state)
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
 - `frontend/pages/ProgressPageView.jsx`, `frontend/pages/useProgressPage.js` (the Progress page composition and its loading state)
@@ -1608,6 +1610,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountMediaTable.jsx`
 - `frontend/ui/mountMetadataReview.jsx`
 - `frontend/ui/mountParentPicker.jsx`
+- `frontend/ui/mountAnimeSeasonsPage.jsx`
 - `frontend/ui/mountPeople.jsx`
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`

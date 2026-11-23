@@ -37,18 +37,25 @@
       </div>
     </div>
 
-    {% translate "Media type" as media_type_label %}{% filter_chips_react discover_media_options media_type_label as discover_chips %}{{ discover_chips.props|json_script:discover_chips.id }}
-    <div data-filter-chips-root data-props-id="{{ discover_chips.id }}"
-         class="ui-scroll-row ui-filter-chips"
-         role="group"
-         aria-label="{{ media_type_label }}">
+    <div class="flex min-w-0 items-center gap-2">
+      {% translate "Media type" as media_type_label %}{% filter_chips_react discover_media_options media_type_label as discover_chips %}{{ discover_chips.props|json_script:discover_chips.id }}
+      <div data-filter-chips-root data-props-id="{{ discover_chips.id }}"
+           class="ui-scroll-row ui-filter-chips"
+           role="group"
+           aria-label="{{ media_type_label }}">
+        {% for option in discover_media_options %}
+          <button type="button"
+                  @click="switchMedia('{{ option.value }}')"
+                  class="ui-filter-chip"
+                  :aria-pressed="selectedMedia === '{{ option.value }}'">
+            {% translate option.label %}
+          </button>
+        {% endfor %}
+      </div>
       {% for option in discover_media_options %}
-        <button type="button"
-                @click="switchMedia('{{ option.value }}')"
-                class="ui-filter-chip"
-                :aria-pressed="selectedMedia === '{{ option.value }}'">
-          {% translate option.label %}
-        </button>
+        {% if option.value == "anime" %}
+          <a href="{% url 'anime_seasons' %}" class="ui-filter-chip shrink-0">{% translate "Anime Seasons" %}</a>
+        {% endif %}
       {% endfor %}
     </div>
 

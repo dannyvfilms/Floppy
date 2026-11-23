@@ -4098,6 +4098,26 @@
           "evidence": "Compiled by the Expo export; no runtime pass."
         }
       }
+    },
+    "frontend/pages/AnimeSeasonsPageView.jsx": {
+      "components": [
+        "AnimeSeasonsPageView"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pending the browser pass for this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Rendered by expo/app/screens/AnimeSeasonsScreen.jsx from /api/v1/discover/anime-seasons/; no iOS simulator was available on the Linux machine this was built on, so no runtime was exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Rendered by expo/app/screens/AnimeSeasonsScreen.jsx from /api/v1/discover/anime-seasons/; no Android emulator was run, so no runtime was exercised."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4843,6 +4863,28 @@
         "android": {
           "status": "unverified",
           "evidence": "Not run."
+        }
+      }
+    },
+    "frontend/pages/useAnimeSeasonsPage.js": {
+      "components": [
+        "useAnimeSeasonsPage",
+        "applyAnimeSeasonsIntent",
+        "animeSeasonsParams"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "applyAnimeSeasonsIntent and animeSeasonsParams are imported by the web adapter and covered by scripts/animeSeasonsPage.test.mjs; the hook itself runs only on native."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Rendered by expo/app/screens/AnimeSeasonsScreen.jsx from /api/v1/discover/anime-seasons/; no iOS simulator was available on the Linux machine this was built on, so no runtime was exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Rendered by expo/app/screens/AnimeSeasonsScreen.jsx from /api/v1/discover/anime-seasons/; no Android emulator was run, so no runtime was exercised."
         }
       }
     }
@@ -6598,6 +6640,10 @@
     "frontend/ui/mountRatingScaleEditor.jsx": {
       "register": "RATING",
       "purpose": "Opens the shared rating scale editor from the Preferences Rating Scale menu and saves through /api/v1/user/rating-scales/."
+    },
+    "frontend/ui/mountAnimeSeasonsPage.jsx": {
+      "register": "DISCOVER",
+      "purpose": "Mount AnimeSeasonsPageView on /discover/anime-seasons from the server page model, adopt the server media-card grid through a page slot, and load the page for the next query on a filter change or season step."
     }
   }
 }

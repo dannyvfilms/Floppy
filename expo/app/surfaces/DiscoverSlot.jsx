@@ -18,6 +18,9 @@ import {
 } from '../data/discoverTransport';
 
 const STATUS_POLL_MS = 4000;
+// Not a media type: the chip opens the Anime Seasons screen, as the web chip
+// beside the Discover media chips opens /discover/anime-seasons.
+const ANIME_SEASONS_CHIP = { value: 'anime-seasons', label: 'Anime Seasons' };
 const STATUS_POLL_LIMIT = 30;
 
 export const surface = {
@@ -299,9 +302,11 @@ export function useDiscoverSurface({ navigate, transport: injectedTransport } = 
   }
 
   return {
-    mediaOptions,
+    mediaOptions: mediaOptions.some(option => option.value === 'anime')
+      ? [...mediaOptions, ANIME_SEASONS_CHIP]
+      : mediaOptions,
     selectedMediaType: selectedMedia,
-    onSelectMedia: setSelectedMedia,
+    onSelectMedia: value => (value === ANIME_SEASONS_CHIP.value ? navigate?.('AnimeSeasons') : setSelectedMedia(value)),
     showMore,
     onToggleShowMore: () => setShowMore(current => !current),
     onRefresh: refresh,

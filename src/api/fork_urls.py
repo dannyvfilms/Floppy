@@ -750,6 +750,11 @@ urlpatterns = [
         name="api_studio",
     ),
     re_path(
+        r"^discover/anime-seasons/?$",
+        fork_views_discover.AnimeSeasonsView.as_view(),
+        name="api_discover_anime_seasons",
+    ),
+    re_path(
         r"^discover/status/?$",
         fork_views_discover.DiscoverStatusView.as_view(),
         name="api_discover_status",
