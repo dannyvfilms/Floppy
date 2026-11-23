@@ -55,6 +55,10 @@ export function TrackDateRow({
     {mode ? <View style={styles.panel}>
       {divider}
       {panel ? <View style={styles.centered}>{panel}</View> : null}
+      {parts ? <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${labels.clear || 'Clear'}`}
+        onPress={() => { onChange('', { source: 'picker' }); onModeChange(null); }} style={styles.clear}>
+        <Text style={[styles.clearText, { color: palette.danger }]}>{labels.clear || 'Clear'}</Text>
+      </Pressable> : null}
     </View> : null}
     {error ? <Text accessibilityLiveRegion="polite" style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
   </View>;
@@ -68,5 +72,7 @@ const styles = StyleSheet.create({
   panel: { paddingBottom: 4 },
   // Spacing measured from iOS Calendar: 44pt from the divider to the month header, 41pt from the last week to the next divider.
   centered: { alignItems: 'center', paddingTop: 20, paddingBottom: 24 },
+  clear: { alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 8 },
+  clearText: { fontSize: 17 },
   error: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 },
 });

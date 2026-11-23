@@ -247,10 +247,10 @@ function TrackAction({ action, onClose, railTabs = false, activeTab, onTabChange
   const [model, setModel] = useState(null);
   const [values, setValues] = useState({});
   const [tabs, setTabs] = useState([]);
-  useEffect(() => { onTabs?.(status === 'ready' ? tabs : []); }, [tabs, status]);
   const [tracked, setTracked] = useState(false);
   const [status, setStatus] = useState('loading');
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onTabs?.(status === 'ready' ? tabs : []); }, [tabs, status]);
   const [serverError, setServerError] = useState('');
   const [errors, setErrors] = useState({});
   const [attempt, setAttempt] = useState(0);
