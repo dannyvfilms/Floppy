@@ -1624,3 +1624,5 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+- 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
+- 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.

@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
   logo: { width: 32, height: 32, resizeMode: 'contain', flexShrink: 0 },
   heading: { fontSize: 20, lineHeight: 28, fontWeight: '600', flexShrink: 1 },
   media: { flexDirection: 'row', justifyContent: 'flex-end', marginLeft: 'auto', minWidth: 0, flexGrow: 1, flexShrink: 1, flexBasis: 0 },
-  mediaFit: { flex: 1, minWidth: 0 },
+  mediaFit: { flex: 1, minWidth: 0, overflow: 'hidden' },
   mediaRow: { flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'flex-end', gap: 8, overflow: 'hidden' },
   measure: { position: 'absolute', opacity: 0, left: 0, top: 0, flexDirection: 'row', gap: 8 },
   description: { fontSize: 14, lineHeight: 21, marginTop: 4 },
