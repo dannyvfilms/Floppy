@@ -31,6 +31,7 @@ Adding a destination that does qualify is one adapter module plus a line in
 |---|---|---|---|
 | TMDb | movies, TV | ratings | Uses the user's own TMDb session. |
 | WeTrakr | movies, TV | plays, statuses, ratings | The user supplies their own app key. |
+| SIMKL | movies, TV | plays | The user supplies their own Client ID (AUTH V2, no secret). |
 | Jellyfin | movies, TV | watched / unwatched | Opt-in per direction. |
 | Emby, Kodi | movies, TV | none (read only) | Watched state is read, never written back. |
 | MAL | anime, manga | status, progress, score | Separate system; see "Sync to Trackers". |

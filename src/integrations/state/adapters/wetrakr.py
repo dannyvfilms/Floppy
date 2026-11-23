@@ -23,7 +23,7 @@ from collections import Counter
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from app.models import MediaTypes, Sources, Status
+from app.models import Status
 from integrations.models import (
     CAPABILITY_PLAY_PUSH,
     CAPABILITY_PLAY_REMOVE,
@@ -40,6 +40,7 @@ from integrations.state.adapters.base import (
     BatchResult,
     TerminalAdapterError,
 )
+from integrations.state.references import parse_reference, tmdb_reference
 from integrations.wetrakr_api import WeTrakrClient
 
 MOVIE_STATUSES = {
@@ -55,11 +56,7 @@ RESPONSE_KEYS = ("added", "existing", "notFound", "errored")
 MAX_RATING = Decimal(10)
 
 
-def _ref(external_id):
-    """Split ``kind:id[:season:episode]`` into ``(kind, tmdb, season, episode)``."""
-    kind, tmdb, *rest = external_id.split(":")
-    season, episode = (int(rest[0]), int(rest[1])) if rest else (None, None)
-    return kind, int(tmdb), season, episode
+_ref = parse_reference
 
 
 def _walk_refs(section):
@@ -148,23 +145,7 @@ class WeTrakrAdapter:
 
     def resolve_external_id(self, item):
         """Use native TMDB identities only; WeTrakr is told the type explicitly."""
-        if item.source != Sources.TMDB.value or getattr(item, "episode_order_id", None):
-            return None
-        if not str(item.media_id).isdigit():
-            return None
-        if item.media_type == MediaTypes.MOVIE.value:
-            return f"movie:{item.media_id}"
-        if item.media_type == MediaTypes.TV.value:
-            return f"show:{item.media_id}"
-        if (
-            item.media_type == MediaTypes.EPISODE.value
-            and item.season_number is not None
-            and item.season_number >= 0
-            and item.episode_number is not None
-            and item.episode_number > 0
-        ):
-            return f"episode:{item.media_id}:{item.season_number}:{item.episode_number}"
-        return None
+        return tmdb_reference(item)
 
     def normalize_rating(self, score):
         """Use one decimal on WeTrakr's 0 to 10 scale; None stays a clear."""

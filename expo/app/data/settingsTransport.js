@@ -8,7 +8,7 @@ export function createSettingsTransport(options = {}) {
   const auth = options.auth || getActiveAuthSession();
   if (auth && typeof auth.request === 'function') {
     const actions = createRemoteSettingsActions(auth.request, { authType: auth.getState?.()?.authType || auth.authType || 'token' });
-    actions.serverUrl = auth.serverUrl || '';
+    actions.serverUrl = auth.getState?.()?.serverUrl || auth.serverUrl || '';
     return actions;
   }
   return createLocalSettingsActions(

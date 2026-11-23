@@ -17,7 +17,7 @@
           <div class="text-sm text-[var(--color-text-secondary)]">
             <p class="font-medium text-[var(--color-warning-text)]">{% translate "Webhook template needs updating" %}</p>
             <p class="text-[var(--color-text-muted)] mt-1">
-              {% translate "Floppy is receiving updates from an older Jellyfin webhook template. Re-copy the template below into the Webhook plugin so the watched checkmark you set in Jellyfin can sync." %}
+              {% translate "Floppy is receiving updates from an older Jellyfin webhook template. Re-copy the template below into the Webhook plugin so the watched checkmark you set in Jellyfin and the Jellyfin link on shows can sync." %}
             </p>
           </div>
         </div>
@@ -75,6 +75,7 @@
       "Rating": {{Rating}}{{/if}}{{/if_equals}}
     }{{#if_equals ItemType 'Episode'}},
     "SeriesName": "{{SeriesName}}",
+    "SeriesId": "{{SeriesId}}",
     "ParentIndexNumber": {{SeasonNumber}},
     "IndexNumber": {{EpisodeNumber}}
     {{/if_equals}}
