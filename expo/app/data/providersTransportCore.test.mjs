@@ -120,3 +120,11 @@ test('provider model preserves protected-guide state without removing configurat
   assert.equal(detail.connection.canTest, true);
   assert.ok(detail.forms.jellyfin_events);
 });
+
+test('provider logos are joined to the server address for native', async () => {
+  const { detailFromPayload, directoryFromPayload } = await import('./providersTransportCore.js');
+  const detail = detailFromPayload({ page: { provider: { logo: '/static/img/jellyfin.svg' } } }, 'https://floppy.example/');
+  assert.equal(detail.page.provider.logo, 'https://floppy.example/static/img/jellyfin.svg');
+  const directory = directoryFromPayload({ items: [{ slug: 'a', logo: '/static/a.png' }, { slug: 'b', logo: 'https://cdn.test/b.png' }] }, 'https://floppy.example');
+  assert.deepEqual(directory.items.map(item => item.logo), ['https://floppy.example/static/a.png', 'https://cdn.test/b.png']);
+});

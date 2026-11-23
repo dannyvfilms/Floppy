@@ -1,0 +1,8 @@
+{% load i18n %}{% blocktranslate with plays=sync.preview.plays %}Send your existing library once: {{ plays }} dated plays. They show on SIMKL with the dates you watched.{% endblocktranslate %}
+{% if sync.preview.undated %}
+  {% if sync.account.send_undated %}
+    {% blocktranslate count undated=sync.preview.undated %}{{ undated }} play has no date and is sent as watched a long time ago.{% plural %}{{ undated }} plays have no date and are sent as watched a long time ago.{% endblocktranslate %}
+  {% else %}
+    {% blocktranslate count undated=sync.preview.undated %}{{ undated }} play has no date and is left out.{% plural %}{{ undated }} plays have no date and are left out.{% endblocktranslate %}
+  {% endif %}
+{% endif %}
