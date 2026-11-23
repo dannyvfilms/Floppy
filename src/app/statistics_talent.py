@@ -33,6 +33,14 @@ STATISTICS_TOP_N = 50
 # Scan credits sequentially for dense SQLite watch histories.
 DENSE_CREDIT_SCAN_MIN_ITEMS = 1_000
 DENSE_CREDIT_SCAN_RATIO = 0.8
+# Played items per credit query on the sparse path.
+TALENT_CREDIT_BATCH_SIZE = 500
+# Credited people per gender/name lookup.
+TALENT_PERSON_BATCH_SIZE = 2000
+# When a range credits most known people (All Time on a large library), one
+# sequential read of app_person costs a fraction of a key lookup per person.
+TALENT_PERSON_SCAN_MIN = 10_000
+TALENT_PERSON_SCAN_RATIO = 0.5
 # Cross-type global top-rated heap — intentionally same value but a distinct card.
 STATISTICS_TOP_RATED_OVERALL = 50
 
@@ -803,7 +811,7 @@ def _aggregate_top_talent(
         and len(played_item_ids) >= Item.objects.count() * DENSE_CREDIT_SCAN_RATIO
     )
     played_item_id_batches = list(played_item_ids)
-    batch_size = 500
+    batch_size = TALENT_CREDIT_BATCH_SIZE
     if dense_credit_scan:
         credit_querysets = (ItemPersonCredit.objects.all().order_by(),)
     else:
@@ -814,6 +822,12 @@ def _aggregate_top_talent(
             for offset in range(0, len(played_item_id_batches), batch_size)
         )
 
+    # Credits are read without joining app_person: a person credited on many
+    # titles would be looked up again in every batch (about 2M page reads for
+    # an All Time range on PostgreSQL). Gender and name are read once per
+    # person below.
+    cast_ids_by_item = defaultdict(set)
+    talent_person_ids = set()
     for person_credit_qs in credit_querysets:
         person_credits = person_credit_qs.values_list(
             "item_id",
@@ -822,15 +836,13 @@ def _aggregate_top_talent(
             "role",
             "department",
             "sort_order",
-            "person__gender",
-            "person__name",
             named=True,
         )
         chunk_size = 2000 if dense_credit_scan else batch_size
         for credit in person_credits.iterator(chunk_size=chunk_size):
             if dense_credit_scan and credit.item_id not in played_item_ids:
                 continue
-            person_names[credit.person_id] = credit.person__name.lower()
+            talent_person_ids.add(credit.person_id)
             if credit.role_type == CreditRoleType.CAST.value:
                 item_media_type = item_media_type_by_id.get(credit.item_id)
                 if (
@@ -842,16 +854,48 @@ def _aggregate_top_talent(
                     )
                 ):
                     continue
-                if credit.person__gender == PersonGender.FEMALE.value:
-                    cast_actress_ids_by_item[credit.item_id].add(credit.person_id)
-                else:
-                    cast_actor_ids_by_item[credit.item_id].add(credit.person_id)
+                cast_ids_by_item[credit.item_id].add(credit.person_id)
                 continue
             if credit.role_type == CreditRoleType.CREW.value:
                 if _is_director_credit(credit):
                     director_ids_by_item[credit.item_id].add(credit.person_id)
                 if _is_writer_credit(credit):
                     writer_ids_by_item[credit.item_id].add(credit.person_id)
+
+    female_person_ids = set()
+    talent_person_id_list = list(talent_person_ids)
+    if (
+        len(talent_person_id_list) >= TALENT_PERSON_SCAN_MIN
+        and len(talent_person_id_list)
+        >= Person.objects.count() * TALENT_PERSON_SCAN_RATIO
+    ):
+        person_row_sets = (
+            Person.objects.order_by()
+            .values_list("id", "gender", "name")
+            .iterator(chunk_size=TALENT_PERSON_BATCH_SIZE),
+        )
+    else:
+        person_row_sets = (
+            Person.objects.filter(
+                pk__in=talent_person_id_list[offset : offset + TALENT_PERSON_BATCH_SIZE],
+            ).values_list("id", "gender", "name")
+            for offset in range(
+                0, len(talent_person_id_list), TALENT_PERSON_BATCH_SIZE
+            )
+        )
+    for person_rows in person_row_sets:
+        for person_id, gender, name in person_rows:
+            if person_id not in talent_person_ids:
+                continue
+            person_names[person_id] = name.lower()
+            if gender == PersonGender.FEMALE.value:
+                female_person_ids.add(person_id)
+    for item_id, cast_ids in cast_ids_by_item.items():
+        actress_ids = cast_ids & female_person_ids
+        if actress_ids:
+            cast_actress_ids_by_item[item_id] = actress_ids
+        if len(actress_ids) < len(cast_ids):
+            cast_actor_ids_by_item[item_id] = cast_ids - actress_ids
 
     studio_item_ids = movie_item_ids | show_item_ids | game_item_ids
     studio_credits = (
