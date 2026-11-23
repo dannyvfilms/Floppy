@@ -224,6 +224,8 @@ function ListsAction({ action, onClose }) {
     onRetry={() => setAttempt(current => current + 1)}
     onCreate={async name => {
       await createListTransport().create({ name });
+      // A new list has no tags, so keep it visible by clearing any tag filter.
+      setTag('');
       setAttempt(current => current + 1);
     }}
     onClose={onClose}

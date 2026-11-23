@@ -134,6 +134,8 @@ export function ListsForm({ url, vals, labels = {}, targetId, onClose }) {
     }
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) throw new Error(data.error || text(labels, 'createFailed'));
+    // A new list has no tags, so keep it visible by clearing any tag filter.
+    setTag(ALL_LISTS);
     retry();
   }
 
