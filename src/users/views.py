@@ -2933,6 +2933,7 @@ def _outbound_state(account):
 
 def mal_export_context(request, slug=None):
     """Return existing outbound settings, scoped to a provider when requested."""
+    from integrations.simkl_views import simkl_status
     from integrations.tmdb_views import rating_sync_status
     from integrations.wetrakr_views import wetrakr_status
 
@@ -2997,12 +2998,23 @@ def mal_export_context(request, slug=None):
                 "body": "users/components/wetrakr_sync.html",
             }
         )
+    if slug in (None, "simkl"):
+        simkl_sync = simkl_status(user)
+        context["simkl_sync"] = simkl_sync
+        context["outbound_services"].append(
+            {
+                "slug": "simkl",
+                "description": gettext("Plays"),
+                "state": _outbound_state(simkl_sync["account"]),
+                "body": "users/components/simkl_sync.html",
+            }
+        )
     return context
 
 
 @require_GET
 def mal_export(request):
-    """Render the Sync to Trackers page: MyAnimeList, TMDb and WeTrakr."""
+    """Render the Sync to Trackers page: MyAnimeList, TMDb, WeTrakr and SIMKL."""
     return render(request, "users/mal_export.html", mal_export_context(request))
 
 

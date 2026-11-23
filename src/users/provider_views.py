@@ -434,7 +434,7 @@ def provider_detail(request, slug):
                 "href": "" if connected else reverse("provider_detail", args=[slug]) + "?tab=connection",
                 "csrf": get_token(request), "next": request.get_full_path(),
             }
-    if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
+    if slug in {"mal", "tmdb", "wetrakr", "simkl"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
     if slug == "mal" and tab == "connection":
         account = context.get("mal_account")
@@ -453,25 +453,27 @@ def provider_detail(request, slug):
         )
         context["account_connection"]["title"] = _("MyAnimeList account")
         context["account_connection"]["submitLabel"] = _("Authorize and enable MyAnimeList sync")
-    if slug == "wetrakr" and tab == "connection":
-        account = (context.get("wetrakr_sync") or {}).get("account")
+    if slug in {"wetrakr", "simkl"} and tab == "connection":
+        label = {"wetrakr": "WeTrakr", "simkl": "SIMKL"}[slug]
+        account = (context.get(f"{slug}_sync") or {}).get("account")
         pending = bool(account and account.is_pending)
         connected = bool(account and account.is_connected)
         attention = bool(account and account.connection_broken and not pending)
+        sends = {"wetrakr": _("plays, statuses and ratings"), "simkl": _("plays")}[slug]
         context["account_connection"] = provider_ui.account_connection(
             request, connected=connected, saved=bool(account) and not pending, attention=attention,
-            fields=[], follow_up=None, connect_url=reverse("wetrakr_connect"), disconnect_url=reverse("wetrakr_disconnect"),
-            link_slug="wetrakr", link_label=provider["label"],
+            fields=[], follow_up=None, connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
+            link_slug="simkl-send" if slug == "simkl" else slug, link_label=provider["label"],
             messages={
-                "connected": _("Your WeTrakr account is linked. Choose what Floppy sends on the Sync tab."),
-                "attention": _("WeTrakr rejected your login. Reconnect to continue."),
-                "disconnected": _("Link your WeTrakr account to send your plays, statuses and ratings."),
+                "connected": _("Your %(label)s account is linked. Choose what Floppy sends on the Sync tab.") % {"label": label},
+                "attention": _("%(label)s rejected your login. Reconnect to continue.") % {"label": label},
+                "disconnected": _("Link your %(label)s account to send your %(sends)s.") % {"label": label, "sends": sends},
             },
             summary={"url": "", "lastSync": "", "error": redact_secrets(account.last_error_message or "")} if attention and account.last_error_message else None,
             device=provider_ui.device_login(account.user_code, account.verification_url, account.device_interval, account.device_expires_at) if pending else None,
         )
-        context["account_connection"]["title"] = _("WeTrakr account")
-        context["account_connection"]["submitLabel"] = _("Connect WeTrakr")
+        context["account_connection"]["title"] = _("%(label)s account") % {"label": label}
+        context["account_connection"]["submitLabel"] = _("Connect %(label)s") % {"label": label}
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)
     if getattr(request, "provider_context_only", False):
         # The native JSON API reuses this view model instead of rebuilding it.
