@@ -444,13 +444,21 @@ def provider_state(provider, user):
         provider.get("credential") and credentials.is_configured(slug, user)
     )
     account = (
-        getattr(user, f"{slug}_account", None) if slug in _ACCOUNT_PROVIDERS else None
+        getattr(user, f"{slug}_account", None)
+        if slug in _ACCOUNT_PROVIDERS and slug != "jellyfin"
+        else None
     )
     servers = (
         list(getattr(user, f"{slug}_instances").all())
         if slug in _SERVER_PROVIDERS
         else []
     )
+    # Jellyfin may hold several connections (#2111). The first stands in where
+    # one account's options are summarized; push and pull options are per
+    # connection, and attention comes from any of them.
+    if slug == "jellyfin":
+        servers = list(user.jellyfin_accounts.all())
+        account = servers[0] if servers else None
     account_saved = bool(account or servers)
     attention = bool(
         getattr(account, "connection_broken", False)

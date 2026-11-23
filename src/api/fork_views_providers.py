@@ -598,7 +598,11 @@ class ProviderTestView(drf_views.APIView):
         if slug not in TESTABLE:
             return Response({"detail": "This provider cannot be tested here."}, status=HTTP.BAD_REQUEST)
         if slug == "jellyfin":
-            targets = [(getattr(request.user, "jellyfin_account", None), JellyfinClient, (JellyfinAuthError,))]
+            rows = request.user.jellyfin_accounts.all()
+            instance_id = _json_body(request).get("instance_id")
+            if instance_id:
+                rows = rows.filter(pk=instance_id)
+            targets = [(row, JellyfinClient, (JellyfinAuthError,)) for row in rows]
             errors = (JellyfinAuthError, JellyfinClientError)
         else:
             from integrations.imports.kapowarr import KapowarrClient

@@ -46,6 +46,7 @@ const defaultLabels = {
   disconnected: 'Connection removed',
   disconnectError: 'Could not disconnect. Try again.',
   edit: 'Edit connection',
+  saveConnection: 'Save connection',
   cancel: 'Cancel',
   connected: 'Connected',
   disconnectedStatus: 'Not connected',
@@ -100,6 +101,8 @@ export function AccountSettings({
   const labels = { ...defaultLabels, ...(model.labels || {}) };
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(false);
+  // A saved connection being edited, for providers that hold several at once.
+  const [editingId, setEditingId] = useState(null);
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -112,6 +115,7 @@ export function AccountSettings({
     || (connected ? labels.connectedMessage : attention ? labels.attentionMessage : labels.disconnectedMessage);
   const canConnect = model.canConnect !== false;
   const showForm = canConnect && (hasInstances || !connected || attention || editing);
+  const editingInstance = editingId ? (model.instances || []).find(row => row.id === editingId) : null;
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
@@ -125,14 +129,29 @@ export function AccountSettings({
     setError('');
     setNotice('');
     try {
-      await onConnect?.(values);
+      await onConnect?.(editingId ? { ...values, instance_id: editingId } : values);
       setNotice(labels.saved);
       setEditing(false);
+      setEditingId(null);
     } catch (reason) {
       setError(reason?.message || labels.saveError);
     } finally {
       setPending('');
     }
+  }
+
+  function startEdit(instance) {
+    // Saved keys are never serialized, so the key stays blank and means "unchanged".
+    setValues({ name: instance.label ?? '', base_url: instance.baseUrl ?? '', username: instance.username ?? '' });
+    setEditingId(instance.id);
+    setNotice('');
+    setError('');
+  }
+
+  function cancelEdit() {
+    setValues({});
+    setEditingId(null);
+    setEditing(false);
   }
 
   async function disconnect(instanceId) {
@@ -170,6 +189,8 @@ export function AccountSettings({
         </View>
         <Text style={[styles.copy, { color: colors.textMuted }]}>{instance.url}</Text>
         {instance.error ? <Text style={[styles.copy, { color: colors.danger }]}>{instance.error}</Text> : null}
+        {instance.editable && canConnect ? <Button label={labels.edit} tone="surface" width="full"
+          disabled={Boolean(pending)} onPress={() => startEdit(instance)} palette={buttons} /> : null}
         <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
           tone="danger-solid" width="full" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
           onPress={() => disconnect(instance.id)} palette={buttons} />
@@ -177,14 +198,16 @@ export function AccountSettings({
     </View> : <Text style={[styles.copy, { color: colors.textSecondary }]}>{message}</Text>}
     {formContent || null}
     {showForm ? <View style={styles.fields}>
-      {(model.fields || []).map(field => <FieldControl key={field.name} field={field}
+      {editingInstance ? <Text style={[styles.instanceName, { color: colors.text }]}>{editingInstance.name}</Text> : null}
+      {(model.fields || []).map(field => <FieldControl key={`${editingId || 'new'}-${field.name}`}
+        field={editingId && field.name === 'api_key' ? { ...field, required: false } : field}
         value={values[field.name]} onChange={value => change(field.name, value)} colors={colors} />)}
     </View> : null}
     {showForm ? <View style={styles.actions}>
-      <Button label={pending === 'connect' ? labels.saving : (model.submitLabel || (editing || model.saved ? labels.reconnect : labels.connect))}
+      <Button label={pending === 'connect' ? labels.saving : (editingId ? labels.saveConnection : (model.submitLabel || (editing || model.saved ? labels.reconnect : labels.connect)))}
         busy={pending === 'connect'} width="full" disabled={Boolean(pending)} onPress={submit} palette={buttons} />
-      {editing ? <Button label={labels.cancel} tone="surface" width="full" disabled={Boolean(pending)}
-        onPress={() => setEditing(false)} palette={buttons} /> : null}
+      {editing || editingId ? <Button label={labels.cancel} tone="surface" width="full" disabled={Boolean(pending)}
+        onPress={cancelEdit} palette={buttons} /> : null}
     </View> : null}
     {!showForm && !hasInstances && model.editable && canConnect ? <View style={styles.actions}>
       <Button label={labels.edit} tone="surface" width="full" onPress={() => setEditing(true)} palette={buttons} />

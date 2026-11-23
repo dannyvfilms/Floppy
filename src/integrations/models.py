@@ -1140,12 +1140,32 @@ class MDBListAccount(models.Model):
 
 
 class JellyfinAccount(models.Model):
-    """Store Jellyfin connection settings and push-sync state for a user."""
+    """Store Jellyfin connection settings and push-sync state for one server.
 
-    user = models.OneToOneField(
+    A user may connect several Jellyfin servers, so this is a ForeignKey. Every
+    pull, push, health check, schedule and cursor is scoped to one row.
+    """
+
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="jellyfin_account",
+        related_name="jellyfin_accounts",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to tell servers apart, e.g. 'Living room'",
+    )
+    identity_scope = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Prefix for this connection's Playback Reporting row identities. "
+            "Empty for the first connection, whose rows predate scoping; set "
+            "for later ones so equal rowids on two servers never collide."
+        ),
     )
     base_url = models.URLField(help_text="Jellyfin server URL")
     api_key = models.TextField(help_text="Encrypted Jellyfin API key")
@@ -1205,10 +1225,22 @@ class JellyfinAccount(models.Model):
 
         verbose_name = "Jellyfin account"
         verbose_name_plural = "Jellyfin accounts"
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url", "jellyfin_user_id"],
+                name="integrations_jellyfinaccount_unique_user_server_profile",
+            ),
+        ]
 
     def __str__(self):
         """Readable representation."""
-        return f"JellyfinAccount({self.user.username})"
+        return f"JellyfinAccount({self.user.username}, {self.display_name})"
+
+    @property
+    def display_name(self):
+        """Return the label, falling back to the server address."""
+        return self.name or self.base_url or "Jellyfin"
 
     @property
     def is_connected(self):
