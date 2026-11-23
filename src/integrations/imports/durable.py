@@ -343,8 +343,11 @@ def hydrate(entries, user):
     rows = []
     for entry in entries:
         model = apps.get_model(entry.model_label)
+        # A run staged before a release added a column has no value for it; omit
+        # it so the model default (or auto_now stamp) applies instead of failing.
         fields = {field.attname: field.to_python(entry.payload["fields"][field.attname])
-                  for field in model._meta.concrete_fields}
+                  for field in model._meta.concrete_fields
+                  if field.attname in entry.payload["fields"]}
         row = model(**fields)
         for name, value in entry.payload.get("history", {}).items():
             setattr(row, name, parse_datetime(value) if name == "_history_date" and isinstance(value, str) else value)
