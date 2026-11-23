@@ -20,19 +20,17 @@ from datetime import timedelta
 from http import HTTPStatus
 
 import requests
-from cryptography.fernet import InvalidToken
 from django.utils import timezone
 
-from app.cache_safety import ON_ERROR_SKIP, acquire_lock, release_lock
 from app.providers import credentials
-from integrations import connection_health
-from integrations.imports.helpers import decrypt, encrypt
+from integrations.imports.helpers import encrypt
 from integrations.models import WeTrakrAccount
 from integrations.state.adapters.base import (
     AdapterError,
     TerminalAdapterError,
     TransientAdapterError,
 )
+from integrations.state.device_client import DeviceLoginClient
 
 logger = logging.getLogger(__name__)
 
@@ -290,24 +288,24 @@ def logout(client_id, access_token, refresh_token):
 # --- authenticated calls -----------------------------------------------------
 
 
-class WeTrakrClient:
-    """Authenticated calls for one account, refreshing its login when needed."""
+class WeTrakrClient(DeviceLoginClient):
+    """Authenticated calls for one account, refreshing its login when needed.
 
-    def __init__(self, account):
-        """Bind to one connected account."""
-        self.account = account
+    WeTrakr rotates the refresh token on every use and rejects the old one after
+    a short grace period, so the shared refresh (one worker at a time) matters.
+    """
 
-    def _tokens(self):
-        try:
-            return decrypt(self.account.access_token), decrypt(
-                self.account.refresh_token,
-            )
-        except InvalidToken:
-            return "", ""
+    LABEL = "WeTrakr"
+    LOCK_PREFIX = "wetrakr"
+    auth_error = WeTrakrAuthError
+    CHANGES_ON_REFRESH = "refresh_token"
+    REFRESH_MARGIN = REFRESH_MARGIN
+    REFRESH_LOCK_TIMEOUT = REFRESH_LOCK_TIMEOUT
 
-    def _needs_refresh(self):
-        expires = self.account.access_expires_at
-        return expires is None or expires - timezone.now() <= REFRESH_MARGIN
+    @property
+    def refresh_wait_seconds(self):
+        """Read the module value so tests can shorten it."""
+        return REFRESH_WAIT_SECONDS
 
     def request(
         self,
@@ -323,62 +321,26 @@ class WeTrakrClient:
         ``missing_ok`` answers a 404 with ``{"missing": True}`` instead of an
         error, for a delete where "already gone" is the result wanted.
         """
-        try:
-            data = self._request(
-                method,
-                path,
-                json=json,
-                idempotency_key=idempotency_key,
-                missing_ok=missing_ok,
-            )
-        except WeTrakrAuthError as error:
-            # Only a rejection of the credentials marks the connection broken.
-            connection_health.record_failure(self.account, str(error), auth=True)
-            raise
-        except AdapterError as error:
-            connection_health.record_failure(self.account, str(error), auth=False)
-            raise
-        if self.account.connection_broken or self.account.last_error_message:
-            connection_health.record_success(self.account)
-        return data
+        return super().request(
+            method,
+            path,
+            json=json,
+            idempotency_key=idempotency_key,
+            missing_ok=missing_ok,
+        )
 
-    def _request(
-        self,
-        method,
-        path,
-        *,
-        json=None,
-        idempotency_key=None,
-        missing_ok=False,
-    ):
-        if not self.account.refresh_token:
-            message = "WeTrakr is not connected. Connect your account."
-            raise WeTrakrAuthError(message)
-        if self._needs_refresh():
-            self.refresh()
+    def _call(self, method, path, access_token, *, json=None, idempotency_key=None, **_):
         extra = {"Idempotency-Key": idempotency_key} if idempotency_key else None
-        access, _refresh = self._tokens()
-        response = _send(
+        return _send(
             method,
             path,
             client_id=self.account.client_id,
-            access_token=access,
+            access_token=access_token,
             json=json,
             extra_headers=extra,
         )
-        if response.status_code == HTTPStatus.UNAUTHORIZED:
-            code, _message = read_error(response)
-            if code != "MISSING_API_KEY":
-                self.refresh(force=True)
-                access, _refresh = self._tokens()
-                response = _send(
-                    method,
-                    path,
-                    client_id=self.account.client_id,
-                    access_token=access,
-                    json=json,
-                    extra_headers=extra,
-                )
+
+    def _read(self, response, *, missing_ok=False, **_):
         if missing_ok and response.status_code == HTTPStatus.NOT_FOUND:
             return {"missing": True}
         raise_for_status(response)
@@ -386,45 +348,9 @@ class WeTrakrClient:
             return {}
         return _json(response)
 
-    def refresh(self, *, force=False):
-        """Exchange the refresh token for new tokens, once across all workers.
-
-        WeTrakr rotates the refresh token on every use and rejects the old one
-        after a short grace period, so two workers refreshing at once would log
-        the account out. A database row lock does not serialize SQLite, so this
-        takes a cache lock and re-reads the account once it holds it: if
-        another worker already rotated the token, that is used instead.
-        """
-        stale = self.account.refresh_token
-        lock_key = f"wetrakr_refresh:{self.account.pk}"
-        if not acquire_lock(
-            lock_key,
-            timeout=REFRESH_LOCK_TIMEOUT,
-            on_error=ON_ERROR_SKIP,
-        ):
-            self._wait_for_other_refresh(stale)
-            return
-        try:
-            self.account.refresh_from_db()
-            if self.account.refresh_token != stale or (
-                not force and not self._needs_refresh()
-            ):
-                return
-            self._exchange_refresh_token()
-        finally:
-            release_lock(lock_key)
-
-    def _wait_for_other_refresh(self, stale):
-        import time
-
-        deadline = time.monotonic() + REFRESH_WAIT_SECONDS
-        while time.monotonic() < deadline:
-            self.account.refresh_from_db()
-            if self.account.refresh_token != stale:
-                return
-            time.sleep(0.5)
-        message = "Another WeTrakr login refresh is still running."
-        raise TransientAdapterError(message)
+    def _refreshable_rejection(self, response):
+        code, _message = read_error(response)
+        return code != "MISSING_API_KEY"
 
     def _exchange_refresh_token(self):
         _access, refresh = self._tokens()

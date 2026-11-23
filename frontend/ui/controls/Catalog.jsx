@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ProviderLogo } from '../ProviderLogo';
 
 const DEFAULT_PALETTE = {
   card: '#27272a',
@@ -132,8 +133,9 @@ export function CatalogCard({
     >
       <View style={styles.heading}>
         <View style={styles.headingMain}>
-          {logo ? <Image source={{ uri: logo }} style={styles.logo}
-            accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" /> : null}
+          {logo ? <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <ProviderLogo source={logo} style={styles.logo} />
+          </View> : null}
           <Text numberOfLines={2} style={[styles.title, { color: colors.text }]}>{title}</Text>
         </View>
         <StatusMark status={status} attention={attention} palette={colors} />

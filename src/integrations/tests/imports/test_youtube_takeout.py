@@ -2,6 +2,7 @@ import io
 import json
 import tarfile
 import zipfile
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import patch
 
@@ -405,6 +406,20 @@ class YouTubeTakeoutImportTests(TestCase):
         buffer.seek(0)
         youtube_takeout.importer(buffer, self.user, "new")
         self.assertEqual(VideoPlay.objects.count(), 1)
+
+    def test_html_timestamps_in_non_us_zones_and_24_hour_clocks(self):
+        """Takeout writes the viewer's own zone, so #2105 must read more than US ones."""
+        expected = datetime(2023, 1, 9, 10, 45, 14, tzinfo=UTC)
+        for text in (
+            "Jan 9, 2023, 11:45:14\u202fAM CET",
+            "Jan 9, 2023, 11:45:14\u00a0AM GMT+1",
+            "Jan 9, 2023, 11:45:14 AM UTC+01:00",
+            "Jan 9, 2023, 11:45:14 CET",
+            "Jan 9, 2023, 9:45:14 PM AEDT",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(youtube_takeout.parse_time(text), expected)
+        self.assertIsNone(youtube_takeout.parse_time("Jan 9, 2023, 11:45:14 AM XYZ"))
 
     def test_html_rejects_an_unrecognized_watch_timestamp(self):
         html = b"""<html><div class="outer-cell"><div class="header-cell">YouTube</div>

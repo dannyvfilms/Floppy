@@ -1,6 +1,6 @@
 from django.urls import path, re_path
 
-from integrations import tmdb_views, views, wetrakr_views
+from integrations import simkl_views, tmdb_views, views, wetrakr_views
 
 urlpatterns = [
     path("tmdb/connect", tmdb_views.tmdb_connect, name="tmdb_connect"),
@@ -22,6 +22,12 @@ urlpatterns = [
         name="wetrakr_disconnect",
     ),
     path("wetrakr/export", wetrakr_views.wetrakr_export, name="wetrakr_export"),
+    path("simkl/connect", simkl_views.simkl_connect, name="simkl_connect"),
+    path("simkl/poll", simkl_views.simkl_poll, name="simkl_poll"),
+    path("simkl/cancel", simkl_views.simkl_cancel, name="simkl_cancel"),
+    path("simkl/settings", simkl_views.simkl_settings, name="simkl_settings"),
+    path("simkl/disconnect", simkl_views.simkl_disconnect, name="simkl_disconnect"),
+    path("simkl/export", simkl_views.simkl_export, name="simkl_export"),
     path(
         "matches/<int:item_id>/",
         views.match_fix,

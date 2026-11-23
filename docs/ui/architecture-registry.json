@@ -1323,6 +1323,66 @@
         }
       }
     },
+    "frontend/ui/TrackCalendar.jsx": {
+      "components": [
+        "TrackCalendar"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Seen on the iPhone Duo simulator inside the Tracking sheet; spacing compared with an iOS Calendar reference. No device pass for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/TrackDateRow.jsx": {
+      "components": [
+        "TrackDateRow"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; not yet seen on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/TrackTabsGrouped.jsx": {
+      "components": [
+        "GroupedTabBody"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered on web: the browser keeps the TrackFormTabs bodies because grouped is native only. Structural: the shared UI bundle builds with the import."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
+        }
+      }
+    },
     "frontend/ui/TrackFormTabs.jsx": {
       "components": [
         "TrackTabs"
@@ -3981,6 +4041,27 @@
         }
       }
     },
+    "frontend/ui/trackDuration.js": {
+      "components": [
+        "parseTrackDurationMinutes",
+        "formatTrackDuration"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure parse and format functions; the parser moved unchanged from TrackDialog, which still re-exports it. No browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export; the hrs and min display has not been seen on a device yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export; no runtime pass."
+        }
+      }
+    },
     "frontend/ui/mediaCardForms.js": {
       "components": [
         "normalizeListsModel",
@@ -4180,6 +4261,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Shared-state unit tests pass; Android filter interaction remains unverified."
+        }
+      }
+    },
+    "frontend/ui/separatorColor.js": {
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Returns no colour; web keeps its divider. No browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "The native variant supplies the system separator colour; seen on the iPhone Duo simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Returns no colour; the grouped dividers use the literal fallback. No runtime pass."
         }
       }
     },
@@ -4506,6 +4608,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Imported by the native Progress screen; no runtime exercised."
+        }
+      }
+    },
+    "frontend/providers/mediaTagFit.js": {
+      "components": [
+        "visibleTagCount"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Pure function; scripts/mediaTagFit.test.mjs covers fit, the +N reservation, and the unmeasured case."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Rendered in the Expo app (Expo Go, iPhone 16 Pro simulator) against a local server: the Jellyfin provider header shows Movies, TV Shows and a +2 chip on one line. The merge-base (before) frame was not captured."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run on an Android emulator."
         }
       }
     }
@@ -5572,6 +5694,52 @@
         "android": {
           "status": "unverified",
           "evidence": "Not run."
+        }
+      }
+    },
+    "frontend/ui/separatorColor.web.js": {
+      "kind": "adapter",
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Web has no system list separator colour, so grouped-list dividers keep the web divider.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Returns no colour; no browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not used on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not used on Android."
+        }
+      }
+    },
+    "frontend/ui/separatorColor.native.js": {
+      "kind": "adapter",
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "The iOS system separator colour for grouped-list dividers.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not used on web."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "PlatformColor('separator') on the iPhone Duo simulator; light appearance only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Returns no colour on Android; the literal fallback applies."
         }
       }
     },
