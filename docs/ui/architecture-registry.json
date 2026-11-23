@@ -4610,6 +4610,26 @@
           "evidence": "Imported by the native Progress screen; no runtime exercised."
         }
       }
+    },
+    "frontend/providers/mediaTagFit.js": {
+      "components": [
+        "visibleTagCount"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Pure function; scripts/mediaTagFit.test.mjs covers fit, the +N reservation, and the unmeasured case."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Rendered in the Expo app (Expo Go, iPhone 16 Pro simulator) against a local server: the Jellyfin provider header shows Movies, TV Shows and a +2 chip on one line. The merge-base (before) frame was not captured."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run on an Android emulator."
+        }
+      }
     }
   },
   "platform": {

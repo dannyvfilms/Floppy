@@ -1010,6 +1010,7 @@ Status: `Partial / coexisting`
 - `frontend/providers/mountImportPreferences.jsx`
 - `frontend/providers/ProviderMetadataView.jsx`
 - `frontend/providers/ProviderPageView.jsx`
+- `frontend/providers/mediaTagFit.js`
 - `frontend/providers/mount.jsx`
 - `frontend/providers/provider-page.css`
 - `frontend/providers/transport.web.js`
