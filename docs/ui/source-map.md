@@ -817,6 +817,7 @@ Status: `Legacy`
 - `src/templates/app/components/session_history_modal.html`
 - `src/templates/app/components/session_history_row.html` (also the audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/history.html`
+- `src/templates/app/progress.html`, `src/app/progress_page.py`, `src/api/fork_views_progress_page.py` (Progress page heading and mount root; the list read for web and native), `expo/app/screens/ProgressScreen.jsx`
 - `expo/app/screens/HistoryScreen.jsx`, `expo/app/data/historyTransportCore.js` (+ `historyTransportCore.test.mjs`) (native History screen and transport; release-date mode pages by day through `limit`/`offset` on `/api/v1/history/release/`, like the activity feed)
 - `frontend/ui/historyScrollAnchor.web.js` (browser adapter: Back or reload returns History to the day the reader left; loads the waiting days down to it first).
 - `frontend/ui/historyFirstView.js` (shared first-view rule: about two screens of entries, whole days; `scripts/historyFirstView.test.mjs`). The server mirrors it in `src/app/history_views.py` (`HISTORY_FIRST_VIEW_ENTRIES`, `_first_view_day_count`). Waiting days load as they come near the screen through `HistoryFeed.web.jsx`'s own observer (1.5-screen look-ahead from `homeRowLoading.js`) on web and the Home watcher `expo/app/data/homeRowWatcherCore.js` in `HistoryScreen.jsx` on Expo. `frontend/ui/historyScrollAnchor.web.js` (browser only) returns Back to the day the reader left.
@@ -1348,6 +1349,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/ListsPageView.jsx`
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
+- `frontend/pages/ProgressPageView.jsx`, `frontend/pages/useProgressPage.js` (the Progress page composition and its loading state)
 - `frontend/pages/ProvidersView.jsx`
 - `frontend/pages/SearchPageView.jsx`
 - `frontend/pages/SettingsAboutView.jsx`
@@ -1459,6 +1461,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressChangerTheme.web.jsx`
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
+- `frontend/ui/ProgressShowCard.jsx`
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
@@ -1558,6 +1561,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressDetail.jsx`
+- `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`
