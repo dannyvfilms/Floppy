@@ -1,0 +1,59 @@
+{% load i18n ui_tags %}
+{# Body of an outbound-service modal for any destination in integrations.state.destinations. #}
+{# The service-specific copy and options live in push_destination/<slug>_*.html. #}
+{# Called with ``sync`` (the destination's status), ``slug`` and ``label``. #}
+{% with settings_url=slug|add:"_settings" export_url=slug|add:"_export" intro_template="users/components/push_destination/"|add:slug|add:"_intro.html" options_template="users/components/push_destination/"|add:slug|add:"_options.html" export_template="users/components/push_destination/"|add:slug|add:"_export.html" export_confirm_template="users/components/push_destination/"|add:slug|add:"_export_confirm.html" no_key_template="users/components/push_destination/"|add:slug|add:"_no_key.html" %}
+<p class="text-sm text-[var(--color-text-muted)]">
+  {% include intro_template %}
+</p>
+{% with account=sync.account %}
+  {% if provider_tab == "activity" %}
+    {% include "users/components/outbound_service_activity.html" with counts=sync.counts recent=sync.recent last_flushed=sync.binding.last_flushed_at %}
+  {% else %}
+  {% if account.is_pending %}
+    <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' slug %}?tab=connection">{% blocktranslate %}Finish authorizing {{ label }} on the Connection tab.{% endblocktranslate %}</a></p>
+  {% elif account.is_connected or account.connection_broken and account.refresh_token %}
+    {% if account.connection_broken %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{% blocktranslate %}{{ label }} rejected your login. Reconnect on the Connection tab.{% endblocktranslate %}</div>
+    {% elif account.last_error_message %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ account.last_error_message }}</div>
+    {% endif %}
+    {% if not provider_tab or provider_tab == "sync" %}
+    <form method="post" action="{% url settings_url %}" class="space-y-2">
+      {% csrf_token %}
+      {% include options_template %}
+      <div>
+        <label class="block text-sm text-[var(--color-text-muted)] mb-2" for="{{ slug }}-schedule">{% translate "Send" %}</label>
+        <select id="{{ slug }}-schedule" name="schedule" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+          {% for value, option in sync.schedules %}
+            <option value="{{ value }}" {% if sync.binding.delivery_schedule == value %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% button _("Save") "primary" "sm" "full" submit=True %}
+    </form>
+    {% if sync.any_enabled %}
+      <form method="post" action="{% url export_url %}" class="space-y-2"
+            x-data
+            @submit="if (!confirm('{% include export_confirm_template %}')) $event.preventDefault()">
+        {% csrf_token %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% include export_template %}
+        </p>
+        <button type="submit" class="w-full px-4 py-2 rounded-lg text-sm bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">{% translate "Send existing library" %}</button>
+      </form>
+    {% endif %}
+    {% endif %}
+    {% if not provider_tab or provider_tab == "activity" %}
+      {% include "users/components/outbound_service_activity.html" with counts=sync.counts recent=sync.recent last_flushed=sync.binding.last_flushed_at %}
+    {% endif %}
+  {% elif sync.has_key %}
+    <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' slug %}?tab=connection">{% blocktranslate %}Connect {{ label }} to use outbound sync.{% endblocktranslate %}</a></p>
+  {% else %}
+    <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300">
+      {% include no_key_template %}
+    </div>
+  {% endif %}
+  {% endif %}
+{% endwith %}
+{% endwith %}
