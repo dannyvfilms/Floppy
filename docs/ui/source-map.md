@@ -473,6 +473,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
 - `expo/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
 - `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `expo/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/basePath.web.js` (web-only `withBasePath`: prefixes root-absolute API paths with the BASE_URL mount path from the `floppy-base-path` meta tag; used by `webRequest.web.js`, `SearchResults.web.jsx`, `mountProgressPage.jsx` and `mediaCardQuickStatus.web.js`).
 - `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK

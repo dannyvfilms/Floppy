@@ -47,6 +47,22 @@ RUNTIME_GUNICORN_THREADS = gunicorn_threads()
 RUNTIME_WEB_CONCURRENCY = web_concurrency()
 
 BASE_URL = config("BASE_URL", default=None)
+
+
+def prefix_base_url(url, base):
+    """Put the BASE_URL mount path in front of a site-relative URL.
+
+    urljoin("/track", "/accounts/login/") drops the base, so root-absolute
+    paths are prefixed by hand, once. Full URLs and values that already carry
+    the base are returned unchanged.
+    """
+    prefix = base.rstrip("/")
+    if urlparse(url).netloc or url == prefix or url.startswith(f"{prefix}/"):
+        return url
+    if url.startswith("/"):
+        return f"{prefix}{url}"
+    return urljoin(f"{prefix}/", url)
+
 if BASE_URL:
     FORCE_SCRIPT_NAME = BASE_URL
 
@@ -2305,8 +2321,7 @@ SOCIALACCOUNT_FORMS = {
 
 if BASE_URL:
     # Join base only if relative URL
-    if not urlparse(ACCOUNT_LOGOUT_REDIRECT_URL).netloc:
-        ACCOUNT_LOGOUT_REDIRECT_URL = urljoin(BASE_URL, ACCOUNT_LOGOUT_REDIRECT_URL)
+    ACCOUNT_LOGOUT_REDIRECT_URL = prefix_base_url(ACCOUNT_LOGOUT_REDIRECT_URL, BASE_URL)
     # Cookie paths must match FORCE_SCRIPT_NAME exactly to ensure browsers
     # send session cookies with all requests under the base URL prefix
     SESSION_COOKIE_PATH = BASE_URL
