@@ -83,7 +83,7 @@ const GLYPHS = {
   Anime: '\u2726', Manga: '\u25a4', Games: '\u25c6', Books: '\u25a4',
   Comics: '\u25a4', 'Board Games': '\u25c6', Music: '\u266b', Podcasts: '\u25c9',
   'TV Seasons': '\u25a4', Videos: '\u25b6', Calendar: '\u25a6', Collection: '\u25a3',
-  Custom: '\uff0b', History: '\u25f7', Lists: '\u2630', Statistics: '\u25a5',
+  Custom: '\uff0b', History: '\u25f7', Lists: '\u2630', Progress: '\u25d4', Statistics: '\u25a5',
   Tags: '#', Appearance: '\u263e', Settings: '\u2699', Logout: '\u21e5',
 };
 

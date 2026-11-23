@@ -463,7 +463,7 @@ export function FilterBar({
 
   return <View style={styles.bar}>
     <View style={styles.triggers}>
-      <Trigger
+      {options.filters === false ? null : <Trigger
         label={`${copy.filters}: ${filterSummary(filters, options, copy)}`}
         value={filterSummary(filters, options, copy)}
         expanded={toolbar ? menu?.key === 'filters' : openSheet === 'filters'}
@@ -471,7 +471,7 @@ export function FilterBar({
         disabled={isDisabled}
         onPress={(anchor) => pressTrigger('filters', anchor)}
         nodeRef={triggerNodes.filters}
-        styles={styles} />
+        styles={styles} />}
 
       <Trigger
         label={`${copy.status}: ${statusSummary(filters, options, copy)}`}
