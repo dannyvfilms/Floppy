@@ -15,6 +15,7 @@ ADAPTER_MODULES = {
     SyncClientKind.KODI.value: "integrations.state.adapters.kodi",
     SyncClientKind.TMDB.value: "integrations.state.adapters.tmdb",
     SyncClientKind.WETRAKR.value: "integrations.state.adapters.wetrakr",
+    SyncClientKind.SIMKL.value: "integrations.state.adapters.simkl",
 }
 
 

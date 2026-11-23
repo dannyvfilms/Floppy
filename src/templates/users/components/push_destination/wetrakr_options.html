@@ -1,0 +1,18 @@
+{% load i18n %}
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+  <input type="checkbox" name="plays" {% if sync.enabled.plays %}checked{% endif %}>
+  {% translate "Send movies and episodes I watch" %}
+</label>
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)] pl-6">
+  <input type="checkbox" name="removals" {% if sync.enabled.removals %}checked{% endif %}>
+  {% translate "Remove a play when I delete it here" %}
+</label>
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+  <input type="checkbox" name="statuses" {% if sync.enabled.statuses %}checked{% endif %}>
+  {% translate "Send Planning, Paused and Dropped" %}
+</label>
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+  <input type="checkbox" name="ratings" {% if sync.enabled.ratings %}checked{% endif %}>
+  {% translate "Send my movie and show ratings" %}
+</label>
+<p class="text-xs text-[var(--color-text-muted)]">{% translate "WeTrakr works out Watching and Completed itself from your plays." %}</p>

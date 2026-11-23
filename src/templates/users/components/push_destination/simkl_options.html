@@ -1,0 +1,10 @@
+{% load i18n %}
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+  <input type="checkbox" name="plays" {% if sync.enabled.plays %}checked{% endif %}>
+  {% translate "Send movies and episodes I watch" %}
+</label>
+<label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+  <input type="checkbox" name="send_undated" {% if sync.account.send_undated %}checked{% endif %}>
+  {% translate "Send plays with no date" %}
+</label>
+<p class="text-xs text-[var(--color-text-muted)]">{% translate "SIMKL has no empty date. These go out as watched a long time ago, so they do not show as watched today." %}</p>

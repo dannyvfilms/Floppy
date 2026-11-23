@@ -232,8 +232,17 @@ BULK_WRITE_SITES = {
     ("integrations/tmdb_views.py", "_stop_bindings", UNKNOWN): _not_tracking(
         "outbound sync deliveries"
     ),
-    ("integrations/wetrakr_views.py", "_stop_bindings", UNKNOWN): _not_tracking(
+    ("integrations/state/destinations.py", "PushDestination.stop_bindings", UNKNOWN): _not_tracking(
         "outbound sync deliveries"
+    ),
+    ("integrations/state/destinations.py", "PushDestination._clear_device_flow", UNKNOWN): _not_tracking(
+        "a destination account's login state"
+    ),
+    ("integrations/state/destinations.py", "PushDestination._finish_connection", UNKNOWN): _not_tracking(
+        "a destination account's login state"
+    ),
+    ("integrations/state/destinations.py", "PushDestination.poll", UNKNOWN): _not_tracking(
+        "a destination account's login state"
     ),
     ("app/models/item.py", "ItemQuerySet.bulk_create", UNKNOWN): _not_tracking(
         "items (it only fills each item's library bucket, then defers)"
