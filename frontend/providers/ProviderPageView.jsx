@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CatalogGrid } from '../ui/controls/Catalog';
 import { Tabs } from '../ui/controls/Navigation';
 import { Chip } from '../settings/Chip';
 import { SettingsCard } from '../settings/SettingsCard';
 import { ProviderProvider, useProvider } from './ProviderContext';
+import { ProviderLogo } from '../ui/ProviderLogo';
 import { visibleTagCount } from './mediaTagFit';
 
 // Transport-neutral provider page. Browser-only tab bodies arrive through
@@ -165,8 +166,9 @@ function ProviderPageBody({ model, draft, slots, colors }) {
     <View style={styles.identity}>
       <View style={styles.titleRow}>
         <View style={styles.name}>
-          {provider.logo ? <Image source={{ uri: provider.logo }} style={styles.logo}
-            accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" /> : null}
+          {provider.logo ? <View accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <ProviderLogo source={provider.logo} style={styles.logo} />
+          </View> : null}
           <Text role="heading" aria-level={2} style={[styles.heading, { color: colors.text }]}>
             {provider.label}
           </Text>
