@@ -313,6 +313,8 @@ a.ui-badge[data-tone="genre"]:hover { background-color: var(--color-genre-badge-
 .ui-button.ui-button-tone-surface:hover:not(:disabled) { background: var(--color-surface-strong); }
 /* The hand-written surface button was translucent in Glass and custom themes through its class name. */
 html:is(.glass, .custom) .ui-button.ui-button-tone-surface:not(:hover) { background: color-mix(in srgb, var(--color-surface) var(--theme-surface-opacity), transparent); backdrop-filter: blur(var(--theme-blur)) saturate(145%); -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%); }
+.ui-button.ui-button-tone-ghost { background: transparent; color: var(--color-text-secondary); border-color: var(--color-border); }
+.ui-button.ui-button-tone-ghost:hover:not(:disabled) { background: var(--color-surface-strong); }
 .ui-button.ui-button-tone-ghost-danger { background: transparent; color: var(--color-red-400, oklch(70.4% 0.191 22.216)); padding: 0.25rem 0.5rem; }
 .ui-button.ui-button-tone-ghost-danger:hover:not(:disabled) { color: var(--color-red-300, oklch(80.8% 0.114 19.571)); background: color-mix(in oklab, var(--color-red-600, oklch(57.7% 0.245 27.325)) 20%, transparent); }
 

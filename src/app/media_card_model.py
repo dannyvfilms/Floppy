@@ -704,6 +704,12 @@ def lists_modal_spec(item, target, return_url=""):
             "emptyTag": _("No lists with this tag."),
             "emptyLists": _("You haven't created any lists yet."),
             "toggleFailed": _("Couldn't update this list. Please try again."),
+            "create": _("Create list"),
+            "createName": _("Name"),
+            "createPlaceholder": _("Movie night"),
+            "createSubmit": _("Create"),
+            "createFailed": _("Couldn't create this list. Please try again."),
+            "cancel": _("Cancel"),
         },
     }
 

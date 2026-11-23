@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, FlatList, Platform, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
+import { createListTransport } from '../data/listTransport';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
@@ -119,6 +120,12 @@ const listLabels = {
   emptyTag: 'No lists with this tag.',
   emptyLists: "You haven't created any lists yet.",
   toggleFailed: "Couldn't update this list. Please try again.",
+  create: 'Create list',
+  createName: 'Name',
+  createPlaceholder: 'Movie night',
+  createSubmit: 'Create',
+  createFailed: "Couldn't create this list. Please try again.",
+  cancel: 'Cancel',
 };
 
 const trackLabels = {
@@ -212,8 +219,15 @@ function ListsAction({ action, onClose }) {
     labels={listLabels}
     palette={formPalette}
     showHeader={false}
+    embedded
     onTagChange={setTag}
     onRetry={() => setAttempt(current => current + 1)}
+    onCreate={async name => {
+      await createListTransport().create({ name });
+      // A new list has no tags, so keep it visible by clearing any tag filter.
+      setTag('');
+      setAttempt(current => current + 1);
+    }}
     onClose={onClose}
     onToggle={toggle} />;
 }
