@@ -166,7 +166,7 @@ class ImportActivityTests(FloppyApiTestCase):
         self.assertEqual(body["presentation"]["runs"][0]["created"], 3)
         self.assertEqual(body["presentation"]["runs"][0]["sourceLabel"], "Goodreads")
         self.assertFalse(body["tracker_activity"]["mal"]["connected"])
-        self.assertEqual([row["slug"] for row in body["tracker_activity"]["services"]], ["tmdb", "wetrakr"])
+        self.assertEqual([row["slug"] for row in body["tracker_activity"]["services"]], ["tmdb", "wetrakr", "simkl"])
 
     def test_scoped_import_reader_does_not_gain_tracker_access_or_writes(self):
         _token, raw = IntegrationToken.generate(user=self.user1, name="reader", scopes=["imports:read", "imports:write"])
