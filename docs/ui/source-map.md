@@ -300,6 +300,8 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/game_grouped_items.html`
 - `src/templates/app/components/game_grouped_ungrouped.html`
 - `src/templates/app/components/game_grouped_ungrouped_page.html`
+- `src/templates/app/components/grouped_lanes.html` (Group By lanes: one row of the group's own media cards per group)
+- `src/templates/app/components/group_cover_tile.html` (Group By tile: up to four of the group's covers)
 - `src/templates/app/components/media_grid_items.html`
 - `src/templates/app/components/media_settings_menu.html`
 - `src/templates/app/media_list.html`

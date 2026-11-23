@@ -135,6 +135,102 @@ def _game_group_name_for_item(item, group_by):
     return str(getattr(item, "provider_franchise_name", "") or "").strip()
 
 
+GAME_ONLY_GROUP_BY_VALUES = frozenset({"series", "franchise"})
+GENERIC_GROUP_BY_CHOICES = (
+    ("genre", "Genre"),
+    ("status", "Status"),
+)
+AUTHOR_GROUP_BY_CHOICE = ("author", "Author")
+GROUP_STYLE_CHOICES = (
+    ("lanes", "Lanes"),
+    ("tiles", "Tiles"),
+)
+# A lane shows this many titles, then a "See all" link to the group's page.
+GROUP_LANE_LIMIT = 20
+# A group tile shows up to this many covers from its titles.
+GROUP_TILE_COVERS = 4
+
+
+def group_by_choices_for(media_type):
+    """Return the Group By choices offered on one media type's library."""
+    choices = [GAME_GROUP_BY_CHOICES[0]]
+    if media_type == MediaTypes.GAME.value:
+        choices.extend(GAME_GROUP_BY_CHOICES[1:])
+    choices.extend(GENERIC_GROUP_BY_CHOICES)
+    if media_type in AUTHOR_FILTER_MEDIA_TYPES:
+        choices.append(AUTHOR_GROUP_BY_CHOICE)
+    return tuple(choices)
+
+
+def _entry_status(entry):
+    """Return the tracker status for one list entry, or None when untracked."""
+    media = getattr(entry, "media", None)
+    if media is None:
+        return None
+    return getattr(media, "aggregated_status", None) or getattr(
+        media, "status", None
+    )
+
+
+def _status_label(status):
+    """Return the display label for one stored status value."""
+    try:
+        return str(Status(status).label)
+    except ValueError:
+        return str(status)
+
+
+def _named_group_keys(prefix, names):
+    """Return de-duplicated (key, name) pairs, matched case-insensitively."""
+    pairs = []
+    seen = set()
+    for raw in names:
+        value = raw.get("name") if isinstance(raw, dict) else raw
+        name = str(value or "").strip()
+        folded = name.casefold()
+        if not name or folded in seen:
+            continue
+        seen.add(folded)
+        pairs.append((f"{prefix}:{folded}", name))
+    return pairs
+
+
+def _group_keys_for_entry(entry, group_by):
+    """Return every (key, name) group one entry belongs to.
+
+    Genre and author are multi-valued, so an entry can sit in several groups,
+    like a book shelved under each of its genres. An empty list means the
+    entry is ungrouped.
+    """
+    item = getattr(entry, "item", None)
+    if group_by in GAME_ONLY_GROUP_BY_VALUES:
+        key = _game_group_key_for_item(item, group_by)
+        return [(key, _game_group_name_for_item(item, group_by) or key)] if key else []
+    if group_by == "genre":
+        return _named_group_keys("genre", getattr(item, "genres", None) or [])
+    if group_by == "author":
+        return _named_group_keys("author", _extract_item_authors(item))
+    if group_by == "status":
+        status = _entry_status(entry)
+        return [(f"status:{status}", _status_label(status))] if status else []
+    return []
+
+
+# Status groups follow the life of an entry instead of the alphabet.
+_STATUS_GROUP_ORDER = {
+    f"status:{status.value}": index
+    for index, status in enumerate(
+        (
+            Status.IN_PROGRESS,
+            Status.PLANNING,
+            Status.COMPLETED,
+            Status.PAUSED,
+            Status.DROPPED,
+        ),
+    )
+}
+
+
 def _release_year(value):
     """Return the display year for one release datetime."""
     if value is None:
@@ -144,16 +240,22 @@ def _release_year(value):
     return str(value.year)
 
 
+def _iter_group_memberships(entries, group_by):
+    """Yield (entry, key, name, ungrouped) once per group an entry belongs to."""
+    for entry in entries:
+        memberships = _group_keys_for_entry(entry, group_by)
+        if not memberships:
+            yield entry, "__ungrouped__", "Ungrouped", True
+            continue
+        for key, name in memberships:
+            yield entry, key, name, False
+
+
 def _build_game_groups(entries, group_by, *, sort_key, direction):
     """Return the filtered Games library rolled up into catalog groups."""
     groups = {}
-    for entry in entries:
+    for entry, key, name, ungrouped in _iter_group_memberships(entries, group_by):
         item = entry.item
-        key = _game_group_key_for_item(item, group_by)
-        ungrouped = not key
-        if ungrouped:
-            key = "__ungrouped__"
-        name = _game_group_name_for_item(item, group_by) or key
         group = groups.setdefault(
             key,
             {
@@ -249,6 +351,19 @@ def _build_game_groups(entries, group_by, *, sort_key, direction):
             group["scores"].append(float(score))
     for group in groups.values():
         group["game_count"] = len(group["entries"])
+        group["lane_entries"] = group["entries"][:GROUP_LANE_LIMIT]
+        group["lane_has_more"] = len(group["entries"]) > GROUP_LANE_LIMIT
+        covers = []
+        for entry in group["entries"]:
+            media = entry.media
+            image = (
+                getattr(media, "card_image_override", "") if media is not None else ""
+            ) or getattr(entry.item, "image", "")
+            if image and image != settings.IMG_NONE and image not in covers:
+                covers.append(image)
+            if len(covers) == GROUP_TILE_COVERS:
+                break
+        group["covers"] = covers
         group["image"] = group["image"] or settings.IMG_NONE
         group["average_score"] = (
             sum(group["scores"]) / len(group["scores"]) if group["scores"] else None
@@ -333,6 +448,8 @@ def _build_game_groups(entries, group_by, *, sort_key, direction):
             return group["last_release"]
         if sort_key in {"score", "critic_rating"}:
             return group["average_score"]
+        if group_by == "status":
+            return _STATUS_GROUP_ORDER.get(group["key"], len(_STATUS_GROUP_ORDER))
         return group["name"].casefold()
 
     grouped = [group for group in groups.values() if not group["ungrouped"]]
@@ -1722,9 +1839,13 @@ def media_list(request, media_type):
     except (ValueError, TypeError):
         page = 1
 
+    group_by_choices = group_by_choices_for(media_type)
     group_by = request.GET.get("group_by", "item")
-    if group_by not in dict(GAME_GROUP_BY_CHOICES) or media_type != MediaTypes.GAME.value:
+    if group_by not in dict(group_by_choices):
         group_by = "item"
+    group_style = request.GET.get("group_style", "lanes")
+    if group_style not in dict(GROUP_STYLE_CHOICES):
+        group_style = "lanes"
     game_group = request.GET.get("group", "").strip() if group_by != "item" else ""
     grouped_game_overview = group_by != "item" and not game_group
     current_game_group_name = ""
@@ -2585,19 +2706,27 @@ def media_list(request, media_type):
             media_list = sorted(media_list, key=_untracked_sort_key, reverse=_reverse)
 
         if game_group:
-            media_list = [
-                entry
-                for entry in media_list
-                if _game_group_key_for_item(entry.item, group_by) == game_group
-            ]
-            current_game_group_name = next(
-                (
-                    _game_group_name_for_item(entry.item, group_by)
+            group_names = {}
+            for entry in media_list:
+                for key, name in _group_keys_for_entry(entry, group_by):
+                    group_names.setdefault(key, name)
+            if game_group == "__ungrouped__":
+                media_list = [
+                    entry
                     for entry in media_list
-                    if _game_group_name_for_item(entry.item, group_by)
-                ),
-                "",
-            )
+                    if not _group_keys_for_entry(entry, group_by)
+                ]
+                group_names[game_group] = "Ungrouped"
+            else:
+                media_list = [
+                    entry
+                    for entry in media_list
+                    if any(
+                        key == game_group
+                        for key, _name in _group_keys_for_entry(entry, group_by)
+                    )
+                ]
+            current_game_group_name = group_names.get(game_group, "")
 
         filter_data_source_items = media_list
         if (
@@ -3139,7 +3268,7 @@ def media_list(request, media_type):
 
     if filter_data is not None:
         filter_data.setdefault("departments", [])
-        filter_data["show_group_by"] = group_by != "item" or media_type == MediaTypes.GAME.value
+        filter_data["show_group_by"] = len(group_by_choices) > 1
 
     media_groups = (
         _build_game_groups(
@@ -3234,11 +3363,13 @@ def media_list(request, media_type):
         if media_page
         else "#empty_list",
         "current_group_by": group_by,
+        "current_group_style": group_style,
+        "group_style_choices": GROUP_STYLE_CHOICES,
         "current_game_group": game_group,
         "current_game_group_name": current_game_group_name,
         "group_back_href": group_back_href,
-        "group_by_choices": GAME_GROUP_BY_CHOICES,
-        "group_by_label": dict(GAME_GROUP_BY_CHOICES).get(group_by, ""),
+        "group_by_choices": group_by_choices,
+        "group_by_label": dict(group_by_choices).get(group_by, ""),
         "media_groups": media_groups,
         "ungrouped_page": ungrouped_page,
         "ungrouped_next_url": ungrouped_next_url,

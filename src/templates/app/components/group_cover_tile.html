@@ -1,0 +1,16 @@
+{% load i18n %}
+{# One group as a tile: up to four of its titles' covers, the group name and how many titles it holds. #}
+{% with covers=group.covers n=group.covers|length %}
+  <a href="{{ group.href }}" class="block media-group-tile" aria-label="{{ group.name }} ({{ group.game_count }})">
+    <div class="relative aspect-[2/3] rounded-md overflow-hidden bg-[var(--color-surface-alt)] grid gap-0.5{% if n >= 2 %} grid-cols-2{% endif %}"{% if n >= 3 %} style="grid-template-rows: repeat(2, minmax(0, 1fr))"{% endif %}>
+      {% for cover in covers %}
+        <img src="{{ cover }}" alt="" loading="lazy" decoding="async"
+             class="w-full h-full object-cover{% if n == 3 and forloop.first %} row-span-2{% endif %}">
+      {% empty %}
+        <img src="{{ group.image }}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover">
+      {% endfor %}
+      <span class="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-xs font-semibold text-white">{{ group.game_count }}</span>
+    </div>
+    <p class="mt-2 text-sm font-semibold truncate text-[var(--color-text)]">{{ group.name }}</p>
+  </a>
+{% endwith %}

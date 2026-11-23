@@ -33,6 +33,7 @@
   <input type="hidden" name="collection" x-model="collection">
   {% if filter_data.show_group_by %}
     <input type="hidden" name="group_by" x-model="group_by">
+    <input type="hidden" name="group_style" x-model="group_style">
     {% if current_game_group %}
       <input type="hidden" name="group" value="{{ current_game_group }}">
     {% endif %}

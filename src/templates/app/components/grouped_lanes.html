@@ -1,0 +1,33 @@
+{% load i18n %}
+{% load app_tags %}
+
+{# Group By as lanes: one row per group, its titles' own cards scrolling sideways. #}
+<div class="flex flex-col gap-8 media-group-lanes">
+  {% for group in media_groups %}
+    <section class="media-group-lane" aria-label="{{ group.name }}">
+      <div class="flex items-baseline gap-3 mb-3">
+        <h2 class="text-xl font-semibold min-w-0 truncate">
+          <a href="{{ group.href }}" class="hover:underline">{{ group.name }}</a>
+        </h2>
+        <span class="text-sm text-[var(--color-text-muted)]">{{ group.game_count }}</span>
+        {% if group.lane_has_more %}
+          <a href="{{ group.href }}"
+             class="ml-auto shrink-0 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)]">{% translate "See all" %}</a>
+        {% endif %}
+      </div>
+      <div class="flex gap-4 overflow-x-auto pb-2">
+        {% for media in group.lane_entries %}
+          <div class="shrink-0 w-36 md:w-40">
+            {% media_card "library" media=media item=media.item title=media.item current_sort=current_sort card_media_type=media_type image_override=media.media.card_image_override|default:media.item.image image_source=media.media.card_image_source|default:"primary" enable_bulk_select=enable_bulk_select %}
+          </div>
+        {% endfor %}
+        {% if group.lane_has_more %}
+          <a href="{{ group.href }}"
+             class="shrink-0 w-36 md:w-40 aspect-[2/3] rounded-md bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] flex items-center justify-center text-sm font-semibold text-[var(--color-text-secondary)]">
+            {% blocktranslate with count=group.game_count %}See all {{ count }}{% endblocktranslate %}
+          </a>
+        {% endif %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
