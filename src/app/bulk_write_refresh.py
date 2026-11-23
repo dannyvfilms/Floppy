@@ -368,6 +368,14 @@ BULK_WRITE_SITES = {
         history=_NO_HISTORY_STATUS,
         watch_state=_WS_SCOPED,
     ),
+    ("app/models/tv.py", "TV._pause_in_progress_seasons", SEASON): Refresh(
+        changes="Pauses a show's in-progress seasons when the show goes from "
+        "in progress to paused.",
+        view_caches=INSIDE_SHOW_SAVE.view_caches,
+        statistics=INSIDE_SHOW_SAVE.statistics,
+        history=_NO_HISTORY_STATUS,
+        watch_state=_WS_SCOPED,
+    ),
     ("app/models/tv.py", "TV._start_next_available_season", SEASON): INSIDE_SHOW_SAVE,
     ("app/models/tv.py", "TV._start_next_available_season", TV): INSIDE_SHOW_SAVE,
     ("app/models/tv.py", "TV.start_rewatch", SEASON): SEASON_STATUS_HELPER,
