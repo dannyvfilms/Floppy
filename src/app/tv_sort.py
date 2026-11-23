@@ -75,6 +75,8 @@ class TimeLeftRecord:
     time_left_display: str | None = None
     episodes_left_display: int = 0
     effective_max: int | None = None
+    # Minutes left, where the order worked it out (None for a caught-up show).
+    minutes_left: int | None = None
 
     @property
     def show_key(self):
@@ -448,6 +450,7 @@ def sort_time_left_records(records, direction="asc"):
     for record, (episodes_left, progress, breakdown) in group_active:
         total = runtime_totals.minutes_left(record, episodes_left, breakdown, progress)
         record.episodes_left_display = episodes_left
+        record.minutes_left = total
         record.time_left_display = (
             helpers.minutes_to_hm(total) if total > 0 else f"{episodes_left} ep"
         )
