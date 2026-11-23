@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Button } from '../ui/Button';
 import { Chip } from '../settings/Chip';
+import { isLightTheme, toneText } from '../settings/statusTones';
 import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
 import { TextField } from '../ui/TextField';
@@ -59,9 +60,9 @@ const defaultLabels = {
 };
 
 function statusPalette(colors, tone) {
-  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
-  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
-  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
+  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: toneText(colors, 'success') };
+  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: toneText(colors, 'warning') };
+  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: toneText(colors, 'info') };
   return { ...colors, badgeBackground: colors.surface };
 }
 
@@ -97,8 +98,19 @@ export function AccountSettings({
   palette = {},
   buttonPalette = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  // Judged on the palette the app passed in: the dark defaults would hide a light theme that omits a colour.
+  const light = isLightTheme(palette, useColorScheme());
+  const colors = { ...defaultPalette, ...palette, isLight: light };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  // On a light card the shared surface button is the same grey as the card and vanishes, so Edit gets the page colour and a border.
+  const editButtons = light ? {
+    ...buttons,
+    surface: {
+      background: (palette.background || '#ffffff'), pressed: palette.surfaceStrong || '#e4e4e7',
+      hovered: palette.surface || '#f4f4f5', text: palette.text || '#18181b',
+      border: palette.border || '#a1a1aa',
+    },
+  } : buttons;
   const labels = { ...defaultLabels, ...(model.labels || {}) };
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(false);
@@ -191,11 +203,16 @@ export function AccountSettings({
         <Text style={[styles.copy, { color: colors.textMuted }]}>{instance.url}</Text>
         {instance.error ? <Text style={[styles.copy, { color: colors.danger }]}>{instance.error}</Text> : null}
         <View style={styles.instanceActions}>
-          {instance.editable && canConnect ? <Button label={labels.editInstance} tone="surface" size="sm"
-            disabled={Boolean(pending)} onPress={() => startEdit(instance)} palette={buttons} /> : null}
-          <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
-            tone="danger-solid" size="sm" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
-            onPress={() => disconnect(instance.id)} palette={buttons} />
+          {instance.editable && canConnect ? <View style={styles.instanceAction}>
+            <Button label={labels.editInstance} tone="surface" size="sm" width="full"
+              disabled={Boolean(pending)} onPress={() => startEdit(instance)} palette={editButtons} />
+          </View> : null}
+          <View style={instance.editable && canConnect ? styles.instanceAction : undefined}>
+            <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
+              tone="danger-solid" size="sm" width={instance.editable && canConnect ? 'full' : 'auto'}
+              busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
+              onPress={() => disconnect(instance.id)} palette={buttons} />
+          </View>
         </View>
       </View>)}
     </View> : <Text style={[styles.copy, { color: colors.textSecondary }]}>{message}</Text>}
@@ -210,10 +227,10 @@ export function AccountSettings({
       <Button label={pending === 'connect' ? labels.saving : (editingId ? labels.saveConnection : (model.submitLabel || (editing || model.saved ? labels.reconnect : labels.connect)))}
         busy={pending === 'connect'} width="full" disabled={Boolean(pending)} onPress={submit} palette={buttons} />
       {editing || editingId ? <Button label={labels.cancel} tone="surface" width="full" disabled={Boolean(pending)}
-        onPress={cancelEdit} palette={buttons} /> : null}
+        onPress={cancelEdit} palette={editButtons} /> : null}
     </View> : null}
     {!showForm && !hasInstances && model.editable && canConnect ? <View style={styles.actions}>
-      <Button label={labels.edit} tone="surface" width="full" onPress={() => setEditing(true)} palette={buttons} />
+      <Button label={labels.edit} tone="surface" width="full" onPress={() => setEditing(true)} palette={editButtons} />
     </View> : null}
     {model.saved && !hasInstances ? <View style={styles.actions}>
       <Button label={pending === 'disconnect' ? labels.disconnecting : labels.disconnect} tone="danger-solid"
@@ -237,7 +254,8 @@ const styles = StyleSheet.create({
   instances: { gap: 10 },
   instance: { gap: 6, borderWidth: 1, borderRadius: 8, padding: 10 },
   instanceHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  instanceActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  instanceActions: { flexDirection: 'row', gap: 8 },
+  instanceAction: { flex: 1 },
   instanceName: { flexShrink: 1, fontSize: 14, fontWeight: '600' },
   fields: { gap: 12 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
