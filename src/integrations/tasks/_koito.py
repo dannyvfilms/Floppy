@@ -3,6 +3,7 @@
 Receive-only: these tasks read from Koito and never submit back to it.
 """
 
+import itertools
 import logging
 import random
 import time
@@ -25,6 +26,9 @@ KOITO_PARTIAL_SYNC_ERROR = (
     "Koito sync ended early during pagination. Imported partial results and will retry "
     "without advancing the cursor."
 )
+
+# Listens are processed in batches of this size as the export is read.
+KOITO_EXPORT_BATCH_SIZE = 500
 
 # The export is a single unpaginated response, so a chunk can take a while.
 # Sized well above the Last.fm 600s chunk lock for that reason.
@@ -399,14 +403,23 @@ def import_koito_history(user_id, reset=False):
 
         try:
             base_url, api_key = koito_sync.get_account_credentials(account)
-            export_payload = koito_api.get_export(base_url, api_key)
-
-            listens = koito_sync.export_to_listens(export_payload)
-            listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
-
             processor = KoitoScrobbleProcessor(base_url, api_key, account_id=account.id)
+            stats = {"processed": 0, "skipped": 0, "errors": 0, "affected_day_keys": set()}
             with import_progress.tracking(task_id, import_run.id), importing_watch_state():
-                stats = processor.process_listens(listens, account.user)
+                export = koito_api.iter_export(base_url, api_key)
+                for batch in itertools.batched(export, KOITO_EXPORT_BATCH_SIZE):
+                    listens = koito_sync.export_to_listens(list(batch))
+                    listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
+                    batch_stats = processor.process_listens(listens, account.user)
+                    for key in ("processed", "skipped", "errors"):
+                        stats[key] += batch_stats[key]
+                    stats["affected_day_keys"] |= batch_stats["affected_day_keys"]
+                    # Keep the lock fresh so a long import is not reclaimed as stale.
+                    cache.set(
+                        lock_key,
+                        {"started_at": timezone.now().isoformat()},
+                        timeout=KOITO_HISTORY_IMPORT_LOCK_TIMEOUT,
+                    )
         except Exception as exc:
             account.refresh_from_db()
             account.history_import_status = LastFMHistoryImportStatus.FAILED
