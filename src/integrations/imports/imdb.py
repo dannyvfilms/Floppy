@@ -10,6 +10,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from tempfile import TemporaryDirectory, TemporaryFile
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.db import transaction
 from django.utils import timezone
@@ -104,6 +105,16 @@ class IMDBImporter:
                             data = self._process_first_pass(row)
                         except (ProviderAPIError, MediaImportError):
                             raise
+                        except SoftTimeLimitExceeded:
+                            logger.warning(
+                                "IMDB import for %s hit the time limit during first pass",
+                                self.user.username,
+                            )
+                            self.warnings.append(
+                                "Import stopped partway through because it was taking too "
+                                "long. Run the import again to pick up the remaining entries.",
+                            )
+                            break
                         except Exception as error:
                             msg = f"Error processing entry: {row}"
                             raise MediaImportUnexpectedError(msg) from error
@@ -138,6 +149,18 @@ class IMDBImporter:
                         row = json.loads(raw)
                         try:
                             self._process_second_pass(row, json.loads(data))
+                        except SoftTimeLimitExceeded:
+                            logger.warning(
+                                "IMDB import for %s hit the time limit at entry %s/%s",
+                                self.user.username,
+                                index,
+                                total,
+                            )
+                            self.warnings.append(
+                                "Import stopped partway through because it was taking too "
+                                "long. Run the import again to pick up the remaining entries.",
+                            )
+                            break
                         except Exception as error:
                             msg = f"Error processing entry: {row}"
                             raise MediaImportUnexpectedError(msg) from error

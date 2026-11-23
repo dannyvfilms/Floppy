@@ -3,6 +3,7 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
@@ -130,6 +131,18 @@ class KitsuImporter:
                 self._process_entry(entry, media_type, media_lookup, mapping_lookup)
             except MediaImportError as error:
                 self.warnings.append(str(error))
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Kitsu import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 kitsu_id = entry["relationships"][media_type]["data"]["id"]
                 kitsu_metadata = media_lookup[kitsu_id]
