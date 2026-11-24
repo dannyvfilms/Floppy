@@ -397,6 +397,17 @@ def provider_detail(request, slug):
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
     if slug in {"plex", "jellyfin", "seerr", "koreader", "hardcover"}:
         context["provider_forms"] = provider_forms.build(request, slug, tab, context)
+    if slug == "jellyfin" and tab in {"sync", "import"}:
+        # One set of cards per connection; the web template and the native client both read these.
+        accounts = list(context.get("jellyfin_accounts") or [])
+        uploads = provider_ui.jellyfin_file_imports(request, accounts) if tab == "import" else []
+        context["jellyfin_file_imports"] = uploads
+        context["jellyfin_connection_cards"] = [{
+            "id": account.id,
+            "forms": [(key, form) for key, form in context["provider_forms"].items()
+                      if form.get("hidden", {}).get("account_id") == account.id],
+            "file_imports": [upload for upload in uploads if upload["accountId"] == account.id],
+        } for account in accounts]
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
         if slug in provider_ui.FILE_IMPORTS:

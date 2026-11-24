@@ -585,6 +585,55 @@ class AdapterAndLinkTests(TestCase):
         )
 
 
+class ConnectionCardPageTests(TestCase):
+    """The Sync and Import tabs draw one set of shared cards per connection."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="multi-jf-cards",
+            password="pw",
+        )
+        self.client.force_login(self.user)
+        self.first = _account(self.user, 1)
+        self.second = _account(self.user, 2)
+
+    def _page(self, tab):
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]),
+            {"tab": tab},
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def test_sync_tab_has_a_card_set_per_connection(self):
+        html = self._page("sync")
+
+        for account in (self.first, self.second):
+            self.assertIn(f'id="form-jellyfin_sync_{account.id}"', html)
+            self.assertIn(f'id="form-jellyfin_push_{account.id}"', html)
+            self.assertIn(
+                f'<input type="hidden" name="account_id" value="{account.id}">',
+                html,
+            )
+        self.assertIn("Server 2", html)
+        self.assertNotIn("jellyfin-history-", html)
+
+    def test_import_tab_has_history_and_upload_cards_per_connection(self):
+        html = self._page("import")
+
+        for account in (self.first, self.second):
+            self.assertIn(f'id="form-jellyfin_history_{account.id}"', html)
+            self.assertIn(f'id="form-jellyfin_pull_{account.id}"', html)
+            self.assertIn(f'id="file-import-jellyfin-pr-import-{account.id}"', html)
+        self.assertEqual(html.count('name="playback_reporting_file"'), 2)
+
+    def test_connection_tab_does_not_draw_the_per_connection_cards(self):
+        html = self._page("connection")
+
+        self.assertNotIn("form-jellyfin_sync_", html)
+        self.assertNotIn("jellyfin-pr-import-", html)
+
+
 class ProviderStateTests(TestCase):
     """The Providers overview reads every connection, not just one."""
 

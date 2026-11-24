@@ -279,6 +279,7 @@ class ProviderDetailView(drf_views.APIView):
             "forms": _clean(context.get("provider_forms") or {}),
             "importPreferences": _clean(context.get("import_preferences")),
             "fileImport": _clean(context.get("file_import") or _trakt_file_import(slug, page, context)),
+            "fileImports": _clean(context.get("jellyfin_file_imports") or []),
             "accountImportAction": _clean(context.get("account_import_action")),
             "schedules": _schedule_rows(request.user, slug),
             "activity": _clean(_activity_rows(request.user, slug)),
@@ -351,6 +352,7 @@ FILE_IMPORT_EXTENSIONS = {
     "hardcover": (".csv",),
     "storygraph": (".csv",),
     "youtube-takeout": (".json", ".html", ".zip"),
+    "jellyfin-playback-reporting": (".tsv", ".txt"),
 }
 
 
@@ -392,6 +394,52 @@ def _upload_error(name, data, service, label):
     return None
 
 
+def _jellyfin_playback_reporting_upload(request):
+    """Queue a Playback Reporting TSV against one Jellyfin connection (``accountId``)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from api.fork_views_integrations import _queue_failure_response
+    from integrations import tasks
+    from integrations.upload_staging import (
+        enqueue_staged_task,
+        stage_uploaded_file,
+        staging_failure_message,
+    )
+    from integrations.views import JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES
+
+    if request.user.is_demo:
+        return Response({"detail": "This section is view-only for demo accounts."}, status=HTTP.FORBIDDEN)
+    body = _json_body(request)
+    accounts = request.user.jellyfin_accounts
+    try:
+        account = accounts.get(pk=int(body.get("accountId")))
+    except (TypeError, ValueError, accounts.model.DoesNotExist):
+        return Response({"detail": "Choose which Jellyfin connection to import into."}, status=HTTP.BAD_REQUEST)
+    name = str(body.get("name") or "playback_reporting.tsv")
+    data, failure = _upload_bytes(body)
+    if failure is not None:
+        return failure
+    if len(data) > JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES:
+        return Response({"detail": "The Playback Reporting export is larger than 50 MB."}, status=HTTP.REQUEST_ENTITY_TOO_LARGE)
+    failure = _upload_error(name, data, "jellyfin-playback-reporting", "Playback Reporting export")
+    if failure is not None:
+        return failure
+    try:
+        staged = str(stage_uploaded_file(SimpleUploadedFile(name, data)))
+    except OSError as error:
+        logger.exception("Could not stage Jellyfin Playback Reporting upload")
+        return Response({"detail": staging_failure_message(error)}, status=HTTP.INSUFFICIENT_STORAGE)
+    try:
+        task = enqueue_staged_task(
+            tasks.import_jellyfin_playback_reporting, user_id=request.user.id, file=staged,
+            mode="new", account_id=account.id, staged_paths=(staged,),
+        )
+    except Exception as error:
+        logger.exception("Could not queue Jellyfin Playback Reporting upload")
+        return _queue_failure_response(error)
+    return Response({"task_id": task.id, "bytes": len(data)}, status=HTTP.ACCEPTED)
+
+
 # /api/v1/providers/<slug>/file-import/
 class ProviderFileImportView(drf_views.APIView):
     """Queue a file import (CSV, JSON or zip) sent as JSON, for clients without multipart."""
@@ -422,6 +470,8 @@ class ProviderFileImportView(drf_views.APIView):
         )
         if too_large is not None:
             return too_large
+        if slug == "jellyfin":
+            return _jellyfin_playback_reporting_upload(request)
         service = FILE_IMPORT_SERVICES.get(slug, slug)
         if service not in _FILE_IMPORTS:
             return Response({"detail": "This provider has no file import."}, status=HTTP.NOT_FOUND)

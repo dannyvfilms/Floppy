@@ -4,6 +4,7 @@
   {{ form_model|json_script:form_props_id }}
   <div data-settings-form-root data-props-id="{{ form_props_id }}" x-ignore hx-disable>
     <form class="ui-form" method="post" action="{{ form_model.action }}">
+      {% if form_model.title %}<h4>{{ form_model.title }}</h4>{% endif %}{% if form_model.intro %}<p class="provider-small">{{ form_model.intro|linebreaksbr }}</p>{% endif %}
       {% csrf_token %}<input type="hidden" name="next" value="{{ form_model.next }}">
       {% for name, value in form_model.hidden.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
       {% for field in form_model.fields %}
