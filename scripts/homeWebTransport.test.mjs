@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRemoteHomeActions } from '../frontend/ui/homeTransportCore.js';
+import { withBasePath } from '../frontend/ui/basePath.web.js';
 import { createWebRequest, webQueryString } from '../frontend/ui/webRequest.web.js';
 import { createHomeTransport } from '../expo/app/data/homeTransport.js';
 import { createAuthTransport } from '../expo/app/data/authTransportCore.js';
@@ -174,4 +175,25 @@ test('onTiming reports path, method, time and bytes only when supplied', async (
   assert.equal(timings[0].bytes, Buffer.byteLength('{"title":"é"}'));
   assert.ok(timings[0].ms >= 0);
   await createWebRequest({ fetchImpl })('/t/');
+});
+
+test('web requests keep the BASE_URL mount path', async () => {
+  const { fetchImpl, calls } = fakeFetch();
+  const home = createRemoteHomeActions(createWebRequest({ fetchImpl, basePath: '/track' }));
+  await home.loadRow({ rowId: 7 });
+  await home.sortRow({ rowId: 7 });
+  await home.refreshCovers({ ids: [7], pending: 0 });
+  assert.deepEqual(
+    calls.map(call => call.url.split('?')[0]),
+    ['/track/api/v1/home/row/7/', '/track/api/v1/home/row/7/sort/', '/track/api/v1/home/artwork/'],
+  );
+});
+
+test('base path is applied once and only to root-absolute paths', () => {
+  assert.equal(withBasePath('/api/v1/x/', '/track'), '/track/api/v1/x/');
+  assert.equal(withBasePath('/track/api/v1/x/', '/track'), '/track/api/v1/x/');
+  assert.equal(withBasePath('/api/v1/x/', '/track/'), '/track/api/v1/x/');
+  assert.equal(withBasePath('/api/v1/x/', ''), '/api/v1/x/');
+  assert.equal(withBasePath('https://a.test/x', '/track'), 'https://a.test/x');
+  assert.equal(withBasePath('//a.test/x', '/track'), '//a.test/x');
 });

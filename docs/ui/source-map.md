@@ -475,6 +475,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
 - `expo/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
 - `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `expo/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/basePath.web.js` (web-only `withBasePath`: prefixes root-absolute API paths with the BASE_URL mount path from the `floppy-base-path` meta tag; used by `webRequest.web.js`, `SearchResults.web.jsx`, `mountProgressPage.jsx` and `mediaCardQuickStatus.web.js`).
 - `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK
@@ -1640,6 +1641,8 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+
+- Track dialog short-window fix (issue #2134): `TrackForm.jsx` caps the sidebar shell height to `min(92% of the window, window - 4rem)` and `TrackFormTabs.jsx` caps the 576 px General-pane floor to the space under the header, so the footer is never clipped.
 - 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
 - 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
 - 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.

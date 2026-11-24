@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 from django.utils.text import slugify
@@ -186,87 +187,110 @@ class AudiobookshelfImporter:
 
         progress_entries = me.get("mediaProgress") or []
         last_sync_ms = self.account.last_sync_ms or 0
-        book_progress_entries, podcast_progress_entries = self._split_progress_entries(
-            progress_entries,
-        )
-        existing_items = self._existing_book_items(book_progress_entries)
-        changed_entries, unchanged_entries = self._partition_book_progress_entries(
-            book_progress_entries,
-            last_sync_ms,
-        )
-        max_seen, changed_processed = self._import_changed_books(
-            changed_entries,
-            existing_items,
-            imported_counts,
-            last_sync_ms,
-        )
-
-        if changed_entries:
-            logger.info(
-                "Audiobookshelf changed book entries processed=%s imported=%s",
-                len(changed_entries),
-                changed_processed,
+        try:
+            book_progress_entries, podcast_progress_entries = (
+                self._split_progress_entries(
+                    progress_entries,
+                )
+            )
+            existing_items = self._existing_book_items(book_progress_entries)
+            changed_entries, unchanged_entries = (
+                self._partition_book_progress_entries(
+                    book_progress_entries,
+                    last_sync_ms,
+                )
+            )
+            max_seen, changed_processed = self._import_changed_books(
+                changed_entries,
+                existing_items,
+                imported_counts,
+                last_sync_ms,
             )
 
-        repair_candidates, skipped_healthy_repairs = self._select_repair_candidates(
-            unchanged_entries,
-            existing_items,
-        )
+            if changed_entries:
+                logger.info(
+                    "Audiobookshelf changed book entries processed=%s imported=%s",
+                    len(changed_entries),
+                    changed_processed,
+                )
 
-        if unchanged_entries:
-            logger.info(
-                "Audiobookshelf unchanged repair candidates=%s skipped_healthy=%s",
-                len(repair_candidates),
-                skipped_healthy_repairs,
+            repair_candidates, skipped_healthy_repairs = (
+                self._select_repair_candidates(
+                    unchanged_entries,
+                    existing_items,
+                )
             )
 
-        repaired_count = self._repair_unchanged_books(
-            repair_candidates,
-            existing_items,
-            imported_counts,
-        )
+            if unchanged_entries:
+                logger.info(
+                    "Audiobookshelf unchanged repair candidates=%s skipped_healthy=%s",
+                    len(repair_candidates),
+                    skipped_healthy_repairs,
+                )
 
-        if repair_candidates:
-            logger.info(
-                "Audiobookshelf unchanged book repairs applied=%s",
-                repaired_count,
+            repaired_count = self._repair_unchanged_books(
+                repair_candidates,
+                existing_items,
+                imported_counts,
             )
 
-        self._import_listening_sessions()
+            if repair_candidates:
+                logger.info(
+                    "Audiobookshelf unchanged book repairs applied=%s",
+                    repaired_count,
+                )
 
-        changed_podcast_entries, _ = self._partition_book_progress_entries(
-            podcast_progress_entries,
-            last_sync_ms,
-        )
-        podcast_max_seen, podcast_processed = self._import_changed_podcast_episodes(
-            changed_podcast_entries,
-            imported_counts,
-            last_sync_ms,
-        )
-        # The cursor is shared with the book pass, so it has to cover podcast
-        # entries too or their progress is replayed on every run.
-        max_seen = max(max_seen, podcast_max_seen)
+            self._import_listening_sessions()
 
-        if changed_podcast_entries:
-            logger.info(
-                "Audiobookshelf changed podcast entries processed=%s imported=%s",
-                len(changed_podcast_entries),
-                podcast_processed,
+            changed_podcast_entries, _ = self._partition_book_progress_entries(
+                podcast_progress_entries,
+                last_sync_ms,
             )
+            podcast_max_seen, podcast_processed = (
+                self._import_changed_podcast_episodes(
+                    changed_podcast_entries,
+                    imported_counts,
+                    last_sync_ms,
+                )
+            )
+            # The cursor is shared with the book pass, so it has to cover podcast
+            # entries too or their progress is replayed on every run.
+            max_seen = max(max_seen, podcast_max_seen)
 
-        self.account.last_sync_ms = max_seen
-        self.account.last_sync_at = timezone.now()
-        self.account.connection_broken = False
-        self.account.last_error_message = ""
-        self.account.save(
-            update_fields=[
-                "last_sync_ms",
-                "last_sync_at",
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
+            if changed_podcast_entries:
+                logger.info(
+                    "Audiobookshelf changed podcast entries processed=%s imported=%s",
+                    len(changed_podcast_entries),
+                    podcast_processed,
+                )
+
+            self.account.last_sync_ms = max_seen
+            self.account.last_sync_at = timezone.now()
+            self.account.connection_broken = False
+            self.account.last_error_message = ""
+            self.account.save(
+                update_fields=[
+                    "last_sync_ms",
+                    "last_sync_at",
+                    "connection_broken",
+                    "last_error_message",
+                    "updated_at",
+                ],
+            )
+        except SoftTimeLimitExceeded:
+            # The cursor is only advanced after a full pass, so an early
+            # return resumes where this run stopped instead of replaying
+            # nothing or skipping unprocessed entries.
+            logger.warning(
+                "Audiobookshelf import hit the soft time limit; the sync "
+                "cursor is unchanged, so the next run resumes where this "
+                "one stopped.",
+            )
+            self.warnings.append(
+                "Import stopped partway through because it was taking too "
+                "long. Run the import again to pick up the remaining entries.",
+            )
+            return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 

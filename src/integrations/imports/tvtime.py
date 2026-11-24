@@ -12,6 +12,7 @@ import logging
 from collections import defaultdict
 from csv import DictReader
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.utils.dateparse import parse_datetime
 
 import app
@@ -116,6 +117,18 @@ class TvTimeShowImporter(TraktMetadataResolverMixin):
                 title = (row.get("series_name") or "Unknown title").strip()
                 logger.warning("Error processing TV Time entry %s: %s", title, error)
                 self.warnings.append(f"Error processing entry: {title} - {error}")
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "TV Time import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
@@ -380,6 +393,18 @@ class TvTimeMovieImporter(TraktMetadataResolverMixin):
                     error,
                 )
                 self.warnings.append(f"Error processing entry: {movie_name} - {error}")
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "TV Time movies import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error

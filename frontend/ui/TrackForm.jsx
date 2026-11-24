@@ -534,7 +534,7 @@ export function TrackForm({
 
   if (sidebar) {
     return <View nativeID={nativeID} style={[styles.shell, {
-      backgroundColor: palette.surfaceDim, maxHeight: height * 0.92 }]}>
+      backgroundColor: palette.surfaceDim, maxHeight: Math.min(height * 0.92, height - 64) }]}>
       {showHeader ? <HeaderBar title={model?.title || labels.title} subtitle={model?.subtitle}
         closeLabel={labels.close} onClose={onClose} closeRef={closeRef} palette={palette} /> : null}
       {status === 'loading' ? <FormStatus message={labels.loading} tone="loading" palette={palette} /> : null}

@@ -3,6 +3,7 @@ from collections import defaultdict
 from csv import DictReader
 from datetime import UTC, datetime
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.utils import timezone
 
@@ -86,6 +87,16 @@ class HowLongToBeatImporter:
                 self._process_first_pass(row, media_id_counts, media_id_titles)
             except app.providers.services.ProviderAPIError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "HowLongToBeat import for %s hit the time limit during first pass",
+                    self.user.username,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
@@ -98,6 +109,18 @@ class HowLongToBeatImporter:
                 self._process_second_pass(row, media_id_counts)
             except app.providers.services.ProviderAPIError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "HowLongToBeat import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error

@@ -12,6 +12,7 @@ import logging
 import re
 from http import HTTPStatus
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 
@@ -420,7 +421,20 @@ class KavitaImporter(ReadingServerImporter):
             read_at = parse_datetime(series.get("latestReadDate"))
             if cutoff and read_at and read_at < cutoff:
                 continue
-            self._import_series(series, read_at, cutoff, links, counts)
+            try:
+                self._import_series(series, read_at, cutoff, links, counts)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Kavita import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    index,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
 
     def _import_series(self, series, read_at, cutoff, links, counts):
         """Write one series' progress as a manga, book or comic issues."""
