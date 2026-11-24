@@ -678,14 +678,17 @@ def row_card_model(item, media, title, matched_title, user, request=None):
     }
 
 
-def lists_modal_spec(item, target, return_url=""):
-    """Describe the Add-to-lists form for the shared popup host."""
-    return {
+def lists_modal_spec(item, target, return_url="", url=None, label_overrides=None):
+    """Describe the Add-to-lists form for the shared popup host.
+
+    ``url`` and ``label_overrides`` let a person page reuse the same form.
+    """
+    spec = {
         "kind": "modal",
         "modal": "lists",
         "tone": TONES["lists"],
         "title": _("Add to custom lists"),
-        "url": app_tags.media_view_url("lists_modal", item),
+        "url": url or app_tags.media_view_url("lists_modal", item),
         "vals": {"return_url": return_url},
         "target": target,
         "labels": {
@@ -713,6 +716,8 @@ def lists_modal_spec(item, target, return_url=""):
             "cancel": _("Cancel"),
         },
     }
+    spec["labels"].update(label_overrides or {})
+    return spec
 
 
 TONES = {"track": "indigo", "lists": "emerald", "history": "amber", "plan": "indigo", "hide": "rose"}

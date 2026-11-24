@@ -170,7 +170,10 @@ function Adapter({ props }) {
     canViewHistory={props.canViewHistory}
     actionPalette={personActionPalette}
     onOpenSource={openExternal}
-    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined} />;
+    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined}
+    onAddToLists={props.listsModal
+      ? () => window.dispatchEvent(new CustomEvent('floppy-open-modal', { detail: props.listsModal }))
+      : undefined} />;
 }
 
 export function mountPeople(host, props) {
