@@ -4004,7 +4004,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the Django list page; the server-rendered People section is the web consumer. The web bundle builds."
+          "evidence": "Mounted on the Django list page through the people island adapter (mountPeople.jsx, kind listPeople) with the server markup as fallback; checked in the browser, see the review artifact."
         },
         "ios": {
           "status": "unverified",

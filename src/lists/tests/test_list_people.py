@@ -53,6 +53,8 @@ class ListPeopleTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
         self.assertContains(response, "Brad Pitt")
         self.assertContains(response, "data-list-person")
+        # The shared ListPeople island reads these props; the markup above is its fallback.
+        self.assertContains(response, 'id="list-people-props"')
         # People come off a list from the person page, like media; no chip here.
         self.assertNotContains(response, "Remove")
 
