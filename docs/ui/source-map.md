@@ -1381,7 +1381,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/SettingsNotificationsView.jsx`
 - `frontend/pages/SettingsPreferencesView.jsx`
 - `frontend/pages/SettingsUsersView.jsx`
-- `frontend/pages/SettingsView.jsx`
+- `frontend/pages/SettingsView.jsx` (optional `navColumnStyle`; the web adapter passes a sticky, self-scrolling menu column for #1525; native unchanged; browser verified, iOS/Android unverified)
 - `frontend/pages/StatisticsView.jsx`
 - `frontend/pages/TagsPageView.jsx`
 - `frontend/pages/UtilitiesView.jsx` (native About > Open Utilities > Copy Server URL exercised in Expo; exact connected address copied and prior clipboard restored. WEB About static-cache utilities have a different platform scope; Partial browser parity, iOS/Android unverified.)
@@ -1406,7 +1406,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
-- `frontend/settings/mountSettingsView.jsx`
+- `frontend/settings/mountSettingsView.jsx` (passes the web-only sticky menu style, #1525)
 - `frontend/ui/ArtworkImage.jsx`
 - `frontend/ui/ArtworkImage.native.jsx`
 - `frontend/ui/ArtworkImage.web.jsx`

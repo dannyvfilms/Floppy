@@ -59,11 +59,14 @@ function ServerContent({ node }) {
   return <View ref={attach} style={{ minWidth: 0 }} />;
 }
 
+const webStickyNav = { position: 'sticky', top: 80, maxHeight: 'calc(100vh - 6rem)', overflowY: 'auto', borderRadius: 8 };
+
 export function mountSettingsView(host, props) {
   const content = host.querySelector('[data-settings-page-content]');
   const Page = PAGES[props.page];
   const contentSlot = content ? <ServerContent node={content} /> : null;
-  const dispose = mountRoot(host, <SettingsView
+  // Web only: keep the long menu in view and scroll it on its own (#1525).
+  const dispose = mountRoot(host, <SettingsView navColumnStyle={webStickyNav}
     active={props.active}
     navigation={props.navigation}
     permissions={props.permissions}
