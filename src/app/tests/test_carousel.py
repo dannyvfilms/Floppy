@@ -340,6 +340,29 @@ class CarouselOverviewTests(SimpleTestCase):
         self.assertNotIn("detail-carousel-overview-logo-link", plain)
 
 
+    def test_season_title_block_marks_the_season_picker_so_a_logo_keeps_it(self):
+        # The overview CSS hides every title-block child except the ones it
+        # names. The season picker must carry the class it is exempted by.
+        html = render_to_string(
+            "app/components/detail_title_block.html",
+            {
+                "media": {
+                    "media_type": "season",
+                    "source": "tmdb",
+                    "media_id": "1",
+                    "title": "Silo",
+                    "season_header_title": "Season 2",
+                },
+                "tv": {"related": {"seasons": []}},
+                "season_number": 2,
+                "user": get_user_model()(),
+                "MediaTypes": MediaTypes,
+            },
+        )
+
+        self.assertIn('class="detail-season-switcher ', html)
+        self.assertIn('aria-label="Select season"', html)
+
     def test_fragment_renders_the_phone_hero_only_when_there_is_one(self):
         base = {"video": {"key": "trailer"}, "photos": [], "overview": None}
 

@@ -185,7 +185,7 @@ export function DetailView({
       {part !== 'sections' ? <>
         {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} onOpenTitle={onOpenTitle} actions={actionsSlot} viewport={heroViewport} /> : <>
           <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
-          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} onOpenTitle={onOpenTitle}
+          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} onOpenTitle={onOpenTitle} onOpenItem={onOpenItem}
             compact={Boolean(heroViewport) && width < 768} viewportWidth={heroViewport?.width || width} />
           {actionsSlot || <DetailActions model={model} labels={labels} palette={palette} />}
         </>}

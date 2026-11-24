@@ -8230,8 +8230,16 @@ html.light .theme-toggle-icon-moon {
     flex: none;
     width: 100%;
   }
-  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot, .detail-season-switcher) {
     display: none;
+  }
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-season-switcher {
+    position: relative;
+    z-index: 50;
+  }
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-season-switcher [aria-haspopup="listbox"] {
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
   .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
     display: block;

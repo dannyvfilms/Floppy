@@ -68,7 +68,26 @@ function Artwork({ artwork, palette, title, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>{frame}</Pressable>;
 }
 
-export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, onOpenTitle, compact = false, viewportWidth }) {
+/** A season page's "Season N" title that opens the show's other seasons. */
+function SeasonSelector({ model, colors, onOpenItem, textStyle, align = 'center' }) {
+  const [open, setOpen] = useState(false);
+  if (!model?.seasonLabel) return null;
+  return <View style={[styles.seasonSelector, { alignItems: align }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Select season"
+      accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}
+      disabled={!model.seasonOptions?.length}>
+      <Text style={textStyle}>{model.seasonLabel} {model.seasonOptions?.length ? '⌄' : ''}</Text>
+    </Pressable>
+    {open ? <View style={[styles.seasonMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {model.seasonOptions.map(season => <Pressable key={season.key} accessibilityRole="button"
+        onPress={() => { setOpen(false); onOpenItem?.(season.identity); }} style={styles.seasonOption}>
+        <Text style={{ color: colors.text }}>{season.number === 0 ? 'Specials' : `Season ${season.number}`}</Text>
+      </Pressable>)}
+    </View> : null}
+  </View>;
+}
+
+export function DetailHeader({ model, labels, palette, showArtwork = false, onPressArtwork, onOpenTitle, onOpenItem, compact = false, viewportWidth }) {
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const { width } = useWindowDimensions();
@@ -88,6 +107,8 @@ export function DetailHeader({ model, labels, palette, showArtwork = false, onPr
         </Pressable> : <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{model?.title || ''}</Text>}
         <AltTitle text={model?.altTitle} label={text.altTitle} palette={colors} />
       </View>
+      <SeasonSelector model={model} colors={colors} onOpenItem={onOpenItem} align="flex-start"
+        textStyle={[styles.subtitle, { color: colors.textSecondary }]} />
       {model?.publicView ? <View style={styles.publicBadge}>
         <Badge label={text.publicView} tone="outline"
           palette={{ outline: { color: colors.textSecondary, borderColor: colors.border, borderWidth: 1 } }} />
@@ -153,7 +174,6 @@ export function DetailHero({ model, palette, onOpenVideo }) {
 
 export function DetailMobileHero({ model, palette, onOpenItem, onOpenTitle, actions, viewport }) {
   const colors = resolvePalette(palette);
-  const [seasonsOpen, setSeasonsOpen] = useState(false);
   const { width, height } = useWindowDimensions();
   const [logoAspect, setLogoAspect] = useState(model?.artwork?.logoAspect || 0);
   const [sharpEnd, setSharpEnd] = useState(null);
@@ -180,19 +200,7 @@ export function DetailMobileHero({ model, palette, onOpenItem, onOpenTitle, acti
       })()}
       {model.activityText ? <DetailActivitySubtitle text={model.activityText} color="#fff" style={styles.mobileHeroMeta} /> : null}
       {model.mobileMeta ? <Text style={styles.mobileHeroMeta}>{model.mobileMeta}</Text> : null}
-      {model.seasonLabel ? <View style={styles.seasonSelector}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Select season"
-          accessibilityState={{ expanded: seasonsOpen }} onPress={() => setSeasonsOpen(value => !value)}
-          disabled={!model.seasonOptions?.length}>
-          <Text style={styles.mobileHeroMeta}>{model.seasonLabel} {model.seasonOptions?.length ? '⌄' : ''}</Text>
-        </Pressable>
-        {seasonsOpen ? <View style={[styles.seasonMenu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {model.seasonOptions.map(season => <Pressable key={season.key} accessibilityRole="button"
-            onPress={() => { setSeasonsOpen(false); onOpenItem?.(season.identity); }} style={styles.seasonOption}>
-            <Text style={{ color: colors.text }}>{season.number === 0 ? 'Specials' : `Season ${season.number}`}</Text>
-          </Pressable>)}
-        </View> : null}
-      </View> : null}
+      <SeasonSelector model={model} colors={colors} onOpenItem={onOpenItem} textStyle={styles.mobileHeroMeta} />
       {actions ? <View style={styles.mobileHeroActions}>{actions}</View> : <DetailActions model={model} palette={colors} />}
     </View>
   </View>;
