@@ -215,7 +215,9 @@ PostgreSQL setup, and public HTTPS are all deliberately out of scope. The
 [configuration and deployment reference](deployment.md) covers Compose by
 hand, Unraid, PostgreSQL, and reverse proxies. To run Floppy with its own
 PostgreSQL and Valkey in a single container, see
-[Floppy (Bundled)](deployment-bundled.md).
+[Floppy (Bundled)](deployment-bundled.md). The installer also offers it as
+"Built-in database server" when you choose Docker; pressing Enter keeps the
+simple default.
 
 ## If it does not finish
 

@@ -16,6 +16,10 @@ same quality gates, and is published only after they pass.
 
 ## Install
 
+Guided installer: choose Docker, then **Built-in database server** when it asks
+where Floppy should keep your library. Pressing Enter keeps the simple default
+(SQLite). The first start takes a few minutes while the database is set up.
+
 Unraid: install **Floppy (Bundled)** from `templates/floppy-bundled.xml`.
 
 Docker:

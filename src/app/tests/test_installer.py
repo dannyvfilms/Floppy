@@ -807,3 +807,53 @@ class GeneratedWrapperTests(SimpleTestCase):
         self.assertIn("from config.runtime_profile import emit_env", wrapper)
         self.assertIn("FLOPPY_START_INTERACTIVE_WORKER", wrapper)
         self.assertIn(f'exec supervisord -c "{root}/run/supervisord.conf"', wrapper)
+
+
+class BundledDatabaseChoiceTests(SimpleTestCase):
+    """The installer's built-in database option (docs/deployment-bundled.md)."""
+
+    def _render(self, root):
+        output = Path(root) / "compose.yml"
+        run_helper(
+            f'render_template "{TEMPLATE_DIR / "docker-compose.install-bundled.yml.tmpl"}" '
+            f'"{output}" "ROOT={root}" "IMAGE=ghcr.io/x/floppy:latest-bundled" '
+            f'"PROJECT=p" "ENV_FILE={root}/e" "DATA_DIR={root}/db" '
+            f'"PG_DIR={root}/pgdata" "BACKUP_DIR={root}/backups" '
+            '"BIND=127.0.0.1" "PORT=8123"',
+            root,
+        )
+        return yaml.safe_load(output.read_text(encoding="utf-8"))
+
+    def test_bundled_compose_is_one_container_with_three_mounts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            compose = self._render(temp_dir)
+        self.assertEqual(list(compose["services"]), ["floppy"])
+        service = compose["services"]["floppy"]
+        self.assertTrue(service["image"].endswith("-bundled"))
+        targets = {v.split(":")[1] for v in service["volumes"]}
+        self.assertEqual(targets, {"/floppy/db", "/floppy/pgdata", "/floppy/backups"})
+        self.assertNotIn("depends_on", service)
+
+    def test_image_gets_the_bundled_suffix_only_when_chosen(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            body = (
+                f'. "{INSTALL_DIR / "docker.sh"}"\n'
+                'DATABASE=standard; echo "$(docker_install_image)"\n'
+                'DATABASE=bundled; echo "$(docker_install_image)"'
+            )
+            standard, bundled = run_helper(body, temp_dir).split()
+        self.assertEqual(bundled, f"{standard}-bundled")
+
+    def test_choice_is_docker_only_and_defaults_to_simple(self):
+        main = (INSTALL_DIR / "main.sh").read_text(encoding="utf-8")
+        self.assertIn('ask_choice DATABASE "Database:" standard', main)
+        self.assertIn('if [ "$METHOD" = "docker" ]; then\n        step "Where should', main)
+
+    def test_bundled_env_never_sets_redis_url(self):
+        docker = (INSTALL_DIR / "docker.sh").read_text(encoding="utf-8")
+        self.assertIn('DOCKER_REDIS_LINE=""', docker)
+
+    def test_windows_installer_offers_the_same_choice(self):
+        text = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+        self.assertIn("Built-in database server", text)
+        self.assertIn('"$FloppyImage-bundled"', text)

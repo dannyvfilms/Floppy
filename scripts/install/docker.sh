@@ -71,16 +71,26 @@ _docker_install_engine_apt() {
 # installation that already exists: every future resume just keeps pulling
 # the stale tag baked into that first run. Bring only this one line forward,
 # leaving the rest of a possibly-customized file untouched.
+# The image this installation runs: the standard one, or the same release with
+# the built-in database ("-bundled" tags, docs/deployment-bundled.md).
+docker_install_image() {
+    if [ "${DATABASE:-standard}" = bundled ]; then
+        printf '%s-bundled' "$FLOPPY_IMAGE"
+    else
+        printf '%s' "$FLOPPY_IMAGE"
+    fi
+}
+
 _docker_update_image_tag() {
     local current wanted tmp
     current=$(grep -m1 '^    image: ghcr\.io/dannyvfilms/floppy:' "$COMPOSE_FILE" || true)
     [ -n "$current" ] || return 0
-    wanted="    image: $FLOPPY_IMAGE"
+    wanted="    image: $(docker_install_image)"
     [ "$current" = "$wanted" ] && return 0
     tmp="${COMPOSE_FILE}.tmp.$$"
     sed "s|^    image: ghcr\.io/dannyvfilms/floppy:.*\$|$wanted|" "$COMPOSE_FILE" >"$tmp" \
         && mv "$tmp" "$COMPOSE_FILE"
-    say "  Updated the image tag: ${current#*image: } -> $FLOPPY_IMAGE"
+    say "  Updated the image tag: ${current#*image: } -> $(docker_install_image)"
 }
 
 install_docker() {
@@ -91,6 +101,19 @@ install_docker() {
 
     step "Writing the installation's configuration"
 
+    DATABASE=${DATABASE:-standard}
+    PG_DIR="$FLOPPY_ROOT/pgdata"
+    DOCKER_REDIS_LINE="REDIS_URL=redis://redis:6379
+"
+    COMPOSE_TEMPLATE="$TEMPLATE_DIR/docker-compose.install.yml.tmpl"
+    if [ "$DATABASE" = bundled ]; then
+        # The image carries its own Valkey. REDIS_URL must stay unset, or the
+        # embedded one is switched off.
+        DOCKER_REDIS_LINE=""
+        COMPOSE_TEMPLATE="$TEMPLATE_DIR/docker-compose.install-bundled.yml.tmpl"
+        mkdir -p "$PG_DIR"
+    fi
+
     if [ -f "$ENV_FILE" ]; then
         note "Keeping the existing configuration at $ENV_FILE."
     else
@@ -100,8 +123,7 @@ install_docker() {
 # Floppy installation settings. Edit, then run:
 #   docker compose -f "$COMPOSE_FILE" up -d
 TZ=$FLOPPY_TZ
-REDIS_URL=redis://redis:6379
-DEBUG=False
+${DOCKER_REDIS_LINE}DEBUG=False
 ADMIN_ENABLED=False
 DEMO_ACCOUNT_ENABLED=False
 REGISTRATION=True
@@ -115,9 +137,10 @@ EOF
         note "Keeping the existing $COMPOSE_FILE."
         _docker_update_image_tag
     else
-        render_template "$TEMPLATE_DIR/docker-compose.install.yml.tmpl" "$COMPOSE_FILE" \
+        render_template "$COMPOSE_TEMPLATE" "$COMPOSE_FILE" \
             "ROOT=$FLOPPY_ROOT" \
-            "IMAGE=$FLOPPY_IMAGE" \
+            "IMAGE=$(docker_install_image)" \
+            "PG_DIR=$PG_DIR" \
             "ENV_FILE=$ENV_FILE" \
             "DATA_DIR=$DATA_DIR" \
             "BACKUP_DIR=$BACKUP_DIR" \
@@ -131,7 +154,7 @@ EOF
     compose config >/dev/null || fail "The generated Compose file is not valid. It is at $COMPOSE_FILE."
 
     step "Downloading Floppy's image"
-    compose pull || fail "Could not download $FLOPPY_IMAGE. Check the network connection and try again."
+    compose pull || fail "Could not download $(docker_install_image). Check the network connection and try again."
 
     step "Starting Floppy"
     compose up -d || fail "Floppy could not be started. Run 'docker compose -f \"$COMPOSE_FILE\" logs' to see why."

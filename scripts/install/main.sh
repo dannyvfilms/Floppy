@@ -66,6 +66,8 @@ if [ -n "$EXISTING_METHOD" ]; then
     PORT=$(state_get PORT)
     ACCESS=$(state_get ACCESS)
     FLOPPY_TZ=$(state_get TZ)
+    DATABASE=$(state_get DATABASE || true)
+    DATABASE=${DATABASE:-standard}
     set_bind_address
     load_method "$METHOD"
 
@@ -73,6 +75,7 @@ if [ -n "$EXISTING_METHOD" ]; then
     say "  Method:   $METHOD"
     say "  Port:     $PORT"
     say "  Access:   $ACCESS"
+    [ "$METHOD" = docker ] && say "  Database: $DATABASE"
     note "The installation method of an existing installation is never changed."
 
     ask_choice RESUME_ACTION "What would you like to do?" start \
@@ -189,6 +192,20 @@ Fix that, then run this installer again."
 
     set_bind_address
 
+    # The choice is only offered for Docker: the built-in database is a Docker
+    # image. Plain words on purpose; most people should just press Enter.
+    DATABASE=standard
+    if [ "$METHOD" = "docker" ]; then
+        step "Where should Floppy keep your library?"
+        say "Floppy stores your movies, shows, history and ratings in a database."
+        say "Most people should press Enter and keep the simple one."
+        ask_choice DATABASE "Database:" standard \
+            "standard|Simple - recommended|One small file on this computer. Light on memory and easy to copy as a backup. Right for one person or a family." \
+            "bundled|Built-in database server|Better for a very large library or many people using it at once, and it saves a daily backup for you. Uses about 300 MB more memory and takes a few minutes to start the first time."
+        say ""
+        note "You cannot switch later without exporting your data and importing it again."
+    fi
+
     # -----------------------------------------------------------------------
     # 3. Say what will happen before anything on this computer changes
     # -----------------------------------------------------------------------
@@ -202,6 +219,13 @@ Fix that, then run this installer again."
     say "  Location:   $FLOPPY_ROOT"
     say "  Address:    http://${BIND_ADDRESS}:${PORT}"
     say "  Time zone:  $FLOPPY_TZ"
+    if [ "$METHOD" = "docker" ]; then
+        if [ "$DATABASE" = bundled ]; then
+            say "  Database:   built-in database server"
+        else
+            say "  Database:   simple (one file)"
+        fi
+    fi
     say ""
     say "Every change to this computer - packages, services, administrator access -"
     say "is listed and confirmed before it happens. Nothing is installed silently."
@@ -214,7 +238,14 @@ Fix that, then run this installer again."
     state_set ACCESS "$ACCESS"
     state_set PORT "$PORT"
     state_set TZ "$FLOPPY_TZ"
+    state_set DATABASE "$DATABASE"
     state_set BRANCH "${FLOPPY_REPO_BRANCH:-release}"
+fi
+
+# The built-in database initialises and migrates on first start; give it longer
+# unless the operator set their own limit.
+if [ "$METHOD" = docker ] && [ "$DATABASE" = bundled ] && [ "$FLOPPY_READY_TIMEOUT" = 300 ]; then
+    FLOPPY_READY_TIMEOUT=900
 fi
 
 # ---------------------------------------------------------------------------
