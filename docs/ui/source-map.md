@@ -1640,6 +1640,8 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+
+- Track dialog short-window fix (issue #2134): `TrackForm.jsx` caps the sidebar shell height to `min(92% of the window, window - 4rem)` and `TrackFormTabs.jsx` caps the 576 px General-pane floor to the space under the header, so the footer is never clipped.
 - 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
 - 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
 - 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
