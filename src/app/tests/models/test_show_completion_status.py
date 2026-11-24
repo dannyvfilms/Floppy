@@ -69,6 +69,71 @@ class ShowCompletionStatusTests(TestCase):
                 status=Status.COMPLETED.value,
             )
     @patch("app.models.providers.services.get_media_metadata")
+    def test_unwatched_specials_do_not_block_ended_show(self, mock_metadata):
+        """An ended show completes when every main season is watched, Specials or not (#1949)."""
+        mock_metadata.return_value = {
+            "title": "Alien: Earth",
+            "details": {"status": "Ended"},
+        }
+        specials_item = Item.objects.create(
+            media_id="1001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Alien: Earth Specials",
+            season_number=0,
+        )
+        Season.objects.create(
+            item=specials_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.PLANNING.value,
+        )
+        self.season.status = Status.COMPLETED.value
+        self.season.save()
+
+        self.tv._handle_completed_season(completed_season_number=1)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_partly_watched_specials_do_not_reopen_completed_show(self, mock_metadata):
+        """Syncing a half-watched Specials season leaves a completed show completed."""
+        mock_metadata.return_value = {"title": "Alien: Earth", "details": {}}
+        specials_item = Item.objects.create(
+            media_id="1001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Alien: Earth Specials",
+            season_number=0,
+        )
+        specials = Season.objects.create(
+            item=specials_item,
+            user=self.user,
+            related_tv=self.tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        ep_item = Item.objects.create(
+            media_id="1001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Special 1",
+            season_number=0,
+            episode_number=1,
+        )
+        Episode.objects.create(
+            item=ep_item,
+            related_season=specials,
+            end_date=timezone.now(),
+            status=Status.COMPLETED.value,
+        )
+        self.tv.status = Status.COMPLETED.value
+        self.tv.save()
+
+        specials._sync_status_after_episode_change(max_progress=5)
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
     def test_handle_completed_season_keeps_returning_series_in_progress(
         self, mock_metadata
     ):
