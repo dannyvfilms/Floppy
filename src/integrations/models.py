@@ -1791,6 +1791,14 @@ class NetflixPendingRow(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
     )
+    import_run = models.ForeignKey(
+        "ImportRun",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="The import run that parked this row, if any.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
 

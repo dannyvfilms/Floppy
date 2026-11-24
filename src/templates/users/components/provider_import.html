@@ -2846,7 +2846,7 @@
 {% endif %}
         <div class="mt-3 text-sm text-[var(--color-text-muted)]">
           {% if netflix_pending_count %}
-            <a href="{% url 'netflix_pending' %}" class="text-indigo-400 hover:text-indigo-300 hover:underline">
+            <a href="{% url 'netflix_pending' %}" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:underline">
               {% blocktranslate count counter=netflix_pending_count %}{{ counter }} row from your Netflix import still needs review – open the review page{% plural %}{{ counter }} rows from your Netflix import still need review – open the review page{% endblocktranslate %}
             </a>
           {% else %}

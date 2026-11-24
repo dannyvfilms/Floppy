@@ -15,6 +15,7 @@ import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.http import (
@@ -1759,6 +1760,9 @@ def import_netflix(request):
     return _integration_redirect(request, connected_slug="netflix")
 
 
+NETFLIX_REVIEW_PAGE_SIZE = 100
+
+
 def netflix_pending(request):
     """List unresolved Netflix viewing-history rows, with an inline search.
 
@@ -1767,6 +1771,9 @@ def netflix_pending(request):
     fallback and the island share the same search: ``?q=<title>&type=<type>``
     re-renders that row's results server-side, and adding ``format=json``
     returns the same results as JSON for the island.
+
+    The list is filtered by ``?filter=<title>`` and paged (100 rows) via
+    ``?page=N``; both the fallback and the island render one page at a time.
     """
     rows = (
         NetflixPendingRow.objects.filter(user=request.user)
@@ -1776,6 +1783,17 @@ def netflix_pending(request):
     show_all = request.GET.get("show") == "all"
     if not show_all:
         rows = rows.filter(status=NetflixPendingRow.Status.PENDING.value)
+    title_filter = (request.GET.get("filter") or "").strip()
+    if title_filter:
+        rows = rows.filter(title__icontains=title_filter)
+
+    try:
+        page_number = int(request.GET.get("page") or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    paginator = Paginator(rows, NETFLIX_REVIEW_PAGE_SIZE)
+    page_number = max(1, min(page_number, max(1, paginator.num_pages)))
+    page_obj = paginator.page(page_number)
 
     query = (request.GET.get("q") or "").strip()
     media_type = request.GET.get("type") or MediaTypes.MOVIE.value
@@ -1829,7 +1847,7 @@ def netflix_pending(request):
         }
 
     review_props = None
-    if rows:
+    if page_obj.object_list:
         review_props = {
             "csrf": get_token(request),
             "model": {
@@ -1861,7 +1879,7 @@ def netflix_pending(request):
                             "netflix_pending_dismiss", args=[row.id]
                         ),
                     }
-                    for row in rows
+                    for row in page_obj.object_list
                 ],
             },
             "labels": {
@@ -1892,9 +1910,25 @@ def netflix_pending(request):
     return render(
         request,
         "integrations/netflix_pending.html",
-        {"rows": rows, "show_all": show_all, "search": search,
+        {"rows": page_obj.object_list, "page_obj": page_obj,
+         "title_filter": title_filter, "show_all": show_all, "search": search,
          "review_props": review_props},
     )
+
+
+def _netflix_review_return(request):
+    """Redirect back to the review list, keeping the viewer's tab, filter, page.
+
+    The per-row search params (``q``, ``search_row``, ``format``) are not
+    list state, so they are dropped on the way back.
+    """
+    params = request.GET.copy()
+    for key in ("q", "search_row", "format"):
+        params.pop(key, None)
+    url = reverse("netflix_pending")
+    if params:
+        url = f"{url}?{params.urlencode()}"
+    return redirect(url)
 
 
 @require_POST
@@ -1911,7 +1945,7 @@ def netflix_pending_resolve(request, row_id):
             request,
             "This row has no readable date, so it can't be recorded.",
         )
-        return redirect(reverse("netflix_pending"))
+        return _netflix_review_return(request)
     watched_at = datetime(
         row.watched_at.year,
         row.watched_at.month,
@@ -1924,7 +1958,7 @@ def netflix_pending_resolve(request, row_id):
     tmdb_id = (request.POST.get("tmdb_id") or "").strip()
     if not tmdb_id:
         messages.error(request, "Choose a title to record.")
-        return redirect(reverse("netflix_pending"))
+        return _netflix_review_return(request)
     season_number = None
     episode_number = None
     if media_type == MediaTypes.TV.value:
@@ -1938,7 +1972,9 @@ def netflix_pending_resolve(request, row_id):
             else:
                 episode_number = value or None
 
-    resolver = NetflixResolver(request.user)
+    # Plays recorded here belong to the import that parked the row, so an
+    # undo of that run removes them too.
+    resolver = NetflixResolver(request.user, import_run_id=row.import_run_id)
     item, error = resolver.record_play(
         row.title,
         watched_at,
@@ -1949,7 +1985,7 @@ def netflix_pending_resolve(request, row_id):
     )
     if error:
         messages.error(request, error)
-        return redirect(reverse("netflix_pending"))
+        return _netflix_review_return(request)
     row.status = NetflixPendingRow.Status.RESOLVED.value
     row.media_type = media_type
     row.season_number = season_number
@@ -1958,7 +1994,7 @@ def netflix_pending_resolve(request, row_id):
     row.resolved_at = timezone.now()
     row.save()
     messages.success(request, f"{item.title} recorded.")
-    return redirect(reverse("netflix_pending"))
+    return _netflix_review_return(request)
 
 
 @require_POST
@@ -1974,7 +2010,7 @@ def netflix_pending_dismiss(request, row_id):
     row.resolved_at = timezone.now()
     row.save()
     messages.success(request, "Row dismissed.")
-    return redirect(reverse("netflix_pending"))
+    return _netflix_review_return(request)
 
 
 @require_POST

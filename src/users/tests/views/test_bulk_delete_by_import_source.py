@@ -6,14 +6,17 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import (
+    TV,
     Album,
     AlbumTracker,
     Artist,
     ArtistTracker,
+    Episode,
     Item,
     MediaTypes,
     Movie,
     Music,
+    Season,
     Sources,
     Status,
 )
@@ -308,3 +311,65 @@ class BulkDeleteByImportSourceTests(TestCase):
         self.assertTrue(ArtistTracker.objects.filter(id=tracker.id).exists())
         message = str(next(iter(get_messages(response.wsgi_request))))
         self.assertIn("Cancel the running import", message)
+
+    def test_netflix_rows_are_listed_and_tv_delete_cascades_to_plays(self):
+        """Tagged Netflix rows appear under their source, and deleting the
+        show row cascades to its episode plays -- the Data-Management
+        equivalent of the per-run undo.
+        """
+        from users.views import _import_source_media_summary
+
+        run = self._finished_run(self.user, "netflix")
+        item = Item.objects.create(
+            media_id="netflix-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Some Show",
+        )
+        tv = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            import_run=run,
+        )
+        season_item = Item.objects.create(
+            media_id="netflix-show-s1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Some Show Season 1",
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+            import_run=run,
+        )
+        episode_item = Item.objects.create(
+            media_id="netflix-show-e1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Some Show Episode 1",
+        )
+        episode = Episode.objects.create(
+            item=episode_item, related_season=season
+        )
+
+        summary = _import_source_media_summary(self.user)
+        sources_by_type = {row["media_type"]: row["source"] for row in summary}
+        self.assertEqual(sources_by_type.get("tv"), "netflix")
+        self.assertEqual(sources_by_type.get("season"), "netflix")
+
+        response = self.client.post(
+            reverse(
+                "bulk_delete_by_import_source",
+                args=[MediaTypes.TV.value, "netflix"],
+            ),
+        )
+
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
+        self.assertFalse(TV.objects.filter(id=tv.id).exists())
+        self.assertFalse(Episode.objects.filter(id=episode.id).exists())

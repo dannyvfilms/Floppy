@@ -1150,7 +1150,6 @@ PR #1878: The browser file-import mount now supplies a DOM chooser to the univer
 - `src/templates/users/import_data.html`
 - `src/templates/users/components/file_import_island.html`
 - `src/templates/users/components/settings_form_island.html`
-- `src/templates/integrations/netflix_pending.html` (Netflix import's standalone review page for rows the importer could not match, see NETFLIX-REVIEW)
 
 YouTube Takeout accepts `.tgz`/`.tar.gz` in the shared `ProviderFileImportView.jsx` upload model and the retained Django fallback. A focused Chromium browser check verifies the React-mounted provider picker accept list and description; React owns the provider-page import card, while the server fallback serves legacy import surfaces. Retire the fallback when those surfaces are removed. iOS/Android remain unverified.
 
@@ -1361,9 +1360,9 @@ Status: `Partial / coexisting`
 
 - `frontend/pages/NetflixReviewView.jsx` (shared, props-only row list: per-row TMDB search, S/E inputs, resolve and dismiss actions; RN primitives plus shared `Button`/`TextField`/`SelectField`)
 - `frontend/pages/mountNetflixReview.jsx` (web adapter: JSON search fetch, form POSTs through `transport.web.js`)
-- `src/templates/integrations/netflix_pending.html` (island host `data-netflix-review-root` + `netflix-review-props`; server-rendered rows stay the no-JavaScript fallback; `?show=all` keeps resolved/dismissed history)
-- `src/integrations/views.py` (`netflix_pending` incl. the `?format=json` search branch and `review_props`, `netflix_pending_resolve`, `netflix_pending_dismiss`) and `src/integrations/imports/netflix.py` (`NetflixResolver` shared with the importer)
-- `frontend/pages/registry.js` (`netflixReview` page, `legacy`: no native screen yet)
+- `src/templates/integrations/netflix_pending.html` (island host `data-netflix-review-root` + `netflix-review-props`; server-rendered rows stay the no-JavaScript fallback; `?show=all` keeps resolved/dismissed history; `?filter=` title filter and `?page=` 100-row pagination are server chrome around the island, with the per-row search form carrying them as hidden inputs)
+- `src/integrations/views.py` (`netflix_pending` incl. the `?format=json` search branch, `?filter=`/`?page=` and `review_props`, `netflix_pending_resolve` — stamps the recorded play with the row's `import_run` —, `netflix_pending_dismiss`, `_netflix_review_return`) and `src/integrations/imports/netflix.py` (`NetflixResolver` shared with the importer, stamping new rows with the ambient `ImportRun`)
+- `src/users/views.py` (`rollback_import_run`: the Netflix branch deletes the run's tagged `Episode` rows and `NetflixPendingRow`s; Data Management's `bulk_delete_by_import_source` works from the same stamps)
 
 ## INTEGRATION-PANELS
 
@@ -1432,7 +1431,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/StatisticsView.jsx`
 - `frontend/pages/TagsPageView.jsx`
 - `frontend/pages/UtilitiesView.jsx` (native About > Open Utilities > Copy Server URL exercised in Expo; exact connected address copied and prior clipboard restored. WEB About static-cache utilities have a different platform scope; Partial browser parity, iOS/Android unverified.)
-- `frontend/pages/registry.js`
+- `frontend/pages/registry.js` (page registry; `netflixReview` is registered `legacy`: no native screen yet)
 - `frontend/providers/AccountSettings.jsx`
 - `frontend/providers/ProviderContext.jsx`
 - `frontend/providers/ProviderSettingsView.jsx`

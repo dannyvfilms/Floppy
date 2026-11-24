@@ -21,15 +21,54 @@
 
   {% if rows %}
   <div class="flex items-center gap-3 text-sm">
-    <a href="{% url 'netflix_pending' %}"
+    <a href="{% url 'netflix_pending' %}{% if title_filter %}?filter={{ title_filter|urlencode }}{% endif %}"
        class="{% if not show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
       {% translate "Pending" %}
     </a>
     <span class="text-[var(--color-text-muted)]">·</span>
-    <a href="{% url 'netflix_pending' %}?show=all"
+    <a href="{% url 'netflix_pending' %}?show=all{% if title_filter %}&filter={{ title_filter|urlencode }}{% endif %}"
        class="{% if show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
       {% translate "All" %}
     </a>
+    <span class="text-[var(--color-text-muted)]">·</span>
+    <span class="text-[var(--color-text-muted)]">
+      {% blocktranslate count counter=page_obj.paginator.count %}{{ counter }} row{% plural %}{{ counter }} rows{% endblocktranslate %}
+    </span>
+  </div>
+
+  {# Filter + pagination are server-side chrome (like the tabs above): a GET
+     form and plain links, identical for the no-JS fallback and the React
+     island, which renders the current page's cards. #}
+  <form method="get" action="{% url 'netflix_pending' %}" class="flex items-center gap-2">
+    {% if show_all %}<input type="hidden" name="show" value="all">{% endif %}
+    <input type="search" name="filter" value="{{ title_filter }}"
+           aria-label="{% translate 'Filter by title' %}"
+           placeholder="{% translate 'Filter by title' %}"
+           class="h-10 flex-1 min-w-[12rem] max-w-sm rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]">
+    <button type="submit"
+            class="h-10 px-4 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+      {% translate "Filter" %}
+    </button>
+    {% if title_filter %}
+    <a href="{% url 'netflix_pending' %}{% if show_all %}?show=all{% endif %}"
+       class="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+      {% translate "Clear" %}
+    </a>
+    {% endif %}
+  </form>
+
+  <div class="flex items-center justify-between text-sm">
+    {% if page_obj.has_previous %}
+    <a href="{% url 'netflix_pending' %}?page={{ page_obj.previous_page_number }}{% if title_filter %}&filter={{ title_filter|urlencode }}{% endif %}{% if show_all %}&show=all{% endif %}"
+       class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]">&larr; {% translate "Previous" %}</a>
+    {% else %}<span class="text-[var(--color-text-muted)]">&larr; {% translate "Previous" %}</span>{% endif %}
+    <span class="text-[var(--color-text-muted)]">
+      {% blocktranslate with number=page_obj.number pages=page_obj.paginator.num_pages %}Page {{ number }} of {{ pages }}{% endblocktranslate %}
+    </span>
+    {% if page_obj.has_next %}
+    <a href="{% url 'netflix_pending' %}?page={{ page_obj.next_page_number }}{% if title_filter %}&filter={{ title_filter|urlencode }}{% endif %}{% if show_all %}&show=all{% endif %}"
+       class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]">{% translate "Next" %} &rarr;</a>
+    {% else %}<span class="text-[var(--color-text-muted)]">{% translate "Next" %} &rarr;</span>{% endif %}
   </div>
 
   {% if review_props %}{{ review_props|json_script:"netflix-review-props" }}{% endif %}
@@ -48,6 +87,9 @@
         {% if row.status == 'pending' %}
           <form method="get" class="flex flex-wrap gap-2 mb-3">
             <input type="hidden" name="search_row" value="{{ row.id }}">
+            {% if title_filter %}<input type="hidden" name="filter" value="{{ title_filter }}">{% endif %}
+            {% if show_all %}<input type="hidden" name="show" value="all">{% endif %}
+            {% if page_obj.number > 1 %}<input type="hidden" name="page" value="{{ page_obj.number }}">{% endif %}
             <input type="text" name="q" value="{{ search.query|default:row.title }}"
                    aria-label="{% translate 'Title to search' %}"
                    class="h-10 flex-1 min-w-[12rem] rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]">
@@ -139,7 +181,13 @@
   </div>
   {% else %}
   <p class="text-[var(--color-text-muted)]">
-    {% translate "Nothing to review – every imported row was matched automatically." %}
+    {% if title_filter %}
+      {% blocktranslate with title=title_filter %}No rows match “{{ title }}”.{% endblocktranslate %}
+      <a href="{% url 'netflix_pending' %}{% if show_all %}?show=all{% endif %}"
+         class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]">{% translate "Clear filter" %}</a>
+    {% else %}
+      {% translate "Nothing to review – every imported row was matched automatically." %}
+    {% endif %}
   </p>
   {% endif %}
 </div>

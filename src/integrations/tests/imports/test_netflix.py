@@ -9,9 +9,10 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
+from integrations import import_progress
 from integrations.imports import netflix
 from integrations.imports.helpers import MediaImportError
-from integrations.models import NetflixPendingRow
+from integrations.models import ImportRun, NetflixPendingRow
 
 
 def _csv(*lines):
@@ -333,16 +334,16 @@ class DateTests(TestCase):
         self.assertEqual(netflix._detect_date_layout(["10/7/18"]), "mdy")
 
     def test_parse_us_style(self):
-        parsed = netflix._parse_date("11/20/26", "mdy")
+        parsed = netflix._parse_netflix_date("11/20/26", "mdy")
         self.assertEqual(parsed.date(), date(2026, 11, 20))
 
     def test_parse_german_style(self):
-        parsed = netflix._parse_date("31/12/24", "dmy")
+        parsed = netflix._parse_netflix_date("31/12/24", "dmy")
         self.assertEqual(parsed.date(), date(2024, 12, 31))
 
     def test_unparseable_returns_none(self):
-        self.assertIsNone(netflix._parse_date("garbage", "mdy"))
-        self.assertIsNone(netflix._parse_date("13/45/26", "mdy"))
+        self.assertIsNone(netflix._parse_netflix_date("garbage", "mdy"))
+        self.assertIsNone(netflix._parse_netflix_date("13/45/26", "mdy"))
 
 
 class NetflixImporterTests(TestCase):
@@ -698,6 +699,105 @@ class NetflixImporterTests(TestCase):
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
 
 
+class ImportRunProvenanceTests(TestCase):
+    """Rows an import run writes are tagged with it, so an undo can remove
+    exactly them (and only them).
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+        self.run = ImportRun.objects.create(
+            user=self.user,
+            source="netflix",
+            status=ImportRun.Status.COMPLETED,
+        )
+
+    def _run_with(self, csv_bytes):
+        with import_progress.tracking(None, self.run.id):
+            return netflix.NetflixImporter(
+                BytesIO(csv_bytes), self.user, "new"
+            ).import_data()
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_created_movie_is_tagged_with_the_run(self, mock_meta, mock_search):
+        mock_search.return_value = {
+            "results": [{"media_id": 555, "title": "Arrival", "year": 2016}]
+        }
+        mock_meta.return_value = {"title": "Arrival", "image": "m.jpg"}
+
+        self._run_with(_csv("Title,Date", "Arrival,11/20/26"))
+
+        movie = Movie.objects.get(user=self.user)
+        self.assertEqual(movie.import_run_id, self.run.id)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_created_show_rows_are_tagged_with_the_run(
+        self, mock_meta, mock_search
+    ):
+        mock_search.return_value = {
+            "results": [{"media_id": 111, "title": "Weeds", "year": 2019}]
+        }
+        mock_meta.side_effect = [
+            {"title": "Weeds", "image": "t.jpg"},
+            {
+                "title": "Season 8",
+                "image": "s.jpg",
+                "max_progress": 6,
+                "episodes": [{"episode_number": 5, "title": "E5"}],
+            },
+        ]
+
+        self._run_with(_csv("Title,Date", "Weeds: Season 8: Episode 5,10/7/18"))
+
+        self.assertEqual(
+            TV.objects.get(user=self.user).import_run_id, self.run.id
+        )
+        self.assertEqual(
+            Season.objects.get(user=self.user).import_run_id, self.run.id
+        )
+        self.assertEqual(Episode.objects.get().import_run_id, self.run.id)
+
+    def test_parked_row_is_tagged_with_the_run(self):
+        self._run_with(_csv("Title,Date", "Unknown Show,not-a-date"))
+
+        row = NetflixPendingRow.objects.get()
+        self.assertEqual(row.import_run_id, self.run.id)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_reimport_does_not_retag_existing_rows(self, mock_meta, mock_search):
+        """Rows written before this run keep their own provenance."""
+        mock_search.return_value = {
+            "results": [{"media_id": 555, "title": "Arrival", "year": 2016}]
+        }
+        mock_meta.return_value = {"title": "Arrival", "image": "m.jpg"}
+        _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+        _run(_csv("Title,Date", "No Such Show,not-a-date"), self.user)
+        self._run_with(_csv("Title,Date", "Arrival,11/20/26"))
+        self._run_with(_csv("Title,Date", "No Such Show,not-a-date"))
+
+        self.assertIsNone(Movie.objects.get(user=self.user).import_run_id)
+        self.assertIsNone(NetflixPendingRow.objects.get().import_run_id)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_import_outside_a_run_leaves_rows_untagged(
+        self, mock_meta, mock_search
+    ):
+        mock_search.return_value = {
+            "results": [{"media_id": 555, "title": "Arrival", "year": 2016}]
+        }
+        mock_meta.return_value = {"title": "Arrival", "image": "m.jpg"}
+
+        _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+
+        self.assertIsNone(Movie.objects.get(user=self.user).import_run_id)
+
+
 class NetflixPendingViewTests(TestCase):
     """The interactive review page."""
 
@@ -778,6 +878,56 @@ class NetflixPendingViewTests(TestCase):
             response, 'data-props-id="netflix-review-props"'
         )
 
+    def test_review_page_paginates_hundred_per_page(self):
+        for i in range(150):
+            self._row(title=f"Show {i:03d}: Episode {i}")
+
+        response = self.client.get(reverse("netflix_pending"))
+        self.assertEqual(response.context["page_obj"].paginator.num_pages, 2)
+        self.assertEqual(len(response.context["rows"]), 100)
+        # The island only ever receives the current page.
+        self.assertEqual(
+            len(response.context["review_props"]["model"]["rows"]), 100
+        )
+
+        response = self.client.get(reverse("netflix_pending") + "?page=2")
+        self.assertEqual(len(response.context["rows"]), 50)
+
+    def test_review_page_filter_narrows_and_tabs_keep_it(self):
+        self._row(title="Alpha Show")
+        self._row(title="Beta Show")
+
+        response = self.client.get(
+            reverse("netflix_pending"), {"filter": "alpha"}
+        )
+        self.assertEqual(len(response.context["rows"]), 1)
+        # The Pending/All tabs and the pagination links carry the filter.
+        self.assertContains(response, "filter=alpha")
+
+        response = self.client.get(
+            reverse("netflix_pending") + "?show=all&filter=alpha"
+        )
+        self.assertEqual(len(response.context["rows"]), 1)
+
+    def test_page_beyond_the_end_falls_back_to_the_last_page(self):
+        self._row()
+
+        response = self.client.get(reverse("netflix_pending") + "?page=99")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["rows"]), 1)
+
+    def test_empty_filter_result_offers_a_reset(self):
+        self._row(title="Alpha Show")
+
+        response = self.client.get(
+            reverse("netflix_pending"), {"filter": "no-such-title"}
+        )
+
+        self.assertEqual(len(response.context["rows"]), 0)
+        self.assertContains(response, "No rows match")
+        self.assertContains(response, "Clear filter")
+
     @patch.object(
         netflix.NetflixResolver,
         "_get_metadata",
@@ -836,6 +986,72 @@ class NetflixPendingViewTests(TestCase):
         self.client.post(reverse("netflix_pending_dismiss", args=[row.id]))
         row.refresh_from_db()
         self.assertEqual(row.status, NetflixPendingRow.Status.DISMISSED.value)
+
+    @patch.object(
+        netflix.NetflixResolver,
+        "_get_metadata",
+        return_value={"title": "Arrival", "image": "m.jpg"},
+    )
+    def test_resolve_keeps_filter_and_page(self, mock_meta):
+        row = self._row(title="Alpha Show")
+        response = self.client.post(
+            reverse("netflix_pending_resolve", args=[row.id])
+            + "?show=all&filter=alpha&page=2",
+            {
+                "media_type": "movie",
+                "tmdb_id": "555",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["Location"]
+        self.assertIn("filter=alpha", location)
+        self.assertIn("page=2", location)
+        self.assertIn("show=all", location)
+        self.assertNotIn("q=", location)
+
+    def test_dismiss_keeps_filter_and_page(self):
+        row = self._row(title="Alpha Show")
+        response = self.client.post(
+            reverse("netflix_pending_dismiss", args=[row.id])
+            + "?filter=alpha&page=2",
+        )
+        self.assertEqual(response.status_code, 302)
+        location = response.headers["Location"]
+        self.assertIn("filter=alpha", location)
+        self.assertIn("page=2", location)
+
+    @patch.object(
+        netflix.NetflixResolver,
+        "_get_metadata",
+        side_effect=[
+            {"title": "Weeds", "image": "t.jpg"},
+            {
+                "title": "Season 8",
+                "image": "s.jpg",
+                "max_progress": 6,
+                "episodes": [{"episode_number": 5, "title": "E5"}],
+            },
+        ],
+    )
+    def test_resolve_stamps_the_play_with_the_rows_run(self, mock_meta):
+        """A play recorded on the review page belongs to the import that
+        parked the row, so rolling that run back removes it.
+        """
+        run = ImportRun.objects.create(
+            user=self.user, source="netflix", status=ImportRun.Status.COMPLETED
+        )
+        row = self._row(import_run=run)
+        self.client.post(
+            reverse("netflix_pending_resolve", args=[row.id]),
+            {
+                "media_type": "tv",
+                "tmdb_id": "111",
+                "season_number": "8",
+                "episode_number": "5",
+            },
+        )
+        episode = Episode.objects.get(related_season__user=self.user)
+        self.assertEqual(episode.import_run_id, run.id)
 
     def test_row_is_scoped_to_its_user(self):
         other = get_user_model().objects.create_user(

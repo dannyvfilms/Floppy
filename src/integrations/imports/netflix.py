@@ -141,7 +141,7 @@ def _detect_date_layout(dates):
     return "mdy"
 
 
-def _parse_date(raw, layout):
+def _parse_netflix_date(raw, layout):
     """Parse a ``M/D/YY`` or ``D/M/YY`` date, or None when unparseable."""
     parts = [part.strip() for part in (raw or "").split("/")]
     if len(parts) != _DATE_PARTS:
@@ -286,10 +286,16 @@ class NetflixResolver(TraktMetadataResolverMixin):
     search (the same fallback TV Time's import runs through).
     """
 
-    def __init__(self, user):
-        """Bind the resolver to a user; the mixin needs ``user`` and ``warnings``."""
+    def __init__(self, user, import_run_id=None):
+        """Bind the resolver to a user; the mixin needs ``user`` and ``warnings``.
+
+        ``import_run_id`` tags the rows a recorded play creates, so an undo
+        can remove exactly what one import run (or its review resolutions)
+        wrote.
+        """
         self.user = user
         self.warnings = []
+        self.import_run_id = import_run_id
 
     def _search_results(self, title, media_type):
         """Return page one of the provider search for a title, memoized.
@@ -586,6 +592,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
                 end_date=watched_at,
                 status=Status.COMPLETED.value,
                 progress=1,
+                import_run_id=self.import_run_id,
             )
             movie._history_date = watched_at
             movie.save()
@@ -623,6 +630,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
                 item=tv_item,
                 user=self.user,
                 status=Status.IN_PROGRESS.value,
+                import_run_id=self.import_run_id,
             )
             tv_obj.save()
 
@@ -636,6 +644,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
                 user=self.user,
                 related_tv=tv_obj,
                 status=Status.IN_PROGRESS.value,
+                import_run_id=self.import_run_id,
             )
             season_obj.save()
 
@@ -663,6 +672,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
                 item=episode_item,
                 related_season=season_obj,
                 end_date=watched_at,
+                import_run_id=self.import_run_id,
             )
             episode._history_date = watched_at
             episode.save()
@@ -678,7 +688,10 @@ class NetflixImporter(NetflixResolver):
         ``mode`` is accepted for the shared task signature; plays are
         idempotent, so nothing is ever deleted or overwritten.
         """
-        super().__init__(user)
+        # The task wrapper (imports/_media_imports.py) tracks the active
+        # ImportRun in a context var; stamping rows with it is what makes
+        # "undo this import" able to find exactly this run's writes.
+        super().__init__(user, import_run_id=import_progress.get_current_import_run_id())
         self.file = file
         self.mode = mode
         self.counts = {MediaTypes.MOVIE.value: 0, MediaTypes.TV.value: 0}
@@ -733,7 +746,7 @@ class NetflixImporter(NetflixResolver):
             self.skipped_count += 1
             return
         raw_date = (row.get("Date") or "").strip()
-        watched_at = _parse_date(raw_date, layout)
+        watched_at = _parse_netflix_date(raw_date, layout)
         query, media_type, season_number, episode_number = _split_title(title)
 
         # A broken date cannot be recorded; park it for the review page.
@@ -797,6 +810,7 @@ class NetflixImporter(NetflixResolver):
                 "media_type": media_type,
                 "season_number": season_number,
                 "episode_number": episode_number,
+                "import_run_id": self.import_run_id,
             },
         )
 

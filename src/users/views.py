@@ -4156,12 +4156,41 @@ def rollback_import_run(request, run_id):
     total_deleted += music_result["deleted"]
     total_reverted = music_result["reverted"]
 
-    if total_deleted or total_reverted:
+    # Netflix records episode plays (Episode is not a Media row) and parks
+    # unresolved rows; undo both for this run. The run's TV/Season/Movie rows
+    # were already deleted above, cascading through the shows it created, so
+    # only plays under pre-existing shows are left.
+    episode_count = 0
+    pending_count = 0
+    if run.source == "netflix":
+        from app.models import Episode
+        from integrations.models import NetflixPendingRow
+
+        episodes = Episode.objects.filter(
+            related_season__user=request.user, import_run=run
+        )
+        item_ids = list(episodes.values_list("item_id", flat=True))
+        with bulk_media_delete(request.user, "episode", item_ids):
+            episode_count, _ = episodes.delete()
+        pending_count, _ = NetflixPendingRow.objects.filter(
+            user=request.user, import_run=run
+        ).delete()
+
+    if (
+        total_deleted
+        or total_reverted
+        or episode_count
+        or pending_count
+    ):
         parts = []
         if total_deleted:
             parts.append(f"removed {total_deleted} item(s)")
         if total_reverted:
             parts.append(f"reverted {total_reverted} play(s)")
+        if episode_count:
+            parts.append(f"removed {episode_count} episode play(s)")
+        if pending_count:
+            parts.append(f"removed {pending_count} pending row(s)")
         messages.success(request, f"Undo complete: {' and '.join(parts)}.")
     else:
         messages.info(request, "Nothing to remove for this import.")

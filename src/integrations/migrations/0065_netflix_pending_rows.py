@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0232_merge_20261119_2119"),
+        ("app", "0015_customlist_listitem_squashed_0021_alter_item_media_type"),
         ("integrations", "0064_sourcepage"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

@@ -137,6 +137,40 @@ ambiguous hits stay pending with the season pre-filled. English episode
 titles match TMDB's English names; localized (e.g. German) episode titles
 generally do not and land on the review page.
 
+## Provenance and undo
+
+The importer stamps every row it **creates** with the ambient
+`ImportRun` (`import_progress.tracking` threads the id, exactly like the
+shared bulk importers): new `Movie`/`TV`/`Season`/`Episode` rows via
+`import_run`, and parked `NetflixPendingRow`s the same way. Existing rows
+are never re-tagged, so re-imports keep the original provenance. Plays
+recorded later on the review page are stamped with the **row's**
+`import_run_id` (`netflix_pending_resolve` passes it to the resolver), so
+undoing a run also removes the plays its unresolved rows produced.
+
+Two undo paths, both keyed on those stamps:
+
+- **Per-run** (`rollback_import_run`, "Recent Import Runs"): the generic
+  loop deletes the run's tagged `Movie`/`TV`/`Season` rows (deleting a
+  `TV` cascades to its seasons and episodes — the same semantics the Trakt
+  rollback has since #579, so a show the run created disappears with it),
+  and a Netflix branch additionally deletes the run's tagged `Episode`
+  rows (via the `bulk_media_delete` context, so the usual post-delete
+  cleanup runs) and its `NetflixPendingRow`s. The message reports the
+  counts. `Episode` stays excluded from the generic loop for other
+  sources.
+- **All of a source** (Data Management, `bulk_delete_by_import_source`):
+  works from the same stamps — `_import_source_media_summary` lists the
+  run's movie/tv/season counts under `netflix`, and deleting them cascades
+  as above. `ImportRun` rows that are left with zero rows are swept away,
+  taking any remaining pending rows with them.
+
+Rows written before the stamping existed carry no `import_run` and are
+deliberately not back-filled: their plays are not distinguishable from
+other sources' plays, and deleting untagged rows would risk unrelated
+history. On the test deployment the DB is rebuilt and re-imported after
+the fix.
+
 ## The pending rows
 
 Rows the importer cannot resolve — no unique TMDB title match, an
@@ -159,6 +193,17 @@ movie/TV toggle), the resolve form (which posts back to the shared
 `NetflixResolver.record_play`), and a dismiss button. Resolved/dismissed
 rows stay visible under `?show=all` with their outcome; nothing is ever
 deleted. Rows are scoped to the logged-in user in every view.
+
+The list is server-paged (`?page=`, 100 rows via Django's `Paginator`)
+and globally filtered by title (`?filter=`, `title__icontains`). The
+filter input, the Prev/Next links, the row count and the Pending/All tabs
+are plain server-rendered chrome around the island — they work in the
+no-JavaScript fallback and the React island renders only the current
+page's cards (the island's props carry one page's rows). Resolve/dismiss
+redirect back through the same list, preserving `show`/`filter`/`page`
+(`_netflix_review_return`), and the per-row TMDB search form carries them
+as hidden inputs. A filter that matches nothing offers a "Clear filter"
+reset link.
 
 ## Deliberate boundaries
 
@@ -187,4 +232,13 @@ recording (including title matching and `Part`-as-season rows), the
 episode, unlabelled anthology episode, and the ambiguity cases that must
 stay pending), the pending paths, re-import idempotency, the review views
 (server search, the island's JSON search, the island props, resolve,
-dismiss, user scoping), the Celery task wiring, and the TMDB precondition.
+dismiss, user scoping, 100-row paging, the `?filter=` narrowing, and
+resolve/dismiss preserving `show`/`filter`/`page`), the import-run
+provenance (stamping of new movie/show/episode/pending rows, no re-tagging
+on re-import, and the review-page resolve stamping plays with the row's
+run), the Celery task wiring, and the TMDB precondition. The undo paths
+live in `src/users/tests/views/test_rollback_import_run.py` (the Netflix
+branch: plays under pre-existing shows, the cascade of run-created shows,
+other sources keeping episode history) and
+`src/users/tests/views/test_bulk_delete_by_import_source.py` (tagged rows
+listed under their source, TV delete cascading to episode plays).
