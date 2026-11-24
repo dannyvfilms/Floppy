@@ -175,6 +175,37 @@ def _filter_queryset_by_item_json_array_ci(
     )
 
 
+def release_year_q(year, prefix=""):
+    """Return the condition for an item released in ``year`` (or "unknown").
+
+    A season stored without its own date reads as the year of its earliest
+    dated episode, as its card already does (``release_years.py``), so the
+    filter matches what the card shows. ``prefix`` is ``"item__"`` on tracker rows.
+    """
+    dated = Q(**{f"{prefix}release_datetime__isnull": False})
+    season = Q(**{f"{prefix}media_type": MediaTypes.SEASON.value})
+
+    def episodes(**lookups):
+        return Item.objects.filter(
+            media_type=MediaTypes.EPISODE.value,
+            media_id=OuterRef(f"{prefix}media_id"),
+            source=OuterRef(f"{prefix}source"),
+            season_number=OuterRef(f"{prefix}season_number"),
+            **lookups,
+        )
+
+    undated_season = season & ~dated
+    if year == "unknown":
+        return ~dated & ~(
+            undated_season & Exists(episodes(release_datetime__isnull=False))
+        )
+    return Q(**{f"{prefix}release_datetime__year": year}) | (
+        undated_season
+        & Exists(episodes(release_datetime__year=year))
+        & ~Exists(episodes(release_datetime__year__lt=year))
+    )
+
+
 def item_ids_with_json_array_value_ci(item_json_field: str, normalized_target: str):
     """Return an ``Item`` id subquery for a case-insensitive JSON-array match.
 
@@ -481,10 +512,10 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if year:
             normalized_year = _normalize_media_list_filter_value(year)
             if normalized_year == "unknown":
-                queryset = queryset.filter(item__release_datetime__isnull=True)
+                queryset = queryset.filter(release_year_q("unknown", "item__"))
             else:
                 with contextlib.suppress(TypeError, ValueError):
-                    queryset = queryset.filter(item__release_datetime__year=int(year))
+                    queryset = queryset.filter(release_year_q(int(year), "item__"))
 
         completed_date_from = _normalize_completed_date_filter(
             filters.get("completed_date_from"),
