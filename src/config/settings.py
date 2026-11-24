@@ -521,7 +521,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
 
-DB_HOST = config("DB_HOST", default=None)
+# Floppy (Bundled) image: its entrypoint exports these for the services it
+# starts, but a shell opened with `docker exec` does not inherit that, and would
+# silently use a new SQLite file instead of the embedded PostgreSQL. The image
+# sets FLOPPY_BUNDLED, so the same defaults apply there. An operator's own
+# DB_HOST / REDIS_URL always wins (docs/deployment-bundled.md).
+FLOPPY_BUNDLED = config("FLOPPY_BUNDLED", default=False, cast=bool)
+_BUNDLED_PG = FLOPPY_BUNDLED and not config("DB_HOST", default=None)
+DB_HOST = config("DB_HOST", default=None) or (
+    config("FLOPPY_BUNDLED_PGSOCKET", default="/run/floppy-pg") if _BUNDLED_PG else None
+)
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 
 if DB_HOST:
@@ -552,16 +561,23 @@ if DB_HOST:
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "HOST": DB_HOST,
-            "NAME": config("DB_NAME", default=secret("DB_NAME_FILE")),
-            "USER": config("DB_USER", default=secret("DB_USER_FILE")),
-            "PASSWORD": config("DB_PASSWORD", default=secret("DB_PASSWORD_FILE")),
-            "PORT": config("DB_PORT"),
+            "NAME": config(
+                "DB_NAME", default="floppy" if _BUNDLED_PG else secret("DB_NAME_FILE")
+            ),
+            "USER": config(
+                "DB_USER", default="floppy" if _BUNDLED_PG else secret("DB_USER_FILE")
+            ),
+            "PASSWORD": config(
+                "DB_PASSWORD",
+                default="" if _BUNDLED_PG else secret("DB_PASSWORD_FILE"),
+            ),
+            "PORT": config("DB_PORT", default="5432" if _BUNDLED_PG else undefined),
             "OPTIONS": db_options,
             "CONN_HEALTH_CHECKS": True,
         },
     }
 
-    sslmode = config("DB_SSL_MODE", default=None)
+    sslmode = config("DB_SSL_MODE", default="disable" if _BUNDLED_PG else None)
     if sslmode:
         DATABASES["default"]["OPTIONS"]["sslmode"] = sslmode
 
@@ -674,7 +690,10 @@ else:
 # Cache
 # https://docs.djangoproject.com/en/stable/topics/cache/
 CACHE_TIMEOUT = 86400  # 24 hours
-REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+REDIS_URL = config(
+    "REDIS_URL",
+    default="redis://127.0.0.1:6379" if FLOPPY_BUNDLED else "redis://localhost:6379",
+)
 REDIS_CACHE_URL = config("REDIS_CACHE_URL", default=None) or REDIS_URL
 REDIS_ADMIN_URL = config("REDIS_ADMIN_URL", default=None) or REDIS_CACHE_URL
 # Byte count or a redis.conf-style size ("256mb"). Unset means "derive one from

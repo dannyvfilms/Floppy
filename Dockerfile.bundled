@@ -1,0 +1,24 @@
+# Floppy (Bundled): the standard image plus embedded PostgreSQL 18 + pgvector
+# and Valkey. Built from the exact standard image so both flavours share one
+# application layer, one version and one set of quality gates.
+#   docker build -f Dockerfile.bundled --build-arg BASE_IMAGE=<standard image> .
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Pinned to the Alpine release the base image uses; the build fails loudly if
+# a pin disappears rather than silently shipping a different major version.
+RUN apk add --no-cache \
+        'postgresql18=~18.7' 'postgresql18-contrib=~18.7' \
+        'postgresql-pgvector=~0.8.1' 'valkey=~9.0' 'valkey-cli=~9.0' su-exec \
+    && mkdir -p /etc/supervisord.d /floppy/pgdata /floppy/valkey
+
+ENV FLOPPY_BUNDLED=true
+ENV FLOPPY_BUNDLED_PGDATA=/floppy/pgdata
+ENV FLOPPY_BUNDLED_PGSOCKET=/run/floppy-pg
+ENV FLOPPY_BUNDLED_VALKEY_DIR=/floppy/valkey
+
+COPY bundled/bundled-services.sh /bundled-services.sh
+COPY bundled/floppy-bundled-backup /usr/local/bin/floppy-bundled-backup
+COPY bundled/supervisord.d/ /etc/supervisord.d/
+RUN chmod +x /usr/local/bin/floppy-bundled-backup
+

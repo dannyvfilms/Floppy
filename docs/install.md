@@ -213,7 +213,9 @@ Floppy works without them.
 Automatic upgrades, moving an installation between Docker and source,
 PostgreSQL setup, and public HTTPS are all deliberately out of scope. The
 [configuration and deployment reference](deployment.md) covers Compose by
-hand, Unraid, PostgreSQL, and reverse proxies.
+hand, Unraid, PostgreSQL, and reverse proxies. To run Floppy with its own
+PostgreSQL and Valkey in a single container, see
+[Floppy (Bundled)](deployment-bundled.md).
 
 ## If it does not finish
 
