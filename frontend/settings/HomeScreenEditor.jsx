@@ -389,6 +389,8 @@ export function HomeScreenEditor({
       newRow.filters.media_types = (section.available_media_types || []).filter(type => ['movie', 'tv'].includes(type));
       newRow.filters.status = ['In progress', 'Completed', 'Paused', 'Dropped'];
       newRow.filters.progress = 'all';
+      // Each watched episode is its own card; a show-level row would collapse a binge into one.
+      if (newRow.filters.media_types.includes('tv')) newRow.filters.media_subviews = { tv: 'episodes' };
     }
     section.rows = [...(section.rows || []), newRow];
     setNextRowId(current => current + 1);
