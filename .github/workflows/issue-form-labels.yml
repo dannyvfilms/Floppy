@@ -23,14 +23,25 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
-            const { labelsFromIssueBody } = require("./.github/scripts/issue-labels.cjs");
+            const { classifyIssueBody } = require("./.github/scripts/issue-labels.cjs");
             const issue = context.payload.issue;
-            const labels = labelsFromIssueBody(issue.body);
-            if (!labels.length) return;
+            const { type, labels } = classifyIssueBody(issue.body);
+            const { owner, repo } = context.repo;
             // addLabels is additive: existing labels are kept.
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue.number,
-              labels,
-            });
+            if (labels.length) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels });
+            }
+            // The form sets Type itself; this covers issues made without the form.
+            // Never override a Type that is already set.
+            if (type && !issue.type) {
+              const { repository } = await github.graphql(
+                `query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) { issueTypes(first: 20) { nodes { id name } } }
+                }`, { owner, repo });
+              const match = repository.issueTypes.nodes.find((t) => t.name === type);
+              if (match) {
+                await github.graphql(
+                  `mutation($id: ID!, $type: ID!) { updateIssue(input: {id: $id, issueTypeId: $type}) { issue { id } } }`,
+                  { id: issue.node_id, type: match.id });
+              }
+            }
