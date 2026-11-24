@@ -45,6 +45,8 @@ Tips:
 
 Report level 1 for a platform only when the real app was on screen in the image.
 
+Another session holding Metro (8081) or a simulator is never a blocker: start your own Metro on a free port (`npx expo start --port 8091`, or any unused one) and boot or reuse another simulator. The preview routes do not sign in, so to show a signed-in page (a detail page, a library) log in to the local app with a test account instead.
+
 ## Hosted: an Expo account (opt-in, not used by the project)
 
 Nothing here runs in CI and nothing is billed to the project. A contributor with their own

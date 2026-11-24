@@ -9802,7 +9802,7 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn(
-            'class="mb-3 flex flex-col items-center justify-between gap-y-4 md:mb-1 md:flex-row md:gap-y-0"',
+            'class="detail-season-switcher mb-3 flex flex-col items-center justify-between gap-y-4 md:mb-1 md:flex-row md:gap-y-0"',
             content,
         )
         self.assertIn(
