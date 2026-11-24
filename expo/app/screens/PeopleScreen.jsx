@@ -3,6 +3,11 @@ import { Linking, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { PeopleView } from '../../../frontend/pages/PeopleView';
 import { LightboxDialog } from '../../../frontend/ui/People';
+import { ListsForm } from '../../../frontend/ui/ListsFormView';
+import { applyListToggle, listsMembership, normalizeListsModel } from '../../../frontend/ui/mediaCardForms';
+import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
+import { createListTransport } from '../data/listTransport';
+import { loadPersonLists, togglePersonList } from '../surfaces/mediaCardTransport';
 import { PeopleToolbar } from '../../../frontend/ui/PeopleToolbar';
 import { Screen, Section } from '../components/Screen';
 import { createPeopleTransport } from '../data/peopleTransport';
@@ -78,6 +83,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
   // is dropped instead of appended.
   const loadGeneration = useRef(0);
   const [lightbox, setLightbox] = useState({ visible: false, index: 0 });
+  // The Add to lists sheet: model, per-list membership, pending and error state.
+  const [listsSheet, setListsSheet] = useState(null);
 
   useEffect(() => {
     if (params?.profile) {
@@ -211,6 +218,40 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     onOpenLightbox: (_items, index) => setLightbox({ visible: true, index }),
   };
 
+  const listLabels = {
+    title: 'Lists', close: 'Close', loading: 'Loading', loadFailed: "Couldn't load your lists.", retry: 'Try again',
+    filterByTag: 'Filter by tag', allLists: 'All lists', countOne: 'On %s list', countMany: 'On %s lists',
+    add: 'Add', remove: 'Remove', addTo: 'Add person to %s', removeFrom: 'Remove person from %s',
+    emptyTag: 'No lists with this tag.', emptyLists: "You haven't created any lists yet.",
+    toggleFailed: "Couldn't update this list. Please try again.", create: 'Create list', createName: 'Name',
+    createPlaceholder: 'Favourite actors', createSubmit: 'Create', createFailed: "Couldn't create this list. Please try again.",
+    cancel: 'Cancel',
+  };
+
+  const openLists = useCallback(async () => {
+    if (identity?.kind !== 'person') return;
+    const blank = { membership: {}, model: null, pending: {}, errors: {} };
+    setListsSheet({ status: 'loading', ...blank });
+    try {
+      const model = normalizeListsModel(await loadPersonLists(identity, profile?.person?.name));
+      setListsSheet({ ...blank, status: 'ready', model, membership: listsMembership(model) });
+    } catch {
+      setListsSheet({ status: 'error', ...blank });
+    }
+  }, [identity, profile?.person?.name]);
+
+  const toggleListMembership = useCallback(async list => {
+    if (!listsSheet || listsSheet.pending[list.id]) return;
+    const patch = value => setListsSheet(current => (current ? { ...current, ...value(current) } : current));
+    patch(current => ({ pending: { ...current.pending, [list.id]: true }, errors: { ...current.errors, [list.id]: '' } }));
+    try {
+      const result = await togglePersonList(identity, list.id, Boolean(listsSheet.membership[list.id]));
+      patch(current => ({ membership: applyListToggle(current.membership, list.id, result.hasItem), pending: { ...current.pending, [list.id]: false } }));
+    } catch (cause) {
+      patch(current => ({ pending: { ...current.pending, [list.id]: false }, errors: { ...current.errors, [list.id]: cause?.message || listLabels.toggleFailed } }));
+    }
+  }, [identity, listsSheet]);
+
   function personPage(data) {
     const labels = data.labels || {};
     return <PeopleView
@@ -239,6 +280,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
       onViewHistory={data.historyUrl
         ? () => navigate?.('History', { filters: data.historyUrl })
         : undefined}
+      // Only a stored person can be saved on a list; the server sends the popup spec for those.
+      onAddToLists={data.listsModal ? openLists : undefined}
       onOpenPerson={openPerson} />;
   }
 
@@ -280,6 +323,28 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     {live && profile.kind === 'person' ? personPage(profile) : null}
     {live && profile.kind === 'studio' ? studioPage(profile) : null}
     {extrasOnly ? <PeopleView {...common} part="extras" labels={params?.labels} /> : null}
+    <AdaptivePresentationSheet isPresented={!!listsSheet} onDismiss={() => setListsSheet(null)}
+      onClose={() => setListsSheet(null)} title="Lists" titleColor={palette.text} containerColor={palette.sidebar}>
+      {listsSheet ? <ListsForm
+        model={listsSheet.model}
+        membership={listsSheet.membership}
+        tag=""
+        status={listsSheet.status}
+        pending={listsSheet.pending}
+        errors={listsSheet.errors}
+        labels={listLabels}
+        palette={{ ...palette, ...palette.mediaCard, radius: 8, focusStyle: {} }}
+        showHeader={false}
+        embedded
+        onTagChange={() => {}}
+        onRetry={openLists}
+        onCreate={async name => {
+          await createListTransport({ auth: session }).create({ name });
+          await openLists();
+        }}
+        onClose={() => setListsSheet(null)}
+        onToggle={toggleListMembership} /> : null}
+    </AdaptivePresentationSheet>
     <LightboxDialog visible={lightbox.visible} items={gallery} index={lightbox.index}
       palette={palette}
       onClose={() => setLightbox({ visible: false, index: lightbox.index })}

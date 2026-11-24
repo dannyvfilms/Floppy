@@ -267,6 +267,16 @@ export function listSummaryFromPayload(payload, currentUsername = '') {
     members,
     itemsCount: Number(payload.items_count) || 0,
     completionPercent: Number.isFinite(payload.completion_percent) ? payload.completion_percent : null,
+    people: Array.isArray(payload.people)
+      ? payload.people.map(person => ({
+        id: String(person.id),
+        source: String(person.source || ''),
+        personId: String(person.person_id || ''),
+        name: String(person.name || ''),
+        image: String(person.image || ''),
+        department: String(person.department || ''),
+      }))
+      : [],
     mediaTypeBreakdown: Array.isArray(payload.media_type_breakdown)
       ? payload.media_type_breakdown.map(row => ({
         value: String(row.value || ''),
@@ -502,6 +512,13 @@ export function createRemoteListActions(request) {
     },
     loadActivity({ listId }) {
       return request(`${listPath(listId)}activity/`);
+    },
+    // Take a saved person off a list.
+    removePerson({ listId, source, personId }) {
+      return request(
+        `/api/v1/people/${encodeURIComponent(source)}/${encodeURIComponent(personId)}/lists/${encodeURIComponent(listId)}/`,
+        { method: 'DELETE' },
+      );
     },
     loadRecommendations({ listId }) {
       return request(recommendationsPath(listId));

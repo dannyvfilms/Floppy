@@ -771,6 +771,7 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
 - `src/lists/views_people.py` (person Add-to-lists JSON and toggle) with `src/templates/lists/list_detail.html` People section (saved people on a list)
+- `frontend/ui/ListPeople.jsx` (people on a list, Expo list detail), `expo/app/screens/PeopleScreen.jsx` Add to lists sheet, `src/api/fork_views_people.py` (`PersonListsView`, `PersonListDetailView`)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
