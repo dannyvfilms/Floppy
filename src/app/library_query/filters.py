@@ -40,7 +40,7 @@ from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, Filter
 from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
 from app.models.item import Item
-from app.models.manager import item_ids_with_json_array_value_ci
+from app.models.manager import item_ids_with_json_array_value_ci, release_year_q
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -473,9 +473,9 @@ def _json_array_q(field_name: str, value: str) -> Q:
 def _year_sql(values: FilterValues, ctx: TypeContext):
     year = _norm(values.year)
     if year == "unknown":
-        return Q(release_datetime__isnull=True)
+        return release_year_q("unknown")
     with contextlib.suppress(TypeError, ValueError):
-        return Q(release_datetime__year=int(year))
+        return release_year_q(int(year))
     return None
 
 
