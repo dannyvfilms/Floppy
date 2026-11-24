@@ -678,6 +678,9 @@ def track_form_presentation(
     ]
     suggestion = date_suggestion or {}
     for field in fields:
+        if field["name"] == "score":
+            # The score is picked from 1 to the viewer's scale, like Expo's; the value stays 0-10.
+            field["scaleMax"] = getattr(request.user, "rating_scale_max", 10) or 10
         if field["name"] not in {"start_date", "end_date"}:
             continue
         is_start = field["name"] == "start_date"

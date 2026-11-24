@@ -11,6 +11,7 @@ from django.utils.translation import gettext as _
 
 from app.card_surfaces import card_context
 from app.media_card_model import progress_changer_model
+from users.models import QuickSeasonUpdateChoices
 
 
 def _request_csrf(request):
@@ -61,7 +62,13 @@ def _entry_model(entry, row, user, request):
     if card is None:
         return None
     progress = None
-    if getattr(entry, "show_progress_controls", False) and media is not None:
+    # "Next Episode button only" keeps Home cards free of the +/- buttons and counts.
+    if (
+        getattr(entry, "show_progress_controls", False)
+        and media is not None
+        and getattr(user, "quick_season_update_mobile", "")
+        != QuickSeasonUpdateChoices.NEXT_EPISODE
+    ):
         progress = progress_changer_model(media, _request_csrf(request))
     return {
         "id": card.get("cardKey") or f"{media_type}-{getattr(item, 'id', '')}",

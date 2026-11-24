@@ -8,7 +8,6 @@ import {
   LicenseCard,
   ProjectResourcesCard,
   InstallCard,
-  ReleaseUpdateBanner,
   WhatsNewCard,
 } from './AboutSettings';
 import { systemPalette } from './mountAdvanced';
@@ -39,14 +38,6 @@ function openUrl(url) {
 
 const SEEN_RELEASE_KEY = 'floppy_seen_release';
 
-function rememberRelease(tag) {
-  try {
-    localStorage.setItem(SEEN_RELEASE_KEY, tag || '');
-  } catch (error) {
-    // Storage can be unavailable in private windows; the banner still hides.
-  }
-}
-
 function initialBannerVisible(tag) {
   try {
     const seen = localStorage.getItem(SEEN_RELEASE_KEY);
@@ -54,26 +45,32 @@ function initialBannerVisible(tag) {
       localStorage.setItem(SEEN_RELEASE_KEY, tag || '');
       return false;
     }
-    return seen !== tag;
+    if (seen === tag) return false;
+    // Announce a release once: remember it as soon as it is shown, so no other
+    // page or reload shows it again even if it is never dismissed.
+    localStorage.setItem(SEEN_RELEASE_KEY, tag || '');
+    return true;
   } catch (error) {
     return false;
   }
 }
 
+const BANNER_AUTO_HIDE_MS = 8000;
+
+// The update notice uses the app's shared toast (the same outlet Django messages and
+// Statistics use) instead of an on-page element: it shows once per release, then hides.
 function BannerAdapter({ props }) {
-  const [visible, setVisible] = useState(() => initialBannerVisible(props.releaseTag));
-  function dismiss() {
-    rememberRelease(props.releaseTag);
-    setVisible(false);
-  }
-  function viewWhatsNew() {
-    dismiss();
-    if (props.whatsNewUrl) window.location.assign(props.whatsNewUrl);
-  }
-  if (!visible) return null;
-  return <ReleaseUpdateBanner releaseTag={props.releaseTag}
-    onDismiss={dismiss} onViewWhatsNew={viewWhatsNew}
-    palette={systemPalette} labels={props.labels} />;
+  useEffect(() => {
+    if (!initialBannerVisible(props.releaseTag)) return;
+    if (typeof window.showTrackToast !== 'function') return;
+    window.showTrackToast({
+      message: String(props.labels.updated || '').replace('{tag}', props.releaseTag),
+      type: 'info',
+      duration: BANNER_AUTO_HIDE_MS,
+      action: props.whatsNewUrl ? { label: props.labels.whatsNew, href: props.whatsNewUrl } : null,
+    });
+  }, [props.releaseTag]);
+  return null;
 }
 
 function OverviewAdapter({ props }) {
