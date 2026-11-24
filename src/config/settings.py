@@ -529,7 +529,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 FLOPPY_BUNDLED = config("FLOPPY_BUNDLED", default=False, cast=bool)
 _BUNDLED_PG = FLOPPY_BUNDLED and not config("DB_HOST", default=None)
 DB_HOST = config("DB_HOST", default=None) or (
-    config("FLOPPY_BUNDLED_PGSOCKET", default="/run/floppy-pg") if _BUNDLED_PG else None
+    config("FLOPPY_BUNDLED_PGSOCKET", default="/tmp/floppy-pg") if _BUNDLED_PG else None
 )
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 

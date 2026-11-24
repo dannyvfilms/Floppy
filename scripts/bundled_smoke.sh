@@ -29,7 +29,7 @@ healthy() {
   done
   return 1
 }
-sql() { docker exec "$NAME" psql -h /run/floppy-pg -U floppy -d floppy -tAc "$1"; }
+sql() { docker exec "$NAME" psql -h /tmp/floppy-pg -U floppy -d floppy -tAc "$1"; }
 step() { echo "== $*"; }
 
 step "clean boot"
@@ -63,6 +63,8 @@ test "$(docker exec "$NAME" cat /floppy/db/secret_key 2>/dev/null || echo env)" 
 step "backup"
 docker exec "$NAME" floppy-bundled-backup
 ls "$RUN"/backups/postgres/floppy-*.dump >/dev/null
+# The backup carries the secret Floppy is really using (here: the SECRET env).
+test -s "$RUN/backups/postgres/$(ls "$RUN/backups/postgres" | grep -m1 '\.secret_key$')"
 DUMP=$(basename "$(ls "$RUN"/backups/postgres/floppy-*.dump | head -1)")
 docker rm -f "$NAME" >/dev/null
 
@@ -93,5 +95,15 @@ out=$(docker logs "$NAME" 2>&1)
 grep -q "embedded PostgreSQL stays off" <<<"$out"
 grep -q "embedded Valkey stays off" <<<"$out"
 ! docker exec "$NAME" pgrep -x valkey-server >/dev/null
+
+step "non-root start"
+docker rm -f "$NAME" >/dev/null 2>&1 || true
+mkdir -p "$RUN/nr"/{db,pg,backups}
+wipe "$RUN/nr"; mkdir -p "$RUN/nr"/{db,pg,backups}; chmod 777 "$RUN/nr"/{db,pg,backups}
+docker run -d --name "$NAME" --user 1000:1000 -p 18000:8000 -e SECRET=smoke-nonroot \
+  -v "$RUN/nr/db:/floppy/db" -v "$RUN/nr/pg:/floppy/pgdata" -v "$RUN/nr/backups:/floppy/backups" \
+  "$IMAGE" >/dev/null
+healthy
+test "$(sql "select 1")" = 1
 
 echo "bundled smoke passed"

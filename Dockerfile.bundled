@@ -14,7 +14,7 @@ RUN apk add --no-cache \
 
 ENV FLOPPY_BUNDLED=true
 ENV FLOPPY_BUNDLED_PGDATA=/floppy/pgdata
-ENV FLOPPY_BUNDLED_PGSOCKET=/run/floppy-pg
+ENV FLOPPY_BUNDLED_PGSOCKET=/tmp/floppy-pg
 ENV FLOPPY_BUNDLED_VALKEY_DIR=/floppy/valkey
 
 COPY bundled/bundled-services.sh /bundled-services.sh

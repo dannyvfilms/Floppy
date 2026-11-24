@@ -4,7 +4,7 @@
 set -eu
 BACKUP_DIR=${BACKUP_DIR:-/floppy/backups}/postgres
 DATA_DIR=${FLOPPY_DATA_DIR:-/floppy/db}
-SOCKET=${FLOPPY_BUNDLED_PGSOCKET:-/run/floppy-pg}
+SOCKET=${FLOPPY_BUNDLED_PGSOCKET:-/tmp/floppy-pg}
 KEEP=${FLOPPY_BUNDLED_BACKUP_KEEP:-7}
 [ "$KEEP" = 0 ] && exit 0
 mkdir -p "$BACKUP_DIR"
@@ -12,9 +12,20 @@ stamp=$(date -u +%Y%m%dT%H%M%SZ)
 out="$BACKUP_DIR/floppy-$stamp.dump"
 pg_dump -h "$SOCKET" -U floppy -Fc -f "$out.partial" floppy
 mv "$out.partial" "$out"
-if [ -f "$DATA_DIR/secret_key" ]; then
-    cp "$DATA_DIR/secret_key" "${out%.dump}.secret_key"
-    chmod 600 "${out%.dump}.secret_key"
+# Save the signing secret Floppy is actually using, in the order settings.py
+# reads it: SECRET, SECRET_FILE, then the generated file in the data directory.
+# Integration credentials are encrypted with it, so a restore needs the same one.
+secret_out="${out%.dump}.secret_key"
+if [ -n "${SECRET:-}" ]; then
+    (umask 077; printf '%s' "$SECRET" > "$secret_out")
+elif [ -n "${SECRET_FILE:-}" ] && [ -f "$SECRET_FILE" ]; then
+    (umask 077; cp "$SECRET_FILE" "$secret_out")
+elif [ -n "${SECRET_FILE:-}" ] && [ -f "/run/secrets/$SECRET_FILE" ]; then
+    (umask 077; cp "/run/secrets/$SECRET_FILE" "$secret_out")
+elif [ -f "$DATA_DIR/secret_key" ]; then
+    (umask 077; cp "$DATA_DIR/secret_key" "$secret_out")
+else
+    echo "[bundled] WARNING: no signing secret found to save with this backup." >&2
 fi
 echo "[bundled] Backup written: $out"
 # Keep the newest $KEEP dumps (and their secret copies).

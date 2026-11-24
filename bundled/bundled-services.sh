@@ -11,7 +11,7 @@
 
 PGMAJOR=18
 PGDATA=${FLOPPY_BUNDLED_PGDATA:-/floppy/pgdata}
-PGSOCKET=${FLOPPY_BUNDLED_PGSOCKET:-/run/floppy-pg}
+PGSOCKET=${FLOPPY_BUNDLED_PGSOCKET:-/tmp/floppy-pg}
 VALKEY_DIR=${FLOPPY_BUNDLED_VALKEY_DIR:-/floppy/valkey}
 VALKEY_PORT=6379
 PG_BACKUP_DIR="${BACKUP_DIR_PATH}/postgres"
@@ -77,6 +77,8 @@ bundled_init_postgres() {
         chown abc:abc "$PGSOCKET" "$PG_BACKUP_DIR" "$PGDATA" 2>/dev/null || true
     fi
     chmod 700 "$PGSOCKET"
+    # A stale socket or lock from an unclean stop would block the next start.
+    rm -f "$PGSOCKET"/.s.PGSQL.* 2>/dev/null || true
 
     restore_requested=false
     if [ -f "$RESTORE_FLAG" ]; then restore_requested=true; fi
@@ -138,7 +140,9 @@ bundled_apply_restore() {
     # Consume only after success, so a restart never replays it.
     mv "$RESTORE_FLAG" "${RESTORE_FLAG}.done"
     secret_copy="${dump%.dump}.secret_key"
-    if [ -f "$secret_copy" ] && [ ! -e "${DATA_DIR}/secret_key" ]; then
+    if [ -f "$secret_copy" ] && [ -n "${SECRET:-}${SECRET_FILE:-}" ]; then
+        echo "[bundled] WARNING: SECRET or SECRET_FILE is set, so the secret saved with the backup was not restored. Set it to the original value or saved integration credentials will not decrypt." >&2
+    elif [ -f "$secret_copy" ] && [ ! -e "${DATA_DIR}/secret_key" ]; then
         cp "$secret_copy" "${DATA_DIR}/secret_key"
         chmod 600 "${DATA_DIR}/secret_key"
         if [ "$RUNNING_AS_ROOT" = true ]; then chown abc:abc "${DATA_DIR}/secret_key"; fi
