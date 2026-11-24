@@ -384,15 +384,13 @@ class NetflixResolver(TraktMetadataResolverMixin):
     def _match_languages(self):
         """Languages for episode-name matching, the configured one first.
 
-        Netflix exports mix languages (German productions keep their
-        German episode titles) while TMDB_LANG is one language per
-        instance; the other of the two gets one extra chance, only when
-        the configured language does not carry the name.
+        English follows as the fallback, since TMDB's English data is the
+        most complete; a configured English language needs no fallback.
         """
         primary = settings.TMDB_LANG
-        if primary in ("en", "de"):
-            return (primary, "de" if primary == "en" else "en")
-        return (primary,)
+        if primary == "en":
+            return (primary,)
+        return (primary, "en")
 
     def _season_names_candidates(self, tmdb_id, season_number, target,
                                   title=""):
@@ -682,7 +680,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
         number.  A unique normalized match against the season's episode
         names is safe to record; anything ambiguous is left for review.
         The fallback language may name the episode when the configured
-        one does not (a German row against TMDB_LANG=en).
+        one does not (an English row against TMDB_LANG=de).
         """
         if not episode_title:
             return None

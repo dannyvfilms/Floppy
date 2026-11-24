@@ -36,9 +36,7 @@
         {% blocktranslate count counter=page_obj.paginator.count %}{{ counter }} row{% plural %}{{ counter }} rows{% endblocktranslate %}
       </span>
     </div>
-    {# Retry is server-side chrome like the tabs: a plain POST form that
-       queues the re-match batch, identical for the no-JS fallback and the
-       React island. #}
+    {# Retry is server-side chrome like the tabs: a plain POST form that queues the re-match batch, identical for the no-JS fallback and the React island. #}
     {% if not show_all %}
     <form method="post" action="{% url 'netflix_pending_retry' %}">
       {% csrf_token %}
@@ -50,9 +48,7 @@
     {% endif %}
   </div>
 
-  {# Filter + pagination are server-side chrome (like the tabs above): a GET
-     form and plain links, identical for the no-JS fallback and the React
-     island, which renders the current page's cards. #}
+  {# Filter + pagination are server-side chrome (like the tabs above): a GET form and plain links, identical for the no-JS fallback and the React island, which renders the current page's cards. #}
   <form method="get" action="{% url 'netflix_pending' %}" class="flex items-center gap-2">
     {% if show_all %}<input type="hidden" name="show" value="all">{% endif %}
     <input type="search" name="filter" value="{{ title_filter }}"

@@ -151,16 +151,16 @@ punctuation never block a match. A unique hit is recorded; zero or
 ambiguous hits stay pending with the season pre-filled.
 
 Netflix exports mix languages while `TMDB_LANG` is one language per
-instance, so an exact match gets one extra chance in the other of `en`/`de`
-(`_match_languages`, `_season_names_candidates`): the configured language
-always decides first, and the fallback language is fetched only when the
-configured one does not name the target at all. That is what lets a German
-row (`Der Tatortreiniger: Season 1: Nicht über mein Sofa`) match a German
-TMDB episode name when `TMDB_LANG=en`. The fallback applies to every
-exact-match path (`match_episode_number`, the unlabelled and named-season
-chains, `_seasons_for_episode`); it never feeds the fuzzy match, and a
-name that is ambiguous in the configured language is not re-checked in the
-other.
+instance, so an exact match gets one extra chance in English (when the
+configured language is not English): the configured language always
+decides first, and the English fallback is fetched only when the
+configured one does not name the target at all. Under `TMDB_LANG=de` a
+German row (`Der Tatortreiniger: Season 1: Nicht über mein Sofa`) matches
+on the primary language, and an English row of the same show matches via
+the fallback. The fallback applies to every exact-match path
+(`match_episode_number`, the unlabelled and named-season chains,
+`_seasons_for_episode`); it never feeds the fuzzy match, and a name that
+is ambiguous in the configured language is not re-checked in English.
 
 ## Provenance and undo
 

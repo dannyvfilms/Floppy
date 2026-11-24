@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
@@ -410,14 +410,6 @@ class ResolveRowTests(TestCase):
                     {"episode_number": 13, "name": "Pomp & Circumstance"},
                 ]
             },
-            # Fallback-language season: same names, no exact match there
-            # either, so the fuzzy match runs against these names.
-            {
-                "episodes": [
-                    {"episode_number": 12, "name": "The Magician Returns"},
-                    {"episode_number": 13, "name": "Pomp & Circumstance"},
-                ]
-            },
         ]
 
         self.assertEqual(
@@ -508,13 +500,6 @@ class ResolveRowTests(TestCase):
                     {"episode_number": 2, "name": "Another Unrelated Name"},
                 ]
             },
-            # Fallback-language season: same unrelated names.
-            {
-                "episodes": [
-                    {"episode_number": 1, "name": "Completely Different"},
-                    {"episode_number": 2, "name": "Another Unrelated Name"},
-                ]
-            },
         ]
 
         self.assertEqual(
@@ -532,35 +517,62 @@ class ResolveRowTests(TestCase):
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")
-    def test_episode_title_match_falls_back_to_other_language(
+    @override_settings(TMDB_LANG="de")
+    def test_episode_title_match_falls_back_to_english(
         self, mock_meta, mock_search
     ):
-        """German Netflix rows carry German episode titles; TMDB's default
-        language lists the English ones, so the other language must match.
+        """With a configured non-English language the English fallback
+        covers rows whose episode title TMDB only names in English.
         """
         fetched = []
 
         def metadata(media_type, tmdb_id, title, season_number=None,
                      language=None):
             fetched.append(language)
-            if language == "de":
+            if language == "en":
                 return {
-                    "episodes": [{"episode_number": 3, "name": "Nicht über mein Sofa"}],
+                    "episodes": [{"episode_number": 3, "name": "Not On My Sofa"}],
                 }
             return {
-                "episodes": [{"episode_number": 3, "name": "Not On My Sofa"}],
+                "episodes": [{"episode_number": 3, "name": "Nicht über mein Sofa"}],
             }
 
         mock_meta.side_effect = metadata
 
         self.assertEqual(
             self.resolver.match_episode_number(
-                51488, "Der Tatortreiniger", 1, "Nicht über mein Sofa",
+                51488, "Der Tatortreiniger", 1, "Not On My Sofa",
             ),
             3,
         )
-        self.assertIn(None, fetched)  # primary language first
-        self.assertIn("de", fetched)  # then the fallback
+        self.assertEqual(fetched, [None, "en"])  # configured first, then English
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_no_fallback_when_configured_language_is_english(
+        self, mock_meta, mock_search
+    ):
+        """English needs no fallback: an English row against a TMDB name
+        that only exists in another language stays unmatched when the
+        instance is configured with TMDB_LANG=en.
+        """
+        fetched = []
+
+        def metadata(media_type, tmdb_id, title, season_number=None,
+                     language=None):
+            fetched.append(language)
+            return {
+                "episodes": [{"episode_number": 3, "name": "Nicht über mein Sofa"}],
+            }
+
+        mock_meta.side_effect = metadata
+
+        self.assertIsNone(
+            self.resolver.match_episode_number(
+                51488, "Der Tatortreiniger", 1, "Not On My Sofa",
+            ),
+        )
+        self.assertEqual(fetched, [None])
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")
@@ -594,8 +606,6 @@ class ResolveRowTests(TestCase):
         ]
         mock_meta.side_effect = [
             _named_show_meta([(1, 1, "The Part")]),
-            {"episodes": [{"episode_number": 1, "name": "Something"}]},
-            # Fallback-language season: same single episode.
             {"episodes": [{"episode_number": 1, "name": "Something"}]},
         ]
 
@@ -1157,6 +1167,9 @@ class NetflixPendingViewTests(TestCase):
         done = self._row(status=NetflixPendingRow.Status.RESOLVED.value)
         response = self.client.get(reverse("netflix_pending"))
         self.assertContains(response, "Weeds - Kleine Deals unter Nachbarn")
+        # Django comments must be single-line: a multi-line comment parses
+        # as plain text and leaks into the rendered page.
+        self.assertNotIn("{#", response.content.decode())
         response = self.client.get(reverse("netflix_pending") + "?show=all")
         self.assertContains(response, "Recorded.")
 
