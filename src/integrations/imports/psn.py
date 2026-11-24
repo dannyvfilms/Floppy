@@ -22,6 +22,7 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -215,7 +216,20 @@ class PSNImporter:
         aggregated = {}
         for index, title in enumerate(titles, start=1):
             import_progress.report(index, total, "PSN")
-            self._process_title(title, aggregated)
+            try:
+                self._process_title(title, aggregated)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "PSN import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    index,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining games.",
+                )
+                break
 
         for media_id, aggregate in aggregated.items():
             self._store_game(media_id, aggregate)
@@ -314,6 +328,10 @@ class PSNImporter:
             self._record_failure(f"{name}: {detail}")
             self.provider_failures += 1
             return
+        except SoftTimeLimitExceeded:
+            # Let the import loop stop early instead of recording every
+            # remaining title as a failed lookup.
+            raise
         except Exception as e:
             # An unexpected exception's message is not written for display: it
             # can carry the request URL, the response body, or the credentials

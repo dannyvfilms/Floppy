@@ -7,6 +7,7 @@ import logging
 from collections import defaultdict
 from datetime import UTC, timedelta
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -202,6 +203,21 @@ class GPodderImporter:
                 rss_metadata, rss_episodes = podcast_rss.fetch_feed_from_rss(
                     raw_feed_url
                 )
+            except SoftTimeLimitExceeded:
+                # Stop loading feeds; the already-loaded ones are still used
+                # for matching below, and the re-run fetches the rest.
+                logger.warning(
+                    "GPodder import for %s hit the time limit while loading "
+                    "subscription %s",
+                    self.user.username,
+                    raw_feed_url,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining "
+                    "episodes.",
+                )
+                break
             except Exception as exc:
                 self.warnings.append(
                     f"Failed to refresh RSS feed {raw_feed_url}: {exc}"
