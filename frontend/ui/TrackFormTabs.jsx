@@ -318,7 +318,7 @@ export function TrackTabs({
 }) {
   const labels = labelsFor(suppliedLabels);
   const palette = resolvePalette(suppliedPalette);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const allTabs = tabs.some(tab => tab.id === 'general')
     ? tabs : [{ id: 'general', label: labels.general }, ...tabs];
   const active = allTabs.find(tab => tab.id === activeId) || allTabs[0];
@@ -328,7 +328,10 @@ export function TrackTabs({
   }} />;
   if (sidebar) {
     const wide = width >= 640;
-    return <View style={[styles.sideRoot, wide && styles.sideRootWide]}>
+    // The 576 px floor is capped to the room the shell has left under its header; on a short window
+    // a fixed floor pushed the footer (Delete / Update) past the clipped shell with no way to scroll to it.
+    const minHeight = Math.min(576, Math.max(240, Math.min(height * 0.92, height - 64) - 80));
+    return <View style={[styles.sideRoot, wide && styles.sideRootWide, wide && { minHeight }]}>
       <View style={[wide ? styles.aside : styles.asideNarrow, {
         backgroundColor: palette.background, borderColor: palette.border,
       }]}>
