@@ -44,4 +44,16 @@ function labelsFromIssueBody(body) {
   return labels.filter(Boolean);
 }
 
-module.exports = { labelsFromIssueBody };
+// Issues made by a script or agent skip the form, so the form's own labels and
+// Type are never applied. Recognise a form-shaped body by its headings and
+// supply them, plus the category label, so those issues are triaged the same way.
+function classifyIssueBody(body) {
+  const isBug = answerFor(body, "What went wrong?") !== null;
+  const isFeature = answerFor(body, FEATURE_HEADING) !== null;
+  const type = isBug ? "Bug" : isFeature ? "Feature" : null;
+  const baseLabel = isBug ? "bug" : isFeature ? "enhancement" : null;
+  const labels = [baseLabel, ...labelsFromIssueBody(body)].filter(Boolean);
+  return { type, labels };
+}
+
+module.exports = { labelsFromIssueBody, classifyIssueBody };
