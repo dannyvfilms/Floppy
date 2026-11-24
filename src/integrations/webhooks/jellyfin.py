@@ -77,20 +77,38 @@ def _note_template_version(payload, user_id):
         cache.set(key, True, JELLYFIN_TEMPLATE_OUTDATED_TTL)
 
 
+def _match_profile(accounts, payload):
+    """Return the one connection whose Jellyfin user sent the event, else None."""
+
+    def plain(value):
+        return str(value or "").replace("-", "").strip().lower()
+
+    user_id = plain(payload.get("UserId"))
+    if not user_id:
+        return None
+    matches = [a for a in accounts if plain(a.jellyfin_user_id) == user_id]
+    return matches[0] if len(matches) == 1 else None
+
+
 def attribute_connection(user, payload):
     """Return ``(account, ambiguous)`` for the server a webhook event came from.
 
     The receiver URL names only the Floppy user, so the server is read from the
-    payload's ``ServerId``. A payload without one is attributed only when the
-    user has a single connection; with several it is ambiguous, and writing it
-    to a guessed server would corrupt that server's link and ownership state.
+    payload's ``ServerId``. Two connections can share a server (one per Jellyfin
+    profile), so when several match, the payload's ``UserId`` picks the profile.
+    A payload without a server is attributed only when the user has a single
+    connection; with several it is ambiguous, and writing it to a guessed
+    server or profile would corrupt that connection's link and ownership state.
     """
     accounts = list(user.jellyfin_accounts.order_by("id"))
     server_id = str(payload.get("ServerId") or "").strip()
     if server_id:
-        for account in accounts:
-            if account.server_id == server_id:
-                return account, False
+        matches = [account for account in accounts if account.server_id == server_id]
+        if len(matches) == 1:
+            return matches[0], False
+        if len(matches) > 1:
+            account = _match_profile(matches, payload)
+            return account, account is None
     if len(accounts) <= 1 and not server_id:
         return (accounts[0] if accounts else None), False
     if len(accounts) == 1:
@@ -112,6 +130,35 @@ def source_instance_ids(user, account):
     if account.id == oldest:
         return None, 0
     return account.id, account.id
+
+
+def release_connection_sources(user, account):
+    """Drop a connection's stored collection and page records before it is removed.
+
+    The oldest connection owns the unscoped keys (None and 0), so removing it
+    hands those keys to the next oldest. Without this, that connection's own
+    records (stored under its id) would be orphaned and the removed server's
+    records would be read as the survivor's. A lone connection is left as is,
+    as before, so reconnecting the same server keeps its data.
+    """
+    from integrations.models import CollectionSourceState, SourcePage
+
+    others = list(user.jellyfin_accounts.exclude(pk=account.pk).order_by("id"))
+    if not others:
+        return
+    states = CollectionSourceState.objects.filter(
+        user=user,
+        source=JELLYFIN_COLLECTION_SOURCE,
+    )
+    pages = SourcePage.objects.filter(user=user, source=JELLYFIN_COLLECTION_SOURCE)
+    collection_id, page_id = source_instance_ids(user, account)
+    states.filter(source_instance_id=collection_id).delete()
+    pages.filter(source_instance_id=page_id).delete()
+    oldest_id = user.jellyfin_accounts.order_by("id").values_list("id", flat=True).first()
+    if account.id == oldest_id:
+        heir = others[0]
+        states.filter(source_instance_id=heir.id).update(source_instance_id=None)
+        pages.filter(source_instance_id=heir.id).update(source_instance_id=0)
 
 
 def _decode_item_titles(payload):

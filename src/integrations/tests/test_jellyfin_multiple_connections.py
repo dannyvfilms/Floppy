@@ -17,22 +17,38 @@ from integrations.models import JellyfinAccount, SourcePage, SyncClientKind
 from integrations.state.adapters.jellyfin import build_adapter
 from integrations.tasks import JELLYFIN_PULL_TASK_NAME
 from integrations.tasks._webhook import _queue_jellyfin_instant_push
-from integrations.webhooks.jellyfin import attribute_connection, source_instance_ids
+from integrations.webhooks.jellyfin import (
+    attribute_connection,
+    release_connection_sources,
+    source_instance_ids,
+)
 
 CLIENT = "integrations.views.JellyfinClient"
 PULL = "integrations.views.tasks.pull_jellyfin_history.delay"
 
 
-def _account(user, n, **extra):
-    return JellyfinAccount.objects.create(
+def _page(user, instance_id, media_id):
+    return SourcePage.objects.create(
         user=user,
-        name=f"Server {n}",
-        base_url=f"https://jf{n}.local:8096",
-        api_key=encrypt(f"key-{n}"),
-        jellyfin_user_id=f"jf-user-{n}",
-        server_id=f"server-{n}",
-        **extra,
+        source="jellyfin",
+        source_instance_id=instance_id,
+        provider="tmdb",
+        media_type="movie",
+        media_id=media_id,
+        path=f"web/#/details?id={media_id}",
     )
+
+
+def _account(user, n, **extra):
+    fields = {
+        "name": f"Server {n}",
+        "base_url": f"https://jf{n}.local:8096",
+        "api_key": encrypt(f"key-{n}"),
+        "jellyfin_user_id": f"jf-user-{n}",
+        "server_id": f"server-{n}",
+        **extra,
+    }
+    return JellyfinAccount.objects.create(user=user, **fields)
 
 
 class ConnectionViewTests(TestCase):
@@ -375,6 +391,100 @@ class WebhookAttributionTests(TestCase):
             source_instance_ids(self.user, second),
             (second.id, second.id),
         )
+
+    def test_profiles_on_one_server_are_told_apart_by_user_id(self):
+        first = _account(self.user, 1, server_id="shared")
+        second = _account(self.user, 2, server_id="shared")
+
+        self.assertEqual(
+            attribute_connection(
+                self.user,
+                {"ServerId": "shared", "UserId": "JF-USER-2"},
+            ),
+            (second, False),
+        )
+        self.assertEqual(
+            attribute_connection(
+                self.user,
+                {"ServerId": "shared", "UserId": "jf-user-1"},
+            ),
+            (first, False),
+        )
+
+    def test_profiles_on_one_server_without_a_user_are_ambiguous(self):
+        _account(self.user, 1, server_id="shared")
+        _account(self.user, 2, server_id="shared")
+
+        self.assertEqual(
+            attribute_connection(self.user, {"ServerId": "shared"}),
+            (None, True),
+        )
+        self.assertEqual(
+            attribute_connection(
+                self.user,
+                {"ServerId": "shared", "UserId": "someone-else"},
+            ),
+            (None, True),
+        )
+
+    @patch("integrations.tasks._media_imports.push_jellyfin_watched.apply_async")
+    def test_instant_push_for_a_shared_server_follows_the_profile(self, push):
+        _account(self.user, 1, server_id="shared", instant_push_enabled=False)
+        second = _account(self.user, 2, server_id="shared", instant_push_enabled=True)
+
+        _queue_jellyfin_instant_push(
+            self.user,
+            {"Event": "Stop", "ServerId": "shared", "UserId": "jf-user-2"},
+        )
+        push.assert_called_once()
+        self.assertEqual(push.call_args.kwargs["kwargs"]["account_id"], second.id)
+
+        push.reset_mock()
+        _queue_jellyfin_instant_push(
+            self.user,
+            {"Event": "Stop", "ServerId": "shared"},
+        )
+        push.assert_not_called()
+
+    def test_disconnecting_the_oldest_hands_its_keys_to_the_next(self):
+        first = _account(self.user, 1)
+        second = _account(self.user, 2)
+        _page(self.user, 0, "movie-first")
+        _page(self.user, second.id, "movie-second")
+
+        release_connection_sources(self.user, first)
+        first.delete()
+
+        self.assertEqual(source_instance_ids(self.user, second), (None, 0))
+        pages = {
+            (page.source_instance_id, page.media_id)
+            for page in SourcePage.objects.filter(user=self.user)
+        }
+        self.assertEqual(pages, {(0, "movie-second")})
+
+    def test_disconnecting_a_later_connection_removes_only_its_records(self):
+        first = _account(self.user, 1)
+        second = _account(self.user, 2)
+        _page(self.user, 0, "movie-first")
+        _page(self.user, second.id, "movie-second")
+
+        release_connection_sources(self.user, second)
+        second.delete()
+
+        self.assertEqual(source_instance_ids(self.user, first), (None, 0))
+        pages = {
+            (page.source_instance_id, page.media_id)
+            for page in SourcePage.objects.filter(user=self.user)
+        }
+        self.assertEqual(pages, {(0, "movie-first")})
+
+    def test_a_lone_connection_keeps_its_records_when_removed(self):
+        only = _account(self.user, 1)
+        _page(self.user, 0, "movie-only")
+
+        release_connection_sources(self.user, only)
+
+        self.assertTrue(SourcePage.objects.filter(user=self.user).exists())
 
     @patch("integrations.tasks._media_imports.push_jellyfin_watched.apply_async")
     def test_instant_push_goes_only_to_the_matching_server(self, push):

@@ -2339,8 +2339,11 @@ def jellyfin_disconnect(request):
         return redirect(redirect_target)
 
     def _disconnect():
+        from integrations.webhooks.jellyfin import release_connection_sources
+
         _disable_jellyfin_push_schedule(request.user, account)
         _disable_jellyfin_pull_schedule(request.user, account)
+        release_connection_sources(request.user, account)
         account.delete()
 
     _run_with_lock_retry("disconnect Jellyfin", _disconnect)

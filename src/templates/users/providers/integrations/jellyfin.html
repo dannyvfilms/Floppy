@@ -57,6 +57,7 @@
               <textarea readonly id="jellyfin-json-template" class="w-full bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
 {% verbatim %}{
   "ServerId": "{{ServerId}}",
+  "UserId": "{{UserId}}",
   "Event": "{{#if_equals NotificationType 'PlaybackStart'}}Play{{/if_equals}}{{#if_equals NotificationType 'PlaybackStop'}}Stop{{/if_equals}}{{#if_equals NotificationType 'PlaybackProgress'}}{{#if IsPaused}}Pause{{else}}Play{{/if}}{{/if_equals}}{{#if_equals NotificationType 'UserDataSaved'}}UserDataSaved{{/if_equals}}{{#if_equals NotificationType 'ItemAdded'}}ItemAdded{{/if_equals}}{{#if_equals NotificationType 'ItemDeleted'}}ItemDeleted{{/if_equals}}",
   "PlaybackPositionTicks": "{{PlaybackPositionTicks}}",{{#if_equals NotificationType 'UserDataSaved'}}
   "SaveReason": "{{SaveReason}}",{{/if_equals}}

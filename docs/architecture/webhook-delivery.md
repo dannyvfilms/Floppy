@@ -232,10 +232,18 @@ to a connection (`integrations.webhooks.jellyfin.attribute_connection`):
 - several connections: an event whose `ServerId` matches none is ambiguous. It
   writes no collection ownership, link, or instant push, and logs a warning.
   Playback and watch events still apply to the user, because history is
-  deduplicated per user.
+  deduplicated per user;
+- two connections on one server (one per Jellyfin profile): `ServerId` matches
+  both, so the payload's `UserId` (the current template sends it) picks the
+  profile. With no `UserId`, or one that matches neither, the event is
+  ambiguous in the same way.
 
 Collection ownership and detail-page links are keyed per connection; the oldest
-connection keeps the unscoped keys its rows were stored under. Instant pushes
+connection keeps the unscoped keys its rows were stored under. Disconnecting a
+connection (`release_connection_sources`) removes its stored records, and when
+it was the oldest, hands the unscoped keys to the next oldest by re-keying that
+connection's records, so ownership never follows whichever row happens to be
+oldest. A lone connection's records are kept on disconnect. Instant pushes
 are debounced per connection. Scheduled push and pull tasks, health checks and
 Playback Reporting cursors all take an `account_id`; Playback Reporting row
 identities are prefixed with the connection's `identity_scope` so equal rowids
