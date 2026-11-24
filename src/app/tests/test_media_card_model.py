@@ -163,3 +163,80 @@ class MediaCardModelTest(TestCase):
         self.assertEqual(shown, {"percent": 50, "paused": False, "dormant": True})
         self.assertFalse(hover["dormant"])
         self.assertIsNone(_progress_bar({**base, "card_show_progress": False}, MediaTypes.TV.value))
+
+
+class UpNextEpisodeActionsTest(TestCase):
+    """An Up Next card offers actions for the queued episode, not only the series."""
+
+    def setUp(self):
+        """Create a tracked show whose queue points at S02E05."""
+        from app.models import TV
+
+        self.user = get_user_model().objects.create_user("upnext-user", password="x")
+        self.item = Item.objects.create(
+            media_id="9001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Queue Show",
+        )
+        self.tv = TV.objects.create(item=self.item, user=self.user, status=Status.IN_PROGRESS.value)
+        self.queue = {
+            "released": True,
+            "days_until": None,
+            "source": Sources.TMDB.value,
+            "media_id": "9001",
+            "season_number": 2,
+            "episode_number": 5,
+        }
+
+    def _actions(self, surface="up_next"):
+        self.tv.next_episode_queue = self.queue
+        ctx = card_context({"user": self.user}, surface, {"item": self.item, "media": self.tv})
+        return card_model(ctx)["actions"]["items"]
+
+    def test_up_next_adds_episode_actions_before_series_actions(self):
+        """Open episode and mark episode watched lead; the series buttons stay."""
+        items = self._actions()
+        self.assertEqual(
+            [i["title"] for i in items],
+            [
+                "Open episode details",
+                "Mark episode watched",
+                "Add to tracker",
+                "Add to custom lists",
+                "View your activity history",
+            ],
+        )
+        self.assertIn("/season/2/episode/5", items[0]["href"])
+        watched = items[1]
+        self.assertEqual(watched["modal"], "track")
+        self.assertEqual(watched["vals"]["episode_number"], "5")
+        self.assertEqual(watched["vals"]["is_create"], "1")
+        self.assertTrue(watched["url"].endswith("/episode/9001/2"))
+        self.assertNotEqual(watched["target"], items[2]["target"])
+
+    def test_unreleased_episode_can_be_opened_but_not_marked_watched(self):
+        """A countdown card still links to the episode page."""
+        self.queue["released"] = False
+        titles = [i["title"] for i in self._actions()]
+        self.assertEqual(titles[0], "Open episode details")
+        self.assertNotIn("Mark episode watched", titles)
+
+    def test_plain_home_card_keeps_series_actions_only(self):
+        """Rows that are not episode feeds keep their existing buttons."""
+        titles = [i["title"] for i in self._actions("home")]
+        self.assertEqual(titles, ["Add to tracker", "Add to custom lists", "View your activity history"])
+
+    def test_native_writes_the_watched_action_through_the_episode(self):
+        """Native reads `media` on the action, so it must name the episode, not the show."""
+        watched = next(i for i in self._actions() if i["title"] == "Mark episode watched")
+        self.assertEqual(
+            watched["media"],
+            {
+                "mediaType": "episode",
+                "source": Sources.TMDB.value,
+                "mediaId": "9001",
+                "seasonNumber": 2,
+                "episodeNumber": 5,
+            },
+        )
