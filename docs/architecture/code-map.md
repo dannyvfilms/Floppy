@@ -110,6 +110,13 @@ helpers are in `src/integrations/view_helpers.py`. Connect and import views
 for the other sources are still in `views.py`; a new view for a split subject
 goes in that subject's module.
 
+`Dockerfile.bundled` and `bundled/` are the optional Floppy (Bundled) image:
+`bundled/bundled-services.sh` (embedded PostgreSQL and Valkey lifecycle and the
+refusals that protect data, sourced by `entrypoint.sh` only when
+`FLOPPY_BUNDLED=true`), `bundled/supervisord.d/` (the supervised services) and
+`bundled/floppy-bundled-backup`. `scripts/bundled_smoke.sh` is its boot test.
+See `docs/deployment-bundled.md`.
+
 ## Where new code goes
 
 | New code | Home | The rule that matters |

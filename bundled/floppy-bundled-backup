@@ -1,0 +1,23 @@
+#!/bin/sh
+# Logical backup of the bundled database and the Floppy signing secret.
+# Safe to run in a live container:  docker exec <name> floppy-bundled-backup
+set -eu
+BACKUP_DIR=${BACKUP_DIR:-/floppy/backups}/postgres
+DATA_DIR=${FLOPPY_DATA_DIR:-/floppy/db}
+SOCKET=${FLOPPY_BUNDLED_PGSOCKET:-/run/floppy-pg}
+KEEP=${FLOPPY_BUNDLED_BACKUP_KEEP:-7}
+[ "$KEEP" = 0 ] && exit 0
+mkdir -p "$BACKUP_DIR"
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+out="$BACKUP_DIR/floppy-$stamp.dump"
+pg_dump -h "$SOCKET" -U floppy -Fc -f "$out.partial" floppy
+mv "$out.partial" "$out"
+if [ -f "$DATA_DIR/secret_key" ]; then
+    cp "$DATA_DIR/secret_key" "${out%.dump}.secret_key"
+    chmod 600 "${out%.dump}.secret_key"
+fi
+echo "[bundled] Backup written: $out"
+# Keep the newest $KEEP dumps (and their secret copies).
+ls -1t "$BACKUP_DIR"/floppy-*.dump 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+    rm -f "$old" "${old%.dump}.secret_key"
+done
