@@ -38,6 +38,7 @@ import users
 from app.models.choices import MediaTypes, Sources, Status
 from app.models.discovery import ItemTag
 from app.models.item import Item
+from app.title_sort import title_sort_expr
 from integrations.import_scope import ImportScopedQuerySet
 
 logger = logging.getLogger(__name__)
@@ -1919,7 +1920,7 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if sort_filter in item_fields:
             if sort_filter == "title":
                 # Case-insensitive title sorting
-                expr = models.functions.Lower("item__title")
+                expr = title_sort_expr("item__title")
                 order = expr.asc() if direction == "asc" else expr.desc()
                 return queryset.order_by(order)
             # Default sorting for other Item fields
