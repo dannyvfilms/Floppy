@@ -12,7 +12,9 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import people_views
+from app.models import Person
 from app.providers import services
+from lists.models import CustomList, CustomListPerson
 
 from .contract_serializers import DetailErrorSerializer
 
@@ -95,3 +97,63 @@ class StudioView(drf_views.APIView):
     def get(self, request, source, studio_id):
         """Return hero, counts and credited titles for a studio."""
         return _profile_response(request, people_views.studio_detail, source, studio_id)
+
+
+def _saved_person(source, person_id):
+    """Return the stored person row for a profile, or None."""
+    return Person.objects.filter(source=source, source_person_id=str(person_id)).first()
+
+
+# /api/v1/people/[source]/[person_id]/lists/
+class PersonListsView(drf_views.APIView):
+    """The lists a person is saved on, for the viewer."""
+
+    @extend_schema(operation_id="getPersonLists", responses={200: dict, 404: DetailErrorSerializer})
+    def get(self, request, source, person_id):
+        """Return the viewer's lists that hold this person."""
+        person = _saved_person(source, person_id)
+        if person is None:
+            return Response({"detail": "Person not found."}, status=HTTP.NOT_FOUND)
+        list_ids = CustomListPerson.objects.filter(
+            person=person,
+            custom_list__in=CustomList.objects.get_user_lists(request.user),
+        ).values_list("custom_list_id", flat=True)
+        return Response({"results": [{"list_id": list_id} for list_id in list_ids]})
+
+
+# /api/v1/people/[source]/[person_id]/lists/[list_id]/
+class PersonListDetailView(drf_views.APIView):
+    """Save a person on a list, or take them off it."""
+
+    def _resolve(self, request, source, person_id, list_id):
+        person = _saved_person(source, person_id)
+        if person is None:
+            return None, None, Response({"detail": "Person not found."}, status=HTTP.NOT_FOUND)
+        custom_list = CustomList.objects.filter(id=list_id).first()
+        if custom_list is None or not custom_list.user_can_view(request.user):
+            return None, None, Response({"detail": "List not found."}, status=HTTP.NOT_FOUND)
+        if not custom_list.user_can_edit(request.user) or custom_list.is_smart:
+            return None, None, Response({"detail": HTTP.FORBIDDEN.phrase}, status=HTTP.FORBIDDEN)
+        return person, custom_list, None
+
+    @extend_schema(request=None, responses={204: None, 403: DetailErrorSerializer, 404: DetailErrorSerializer})
+    def put(self, request, source, person_id, list_id):
+        """Add the person to the list; saving twice is harmless."""
+        person, custom_list, error = self._resolve(request, source, person_id, list_id)
+        if error:
+            return error
+        CustomListPerson.objects.get_or_create(
+            custom_list=custom_list,
+            person=person,
+            defaults={"added_by": request.user},
+        )
+        return Response(status=HTTP.NO_CONTENT)
+
+    @extend_schema(responses={204: None, 403: DetailErrorSerializer, 404: DetailErrorSerializer})
+    def delete(self, request, source, person_id, list_id):
+        """Remove the person from the list."""
+        person, custom_list, error = self._resolve(request, source, person_id, list_id)
+        if error:
+            return error
+        CustomListPerson.objects.filter(custom_list=custom_list, person=person).delete()
+        return Response(status=HTTP.NO_CONTENT)

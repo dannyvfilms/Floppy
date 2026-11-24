@@ -156,6 +156,13 @@ stop_starting_server() {
 }
 start_starting_server
 
+# Floppy (Bundled) image only: bring up the embedded PostgreSQL and Valkey and
+# point DB_*/REDIS_URL at them before anything reads those settings.
+if [ "${FLOPPY_BUNDLED:-false}" = true ]; then
+    . /bundled-services.sh
+    bundled_start
+fi
+
 SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
     SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-120}
@@ -510,6 +517,10 @@ if [ -d "$LOG_DIR_PATH" ] && [ -w "$LOG_DIR_PATH" ]; then
     FLOPPY_SUPERVISORD_LOG="${LOG_DIR_PATH}/supervisord.log"
 fi
 export FLOPPY_SUPERVISORD_LOG
+
+if [ "${FLOPPY_BUNDLED:-false}" = true ]; then
+    bundled_handoff
+fi
 
 stop_starting_server
 echo "[entrypoint] Starting services" >&2

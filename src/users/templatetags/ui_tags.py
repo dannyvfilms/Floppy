@@ -790,6 +790,7 @@ def _people_labels():
         "showLess": str(_("Show less")),
         "viewReads": str(_("View Reads in History")),
         "viewPlays": str(_("View Plays in History")),
+        "addToLists": str(_("Add to lists")),
         "visitWebsite": str(_("Visit Website")),
         "source": str(_("Source")),
         "born": str(_("Born")),
@@ -1039,7 +1040,37 @@ def _person_hero_props(context):
         "canViewHistory": True,
         "showBiography": _people_section_visible(context, "person", "hero", "biography"),
         "labels": _people_labels(),
+        "listsModal": person_lists_modal_spec(context),
     }
+
+
+def person_lists_modal_spec(context):
+    """Return the Add-to-lists popup spec for a saved person, else None."""
+    from django.urls import reverse
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import lists_modal_spec
+
+    user = context.get("user")
+    person = context.get("person") or {}
+    if (
+        not getattr(user, "is_authenticated", False)
+        or not context.get("person_saved")
+        or not person.get("source")
+    ):
+        return None
+    return lists_modal_spec(
+        None,
+        "#person-hero",
+        url=reverse(
+            "person_lists_modal",
+            args=[person["source"], str(person["person_id"])],
+        ),
+        label_overrides={
+            "addTo": _("Add person to %s"),
+            "removeFrom": _("Remove person from %s"),
+        },
+    )
 
 
 def _studio_hero_props(context):
