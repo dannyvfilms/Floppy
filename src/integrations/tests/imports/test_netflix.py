@@ -5,6 +5,7 @@ from io import BytesIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
 
@@ -21,6 +22,24 @@ def _csv(*lines):
 
 def _run(csv_bytes, user):
     return netflix.NetflixImporter(BytesIO(csv_bytes), user, "new").import_data()
+
+
+def _named_show_meta(seasons):
+    """TV metadata whose seasons carry names, for the named-season chain."""
+    return {
+        "title": "Show",
+        "image": "t.jpg",
+        "related": {
+            "seasons": [
+                {
+                    "season_number": number,
+                    "episode_count": count,
+                    "name": name,
+                }
+                for number, count, name in seasons
+            ],
+        },
+    }
 
 
 class TitleSplitTests(TestCase):
@@ -325,6 +344,193 @@ class ResolveRowTests(TestCase):
         mock_search.assert_not_called()
 
 
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_chain_resolves_exact_episode(self, mock_meta,
+                                                       mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {
+                "results": [
+                    {
+                        "media_id": 62273,
+                        "name": "Food Wars! Shokugeki no Soma",
+                    }
+                ]
+            },
+        ]
+        mock_meta.side_effect = [
+            _named_show_meta([(1, 24, "Season 1"), (2, 13, "The Second Plate")]),
+            {
+                "episodes": [
+                    {"episode_number": 12, "name": "The Magician Returns"},
+                    {"episode_number": 13, "name": "Pomp & Circumstance"},
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "movie",
+                None,
+                None,
+            ),
+            ("62273", "tv", 2, 13),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_chain_fuzzy_episode(self, mock_meta, mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {
+                "results": [
+                    {
+                        "media_id": 62273,
+                        "name": "Food Wars! Shokugeki no Soma",
+                    }
+                ]
+            },
+        ]
+        mock_meta.side_effect = [
+            _named_show_meta([(2, 13, "The Second Plate")]),
+            {
+                "episodes": [
+                    {"episode_number": 12, "name": "The Magician Returns"},
+                    {"episode_number": 13, "name": "Pomp & Circumstance"},
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp and Circumstance",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp and Circumstance",
+                "movie",
+                None,
+                None,
+            ),
+            ("62273", "tv", 2, 13),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_chain_ambiguous_show_stays_pending(
+        self, mock_meta, mock_search
+    ):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {
+                "results": [
+                    {"media_id": 62273, "name": "Food Wars! Shokugeki no Soma"},
+                    {"media_id": 99999, "name": "Food Wars! Shokugeki no Soma"},
+                ]
+            },
+            {"results": []},
+        ]
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "movie",
+                None,
+                None,
+            ),
+        )
+        mock_meta.assert_not_called()
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_chain_ambiguous_season_name_stays_pending(
+        self, mock_meta, mock_search
+    ):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {"results": [{"media_id": 62273, "name": "Food Wars! Shokugeki no Soma"}]},
+            {"results": []},
+        ]
+        mock_meta.return_value = _named_show_meta(
+            [(2, 13, "The Second Plate"), (5, 13, "The Second Plate")],
+        )
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "movie",
+                None,
+                None,
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_chain_keeps_season_when_episode_unmatched(
+        self, mock_meta, mock_search
+    ):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {"results": [{"media_id": 62273, "name": "Food Wars! Shokugeki no Soma"}]},
+        ]
+        mock_meta.side_effect = [
+            _named_show_meta([(2, 13, "The Second Plate")]),
+            {
+                "episodes": [
+                    {"episode_number": 1, "name": "Completely Different"},
+                    {"episode_number": 2, "name": "Another Unrelated Name"},
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance",
+                "movie",
+                None,
+                None,
+            ),
+            ("62273", "tv", 2, None),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_two_segment_row_does_not_use_named_chain(self, mock_meta,
+                                                       mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": [{"media_id": 9, "name": "Some Show"}]},
+        ]
+        mock_meta.side_effect = [
+            _named_show_meta([(1, 1, "The Part")]),
+            {"episodes": [{"episode_number": 1, "name": "Something"}]},
+        ]
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "Some Show: The Part", "Some Show: The Part", "movie", None, None,
+            ),
+        )
+
+
 class DateTests(TestCase):
     """Date parsing and per-file layout detection."""
 
@@ -458,6 +664,55 @@ class NetflixImporterTests(TestCase):
             episode_number=5,
         )
         self.assertEqual(Episode.objects.filter(item=item).count(), 1)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_named_season_row_records_episode_play(self, mock_meta,
+                                                   mock_search):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {
+                "results": [
+                    {
+                        "media_id": 62273,
+                        "name": "Food Wars! Shokugeki no Soma",
+                    }
+                ]
+            },
+        ]
+        show_meta = _named_show_meta(
+            [(1, 24, "Season 1"), (2, 13, "The Second Plate")],
+        )
+        season_meta = {
+            "title": "Season 2",
+            "image": "s.jpg",
+            "max_progress": 13,
+            "episodes": [{"episode_number": 13, "title": "Pomp & Circumstance"}],
+        }
+        # The chain reads the show and the season; record_play repeats both
+        # lookups (the mock bypasses the real memo).
+        mock_meta.side_effect = [show_meta, season_meta, show_meta, season_meta]
+
+        counts, _ = _run(
+            _csv(
+                "Title,Date",
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance,7/28/19",
+            ),
+            self.user,
+        )
+
+        self.assertEqual(counts.get(MediaTypes.TV.value), 1)
+        item = Item.objects.get(
+            media_id="62273",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=2,
+            episode_number=13,
+        )
+        self.assertEqual(Episode.objects.filter(item=item).count(), 1)
+        self.assertEqual(NetflixPendingRow.objects.count(), 0)
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")
@@ -1101,3 +1356,98 @@ class NetflixTaskTests(TestCase):
                     self.user,
                     "new",
                 )
+
+
+class NetflixRetryTests(TestCase):
+    """Re-running parked rows through the improved matcher."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+        self.client.force_login(self.user)
+        self.run = ImportRun.objects.create(
+            user=self.user,
+            source="netflix",
+            status=ImportRun.Status.COMPLETED.value,
+        )
+        self.resolvable = NetflixPendingRow.objects.create(
+            user=self.user,
+            title=(
+                "Food Wars!: Shokugeki no Soma: The Second Plate: "
+                "Pomp & Circumstance"
+            ),
+            watched_at=date(2019, 7, 28),
+            raw_date="7/28/19",
+            media_type=MediaTypes.MOVIE.value,
+            import_run_id=self.run.id,
+        )
+        self.unresolvable = NetflixPendingRow.objects.create(
+            user=self.user,
+            title="Unmatched: Show: Title",
+            watched_at=date(2019, 7, 28),
+            raw_date="7/28/19",
+            media_type=MediaTypes.MOVIE.value,
+            import_run_id=self.run.id,
+        )
+
+    def _mocks(self, mock_search, mock_meta):
+        mock_search.side_effect = [
+            {"results": []},
+            {"results": []},
+            {
+                "results": [
+                    {
+                        "media_id": 62273,
+                        "name": "Food Wars! Shokugeki no Soma",
+                    }
+                ]
+            },
+            {"results": []},
+            {"results": []},
+            {"results": []},
+        ]
+        show_meta = _named_show_meta(
+            [(1, 24, "Season 1"), (2, 13, "The Second Plate")],
+        )
+        season_meta = {
+            "title": "Season 2",
+            "image": "s.jpg",
+            "max_progress": 13,
+            "episodes": [{"episode_number": 13, "title": "Pomp & Circumstance"}],
+        }
+        mock_meta.side_effect = [show_meta, season_meta, show_meta, season_meta]
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_retry_records_and_removes_resolvable_row(self, mock_meta,
+                                                      mock_search):
+        from integrations import tasks
+
+        self._mocks(mock_search, mock_meta)
+
+        tasks.retry_netflix_pending(self.user.id)
+
+        remaining = NetflixPendingRow.objects.all()
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.first().id, self.unresolvable.id)
+        episode = Episode.objects.get(import_run_id=self.run.id)
+        self.assertEqual(episode.item.season_number, 2)
+        self.assertEqual(episode.item.episode_number, 13)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_retry_view_queues_task_and_removes_resolvable_row(
+        self, mock_meta, mock_search
+    ):
+        self._mocks(mock_search, mock_meta)
+
+        response = self.client.post(reverse("netflix_pending_retry"))
+
+        self.assertRedirects(response, reverse("netflix_pending"))
+        self.assertEqual(NetflixPendingRow.objects.count(), 1)
+        messages = [m.message for m in get_messages(response.wsgi_request)]
+        self.assertTrue(
+            any("auto-matching" in m.lower() for m in messages),
+            messages,
+        )

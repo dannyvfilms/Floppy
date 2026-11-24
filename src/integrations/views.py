@@ -2014,6 +2014,24 @@ def netflix_pending_dismiss(request, row_id):
 
 
 @require_POST
+def netflix_pending_retry(request):
+    """Queue a re-run of auto-matching over every pending row.
+
+    Follow-up batch work on the default queue: the page redirects back
+    straight away and the pending list shrinks as the task resolves rows.
+    """
+    tasks.retry_netflix_pending.delay(request.user.id)
+    messages.info(
+        request,
+        gettext(
+            "Auto-matching re-run queued. Reload this page in a few "
+            "minutes to see what was recorded."
+        ),
+    )
+    return _netflix_review_return(request)
+
+
+@require_POST
 def import_playnite(request):
     """View for importing a Playnite library CSV backup."""
     file = request.FILES.get("playnite_csv")

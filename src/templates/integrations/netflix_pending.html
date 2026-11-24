@@ -20,20 +20,34 @@
   </header>
 
   {% if rows %}
-  <div class="flex items-center gap-3 text-sm">
-    <a href="{% url 'netflix_pending' %}{% if title_filter %}?filter={{ title_filter|urlencode }}{% endif %}"
-       class="{% if not show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-      {% translate "Pending" %}
-    </a>
-    <span class="text-[var(--color-text-muted)]">·</span>
-    <a href="{% url 'netflix_pending' %}?show=all{% if title_filter %}&filter={{ title_filter|urlencode }}{% endif %}"
-       class="{% if show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-      {% translate "All" %}
-    </a>
-    <span class="text-[var(--color-text-muted)]">·</span>
-    <span class="text-[var(--color-text-muted)]">
-      {% blocktranslate count counter=page_obj.paginator.count %}{{ counter }} row{% plural %}{{ counter }} rows{% endblocktranslate %}
-    </span>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 text-sm">
+      <a href="{% url 'netflix_pending' %}{% if title_filter %}?filter={{ title_filter|urlencode }}{% endif %}"
+         class="{% if not show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
+        {% translate "Pending" %}
+      </a>
+      <span class="text-[var(--color-text-muted)]">·</span>
+      <a href="{% url 'netflix_pending' %}?show=all{% if title_filter %}&filter={{ title_filter|urlencode }}{% endif %}"
+         class="{% if show_all %}font-semibold text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
+        {% translate "All" %}
+      </a>
+      <span class="text-[var(--color-text-muted)]">·</span>
+      <span class="text-sm text-[var(--color-text-muted)]">
+        {% blocktranslate count counter=page_obj.paginator.count %}{{ counter }} row{% plural %}{{ counter }} rows{% endblocktranslate %}
+      </span>
+    </div>
+    {# Retry is server-side chrome like the tabs: a plain POST form that
+       queues the re-match batch, identical for the no-JS fallback and the
+       React island. #}
+    {% if not show_all %}
+    <form method="post" action="{% url 'netflix_pending_retry' %}">
+      {% csrf_token %}
+      <button type="submit"
+              class="h-9 px-3 rounded-md border border-[var(--color-surface-border)] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+        {% translate "Re-run auto-matching" %}
+      </button>
+    </form>
+    {% endif %}
   </div>
 
   {# Filter + pagination are server-side chrome (like the tabs above): a GET

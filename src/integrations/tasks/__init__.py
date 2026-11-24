@@ -133,6 +133,7 @@ _EXPORT_MODULES = {
     "import_youtube_takeout",
             "import_youtube_takeout",
             "push_jellyfin_watched",
+            "retry_netflix_pending",
             "sync_plex_mark_watched",
             "sync_plex_watchlist",
         ),

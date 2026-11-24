@@ -20,7 +20,8 @@ the interactive review page instead of dropped.
 import logging
 import re
 from csv import DictReader
-from datetime import datetime
+from datetime import datetime, time
+from difflib import SequenceMatcher
 
 from billiard.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
@@ -79,6 +80,12 @@ _PART_CONTINUATION_RE = re.compile(
 # Review-page search results: enough to pick from, few enough to stay one
 # TMDB round-trip.
 SEARCH_RESULT_LIMIT = 8
+# The named-season chain's fuzzy episode bar: the closest-named episode in
+# one season must clear the threshold and beat the runner-up.  Calibration
+# knobs for provider name drift ("&" vs "and", dropped articles) — tighten
+# them if false records ever show up.
+FUZZY_EPISODE_THRESHOLD = 0.8
+FUZZY_EPISODE_MARGIN = 0.1
 
 # Netflix dates are slash-separated (M/D/YY or D/M/YY); a two-digit year is
 # rolled to the 1900s at/above this pivot and to the 2000s below it.
@@ -445,6 +452,76 @@ class NetflixResolver(TraktMetadataResolverMixin):
             return None
         return tmdb_id, MediaTypes.TV.value, *found[0]
 
+    def _match_named_season_episode(self, query):
+        """Match a "Show: SeasonName: EpisodeTitle" row without markers.
+
+        Anime and docuseries name their seasons instead of numbering them
+        ("Food Wars!: Shokugeki no Soma: The Second Plate: …"), which the
+        movie path can never find.  The show must be a unique exact title
+        match and the season name a unique match among the show's named
+        seasons; the episode then has to be an exact, or the clearly best
+        fuzzy, match within that one season.  A split with a unique show
+        and season keeps that season for the review page even when no
+        episode qualifies.
+        """
+        parts = [part.strip() for part in query.split(":")]
+        for split in range(len(parts) - 2, 0, -1):
+            prefix = ": ".join(parts[:split])
+            season_name = parts[split]
+            episode_title = " ".join(parts[split + 1:])
+            matches = title_matches(
+                self._search_results(prefix, MediaTypes.TV.value), prefix,
+            )
+            if len(matches) != 1:
+                continue
+            tmdb_id = _result_id_str(matches[0])
+            metadata = self._get_metadata(MediaTypes.TV.value, tmdb_id, "")
+            seasons = (metadata or {}).get("related", {}).get("seasons", [])
+            target = _normalize_match(season_name)
+            hits = {
+                season["season_number"]
+                for season in seasons
+                if season.get("season_number")
+                and _normalize_match(season.get("name") or "") == target
+            }
+            if len(hits) != 1:
+                continue
+            season_number = hits.pop()
+            episode_number = self._fuzzy_episode_number(
+                tmdb_id, season_number, episode_title,
+            )
+            return tmdb_id, MediaTypes.TV.value, season_number, episode_number
+        return None
+
+    def _fuzzy_episode_number(self, tmdb_id, season_number, episode_title):
+        """Match one episode title inside one season, exact or clearly best."""
+        if not episode_title:
+            return None
+        names = self._season_episode_names(tmdb_id, season_number)
+        if not names:
+            return None
+        target = _normalize_match(episode_title)
+        exact = {
+            number for number, name in names.items() if name == target
+        }
+        if len(exact) == 1:
+            return exact.pop()
+        scored = sorted(
+            (
+                (SequenceMatcher(None, target, name).ratio(), number)
+                for number, name in names.items()
+            ),
+            reverse=True,
+        )
+        best_score, best_number = scored[0]
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        if (
+            best_score >= FUZZY_EPISODE_THRESHOLD
+            and best_score - runner_up >= FUZZY_EPISODE_MARGIN
+        ):
+            return best_number
+        return None
+
     def resolve_row(self, title, query, media_type, season_number,
                     episode_number):
         """Resolve one row to a TMDB work with safe, narrow shortcuts.
@@ -469,7 +546,10 @@ class NetflixResolver(TraktMetadataResolverMixin):
         if not matches and media_type == MediaTypes.MOVIE.value:
             matches = self._part_continuation_matches(query)
         if not matches and media_type == MediaTypes.MOVIE.value and ":" in query:
-            return self._match_unlabelled_episode(query)
+            unlabelled = self._match_unlabelled_episode(query)
+            if unlabelled is not None:
+                return unlabelled
+            return self._match_named_season_episode(query)
         if not matches:
             return None
         if len(matches) > 1:
@@ -558,6 +638,65 @@ class NetflixResolver(TraktMetadataResolverMixin):
         if len(matches) == 1:
             return matches.pop()
         return None
+
+    def _attempt_record(self, title, watched_at):
+        """Run one row through the resolve + record pipeline.
+
+        Returns ``(True, media_type)`` when a play was recorded, or
+        ``(False, (media_type, season_number, episode_number))`` with the
+        fields to park for review.  Shared by the import and the pending
+        row retry so both run the exact same matching.
+        """
+        query, media_type, season_number, episode_number = _split_title(title)
+        # resolve_row adds safe shortcuts on top of the unique exact match
+        # (a known season filters same-title shows, a missing part suffix,
+        # a single season carrying the episode, an unlabelled anthology
+        # episode, a named season chain); None means the row must go to
+        # the review page.
+        resolved = self.resolve_row(
+            title, query, media_type, season_number, episode_number,
+        )
+        if (
+            resolved is None
+            or (
+                media_type == MediaTypes.TV.value
+                and resolved[2] is None
+            )
+        ):
+            return False, (media_type, season_number, episode_number)
+        tmdb_id, media_type, season_number, episode_number = resolved
+
+        # Many rows carry the season and the episode title but no number
+        # ("Weeds: Season 8: It's Time"); the number comes from matching
+        # the title within the season.
+        if media_type == MediaTypes.TV.value and episode_number is None:
+            episode_number = self.match_episode_number(
+                tmdb_id, query, season_number, _episode_title(title, query),
+            )
+            if episode_number is None:
+                return False, (media_type, season_number, episode_number)
+
+        _item, error = self.record_play(
+            query, watched_at, media_type, tmdb_id,
+            season_number=season_number, episode_number=episode_number,
+        )
+        if error:
+            logger.info("Netflix row %r needs review: %s", title, error)
+            return False, (media_type, season_number, episode_number)
+        return True, media_type
+
+    def resolve_pending_row(self, row):
+        """Re-run one parked row through the current matching pipeline.
+
+        Returns True when a play was recorded and the row can be removed.
+        """
+        if not row.watched_at:
+            return False
+        watched_at = timezone.make_aware(
+            datetime.combine(row.watched_at, time.min),
+        )
+        recorded, _fields = self._attempt_record(row.title, watched_at)
+        return recorded
 
     def record_play(self, title, watched_at, media_type, tmdb_id,
                     season_number=None, episode_number=None):
@@ -747,55 +886,23 @@ class NetflixImporter(NetflixResolver):
             return
         raw_date = (row.get("Date") or "").strip()
         watched_at = _parse_netflix_date(raw_date, layout)
-        query, media_type, season_number, episode_number = _split_title(title)
 
         # A broken date cannot be recorded; park it for the review page.
         if watched_at is None:
-            self._add_pending(title, watched_at, raw_date, media_type,
-                              season_number, episode_number)
-            return
-
-        # resolve_row adds safe shortcuts on top of the unique exact match
-        # (a known season filters same-title shows, a missing part suffix,
-        # a single season carrying the episode, an unlabelled anthology
-        # episode); None means the row must go to the review page.
-        resolved = self.resolve_row(
-            title, query, media_type, season_number, episode_number,
-        )
-        if (
-            resolved is None
-            or (
-                media_type == MediaTypes.TV.value
-                and resolved[2] is None
+            _query, media_type, season_number, episode_number = _split_title(
+                title,
             )
-        ):
             self._add_pending(title, watched_at, raw_date, media_type,
                               season_number, episode_number)
             return
-        tmdb_id, media_type, season_number, episode_number = resolved
 
-        # Many rows carry the season and the episode title but no number
-        # ("Weeds: Season 8: It's Time"); the number comes from matching
-        # the title within the season.
-        if media_type == MediaTypes.TV.value and episode_number is None:
-            episode_number = self.match_episode_number(
-                tmdb_id, query, season_number, _episode_title(title, query),
-            )
-            if episode_number is None:
-                self._add_pending(title, watched_at, raw_date, media_type,
-                                  season_number, episode_number)
-                return
-
-        _item, error = self.record_play(
-            query, watched_at, media_type, tmdb_id,
-            season_number=season_number, episode_number=episode_number,
-        )
-        if error:
-            logger.info("Netflix row %r needs review: %s", title, error)
+        recorded, fields = self._attempt_record(title, watched_at)
+        if not recorded:
+            media_type, season_number, episode_number = fields
             self._add_pending(title, watched_at, raw_date, media_type,
                               season_number, episode_number)
             return
-        self.counts[media_type] += 1
+        self.counts[fields] += 1
 
     def _add_pending(self, title, watched_at, raw_date, media_type,
                      season_number, episode_number):

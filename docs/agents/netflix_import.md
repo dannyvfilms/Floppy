@@ -92,7 +92,7 @@ and it adds `search_results` (the review page's pick list), `resolve_row`
 and `record_play`.
 
 A row resolves when the title search has exactly one exact normalized-title
-match. Otherwise four non-guessing shortcuts apply, each requiring a unique
+match. Otherwise five non-guessing shortcuts apply, each requiring a unique
 hit; anything ambiguous stays pending:
 
 - **Known season filters same-title shows.** Netflix exports several shows
@@ -114,6 +114,21 @@ hit; anything ambiguous stays pending:
   no movie search can find may resolve when the title before the last
   segment is a unique TV show and the last segment names exactly one
   episode across all of the show's seasons.
+- **Named-season chain.** Anime and docuseries name their seasons instead
+  of numbering them (`Food Wars!: Shokugeki no Soma: The Second Plate:
+  Pomp & Circumstance`), which the title split reads as a movie and no
+  movie search can find. For a movie-classified row with three or more
+  colon segments, every split `show / named season / episode tail` is tried
+  (longest show prefix first): the show must be a unique exact title match,
+  the season name a unique match among the show's named TMDB seasons, and
+  the episode tail an exact — or the clearly best fuzzy (`SequenceMatcher`
+  ratio ≥ `FUZZY_EPISODE_THRESHOLD`, beating the runner-up by
+  `FUZZY_EPISODE_MARGIN`, both module constants in
+  `integrations/imports/netflix.py`) — match within that one season. The
+  fuzzy bar is the only calibrated match in the importer; it is scoped to
+  a season the other two steps already pinned down exactly. A split whose
+  show and season are unique but whose episode does not qualify keeps the
+  season pre-filled on the review page instead of guessing.
 
 All searches and show/season lookups are memoized per import run.
 
@@ -205,6 +220,18 @@ redirect back through the same list, preserving `show`/`filter`/`page`
 as hidden inputs. A filter that matches nothing offers a "Clear filter"
 reset link.
 
+The tabs row's "Re-run auto-matching" button (server chrome, plain POST
+form, pending tab only) queues the `retry_netflix_pending` Celery task on
+the default queue: it re-runs every pending row through the same
+`_attempt_record` pipeline the import uses (`resolve_row` shortcuts,
+episode matching, `record_play`), records the plays that now resolve —
+stamped with the `ImportRun` that parked the row, so undo stays correct —
+and removes those rows; everything else stays for manual review. The page
+redirects back immediately with a queued message; rows without a watch
+date cannot be re-matched and stay pending. The task survives a
+`SoftTimeLimitExceeded` mid-run: the remainder simply stays pending and
+the button can be pressed again.
+
 ## Deliberate boundaries
 
 - German and English labels are the supported marker set. Any other
@@ -216,7 +243,9 @@ reset link.
   pending; the shortcuts above only ever resolve a row that exactly one
   candidate can hold — the importer never guesses between candidates, and
   never uses the watch date or the release year to break a title tie
-  (rewatches make the date a guess).
+  (rewatches make the date a guess). The one calibrated exception is the
+  named-season chain's fuzzy episode match, bounded to a season its show
+  and season-name steps already pinned down exactly.
 - A title with no unique TMDB match stays pending until a human picks one.
 - Rows whose TMDB season genuinely does not exist (`season_missing`) or
   whose episode name TMDB does not know stay pending; those are provider
@@ -229,14 +258,16 @@ heuristics (including the English markers, `Part`/`Teil`/`Volume`
 semantics, colon show names, `_episode_title`), movie and episode
 recording (including title matching and `Part`-as-season rows), the
 `resolve_row` shortcuts (season narrowing, part continuation, season-by-
-episode, unlabelled anthology episode, and the ambiguity cases that must
-stay pending), the pending paths, re-import idempotency, the review views
+episode, unlabelled anthology episode, named-season chain, and the
+ambiguity cases that must stay pending), the pending paths, re-import
+idempotency, the review views
 (server search, the island's JSON search, the island props, resolve,
 dismiss, user scoping, 100-row paging, the `?filter=` narrowing, and
 resolve/dismiss preserving `show`/`filter`/`page`), the import-run
 provenance (stamping of new movie/show/episode/pending rows, no re-tagging
 on re-import, and the review-page resolve stamping plays with the row's
-run), the Celery task wiring, and the TMDB precondition. The undo paths
+run), the Celery task wiring (import and the pending-row retry), and the
+TMDB precondition. The undo paths
 live in `src/users/tests/views/test_rollback_import_run.py` (the Netflix
 branch: plays under pre-existing shows, the cascade of run-created shows,
 other sources keeping episode history) and

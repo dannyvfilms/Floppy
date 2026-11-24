@@ -116,6 +116,11 @@ urlpatterns = [
         views.netflix_pending_dismiss,
         name="netflix_pending_dismiss",
     ),
+    path(
+        "import/netflix/pending/retry",
+        views.netflix_pending_retry,
+        name="netflix_pending_retry",
+    ),
     path("import/playnite", views.import_playnite, name="import_playnite"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),

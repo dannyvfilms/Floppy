@@ -1,5 +1,7 @@
 import logging
+from itertools import groupby
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from celery import current_task, shared_task
 from django.contrib.auth import get_user_model
 from django.db.models import Q
@@ -59,7 +61,7 @@ from integrations.jellyfin_sync import (
     JellyfinPushSyncService,
     format_jellyfin_push_message,
 )
-from integrations.models import ImportRun
+from integrations.models import ImportRun, NetflixPendingRow
 from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks import _jellyfin_health
 from integrations.tasks._import_helpers import (
@@ -484,6 +486,45 @@ def import_trakt_export(file, user_id, mode):
 def import_netflix(file, user_id, mode):
     """Celery task for importing a Netflix viewing-history CSV."""
     return _run_file_import(netflix.importer, file, user_id, mode)
+
+
+@shared_task(name="Retry Netflix auto-matching")
+def retry_netflix_pending(user_id):
+    """Re-run every parked Netflix row through the current matcher.
+
+    Rows that now resolve get their play recorded — stamped with the run
+    that parked them, so "undo this import" stays correct — and removed;
+    everything else stays for manual review.
+    """
+    user = get_user_model().objects.get(id=user_id)
+    rows = list(
+        NetflixPendingRow.objects.filter(
+            user=user,
+            status=NetflixPendingRow.Status.PENDING.value,
+        ).order_by("import_run_id", "id")
+    )
+    removed = 0
+    try:
+        for run_id, group in groupby(rows, key=lambda row: row.import_run_id):
+            resolver = netflix.NetflixResolver(user, import_run_id=run_id)
+            for row in group:
+                if resolver.resolve_pending_row(row):
+                    row.delete()
+                    removed += 1
+    except SoftTimeLimitExceeded:
+        logger.warning(
+            "Netflix retry for %s hit the time limit after removing %d "
+            "row(s); the rest stays for review",
+            user.username,
+            removed,
+        )
+    logger.info(
+        "Netflix retry for %s: removed %d of %d row(s)",
+        user.username,
+        removed,
+        len(rows),
+    )
+    return removed
 
 
 @shared_task(
