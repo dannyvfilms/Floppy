@@ -1,0 +1,36 @@
+name: Issue form labels
+
+# Adds starting labels from the issue form's dropdown answers. Runs only when an
+# issue is opened, so a maintainer's later label changes are never overwritten.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks out the default branch only; the issue body is never executed.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Add labels from form answers
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { labelsFromIssueBody } = require("./.github/scripts/issue-labels.cjs");
+            const issue = context.payload.issue;
+            const labels = labelsFromIssueBody(issue.body);
+            if (!labels.length) return;
+            // addLabels is additive: existing labels are kept.
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels,
+            });

@@ -1,71 +1,47 @@
 name: Bug report
-description: Create a report to help us improve
+description: Report something in Floppy that isn't working as expected.
 title: "[BUG] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Include relevant diagnostics when you can. Logs can help diagnose webhook or
-        integration bugs, but may contain private activity or secrets. Review and trim
-        them before posting. Report sensitive security issues privately using
+        Report sensitive security issues privately using
         [SECURITY.md](https://github.com/dannyvfilms/Floppy/blob/latest/SECURITY.md).
-  - type: checkboxes
-    id: logs-attached
-    attributes:
-      label: Logs
-      description: |
-        Instance administrators can use **Settings > Advanced > Download Sanitized Logs**.
-        Known credential patterns are redacted; private titles, account details, URLs, or
-        unrecognized secrets can remain. Share only a reviewed, relevant excerpt. If you
-        cannot access logs, describe the problem without them. If Floppy will not start,
-        you can run the startup check and review its output before sharing:
-
-        ```bash
-        # The container runs, but it is unhealthy or idle.
-        docker exec floppy python manage.py floppy_preflight --json
-
-        # The container restarts or has exited.
-        docker compose run --rm floppy python manage.py floppy_preflight --json
-        ```
-      options:
-        - label: I reviewed any diagnostics I am sharing for private data and secrets
-          required: true
-  - type: textarea
-    id: log-output
-    attributes:
-      label: Log file / startup check output
-      description: Share a reviewed excerpt or startup check output, if useful. Diagnostics are optional.
-    validations:
-      required: false
   - type: textarea
     id: description
     attributes:
-      label: Describe the bug
-      description: A clear and concise description of what the bug is.
+      label: What went wrong?
+      description: Describe what happened and what you expected to happen instead.
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: To Reproduce
-      description: Steps to reproduce the behavior.
+      label: How can we reproduce it?
+      description: Tell us what you were doing when the problem occurred. If you're unsure how to reproduce it, describe what you remember.
     validations:
       required: true
-  - type: textarea
-    id: expected
+  - type: dropdown
+    id: platform
     attributes:
-      label: Expected behavior
-      description: A clear and concise description of what you expected to happen.
-  - type: textarea
-    id: screenshots
-    attributes:
-      label: Screenshots
-      description: If applicable, add screenshots to help explain your problem.
+      label: Where did this happen?
+      options:
+        - Web browser
+        - iOS app
+        - Android app
+        - Integration or background activity
+        - Server or installation
+        - Multiple platforms
+        - Other / Not Sure
+    validations:
+      required: true
   - type: input
     id: version
     attributes:
       label: Floppy version
+      description: Your installed version can be found at the bottom of Settings > About. Enter "Not sure" if you cannot access it.
+      placeholder: e.g. v26.11.19
     validations:
       required: true
   - type: dropdown
@@ -75,5 +51,37 @@ body:
       options:
         - SQLite (default)
         - PostgreSQL
+        - Not Sure
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots & additional context
+      description: Include screenshots, screen recordings or any other details that might help us understand the problem.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs & diagnostics
+      description: |
+        Logs are strongly encouraged for all bug reports and help us investigate and resolve issues more efficiently.
+
+        Instance administrators can download logs from Settings > Advanced > Download Sanitized Logs.
+
+        Review your logs for private information and secrets before sharing them, even if they have been sanitized.
+
+        If Floppy will not start, follow the [startup diagnostics instructions](https://github.com/dannyvfilms/Floppy/blob/latest/docs/deployment.md#startup-diagnostics) and share the output.
+
+        If you cannot provide logs, please explain why below.
+      placeholder: Attach your reviewed log file, paste relevant diagnostic output, or explain why logs are unavailable.
     validations:
       required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Diagnostics privacy acknowledgment
+      options:
+        - label: I've reviewed any diagnostics I'm sharing for private information and secrets.
+          required: true
