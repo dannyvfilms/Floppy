@@ -1,5 +1,5 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react';
-import { AccessibilityInfo, LayoutAnimation, StyleSheet, useWindowDimensions, View } from 'react-native';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, LayoutAnimation, PanResponder, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { ArrangementView, Host, RNHostView } from '@expo/ui/swift-ui';
@@ -7,13 +7,14 @@ import { arrangementViewStyle, frame } from '@expo/ui/swift-ui/modifiers';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
+import { MenuButton } from '../../../frontend/ui/Shell';
 import { RailModalHost, RailModalProvider, useRailModal } from '../../../frontend/ui/Modal';
 import { menuGeometry } from './menuGeometry.mjs';
 import { useDevicePose } from '../data/useDevicePose';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { ShellLayoutContext } from './shellContext';
 
-function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, overlaySearch }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, overlaySearch, inlineMenu, onToggle, menuLabel }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
@@ -54,7 +55,8 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
       pointerEvents={open ? 'auto' : 'none'}
       style={[styles.sidebar, { backgroundColor: palette.sidebar, top: -bleed.top, width: geometry.menuWidth + bleed.left + bleed.right,
         left: open ? -bleed.left : -(geometry.menuWidth + bleed.left + bleed.right) }]}>
-      <View style={{ flex: 1, paddingTop: bleed.top, paddingLeft: bleed.left, paddingRight: bleed.right }}>
+      {/* A full-width phone menu leaves the top row to the menu button that closes it. */}
+      <View style={{ flex: 1, paddingTop: bleed.top + (inlineMenu && geometry.full ? 69 : 0), paddingLeft: bleed.left, paddingRight: bleed.right }}>
         {sidebar}
       </View>
     </View>
@@ -62,12 +64,25 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
       style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
       importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
       <View onLayout={event => setSearchHeight(event.nativeEvent.layout.height)}
-        style={[styles.search, horizontalContentPadding(insets, 22), overlaySearch && styles.searchOverlay]}>{search}</View>
+        style={[styles.search, horizontalContentPadding(insets, 22), overlaySearch && styles.searchOverlay]}>
+        {inlineMenu
+          // A phone has no rail, so the menu sits left of the search like the PWA top bar instead of
+          // floating in the navigation bar over it. A Duo (hasRail) keeps its toolbar buttons.
+          ? <View style={styles.searchRow}>
+            <View style={styles.menuSlot} />
+            <View style={styles.searchFill}>{search}</View>
+          </View>
+          : search}
+      </View>
       <ShellLayoutContext.Provider value={{ ...viewport, insets,
         headerHeight: overlaySearch ? searchHeight : 0 }}>
         {children}
       </ShellLayoutContext.Provider>
     </View>
+    {inlineMenu ? <View pointerEvents="box-none"
+      style={[styles.inlineMenu, { left: Math.max(0, 22 - insets.left) }]}>
+      <MenuButton open={open} onPress={onToggle} label={menuLabel} palette={palette} />
+    </View> : null}
   </View>;
 }
 
@@ -98,6 +113,19 @@ export default function NativeShell(props) {
     : <ReservedRegionsProvider style={styles.root}><MeasuredNativeShell {...props} /></ReservedRegionsProvider>;
 }
 
+// A phone has no toolbar Back button; dragging in from the left edge goes back, as on iOS.
+function EdgeSwipeBack({ onBack }) {
+  const latest = useRef(onBack);
+  latest.current = onBack;
+  const responder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderRelease: (_, drag) => {
+      if (drag.dx > 60 && Math.abs(drag.dy) < drag.dx / 2) latest.current?.();
+    },
+  })).current;
+  return <View {...responder.panHandlers} style={styles.edgeSwipe} />;
+}
+
 function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division, overlaySearch }) {
   const modal = useRailModal()?.active;
   const insets = useSafeAreaInsets();
@@ -113,21 +141,18 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const menu = { open, sidebar, search, palette, children, reduceMotion, overlaySearch };
+  const menu = { open, sidebar, search, palette, children, reduceMotion, overlaySearch,
+    inlineMenu: !hasRail, onToggle: toggle, menuLabel: open ? 'Close navigation' : 'Open navigation' };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.background } }} />
-    <Stack.Toolbar placement="right">
-      {hasRail
-        ? <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal'} tintColor={palette.text}
-          onPress={modal ? modal.onRequestClose : toggle}
-          accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />
-        : <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal.decrease'} tintColor={palette.text}
-          onPress={modal ? modal.onRequestClose : toggle}
-          accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />}
+    {hasRail ? <Stack.Toolbar placement="right">
+      <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal'} tintColor={palette.text}
+        onPress={modal ? modal.onRequestClose : toggle}
+        accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />
       {canGoBack ? <Stack.Toolbar.Button icon="chevron.left" tintColor={palette.text}
         onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
-    </Stack.Toolbar>
+    </Stack.Toolbar> : null}
     <View style={[styles.root, { paddingTop: insets.top, paddingLeft: insets.left,
       paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom }]}>
       <View style={styles.root}
@@ -138,6 +163,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
         : <MenuLayout {...menu} division={division} />}
       </View>
       <RailModalHost />
+      {!hasRail && canGoBack ? <EdgeSwipeBack onBack={onBack} /> : null}
     </View>
   </>;
 }
@@ -147,6 +173,12 @@ const styles = StyleSheet.create({
   search: { zIndex: 2, width: '100%', minHeight: 44,
     justifyContent: 'center', paddingTop: 25, paddingBottom: 27 },
   // Only Media Details paints beneath search; the reviewed Home/search shell stays in flow.
+  edgeSwipe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 20, zIndex: 50 },
+  // Above the full-width menu panel (zIndex 3) so the same button closes it; 25 matches the search padding.
+  inlineMenu: { position: 'absolute', top: 25, height: 44, justifyContent: 'center', zIndex: 4 },
+  menuSlot: { width: 40 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  searchFill: { flex: 1, minWidth: 0 },
   searchOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   // Not clipped: the menu panel extends through the safe-area insets.
   row: { flex: 1, flexDirection: 'row', minHeight: 0 },

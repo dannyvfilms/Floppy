@@ -51,7 +51,7 @@ function ThemeGlyph({ light, color }) {
   </Text>;
 }
 
-function MenuButton({ open, onPress, label, palette }) {
+export function MenuButton({ open, onPress, label, palette }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     aria-expanded={open} aria-controls="sidebar-nav" onPress={onPress}
     style={({ pressed, hovered, focused }) => [styles.menuButton, {
