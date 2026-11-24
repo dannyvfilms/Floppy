@@ -75,7 +75,7 @@ grep -q "initialised before" <<<"$out"
 docker rm -f "$NAME" >/dev/null
 
 step "restore into the empty volume"
-echo "$DUMP" > "$RUN/backups/postgres/RESTORE"
+docker run --rm --entrypoint sh -v "$RUN/backups:/w" "$IMAGE" -c "echo $DUMP > /w/postgres/RESTORE"
 start
 healthy
 test "$(sql "select v from smoke_marker")" = 42
