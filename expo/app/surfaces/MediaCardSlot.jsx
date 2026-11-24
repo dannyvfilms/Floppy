@@ -454,7 +454,7 @@ function DiscoverAction({ action, onClose }) {
         onPress={() => setAttempt(current => current + 1)} />
     </View>;
   }
-  return <Text accessibilityRole="status" accessibilityLiveRegion="polite" style={styles.hostBody}>
+  return <Text role="status" accessibilityLiveRegion="polite" style={styles.hostBody}>
     {planning ? `Adding "${vals.title || action.title}" to Planning…` : `Hiding "${vals.title || action.title}" from Discover…`}
   </Text>;
 }

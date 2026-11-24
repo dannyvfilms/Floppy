@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   permission: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.xl },
   permissionTitle: { color: palette.text, fontSize: 18, fontWeight: '600', textAlign: 'center' },
   permissionBody: { color: palette.textMuted, fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 420 },
-  scrim: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(24, 24, 27, 0.72)' },
+  scrim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(24, 24, 27, 0.72)' },
   scrimText: { color: palette.text, fontSize: 14, fontWeight: '600' },
   error: { color: palette.danger, fontSize: 13, lineHeight: 18, paddingHorizontal: spacing.lg },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.lg },

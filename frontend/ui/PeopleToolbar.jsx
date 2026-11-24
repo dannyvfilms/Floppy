@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
   trigger: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   triggerText: { fontSize: 16 },
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   sheet: { maxHeight: '80%', borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 1, padding: 20, gap: 12 },
     sheetBody: { gap: 14, paddingBottom: 8 },
   group: { gap: 4, minWidth: 0 },

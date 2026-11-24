@@ -237,7 +237,7 @@ export function AppearanceEditor({
     <View style={[styles.section, colors_.pageCards && { padding: 16, backgroundColor: colors_.surface, borderRadius: 8, gap: 16 }]}>
       <View style={[styles.sectionHeading, colors_.pageCards && { flexDirection: 'row', gap: 12, marginTop: 2.4 }]}>
         {themeIcon ? <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6, overflow: 'hidden' }}>
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors_.accentStrong, opacity: 0.12 }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors_.accentStrong, opacity: 0.12 }]} />
           <Icon spec={themeIcon} color={colors_.link} size={20} />
         </View> : null}
         <View style={{ gap: 4, flex: 1 }}>

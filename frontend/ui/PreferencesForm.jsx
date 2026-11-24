@@ -252,7 +252,7 @@ export function PreferencesForm({
     {sections.map(section => <View key={section.id} style={[styles.section, colors.preferenceCards && { padding: 16, borderRadius: 8, backgroundColor: colors.surface, gap: 16 }]}>
       <View style={[styles.sectionHeading, colors.preferenceCards && { flexDirection: 'row', gap: 12, marginTop: 2 }]}>
         {section.icon && colors.preferenceCards ? <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6, overflow: 'hidden' }}>
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.accent, opacity: 0.12 }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.accent, opacity: 0.12 }]} />
           <Icon spec={section.icon} color={colors.link || colors.accent} size={20} />
         </View> : null}
         <View style={{ gap: 4, flex: 1 }}>

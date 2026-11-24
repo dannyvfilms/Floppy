@@ -134,7 +134,7 @@ function Steps({ steps = [], copy, colors, buttonPalette, labels, copyState, cop
   return <View accessibilityRole="list" style={styles.steps}>
     {steps.map((step, index) => {
       const parts = Array.isArray(step) ? step : step.parts || [];
-      return <View key={index} accessibilityRole="listitem" style={styles.step}>
+      return <View key={index} role="listitem" style={styles.step}>
         <Parts parts={parts} copy={copy} colors={colors} buttonPalette={buttonPalette}
           labels={labels} copyState={copyState} copyKey={`${copyKey}:${index}`}
           onCopy={onCopy} onOpenLink={onOpenLink} />
