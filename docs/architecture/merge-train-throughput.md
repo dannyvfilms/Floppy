@@ -79,3 +79,48 @@ auto-merge on/off, ready/draft, synchronize, reopened, closed), when App
 Tests, Lint or Migration Order finish on a PR, on a 15-minute schedule as a
 safety net, and by hand (dry run by default). CI events for heads that aren't
 a current approved PR are ignored. One run is pending at a time.
+
+## Rebuilding UI bundles during a refresh
+
+The React bundles in `src/static/ui/` are committed and content-hashed, so two
+frontend PRs often conflict there even when their source merges cleanly, and a
+clean merge can still leave stale bundles. With the repository variable
+`MERGE_TRAIN_REBUILD_UI` set to `true`, the train fixes this for an
+owner-authored, same-repository, non-draft PR with auto-merge on, when the PR
+changed UI build inputs (`frontend/`, `src/static/ui/`, `package.json`,
+`package-lock.json`, `scripts/build_ui.mjs`, `.npmrc`) and either `latest`
+changed them too or the merge conflicts. Everything else, including forks and
+every non-UI refresh, keeps the API update and never installs Node. Unset the
+variable to roll back.
+
+Three separated steps, so no privileged token runs PR code:
+
+1. **Plan** (`merge-train` job, as before): picks the PRs, respects lanes and
+   depth, posts a hidden "started" comment and lists them in the `ui_refresh`
+   output instead of calling the API. Dry runs only print.
+2. **Build** (`ui-build` job): read-only token, no secrets, no stored
+   credentials. Merges the exact head and `latest` SHAs. A conflict is tolerated
+   only if every unmerged path (including deleted and renamed ones) is under
+   `src/static/ui/`; any other conflict, migrations included, stays manual. It
+   then deletes the output directory and runs `npm ci --ignore-scripts`,
+   `npm run build:ui` and `npm run check:ui` on Node 22, and fails if the build
+   changed any source file.
+3. **Publish** (`ui-publish` job, has the token): treats the build output as
+   data. It checks file names, types, sizes and checksums, that the PR is still
+   open, owner-authored, same-repository with auto-merge on and its head unchanged
+   and that `latest` has not moved, then redoes the merge itself and requires the
+   same merged non-generated tree as the build. Only then does it write the files
+   into `src/static/ui/` and push one merge commit (parents: PR head, `latest`)
+   with a plain push, which GitHub refuses if the branch moved, so newer agent
+   work is never overwritten. Nothing from the artifact is executed.
+
+The ordinary required checks then run on that commit, and the branch still has to
+be up to date to merge. No branches or PRs are created and nothing is merged or
+bypassed.
+
+A failed or unavailable rebuild posts a "failed" comment with the reason for that
+head and `latest` pair. The PR then falls back to the plain API behaviour (a
+conflicting PR is parked as before), so each pair is tried once and one PR's
+failure never holds up the others. A refresh still running after 30 minutes
+counts as failed. Only the owner's comments are read.
+
