@@ -40,3 +40,16 @@ test("other, multiple, unknown, missing and legacy answers add nothing", () => {
 test("CRLF bodies and plain-hyphen separators still match", () => {
   assert.deepEqual(labelsFromIssueBody(feature("Performance & Technical - Speed").replace(/\n/g, "\r\n")), ["technical"]);
 });
+
+const { classifyIssueBody } = createRequire(import.meta.url)("../.github/scripts/issue-labels.cjs");
+
+test("form-shaped bodies from scripts get the base label, Type and category", () => {
+  assert.deepEqual(classifyIssueBody(bug("Integration or background activity")), { type: "Bug", labels: ["bug", "integration"] });
+  assert.deepEqual(classifyIssueBody(bug("Other / Not Sure")), { type: "Bug", labels: ["bug"] });
+  assert.deepEqual(classifyIssueBody(feature("Interface & Usability — x")), { type: "Feature", labels: ["enhancement", "interface"] });
+});
+
+test("bodies without form headings get nothing", () => {
+  assert.deepEqual(classifyIssueBody("### Describe the bug\n\nold form"), { type: null, labels: [] });
+  assert.deepEqual(classifyIssueBody(null), { type: null, labels: [] });
+});
