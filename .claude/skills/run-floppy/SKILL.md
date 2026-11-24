@@ -164,12 +164,12 @@ hunting for one.
 Start a worker when you need that path:
 
 ```bash
-FLOPPY_PROCESS_ROLE=background uv run --project .. --no-sync celery --app config worker \
+OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES FLOPPY_PROCESS_ROLE=background uv run --project .. --no-sync celery --app config worker \
   --queues "${FLOPPY_CELERY_QUEUES:-celery}" --loglevel INFO \
   --without-mingle --without-gossip &
 ```
 
-`serve.sh start --with-worker` does this.
+`serve.sh start --with-worker` does this. The `OBJC_DISABLE_INITIALIZE_FORK_SAFETY` variable is needed on macOS: a forked worker child that imports `psutil` (via django-health-check) is otherwise killed by the Objective-C runtime ("crashed on child side of fork pre-exec").
 
 ## Driving the browser
 

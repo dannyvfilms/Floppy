@@ -23,6 +23,8 @@ import { TrackDateRow } from './TrackDateRow';
 import { formatTrackDuration, parseTrackDurationMinutes } from './trackDuration';
 import { valueFromDate } from './dateTime';
 
+const MOBILE_WEB_MAX_WIDTH = 1024;
+
 const DEFAULT_LABELS = {
   title: 'Tracking',
   close: 'Close',
@@ -191,6 +193,8 @@ export function TrackForm({
   secondaryActions = [],
   embedded = false,
   grouped = false,
+  // Grouped-list contents inside the host's own tab navigation and footer (web).
+  groupedContent = false,
   renderSelectPicker,
   renderMonthYearWheels,
   renderTimeWheels,
@@ -325,6 +329,11 @@ export function TrackForm({
   }
 
   const sidebar = !embedded && tabs.length > 0;
+  // `grouped` is the whole native layout; `groupedContent` takes only its rows and tab bodies, and only
+  // where the app shell is in its mobile layout (under 1024 px, so phones and an open iPhone Duo; desktop
+  // web keeps its two-column form). The tab navigation keeps its own 640 px rule.
+  const contentGrouped = groupedContent && width < MOBILE_WEB_MAX_WIDTH;
+  const groupedRows = grouped || contentGrouped;
   const inputPalette = { ...palette, border: palette.inputBorder || palette.border };
   // Native iOS layout (grouped = true): grouped lists of 50 pt rows with a leading icon, like the
   // Collection modal. Dates get their own section.
@@ -332,7 +341,12 @@ export function TrackForm({
     progress: actionIcons.historyClock, start_date: actionIcons.calendar, end_date: actionIcons.calendar };
   // While a date picker is open the group drops its icons, so the dividers start at the labels.
   const datesOpen = Boolean(openPicker);
-  const rowFor = field => {
+  // The grouped rows speak Expo's plain copy: a form that comes from the server carries its own wording
+  // ("Progress (Time Played)", "e.g. Plex, Jellyfin...") that the native sheet never shows.
+  const plainField = source => ({ ...source, placeholder: '',
+    label: source.name === 'progress' ? (labels.progress || 'Progress') : source.label });
+  const rowFor = source => {
+    const field = plainField(source);
     const type = fieldType(field);
     const value = values[field.name] == null ? '' : values[field.name];
     const error = fieldErrors[field.name];
@@ -382,8 +396,13 @@ export function TrackForm({
       keyboardType={type === 'number' ? 'decimal-pad' : 'default'}
       onChangeText={next => change(field.name, next)} />;
   };
-  const groupedFields = grouped ? (model?.fields || []).filter(field => field.name !== 'notes') : [];
-  const groupedMain = groupedFields.filter(field => fieldType(field) !== 'date').map(rowFor);
+  const groupedFields = groupedRows ? (model?.fields || []).filter(field => field.name !== 'notes') : [];
+  // The native sheet's order: Status, Score, Progress, then the rest as the form lists them.
+  const rowRank = field => { const index = ['status', 'score', 'progress'].indexOf(field.name); return index < 0 ? 3 : index; };
+  const groupedMain = groupedFields.filter(field => fieldType(field) !== 'date')
+    .map((field, index) => ({ field, index }))
+    .sort((a, b) => rowRank(a.field) - rowRank(b.field) || a.index - b.index)
+    .map(entry => rowFor(entry.field));
   const groupedDates = groupedFields.filter(field => fieldType(field) === 'date').map(rowFor);
   // Presets sit under the End row and set Start and End together.
   if (groupedDates.length) {
@@ -452,7 +471,8 @@ export function TrackForm({
     key={field.name} label={field.label} value={values[field.name] == null ? '' : values[field.name]}
     onChangeText={next => change(field.name, next)} hint={field.help}
     placeholder={labels.notesPlaceholder || 'Add any notes or comments...'}
-    error={fieldErrors[field.name]} palette={inputPalette} />);
+    grouped={groupedRows}
+    error={fieldErrors[field.name]} palette={groupedRows ? palette : inputPalette} />);
   const deleteButton = model?.deleteAction && onDelete
     ? <Button label={labels.delete} tone="danger-solid" disabled={busy}
       onPress={() => onDelete(values)} palette={palette} /> : null;
@@ -473,8 +493,9 @@ export function TrackForm({
   const submitButton = <Button label={busy ? labels.saving : (model?.submitLabel || labels.save)} busy={busy}
     disabled={busy} onPress={submit} palette={palette} />;
 
-  // Entry actions as grouped rows: save as a new entry (web's "Save as new entry"), other repeat actions, delete.
-  const entryRows = grouped ? [
+  // Entry actions as grouped rows (Expo's pattern, now also the web's grouped contents): save as a new entry,
+  // other repeat actions, delete; then the Cancel / primary footer the Collection modal uses.
+  const entryRows = groupedRows ? [
     ...secondaryActions.map(action => <CollectionRow key={action.key} label={action.label}
       tone={action.key === 'save-as-new' ? 'accent' : undefined} palette={palette}
       onPress={busy || action.disabled ? undefined : () => runSecondary(action)} />),
@@ -483,25 +504,8 @@ export function TrackForm({
   ] : [];
   const entryActions = entryRows.length ? <CollectionGroup palette={palette}>{entryRows}</CollectionGroup> : null;
 
-  const generalBody = <View style={sidebar ? styles.generalSide : styles.stack}>
-    {generalPrefix}
-    {grouped ? <View style={styles.generalSide}>
-      {groupedMain.length ? <CollectionGroup title={labels.details || 'Details'} palette={palette}>{groupedMain}</CollectionGroup> : null}
-      {groupedDates.length ? <CollectionGroup title={labels.dates || 'Dates'} palette={palette}>{groupedDates}</CollectionGroup> : null}
-    </View>
-      : sidebar ? <View style={styles.grid}>{cells}</View> : cells}
-    {notes}
-    {grouped ? entryActions : null}
-    {grouped ? null : sidebar ? <View style={styles.footer}>
-      <View style={styles.footerStart}>{deleteButton}{secondary}</View>
-      <View style={styles.footerStart}>{saveAsNew}{submitButton}</View>
-    </View> : <View style={styles.actions}>
-      {submitButton}{deleteButton}{secondary}
-    </View>}
-  </View>;
-
   // The Collection modal's footer: Cancel and the primary action, at the end of the scrolling form (not pinned, so it takes no space).
-  const groupedFooter = grouped ? <View style={styles.groupedFooter}>
+  const groupedFooter = groupedRows ? <View style={styles.groupedFooter}>
     <View style={styles.footerButton}><Button label={labels.cancel || 'Cancel'} tone="ghost" size="lg" width="full"
       onPress={onClose} palette={{ ...palette, ghost: {
         background: 'transparent', pressed: palette.surfaceStrong, hovered: palette.surfaceStrong,
@@ -510,6 +514,23 @@ export function TrackForm({
     <View style={styles.footerButton}><Button label={busy ? labels.saving : (model?.submitLabel || labels.save)} size="lg"
       width="full" palette={palette} busy={busy} disabled={busy} onPress={submit} /></View>
   </View> : null;
+
+  const generalBody = <View style={sidebar ? styles.generalSide : styles.stack}>
+    {generalPrefix}
+    {groupedRows ? <View style={styles.generalSide}>
+      {groupedMain.length ? <CollectionGroup title={labels.details || 'Details'} palette={palette}>{groupedMain}</CollectionGroup> : null}
+      {groupedDates.length ? <CollectionGroup title={labels.dates || 'Dates'} palette={palette}>{groupedDates}</CollectionGroup> : null}
+    </View>
+      : sidebar ? <View style={styles.grid}>{cells}</View> : cells}
+    {notes}
+    {groupedRows ? entryActions : null}
+    {groupedRows ? (sidebar ? groupedFooter : null) : sidebar ? <View style={styles.footer}>
+      <View style={styles.footerStart}>{deleteButton}{secondary}</View>
+      <View style={styles.footerStart}>{saveAsNew}{submitButton}</View>
+    </View> : <View style={styles.actions}>
+      {submitButton}{deleteButton}{secondary}
+    </View>}
+  </View>;
 
   if (sidebar) {
     return <View nativeID={nativeID} style={[styles.shell, {
@@ -523,7 +544,7 @@ export function TrackForm({
       </View> : null}
       {status === 'ready' && model ? <>
         {serverError ? <View style={styles.serverError}><FormError message={serverError} palette={palette} /></View> : null}
-        <TrackTabs sidebar tabs={tabs} activeId={selectedTab} onChange={selectTab}
+        <TrackTabs sidebar grouped={contentGrouped} tabs={tabs} activeId={selectedTab} onChange={selectTab}
           labels={labels} palette={palette} generalContent={generalBody}
           onRetry={onRetryTabs} onTagToggle={onTagToggle} onTagCreate={onTagCreate}
           onArtworkSave={onArtworkSave} onDiscoverToggle={onDiscoverToggle} />
@@ -555,7 +576,7 @@ export function TrackForm({
         </CollectionGroup>
       </View> : null}
       {tabs.length ? <TrackTabs tabs={tabs} activeId={selectedTab} onChange={selectTab}
-        grouped={grouped} hideNav={grouped} renderSelectPicker={renderSelectPicker}
+        grouped={groupedRows} hideNav={grouped} renderSelectPicker={renderSelectPicker}
         labels={labels} palette={palette} generalContent={generalBody}
         onRetry={onRetryTabs} onTagToggle={onTagToggle} onTagCreate={onTagCreate}
         onArtworkSave={onArtworkSave} onDiscoverToggle={onDiscoverToggle} /> : generalBody}

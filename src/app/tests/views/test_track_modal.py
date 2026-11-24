@@ -411,6 +411,11 @@ class TrackModalViewTests(TestCase):
         )
         self.assertEqual(status_field["type"], "select")
         self.assertTrue(status_field["options"])
+        # The score is picked from 1 to the viewer's scale, like the status.
+        score_field = next(
+            field for field in model["fields"] if field["name"] == "score"
+        )
+        self.assertEqual(score_field["scaleMax"], self.user.rating_scale_max or 10)
         self.assertEqual(model["notes"]["value"], "")
         self.assertContains(response, "data-track-form-root")
         self.assertContains(response, "data-track-form-legacy")

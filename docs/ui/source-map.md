@@ -1522,6 +1522,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackTabsGrouped.jsx`
 - `frontend/ui/TrackDateRow.jsx`
 - `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/trackDatePanels.jsx`
 - `frontend/ui/separatorColor.js`
 - `frontend/ui/separatorColor.web.js`
 - `frontend/ui/separatorColor.native.js`
@@ -1643,3 +1644,8 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 - 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
 - 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
 - 2026-11-23 `frontend/ui/TrackDateRow.jsx`: Clear button in the open date panel; `expo/app/surfaces/MediaCardSlot.jsx`: tabs effect moved below the `status` state.
+
+
+Track modal on web (2026-11-24): `TrackForm` takes `groupedContent`, which under 1024 px (phones and an open iPhone Duo; desktop is unchanged) uses the Expo grouped rows (Details and Dates groups, date rows with calendar and time steppers, Presets) and `TrackTabsGrouped` tab bodies (Discover, Status history) inside the web tab navigation and footer; `trackDatePanels.jsx` (`TrackTimeSteppers`) is the shared time panel for web and Android. Web runtime verified (375 px phone; desktop confirmed unchanged); iOS unchanged; Android not verified. Left server-rendered or on the existing tag dialog: Metadata, Collection, Episode plays (richer than the Expo bodies) and Tags (tag deletion has no grouped equivalent yet).
+
+Track modal follow-up (2026-11-24): Score uses the Status picker, rows follow Expo's order, date rows clear with an X button, `MarkdownNotes` has a `grouped` design (Write/Preview and tools on one row, borderless text area in a card, hint behind an info icon), and the grouped form takes Expo's Delete row and Cancel / Update footer used by the grouped Track form, and Expo's `trackFields` offers Source for every type that accepts it.
