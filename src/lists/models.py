@@ -1407,6 +1407,43 @@ class CustomListItem(models.Model):
         return result
 
 
+class CustomListPerson(models.Model):
+    """A cast or crew member saved on a custom list, beside its media items."""
+
+    custom_list = models.ForeignKey(
+        CustomList,
+        on_delete=models.CASCADE,
+        related_name="list_people",
+    )
+    person = models.ForeignKey(
+        "app.Person",
+        on_delete=models.CASCADE,
+        related_name="list_memberships",
+    )
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    date_added = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Meta options for the model."""
+
+        ordering = ["date_added", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["custom_list", "person"],
+                name="%(app_label)s_customlistperson_unique_person_list",
+            ),
+        ]
+
+    def __str__(self):
+        """Return the person's name."""
+        return self.person.name
+
+
 class ListRecommendation(models.Model):
     """Model for item recommendations to custom lists."""
 

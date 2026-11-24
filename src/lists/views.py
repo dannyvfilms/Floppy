@@ -49,6 +49,7 @@ from lists.views_helpers import (
     build_tier_columns,
     paginate_list_items,
 )
+from lists.views_people import list_people_for_display, list_people_props
 from lists.views_smart_list import _smart_list_detail_response
 from users.models import (
     ListDetailLayoutChoices,
@@ -342,6 +343,8 @@ def list_detail(request, list_reference):
     context = {
         "user": request.user,
         "custom_list": custom_list,
+        "list_people": (list_people := list_people_for_display(custom_list)),
+        "list_people_props": list_people_props(list_people),
         "items": items_page,
         "alphabet_other_initial": items_page.alphabet_other_initial,
         "has_next": items_page.has_next(),

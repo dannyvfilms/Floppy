@@ -180,6 +180,7 @@ def _people_person_contract(context):
         "counts": hero["counts"],
         "labels": hero["labels"],
         "historyUrl": hero["historyUrl"],
+        "listsModal": hero["listsModal"],
         "canViewHistory": hero["canViewHistory"],
         "showBiography": hero["showBiography"],
         "isAuthor": bool(context.get("is_author")),
@@ -969,6 +970,7 @@ def person_detail(request, source, person_id, name):
     context = {
         "user": request.user,
         "person": person_data,
+        "person_saved": person is not None,
         "is_author": is_author,
         "watched_filmography": watched_page,
         "watched_total": watched_total,

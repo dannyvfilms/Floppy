@@ -488,6 +488,43 @@ export async function toggleList(identity, listId, hasItem) {
   return { hasItem: !hasItem };
 }
 
+function canEditList(list) {
+  const username = getActiveAuthSession()?.user?.username || '';
+  if (!username) return false;
+  return list.owner?.username === username
+    || (Array.isArray(list.collaborators) && list.collaborators.some(member => member.username === username));
+}
+
+// A person's lists use the same popup model as a media item's.
+export async function loadPersonLists(identity, name) {
+  const base = `/api/v1/people/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.personId)}/lists/`;
+  const [all, membership] = await Promise.all([
+    request('/api/v1/lists/', { query: { limit: 200 } }),
+    request(base),
+  ]);
+  const memberIds = new Set(resultList(membership).map(entry => String(entry.list_id)));
+  return {
+    itemId: identity.personId,
+    title: name || '',
+    lists: resultList(all)
+      // Only lists the viewer can edit: /api/v1/lists/ also returns lists they merely view.
+      .filter(list => !list.is_smart && canEditList(list))
+      .map(list => ({ id: String(list.id), name: list.name, hasItem: memberIds.has(String(list.id)), tags: [] })),
+    tags: [],
+    selectedTag: '',
+    toggleUrl: '',
+    csrfToken: config.csrfToken,
+  };
+}
+
+export async function togglePersonList(identity, listId, hasItem) {
+  await request(
+    `/api/v1/people/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.personId)}/lists/${encodeURIComponent(listId)}/`,
+    { method: hasItem ? 'DELETE' : 'PUT', body: hasItem ? undefined : {} },
+  );
+  return { hasItem: !hasItem };
+}
+
 function trackBody(model, values) {
   const body = {};
   for (const fieldDefinition of model.fields || []) {

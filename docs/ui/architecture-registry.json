@@ -3995,6 +3995,26 @@
           "evidence": "Compiled by the Expo export; no runtime pass."
         }
       }
+    },
+    "frontend/ui/ListPeople.jsx": {
+      "components": [
+        "ListPeople"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted on the Django list page through the people island adapter (mountPeople.jsx, kind listPeople) with the server markup as fallback; checked in the browser, see the review artifact."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo Go on an iPhone 16 simulator loaded the app and Metro bundled the new screens, but the app was signed out and the person and list pages with saved people were not reached. Structural only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run on an emulator."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4234,7 +4254,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
