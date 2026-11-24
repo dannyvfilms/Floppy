@@ -484,7 +484,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Generate the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary`
 - Check the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check`
 - Regenerate the verified OpenAPI artifact: `SECRET=test-only uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml`
-- Run Celery (two workers in one command, mirrors production):
+- Run Celery (two workers in one command, mirrors production). On macOS first `export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`, or a forked worker child that imports `psutil` is killed by the Objective-C runtime ("crashed on child side of fork pre-exec"):
   ```bash
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG &
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
