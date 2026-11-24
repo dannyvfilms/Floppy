@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0232_merge_20261119_2119"),
+        ("app", "0076_person_studio_itempersoncredit_itemstudiocredit"),
         ("lists", "0018_customlist_viewers_alter_customlist_visibility"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
