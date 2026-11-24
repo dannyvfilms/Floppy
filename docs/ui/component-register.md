@@ -993,6 +993,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 - `SettingsView` / `SettingsPage` and native `SettingsScreen` share navigation and page spacing; the Data adapter opts into 24 px section spacing and the web's 20 px subsection title. Native Settings now uses the shared chevron icon and aligns its top content with the Django shell. Remaining consumers and retirement conditions below are unchanged. Browser: settings navigation and Data geometry observed at 375x812; other pages still require their parity passes. iOS: Not verified. Android: Not verified. Native readiness: `Primitives`.
 
+- Settings sidebar stays in view and scrolls on its own when taller than the window (#1525). Web: shared `SettingsView` nav column is `position: sticky` with a viewport-height cap, gated on `Platform.OS === 'web'` because native screens scroll as a whole; the legacy Django wrapper in `users/base.html` got the same cap for pages that still render it. Browser: verified at 1100x480 (sticky at 80px, 384px tall, 628px content scrolls inside). iOS: no change (gated off, not run). Android: no change (gated off, not run).
+
 - Purpose/usage: settings sidebar/mobile menu, media-type selection/order.
 - Native readiness: `Primitives`. Browser evidence only; no iOS or Android runtime verification.
 - Status: `Partial / coexisting`. Browser server templates remain; Expo consumes shared React presentation.

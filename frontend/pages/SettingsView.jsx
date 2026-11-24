@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from '../ui/Icon';
 import { SettingsNavLink } from './SettingsNavLink';
 
@@ -147,7 +147,7 @@ export function SettingsView({
       <Text style={[styles.subtitle, { color: palette.textMuted || '#a1a1aa' }]}>{copy.subtitle}</Text>
     </View>
     <View style={styles.layout}>
-      <View style={[styles.navColumn, narrow && styles.navColumnNarrow]}>
+      <View style={[styles.navColumn, narrow ? styles.navColumnNarrow : webStickyNav]}>
         <SettingsNav navigation={navigation} active={active} onNavigate={onNavigate}
           permissions={permissions} availablePages={availablePages} labels={labels}
           palette={palette} icons={icons} renderIcon={renderIcon}
@@ -172,6 +172,12 @@ export function SettingsPage({ title, copy, palette = {}, children, actions, hea
     {children}
   </View>;
 }
+
+// Web only: the long menu stays in view and scrolls on its own (#1525). Native
+// pages scroll the whole screen, where a sticky column has no meaning.
+const webStickyNav = Platform.OS === 'web'
+  ? { position: 'sticky', top: 80, maxHeight: 'calc(100vh - 6rem)', overflowY: 'auto', borderRadius: 8 }
+  : null;
 
 const styles = StyleSheet.create({
   root: { gap: 32, minWidth: 0 },
