@@ -98,6 +98,12 @@ class GlobalSearchPropsTest(TestCase):
         self.assertEqual(row["items"][0]["card"]["mediaType"], MediaTypes.MOVIE.value)
         for key in ("emptyTitle", "loadMore", "altTitle"):
             self.assertIn(key, props["labels"])
+        self.assertIsNone(props["focusRowId"])
+        focused = self._search_props(self.client.get(
+            reverse("search"),
+            {"q": "dune", "media_type": MediaTypes.MOVIE.value, "grid": "online:tmdb"},
+        ))
+        self.assertEqual(focused["focusRowId"], "online:tmdb")
 
     @patch("app.providers.services.search")
     def test_each_provider_with_results_gets_its_own_row(self, mock_search):

@@ -25,7 +25,7 @@ export const surface = {
 // same rows from the API.
 const resultsPath = session => (session.authType === 'token' ? '/api/v1/search/results/' : '/search/results');
 
-export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpenDetail, navigate }) {
+export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpenDetail, navigate, focusRowId, onFocusRow }) {
   const { width } = useWindowDimensions();
   const mobileGridLayout = useMobileGridLayout();
   const itemWidth = shelfCardWidth(width, mobileGridLayout);
@@ -113,6 +113,8 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     railComponent={WindowedRail}
     onLoadMore={onLoadMore}
     onLoadOnlineRow={onLoadOnlineRow}
+    focusRowId={focusRowId}
+    onFocusRow={onFocusRow}
     onRetry={() => setAttempt(current => current + 1)}
   />;
 }

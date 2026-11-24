@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { HomeShelves } from './HomeShelves';
 import { Spinner } from './Spinner';
-import { useStreamedRows } from './searchRows';
+import { mergeSearchRowPage, useStreamedRows } from './searchRows';
 
 const defaultPalette = {
   text: '#fafafa',
@@ -32,6 +32,38 @@ const defaultLabels = {
   retry: 'Try again',
 };
 
+// One row opened from its title: every loaded card in the shared card renderer, wrapped
+// at the shelf card width, with the row's own paging behind "Load more".
+function RowGrid({ row, renderCard, itemWidth, onLoadMore, palette, labels }) {
+  const [current, setCurrent] = useState(row);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => setCurrent(row), [row]);
+  const items = current.items || [];
+  const canLoadMore = Boolean(onLoadMore) && (current.loadedCount ?? items.length) < (current.total ?? 0);
+  async function loadMore() {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const next = await onLoadMore(current);
+      if (next) setCurrent(next);
+    } catch {
+      // The button stays, so a failed page can be retried.
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <View style={styles.grid}>
+    <View style={styles.gridCards}>
+      {items.map(item => <View key={item.id} style={{ width: itemWidth }}>{renderCard(item, current)}</View>)}
+    </View>
+    {canLoadMore ? <Pressable accessibilityRole="button" onPress={loadMore} disabled={loading}
+      style={[styles.retry, styles.loadMore, { backgroundColor: palette.surfaceStrong || palette.surface }]}>
+      {loading ? <Spinner size={16} color={palette.accent} />
+        : <Text style={[styles.retryText, { color: palette.text }]}>{labels.loadMore || 'Load more'}</Text>}
+    </Pressable> : null}
+  </View>;
+}
+
 function EmptyState({ empty, palette, labels }) {
   return <View style={[styles.empty, { backgroundColor: palette.surface }]}>
     <Text role="heading" aria-level={2} style={[styles.emptyTitle, { color: palette.text }]}>
@@ -57,6 +89,8 @@ export function SearchResults({
   rows: baseRows = [],
   onlineSources = [],
   onLoadOnlineRow,
+  focusRowId,
+  onFocusRow,
   railComponent,
   empty,
   itemWidth,
@@ -76,10 +110,19 @@ export function SearchResults({
   const { width } = useWindowDimensions();
   // The same heading size as a Home row's title.
   const compact = width < 640;
-  const { rows, failed, pending } = useStreamedRows({
-    rows: baseRows, onlineSources, loadOnlineRow: onLoadOnlineRow, resetKey: String(testID || ''),
+  // A focused row asks only its own provider, so a grid opened from a title costs one request.
+  const focused = Boolean(focusRowId);
+  const { rows: streamed, failed, pending } = useStreamedRows({
+    rows: baseRows,
+    onlineSources: focused ? onlineSources.filter(source => source.rowId === focusRowId) : onlineSources,
+    loadOnlineRow: onLoadOnlineRow, resetKey: String(testID || ''),
   });
-  const groups = rows.length ? [{ mediaType: 'search', label: '', rows }] : [];
+  const focusRow = focused ? streamed.find(row => String(row.rowId) === String(focusRowId)) : null;
+  const rows = focused ? (focusRow ? [focusRow] : []) : streamed;
+  // A title opens that row as a grid. HomeShelves makes a title a link when the row has a
+  // `url`, so the row's id stands in as the url and `onOpenRowTitle` turns it into the grid.
+  const shelfRows = onFocusRow && !focused ? rows.map(row => ({ ...row, url: row.url || String(row.rowId) })) : rows;
+  const groups = shelfRows.length ? [{ mediaType: 'search', label: '', rows: shelfRows }] : [];
   return <View style={styles.wrapper} testID={testID}>
     {failed.map(label => <Text key={label} style={[styles.note, { color: palette.textMuted }]}>{`${label} ${copy.unavailable}`}</Text>)}
     {notes.map((note, index) => <Text key={index} style={[styles.note, { color: palette.textMuted }]}>{note}</Text>)}
@@ -97,7 +140,17 @@ export function SearchResults({
     </View> : null}
     {state === 'empty' || (state === 'ready' && !rows.length && !pending)
       ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
-    {state === 'ready' && rows.length ? <HomeShelves
+    {state === 'ready' && focusRow ? <View style={styles.wrapper}>
+      <Pressable accessibilityRole="link" onPress={() => onFocusRow?.(null)}>
+        <Text style={[styles.back, { color: palette.link }]}>{`‹ ${copy.title}`}</Text>
+      </Pressable>
+      <Text role="heading" aria-level={2} style={[styles.title, compact && styles.titleCompact, { color: palette.text }]}>
+        {focusRow.titleDetail ? `${focusRow.titleMain || focusRow.title} • ${focusRow.titleDetail}` : (focusRow.titleMain || focusRow.title)}
+      </Text>
+      <RowGrid row={focusRow} renderCard={renderCard} itemWidth={itemWidth} onLoadMore={onLoadMore}
+        palette={palette} labels={{ ...copy, ...labels }} />
+    </View> : null}
+    {state === 'ready' && !focused && rows.length ? <HomeShelves
       railComponent={railComponent}
       groups={groups}
       labels={labels}
@@ -108,6 +161,7 @@ export function SearchResults({
       renderActionIcon={renderActionIcon}
       onOpenCard={onOpenCard}
       onOpenLink={onOpenLink}
+      onOpenRowTitle={onFocusRow ? (_url, row) => onFocusRow(row) : undefined}
       onAction={onAction}
       onRate={onRate}
       onLoadMore={onLoadMore} /> : null}
@@ -122,6 +176,10 @@ const styles = StyleSheet.create({
   wrapper: { gap: 16, minWidth: 0 },
   title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
   titleCompact: { fontSize: 16, lineHeight: 21.6 },
+  back: { fontSize: 14, lineHeight: 20 },
+  grid: { gap: 16, minWidth: 0 },
+  gridCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  loadMore: { alignSelf: 'center', minWidth: 140, alignItems: 'center' },
   note: { fontSize: 14, lineHeight: 20 },
   searching: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   state: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 48 },
