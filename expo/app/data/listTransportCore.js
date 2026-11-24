@@ -513,13 +513,6 @@ export function createRemoteListActions(request) {
     loadActivity({ listId }) {
       return request(`${listPath(listId)}activity/`);
     },
-    // Take a saved person off a list.
-    removePerson({ listId, source, personId }) {
-      return request(
-        `/api/v1/people/${encodeURIComponent(source)}/${encodeURIComponent(personId)}/lists/${encodeURIComponent(listId)}/`,
-        { method: 'DELETE' },
-      );
-    },
     loadRecommendations({ listId }) {
       return request(recommendationsPath(listId));
     },

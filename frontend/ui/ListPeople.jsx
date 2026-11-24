@@ -4,7 +4,7 @@ import { ArtworkImage } from './ArtworkImage';
 
 /** People saved on a list, shown under its media. Props only: the platform
  * adapter supplies navigation and the remove request. */
-export function ListPeople({ people = [], canEdit = false, title = 'People', removeLabel = 'Remove', palette = {}, onOpen, onRemove }) {
+export function ListPeople({ people = [], title = 'People', palette = {}, onOpen }) {
   if (!people.length) return null;
   const text = palette.text || '#fafafa';
   const muted = palette.textMuted || '#a1a1aa';
@@ -18,10 +18,6 @@ export function ListPeople({ people = [], canEdit = false, title = 'People', rem
           <Text numberOfLines={1} style={[styles.name, { color: text }]}>{person.name}</Text>
           {person.department ? <Text numberOfLines={1} style={[styles.department, { color: muted }]}>{person.department}</Text> : null}
         </Pressable>
-        {canEdit && onRemove ? <Pressable accessibilityRole="button" accessibilityLabel={`${removeLabel} ${person.name}`}
-          onPress={() => onRemove(person)} style={styles.remove}>
-          <Text style={styles.removeText}>{removeLabel}</Text>
-        </Pressable> : null}
       </View>)}
     </View>
   </View>;
@@ -35,6 +31,4 @@ const styles = StyleSheet.create({
   image: { width: 104, aspectRatio: 2 / 3, borderRadius: 8, overflow: 'hidden' },
   name: { marginTop: 8, fontSize: 14, fontWeight: '500' },
   department: { fontSize: 12 },
-  remove: { position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0, 0, 0, 0.6)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
-  removeText: { color: '#ffffff', fontSize: 12 },
 });

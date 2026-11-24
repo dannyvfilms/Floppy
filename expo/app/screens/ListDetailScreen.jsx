@@ -1110,15 +1110,6 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     navigate?.('People', { identity: { kind: 'person', source: person.source, personId: person.personId } });
   }
 
-  async function removePerson(person) {
-    try {
-      await transport.removePerson?.({ listId: list.id, source: person.source, personId: person.personId });
-      setList(current => ({ ...current, people: (current.people || []).filter(entry => entry.id !== person.id) }));
-    } catch {
-      setNotice('That person could not be removed. Please try again.');
-    }
-  }
-
   function openItem(item) {
     if (navigate) {
       navigate('Detail', { item });
@@ -1338,8 +1329,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         hasSearch={!!search.trim()}
         onRecommend={() => openAddFlow('recommend')}
         onBrowse={() => navigate?.('Search', { query: '' })} />}
-      footer={<ListPeople people={list.people} canEdit={canEdit && !isSmart} palette={LIST_PALETTE}
-        onOpen={openPerson} onRemove={removePerson} />}
+      footer={<ListPeople people={list.people} palette={LIST_PALETTE} onOpen={openPerson} />}
       dialogs={<>
         <ListMembershipPopup
           open={membersOpen}

@@ -763,18 +763,6 @@
                 <p class="mt-2 text-sm font-medium text-[var(--color-text)] truncate">{{ person.name }}</p>
                 {% if person.department %}<p class="text-xs text-[var(--color-text-muted)] truncate">{{ person.department }}</p>{% endif %}
               </a>
-              {% if can_edit and not custom_list.is_smart %}
-                <button type="button"
-                        hx-post="{% url 'person_list_toggle' %}"
-                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                        hx-vals='{"custom_list_id": "{{ custom_list.id }}", "item_id": "{{ person.id }}"}'
-                        hx-target="closest [data-list-person]"
-                        hx-swap="delete"
-                        class="absolute top-1 right-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
-                        aria-label="{% blocktranslate trimmed with value_1=person.name %}Remove {{ value_1 }} from this list{% endblocktranslate %}">
-                  {% translate "Remove" %}
-                </button>
-              {% endif %}
             </div>
           {% endfor %}
         </div>
