@@ -598,13 +598,15 @@ class TraktMetadataResolverMixin:
         )
         return str(result.get("media_id") or result.get("id")) if result else None
 
-    def _get_metadata(self, media_type, tmdb_id, title, season_number=None):
+    def _get_metadata(self, media_type, tmdb_id, title, season_number=None,
+                      language=None):
         """Resolve an import snapshot without repeating warm or absent lookups."""
         coordinate = season_number
         if isinstance(coordinate, str):
             with contextlib.suppress(ValueError):
                 coordinate = int(coordinate)
-        key = (media_type, str(tmdb_id), coordinate, settings.TMDB_LANG)
+        key = (media_type, str(tmdb_id), coordinate,
+               language or settings.TMDB_LANG)
         if not hasattr(self, "_metadata_memo"):
             self._metadata_memo = OrderedDict()
             self._missing_metadata = set()
@@ -622,6 +624,7 @@ class TraktMetadataResolverMixin:
                 media_type,
                 tmdb_id,
                 Sources.TMDB.value,
+                language=language,
                 **kwargs,
             )
         except services.ProviderAPIError as error:

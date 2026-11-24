@@ -25,7 +25,11 @@ def _run(csv_bytes, user):
 
 
 def _named_show_meta(seasons):
-    """TV metadata whose seasons carry names, for the named-season chain."""
+    """TV metadata shaped like the provider's ``related.seasons`` entries.
+
+    The provider stores the season name under ``season_title`` (see
+    ``tmdb.get_related``); there is no ``name`` key.
+    """
     return {
         "title": "Show",
         "image": "t.jpg",
@@ -34,7 +38,7 @@ def _named_show_meta(seasons):
                 {
                     "season_number": number,
                     "episode_count": count,
-                    "name": name,
+                    "season_title": name,
                 }
                 for number, count, name in seasons
             ],
@@ -406,6 +410,14 @@ class ResolveRowTests(TestCase):
                     {"episode_number": 13, "name": "Pomp & Circumstance"},
                 ]
             },
+            # Fallback-language season: same names, no exact match there
+            # either, so the fuzzy match runs against these names.
+            {
+                "episodes": [
+                    {"episode_number": 12, "name": "The Magician Returns"},
+                    {"episode_number": 13, "name": "Pomp & Circumstance"},
+                ]
+            },
         ]
 
         self.assertEqual(
@@ -496,6 +508,13 @@ class ResolveRowTests(TestCase):
                     {"episode_number": 2, "name": "Another Unrelated Name"},
                 ]
             },
+            # Fallback-language season: same unrelated names.
+            {
+                "episodes": [
+                    {"episode_number": 1, "name": "Completely Different"},
+                    {"episode_number": 2, "name": "Another Unrelated Name"},
+                ]
+            },
         ]
 
         self.assertEqual(
@@ -513,6 +532,60 @@ class ResolveRowTests(TestCase):
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_title_match_falls_back_to_other_language(
+        self, mock_meta, mock_search
+    ):
+        """German Netflix rows carry German episode titles; TMDB's default
+        language lists the English ones, so the other language must match.
+        """
+        fetched = []
+
+        def metadata(media_type, tmdb_id, title, season_number=None,
+                     language=None):
+            fetched.append(language)
+            if language == "de":
+                return {
+                    "episodes": [{"episode_number": 3, "name": "Nicht über mein Sofa"}],
+                }
+            return {
+                "episodes": [{"episode_number": 3, "name": "Not On My Sofa"}],
+            }
+
+        mock_meta.side_effect = metadata
+
+        self.assertEqual(
+            self.resolver.match_episode_number(
+                51488, "Der Tatortreiniger", 1, "Nicht über mein Sofa",
+            ),
+            3,
+        )
+        self.assertIn(None, fetched)  # primary language first
+        self.assertIn("de", fetched)  # then the fallback
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_episode_title_match_skips_fallback_on_primary_match(
+        self, mock_meta, mock_search
+    ):
+        fetched = []
+
+        def metadata(media_type, tmdb_id, title, season_number=None,
+                     language=None):
+            fetched.append(language)
+            return {"episodes": [{"episode_number": 1, "name": "Pilot"}]}
+
+        mock_meta.side_effect = metadata
+
+        self.assertEqual(
+            self.resolver.match_episode_number(
+                156, "Suits", 1, "Pilot",
+            ),
+            1,
+        )
+        self.assertEqual(fetched, [None])  # one fetch, no fallback
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
     def test_two_segment_row_does_not_use_named_chain(self, mock_meta,
                                                        mock_search):
         mock_search.side_effect = [
@@ -521,6 +594,8 @@ class ResolveRowTests(TestCase):
         ]
         mock_meta.side_effect = [
             _named_show_meta([(1, 1, "The Part")]),
+            {"episodes": [{"episode_number": 1, "name": "Something"}]},
+            # Fallback-language season: same single episode.
             {"episodes": [{"episode_number": 1, "name": "Something"}]},
         ]
 
@@ -803,7 +878,8 @@ class NetflixImporterTests(TestCase):
             for season in range(1, 10)
         ]
 
-        def meta(media_type, tmdb_id, title, season_number=None):
+        def meta(media_type, tmdb_id, title, season_number=None,
+                 language=None):
             if media_type == MediaTypes.TV.value:
                 if tmdb_id == "79744":
                     return {"title": "The Rookie", "image": "t.jpg",
@@ -849,7 +925,8 @@ class NetflixImporterTests(TestCase):
             ]},
         }
 
-        def meta(media_type, tmdb_id, title, season_number=None):
+        def meta(media_type, tmdb_id, title, season_number=None,
+                 language=None):
             if media_type == MediaTypes.TV.value:
                 return show_meta
             return {"image": "s.jpg",
@@ -890,7 +967,8 @@ class NetflixImporterTests(TestCase):
             ]},
         }
 
-        def meta(media_type, tmdb_id, title, season_number=None):
+        def meta(media_type, tmdb_id, title, season_number=None,
+                 language=None):
             if media_type == MediaTypes.TV.value:
                 return show_meta
             if season_number == 1:

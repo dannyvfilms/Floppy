@@ -148,9 +148,19 @@ trailing episode title (labels and a trailing `: Part N`/`: Teil N`
 stripped by `_episode_title`) against the season's episode names from the
 same TMDB season lookup — normalized to alphanumerics, so case and
 punctuation never block a match. A unique hit is recorded; zero or
-ambiguous hits stay pending with the season pre-filled. English episode
-titles match TMDB's English names; localized (e.g. German) episode titles
-generally do not and land on the review page.
+ambiguous hits stay pending with the season pre-filled.
+
+Netflix exports mix languages while `TMDB_LANG` is one language per
+instance, so an exact match gets one extra chance in the other of `en`/`de`
+(`_match_languages`, `_season_names_candidates`): the configured language
+always decides first, and the fallback language is fetched only when the
+configured one does not name the target at all. That is what lets a German
+row (`Der Tatortreiniger: Season 1: Nicht über mein Sofa`) match a German
+TMDB episode name when `TMDB_LANG=en`. The fallback applies to every
+exact-match path (`match_episode_number`, the unlabelled and named-season
+chains, `_seasons_for_episode`); it never feeds the fuzzy match, and a
+name that is ambiguous in the configured language is not re-checked in the
+other.
 
 ## Provenance and undo
 

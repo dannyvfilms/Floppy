@@ -24,6 +24,7 @@ from datetime import datetime, time
 from difflib import SequenceMatcher
 
 from billiard.exceptions import SoftTimeLimitExceeded
+from django.conf import settings
 from django.utils import timezone
 
 import app
@@ -360,7 +361,8 @@ class NetflixResolver(TraktMetadataResolverMixin):
             )
         return self._netflix_season_count[key]
 
-    def _season_episode_names(self, tmdb_id, season_number, title=""):
+    def _season_episode_names(self, tmdb_id, season_number, title="",
+                              language=None):
         """Return ``{episode_number: normalized name}`` for one season.
 
         An empty mapping means the season is absent from the provider,
@@ -368,6 +370,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
         """
         metadata = self._get_metadata(
             MediaTypes.SEASON.value, tmdb_id, title, season_number,
+            language=language,
         )
         if not metadata:
             return {}
@@ -377,6 +380,55 @@ class NetflixResolver(TraktMetadataResolverMixin):
             )
             for episode in metadata.get("episodes", [])
         }
+
+    def _match_languages(self):
+        """Languages for episode-name matching, the configured one first.
+
+        Netflix exports mix languages (German productions keep their
+        German episode titles) while TMDB_LANG is one language per
+        instance; the other of the two gets one extra chance, only when
+        the configured language does not carry the name.
+        """
+        primary = settings.TMDB_LANG
+        if primary in ("en", "de"):
+            return (primary, "de" if primary == "en" else "en")
+        return (primary,)
+
+    def _season_names_candidates(self, tmdb_id, season_number, target,
+                                  title=""):
+        """Yield one season's episode names, configured language first.
+
+        The fallback language follows only when the configured language
+        does not name the target at all: a language that names it is the
+        authoritative one for that row.
+        """
+        names = self._season_episode_names(tmdb_id, season_number, title)
+        yield names
+        if not names or any(name == target for name in names.values()):
+            return
+        for language in self._match_languages()[1:]:
+            yield self._season_episode_names(
+                tmdb_id, season_number, title, language,
+            )
+
+    def _episode_name_agrees(self, tmdb_id, season_number, episode_number,
+                              target):
+        """Whether one episode's TMDB name matches ``target``.
+
+        The configured language decides; the fallback language gets one
+        extra chance when the configured one does not name it.
+        """
+        if self._season_episode_names(tmdb_id, season_number).get(
+            episode_number,
+        ) == target:
+            return True
+        return any(
+            self._season_episode_names(
+                tmdb_id, season_number, "", language,
+            ).get(episode_number)
+            == target
+            for language in self._match_languages()[1:]
+        )
 
     def _seasons_for_episode(self, tmdb_id, episode_number, target):
         """Return the seasons of a show that carry episode ``episode_number``.
@@ -389,11 +441,8 @@ class NetflixResolver(TraktMetadataResolverMixin):
         for season_number in sorted(self._show_seasons(tmdb_id)):
             if self._season_count(tmdb_id, season_number) < episode_number:
                 continue
-            if target is not None and (
-                self._season_episode_names(
-                    tmdb_id, season_number,
-                ).get(episode_number)
-                != target
+            if target is not None and not self._episode_name_agrees(
+                tmdb_id, season_number, episode_number, target,
             ):
                 continue
             seasons.append(season_number)
@@ -442,12 +491,16 @@ class NetflixResolver(TraktMetadataResolverMixin):
         tmdb_id = _result_id_str(matches[0])
         target = _normalize_match(dropped)
         found = []
-        for season_number in sorted(self._show_seasons(tmdb_id)):
-            for episode_number, name in self._season_episode_names(
-                tmdb_id, season_number,
-            ).items():
-                if name == target:
-                    found.append((season_number, episode_number))
+        for language in self._match_languages():
+            found = []
+            for season_number in sorted(self._show_seasons(tmdb_id)):
+                for episode_number, name in self._season_episode_names(
+                    tmdb_id, season_number, "", language,
+                ).items():
+                    if name == target:
+                        found.append((season_number, episode_number))
+            if found:
+                break
         if len(found) != 1:
             return None
         return tmdb_id, MediaTypes.TV.value, *found[0]
@@ -482,7 +535,9 @@ class NetflixResolver(TraktMetadataResolverMixin):
                 season["season_number"]
                 for season in seasons
                 if season.get("season_number")
-                and _normalize_match(season.get("name") or "") == target
+                and _normalize_match(
+                    season.get("season_title") or "",
+                ) == target
             }
             if len(hits) != 1:
                 continue
@@ -497,15 +552,18 @@ class NetflixResolver(TraktMetadataResolverMixin):
         """Match one episode title inside one season, exact or clearly best."""
         if not episode_title:
             return None
-        names = self._season_episode_names(tmdb_id, season_number)
+        target = _normalize_match(episode_title)
+        names = None
+        for names in self._season_names_candidates(
+            tmdb_id, season_number, target,
+        ):
+            exact = {
+                number for number, name in names.items() if name == target
+            }
+            if exact:
+                return exact.pop() if len(exact) == 1 else None
         if not names:
             return None
-        target = _normalize_match(episode_title)
-        exact = {
-            number for number, name in names.items() if name == target
-        }
-        if len(exact) == 1:
-            return exact.pop()
         scored = sorted(
             (
                 (SequenceMatcher(None, target, name).ratio(), number)
@@ -623,20 +681,22 @@ class NetflixResolver(TraktMetadataResolverMixin):
         Netflix rows often carry the season and the episode title but no
         number.  A unique normalized match against the season's episode
         names is safe to record; anything ambiguous is left for review.
+        The fallback language may name the episode when the configured
+        one does not (a German row against TMDB_LANG=en).
         """
         if not episode_title:
             return None
-        names = self._season_episode_names(tmdb_id, season_number, series_title)
-        if not names:
-            return None
         target = _normalize_match(episode_title)
-        matches = {
-            episode_number
-            for episode_number, name in names.items()
-            if name == target
-        }
-        if len(matches) == 1:
-            return matches.pop()
+        for names in self._season_names_candidates(
+            tmdb_id, season_number, target, series_title,
+        ):
+            matches = {
+                episode_number
+                for episode_number, name in names.items()
+                if name == target
+            }
+            if matches:
+                return matches.pop() if len(matches) == 1 else None
         return None
 
     def _attempt_record(self, title, watched_at):
