@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { ListPeople } from './ListPeople';
 import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
 import { shelfCardWidth } from './HomeShelves';
@@ -127,6 +128,14 @@ function Adapter({ props }) {
       scheme.removeEventListener('change', update);
     };
   }, []);
+
+  if (props.kind === 'listPeople') {
+    return <ListPeople
+      people={props.people}
+      title={props.title}
+      palette={palette}
+      onOpen={person => window.location.assign(person.url)} />;
+  }
 
   if (props.kind === 'cast') {
     return <CastRail props={props} palette={palette} />;

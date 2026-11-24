@@ -53,6 +53,31 @@ def list_people_for_display(custom_list):
     return people
 
 
+def list_people_props(people):
+    """Return the shared ListPeople island props for a list page, or None."""
+    from django.conf import settings
+    from django.utils.translation import gettext as _
+
+    from app.templatetags.app_tags import image_url
+
+    if not people:
+        return None
+    return {
+        "kind": "listPeople",
+        "title": str(_("People")),
+        "people": [
+            {
+                "id": person["id"],
+                "name": person["name"],
+                "imageUrl": image_url(person["image"] or settings.IMG_NONE),
+                "department": person["department"],
+                "url": person["url"],
+            }
+            for person in people
+        ],
+    }
+
+
 @login_required
 @require_GET
 def person_lists_modal(request, source, person_id):
