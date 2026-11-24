@@ -4,6 +4,7 @@ import { mountRoot } from '../settings/root';
 import { applyPreviewRefresh, readTags } from './mountTags';
 import { TagAssignmentDialog } from './TagManagement';
 import { TrackDialog } from './TrackDialog';
+import { renderTimeSteppers } from './trackDatePanels';
 import { initialTrackValues, normalizeTrackForm } from './mediaCardForms';
 import { rootStyle } from './rootStyle.web';
 
@@ -357,6 +358,8 @@ function Adapter({ host, props }) {
     busy={busy}
     labels={labels}
     palette={palette}
+    groupedContent
+    renderTimeWheels={renderTimeSteppers}
     tabs={decorated}
     generalPrefix={model.variant === 'song' ? <ServerTabBody host={host} selector="song-details" /> : null}
     onChange={change}

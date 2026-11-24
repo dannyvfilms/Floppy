@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
+import app.helpers
 from app.artwork_sizes import card_image_url
 from app.icon_specs import file_icon, type_icon
 from app.models import MediaTypes, Status
@@ -1063,6 +1064,11 @@ def progress_changer_model(media, csrf_token=""):
         getattr(media, "progress", ""),
     )
     progress = getattr(media, "progress", 0) or 0
+    total = getattr(media, "aggregated_progress", None)
+    if media_type == MediaTypes.GAME.value and total is not None:
+        # A game tracked in several sessions shows its total playtime, not the
+        # latest session's; +/- still adjusts this entry.
+        value = app.helpers.minutes_to_hhmm(total)
     formatted_max = getattr(media, "formatted_max_progress", None) or str(max_progress)
     return {
         "value": str(value),

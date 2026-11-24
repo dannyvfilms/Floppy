@@ -102,6 +102,17 @@ test('option forms and file imports post to their own routes and details carry t
   assert.deepEqual(calls[0].options.body, { tab: 'tracking', values: { jellyfin_mark_played_enabled: true } });
   assert.equal(calls[1].path, '/api/v1/providers/goodreads/file-import/');
   assert.deepEqual(calls[1].options.body, { name: 'g.csv', content: 'a', mode: 'new' });
+  // A provider with several connections says which one a file belongs to.
+  await actions.importFile('jellyfin', { name: 'pr.tsv', content: 'a', mode: 'new', accountId: 7 });
+  assert.deepEqual(calls.at(-1).options.body, { name: 'pr.tsv', mode: 'new', accountId: 7, content: 'a' });
+  const perConnection = detailFromPayload({
+    slug: 'jellyfin',
+    forms: { jellyfin_sync_7: { tab: 'sync', hidden: { account_id: 7 } } },
+    fileImports: [{ id: 'jellyfin-pr-import-7', hidden: { account_id: 7 } }],
+  });
+  assert.equal(perConnection.fileImports[0].hidden.account_id, 7);
+  assert.equal(perConnection.forms.jellyfin_sync_7.tab, 'sync');
+  assert.deepEqual(detailFromPayload({ slug: 'plex' }).fileImports, []);
   const detail = detailFromPayload({ slug: 'plex', forms: { plex_usernames: { id: 'x' } }, fileImport: { fileField: 'f' } });
   assert.deepEqual(Object.keys(detail.forms), ['plex_usernames']);
   assert.equal(detail.fileImport.fileField, 'f');

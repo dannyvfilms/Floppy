@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Button } from '../ui/Button';
 import { FeatureList, MediaIcon } from '../ui/controls/FeatureList';
 import { SelectField } from '../ui/SelectField';
 import { TextField } from '../ui/TextField';
 import { Chip } from '../settings/Chip';
 import { SettingsCard } from '../settings/SettingsCard';
+import { isLightTheme, toneText } from '../settings/statusTones';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -30,12 +31,10 @@ const DEFAULT_PALETTE = {
   infoBackground: 'rgba(99, 102, 241, 0.1)',
   infoBadgeBorder: 'rgba(99, 102, 241, 0.3)',
   infoBadgeBackground: 'rgba(99, 102, 241, 0.1)',
-  infoBadgeText: '#c7d2fe',
   warningBorder: 'rgba(245, 158, 11, 0.3)',
   warningBackground: 'rgba(245, 158, 11, 0.1)',
   warningBadgeBorder: 'rgba(245, 158, 11, 0.4)',
   warningBadgeBackground: 'rgba(245, 158, 11, 0.2)',
-  warningBadgeText: '#fde68a',
   radius: 18,
 };
 
@@ -54,7 +53,7 @@ function tonePalette(colors, tone) {
       background: colors.infoBackground,
       badgeBorder: colors.infoBadgeBorder,
       badgeBackground: colors.infoBadgeBackground,
-      badgeText: colors.infoBadgeText,
+      badgeText: colors.infoBadgeText ?? toneText(colors, 'info'),
     };
   }
   if (tone === 'warning') {
@@ -64,7 +63,7 @@ function tonePalette(colors, tone) {
       background: colors.warningBackground,
       badgeBorder: colors.warningBadgeBorder,
       badgeBackground: colors.warningBadgeBackground,
-      badgeText: colors.warningBadgeText,
+      badgeText: colors.warningBadgeText ?? toneText(colors, 'warning'),
     };
   }
   return colors;
@@ -72,13 +71,13 @@ function tonePalette(colors, tone) {
 
 function chipPalette(colors, tone) {
   if (tone === 'success') {
-    return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
+    return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: toneText(colors, 'success') };
   }
   if (tone === 'warning') {
-    return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
+    return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: toneText(colors, 'warning') };
   }
   if (tone === 'info') {
-    return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
+    return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: toneText(colors, 'info') };
   }
   return colors;
 }
@@ -214,10 +213,11 @@ export function ProviderMetadataView({
   onOpenUrl,
 }) {
   const [proxyUrl, setProxyUrl] = useState('');
+  const light = isLightTheme(palette, useColorScheme());
   const metadata = model.metadata;
   if (!metadata) return null;
 
-  const colors = { ...DEFAULT_PALETTE, ...(palette || {}) };
+  const colors = { ...DEFAULT_PALETTE, ...(palette || {}), isLight: light };
   const buttons = { ...DEFAULT_BUTTON_PALETTE, ...(buttonPalette || {}) };
   const text = { ...(model.labels || {}), ...(labels || {}) };
   const t = key => text[key] ?? key;

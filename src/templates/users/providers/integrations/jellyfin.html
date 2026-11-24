@@ -56,6 +56,8 @@
             <div class="relative mt-2">
               <textarea readonly id="jellyfin-json-template" class="w-full bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
 {% verbatim %}{
+  "ServerId": "{{ServerId}}",
+  "UserId": "{{UserId}}",
   "Event": "{{#if_equals NotificationType 'PlaybackStart'}}Play{{/if_equals}}{{#if_equals NotificationType 'PlaybackStop'}}Stop{{/if_equals}}{{#if_equals NotificationType 'PlaybackProgress'}}{{#if IsPaused}}Pause{{else}}Play{{/if}}{{/if_equals}}{{#if_equals NotificationType 'UserDataSaved'}}UserDataSaved{{/if_equals}}{{#if_equals NotificationType 'ItemAdded'}}ItemAdded{{/if_equals}}{{#if_equals NotificationType 'ItemDeleted'}}ItemDeleted{{/if_equals}}",
   "PlaybackPositionTicks": "{{PlaybackPositionTicks}}",{{#if_equals NotificationType 'UserDataSaved'}}
   "SaveReason": "{{SaveReason}}",{{/if_equals}}
@@ -215,7 +217,24 @@
     </div>
 
 {% endif %}
-{% if not provider_tab or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' or provider_tab == 'connection' and not account_connection %}
+{% if jellyfin_connection_cards and provider_tab == 'sync' or jellyfin_connection_cards and provider_tab == 'import' %}
+    {# Per-connection sync and import cards: shared React islands over these models, plain forms as the fallback. #}
+    <div class="space-y-4 mb-6" x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'" x-transition.opacity.duration.150ms>
+      {% for card in jellyfin_connection_cards %}
+        {% for key, form in card.forms %}
+          {% include "users/components/settings_form_island.html" with form_model=form form_props_id="form-"|add:key %}
+        {% endfor %}
+        {% for upload in card.file_imports %}
+          {% with props_id="file-import-"|add:upload.id %}
+          {{ upload|json_script:props_id }}
+          <div data-file-import-root data-props-id="{{ props_id }}" x-ignore hx-disable>
+            {% include "users/components/file_import_fallback.html" with file_import=upload %}
+          </div>
+          {% endwith %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+{% elif not provider_tab or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' or provider_tab == 'connection' and not account_connection %}
     {# Jellyfin push (Floppy -> Jellyfin) #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
@@ -225,15 +244,16 @@
           {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">{% if provider_tab == "connection" %}{% translate "Jellyfin connection" %}{% elif provider_tab == "import" %}{% translate "Import from Jellyfin" %}{% else %}{% translate "Floppy → Jellyfin" %}{% endif %}</h3>
         </div>
-        {% if jellyfin_account and jellyfin_account.is_connected %}
+        {% if jellyfin_any_connected %}
           <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 border border-emerald-500/30" style="color: var(--color-status-clean)">{% translate "Connected" %}</span>
         {% else %}
           <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
         {% endif %}
       </div>
       {% if not provider_tab or provider_tab == "sync" %}<p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance." %}</p>{% endif %}
-      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3" x-data="{ editingJellyfin: false }">
-        {% if jellyfin_account %}
+      {% for jellyfin_account in jellyfin_accounts %}
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3{% if not forloop.first %} mt-3{% endif %}" x-data="{ editingJellyfin: false }">
+        {% if jellyfin_accounts|length > 1 or jellyfin_account.name %}<h4 class="text-sm font-medium">{{ jellyfin_account.display_name }}</h4>{% endif %}
           <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <span>{{ jellyfin_account.base_url }}</span>
             {% if jellyfin_account.jellyfin_username %}
@@ -281,7 +301,7 @@
               </div>
             {% endif %}
             <form method="post" action="{% url 'jellyfin_pull_now' %}">
-              {% csrf_token %}
+              {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
               {% button _("Import history now") submit=True %}
             </form>
@@ -301,7 +321,7 @@
                     action="{% url 'jellyfin_playback_reporting_import' %}"
                     enctype="multipart/form-data"
                     class="space-y-2">
-                {% csrf_token %}
+                {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
                 <input name="playback_reporting_file"
                        type="file"
@@ -315,7 +335,7 @@
 {% endif %}
 {% if not provider_tab or provider_tab == 'import' or provider_tab == 'sync' %}
           <form method="post" action="{% url 'jellyfin_settings' %}" class="space-y-2">
-            {% csrf_token %}
+            {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
 {% if not provider_tab or provider_tab == 'import' %}
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
@@ -353,7 +373,7 @@
           <div class="flex gap-2">
 {% if not provider_tab or provider_tab == 'sync' %}
             <form method="post" action="{% url 'jellyfin_push_now' %}">
-              {% csrf_token %}
+              {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
               {% button _("Sync Now") submit=True %}
             </form>
@@ -365,7 +385,7 @@
               {% translate "Edit connection" %}
             </button>
             <form method="post" action="{% url 'jellyfin_disconnect' %}">
-              {% csrf_token %}
+              {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
@@ -378,8 +398,13 @@
           <div x-show="editingJellyfin" x-transition.opacity.duration.150ms class="border-t border-gray-600/50 pt-3 space-y-3">
             <p class="text-sm text-[var(--color-text-muted)]">{% translate "Update the server URL, API key, or user. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username." %}</p>
             <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
-              {% csrf_token %}
+              {% csrf_token %}<input type="hidden" name="account_id" value="{{ jellyfin_account.id }}">
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
+              <input name="name"
+                     value="{{ jellyfin_account.name }}"
+                     placeholder="{% translate "Label (optional)" %}"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="text">
               <input name="base_url"
                      value="{{ jellyfin_account.base_url }}"
                      placeholder="https://jellyfin.local:8096"
@@ -387,10 +412,9 @@
                      type="url"
                      required>
               <input name="api_key"
-                     placeholder="{% translate "Jellyfin API key (re-enter to update)" %}"
+                     placeholder="{% translate "Jellyfin API key (leave blank to keep)" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                     type="password"
-                     required>
+                     type="password">
               <input name="username"
                      value="{{ jellyfin_account.jellyfin_username }}"
                      placeholder="{% translate "Jellyfin username (only needed for server-admin keys)" %}"
@@ -407,7 +431,9 @@
             </form>
           </div>
 {% endif %}
-        {% else %}
+      </div>
+      {% empty %}
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3">
           <p class="text-sm text-[var(--color-text-muted)]">{% translate "Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username." %}</p>
           <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
             {% csrf_token %}
@@ -428,8 +454,22 @@
                    type="text">
             {% button _("Connect Jellyfin") "primary" "sm" "full" submit=True %}
           </form>
-        {% endif %}
       </div>
+      {% endfor %}
+{% if jellyfin_accounts and not provider_tab or jellyfin_accounts and provider_tab == 'connection' %}
+      <details class="mt-3 bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <summary class="text-sm font-medium cursor-pointer">{% translate "Add connection" %}</summary>
+        <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3 mt-3">
+          {% csrf_token %}
+          {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
+          <input name="name" placeholder="{% translate "Label (optional)" %}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none" type="text">
+          <input name="base_url" placeholder="https://jellyfin.local:8096" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none" type="url" required>
+          <input name="api_key" placeholder="{% translate "Jellyfin API key" %}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none" type="password" required>
+          <input name="username" placeholder="{% translate "Jellyfin username (only needed for server-admin keys)" %}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none" type="text">
+          {% button _("Add connection") "primary" "sm" "full" submit=True %}
+        </form>
+      </details>
+{% endif %}
     </div>
 
 {% endif %}
