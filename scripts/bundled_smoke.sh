@@ -8,7 +8,9 @@ set -euo pipefail
 IMAGE=${1:?usage: bundled_smoke.sh <image>}
 RUN=$(mktemp -d)
 NAME=floppy-bundled-smoke
-trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true; rm -rf "$RUN"' EXIT
+# Files in the mounts belong to the container's user, so remove them from inside.
+wipe() { docker run --rm --entrypoint sh -v "$1:/w" "$IMAGE" -c 'rm -rf /w/* /w/.[!.]*' >/dev/null 2>&1 || true; }
+trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true; wipe "$RUN"; rm -rf "$RUN" 2>/dev/null || true' EXIT
 mkdir -p "$RUN"/{db,pg,backups}
 chmod 777 "$RUN"/{db,pg,backups}
 
@@ -65,7 +67,7 @@ DUMP=$(basename "$(ls "$RUN"/backups/postgres/floppy-*.dump | head -1)")
 docker rm -f "$NAME" >/dev/null
 
 step "refuses to replace a lost database volume"
-rm -rf "${RUN:?}/pg"/* "$RUN"/pg/.[!.]* 2>/dev/null || true
+wipe "$RUN/pg"
 start
 sleep 20
 out=$(docker logs "$NAME" 2>&1)
