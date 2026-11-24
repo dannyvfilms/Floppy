@@ -419,14 +419,24 @@ def server_link_groups(user, source, media_type, media_id):
         players.append(plex)
     # Emby is left out: it reports playback only, so it cannot say what is
     # on the server.
-    jellyfin_paths = [path for app, _instance_id, path in pages if app == "jellyfin"]
-    jellyfin = getattr(user, "jellyfin_account", None) if jellyfin_paths else None
-    for path in jellyfin_paths:
+    jellyfin_pages = [
+        (instance_id, path) for app, instance_id, path in pages if app == "jellyfin"
+    ]
+    jellyfin_accounts = list(user.jellyfin_accounts.order_by("id")) if jellyfin_pages else []
+    # Page id 0 is the oldest connection, whose pages predate per-server keys.
+    by_instance = {account.id: account for account in jellyfin_accounts}
+    if jellyfin_accounts:
+        by_instance[0] = jellyfin_accounts[0]
+    for instance_id, path in jellyfin_pages:
+        jellyfin = by_instance.get(instance_id)
         if jellyfin is not None:
             url = _web_url(jellyfin, path)
             if jellyfin.server_id:
                 url += f"&serverId={jellyfin.server_id}"
-            players.append(("Jellyfin", url, "jellyfin"))
+            label = "Jellyfin"
+            if len(jellyfin_accounts) > 1:
+                label = f"Jellyfin ({jellyfin.display_name})"
+            players.append((label, url, "jellyfin"))
     if players:
         groups.append(("Players", players))
 

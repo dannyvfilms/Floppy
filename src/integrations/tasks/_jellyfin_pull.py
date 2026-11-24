@@ -58,6 +58,8 @@ def _has_prior_history(account) -> bool:
 
     if account.library_backfill_completed_at is not None:
         return True
+    # Per user, not per server: a second server that sees any earlier import
+    # starts from its current max rowid, which can only skip, never repeat.
     return ImportRun.objects.filter(
         user_id=account.user_id,
         source="jellyfin_playback_reporting",
@@ -158,10 +160,16 @@ def _format_pull_message(result: dict) -> str:
 
 
 @shared_task(bind=True, name=JELLYFIN_PULL_TASK_NAME)
-def pull_jellyfin_history(self, user_id):
-    """Pull Jellyfin watch history automatically -- no manual export needed."""
+def pull_jellyfin_history(self, user_id, account_id=None):
+    """Pull one Jellyfin connection's watch history -- no manual export needed."""
     user = get_user_model().objects.get(id=user_id)
-    account = getattr(user, "jellyfin_account", None)
+    account, queued = _jellyfin_health.pick_account(
+        pull_jellyfin_history,
+        user,
+        account_id,
+    )
+    if queued:
+        return queued
     if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before importing history."
         raise MediaImportError(msg)
@@ -190,7 +198,12 @@ def pull_jellyfin_history(self, user_id):
                 account.playback_reporting_available = False
                 result = _run_library_backfill(user, account)
     except (JellyfinClientError, MediaImportError) as exc:
-        logger.warning("Jellyfin history pull failed for user %s: %s", user_id, exc)
+        logger.warning(
+            "Jellyfin history pull failed for user %s account %s: %s",
+            user_id,
+            account_id,
+            exc,
+        )
         _jellyfin_health.handle_failure(
             self,
             account,

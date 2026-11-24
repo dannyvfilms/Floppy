@@ -3979,6 +3979,27 @@
   },
   "legacy": {},
   "logic": {
+    "frontend/settings/statusTones.js": {
+      "components": [
+        "isLightTheme",
+        "toneText"
+      ],
+      "register": "SETTINGS-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Built-in browser with the light colour scheme emulated at 430px: Jellyfin Connection tab chips read dark green on a pale green fill, Edit and Disconnect share one row."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iPhone 16 simulator, Expo Go: Jellyfin Overview and Connection tabs in light mode (dark amber, indigo and green chip text, white bordered Edit beside Disconnect) and Connection in dark mode (pale chip text, unchanged). Native theme colours are dynamic objects, so the app colour scheme decides there."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified; the Android emulator hung in this session. Same shared logic as iOS."
+        }
+      }
+    },
     "frontend/ui/actionIcons.js": {
       "components": [
         "actionIcons"
