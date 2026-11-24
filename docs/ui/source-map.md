@@ -1406,7 +1406,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
-- `frontend/settings/mountSettingsView.jsx` (passes the web-only sticky menu style, #1525)
+- `frontend/settings/mountSettingsView.jsx` (passes the web-only sticky menu style with a 32px bottom gap, #1525)
 - `frontend/ui/ArtworkImage.jsx`
 - `frontend/ui/ArtworkImage.native.jsx`
 - `frontend/ui/ArtworkImage.web.jsx`

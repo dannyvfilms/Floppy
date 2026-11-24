@@ -5592,9 +5592,9 @@
       width: 100%;
     }
   }
-  .md\:max-h-\[calc\(100vh-6rem\)\] {
+  .md\:max-h-\[calc\(100vh-7rem\)\] {
     @media (width >= 48rem) {
-      max-height: calc(100vh - 6rem);
+      max-height: calc(100vh - 7rem);
     }
   }
   .md\:max-w-\[250px\] {

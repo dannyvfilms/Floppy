@@ -59,7 +59,7 @@ function ServerContent({ node }) {
   return <View ref={attach} style={{ minWidth: 0 }} />;
 }
 
-const webStickyNav = { position: 'sticky', top: 80, maxHeight: 'calc(100vh - 6rem)', overflowY: 'auto', borderRadius: 8 };
+const webStickyNav = { position: 'sticky', top: 80, maxHeight: 'calc(100vh - 7rem)', overflowY: 'auto', borderRadius: 8 };
 
 export function mountSettingsView(host, props) {
   const content = host.querySelector('[data-settings-page-content]');
