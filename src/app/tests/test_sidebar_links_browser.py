@@ -1,13 +1,11 @@
 """Browser behavior of the shared sidebar's account links."""
 
 import os
-import sys
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import tag
 from django.urls import reverse
-from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import expect, sync_playwright
 
 from app.tests.live_server import SerialStaticLiveServerTestCase
@@ -36,31 +34,28 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             logout = sidebar.get_by_role("link", name="Logout", exact=True)
             expect(settings).to_have_attribute("href", reverse("account"))
             expect(logout).to_have_attribute("href", reverse("account_logout"))
-            logout_url = self.live_server_url + reverse("account_logout")
-            # CI Chromium sometimes opens the modifier-click tab but never loads
-            # it (the tab's URL stays empty), so retry the click, not the check.
-            # Sometimes no tab opens at all (expect_page times out): retry that too.
-            for attempt in range(3):
-                try:
-                    with context.expect_page(timeout=10000) as opened:
-                        logout.click(modifiers=["Meta" if sys.platform == "darwin" else "Control"])
-                except PlaywrightTimeout:
-                    if attempt == 2:
-                        raise
-                    continue
-                confirmation = opened.value
-                try:
-                    # A new tab starts on about:blank, which already counts as
-                    # loaded, so wait for the logout page's own address.
-                    expect(confirmation).to_have_url(logout_url, timeout=10000)
-                    break
-                except AssertionError:
-                    if attempt == 2:
-                        raise
-                    confirmation.close()
-            confirmation.wait_for_load_state()
+            # A modifier-click must stay a plain link click so the browser can open
+            # it in a new tab. Opening a real tab is not asserted: CI Chromium
+            # sometimes never opens or loads it. Instead dispatch the click and
+            # check, after the sidebar's own handlers have run (window bubble
+            # phase), that nothing cancelled it and no POST was sent. The probe
+            # cancels it afterwards so the test page does not navigate.
+            posts = []
+            page.on("request", lambda request: posts.append(request.url) if request.method == "POST" else None)
+            cancelled = page.evaluate(
+                """() => new Promise((resolve) => {
+                    const link = document.querySelector('[data-sidebar-root] a[href$="/accounts/logout/"]');
+                    window.addEventListener('click', (event) => {
+                        resolve(event.defaultPrevented);
+                        event.preventDefault();
+                    }, {once: true});
+                    link.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true, metaKey: true}));
+                })"""
+            )
+            self.assertFalse(cancelled, "the sidebar cancelled a modifier-click on Logout")
+            page.wait_for_timeout(500)
+            self.assertEqual(posts, [])
             self.assertEqual(context.request.get(self.live_server_url + reverse("account")).status, 200)
-            confirmation.close()
             page.bring_to_front()
             with page.expect_request(lambda request: request.method == "POST" and
                                      request.url.endswith(reverse("account_logout")), timeout=5000):
