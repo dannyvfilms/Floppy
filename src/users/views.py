@@ -2201,7 +2201,7 @@ def integrations_context(
             option["value"] for option in plex_library_options
         ]
 
-    jellyfin_account = getattr(user, "jellyfin_account", None)
+    jellyfin_accounts = list(user.jellyfin_accounts.order_by("id"))
     jellyfin_playback_reporting_import = (
         ImportRun.objects.filter(
             user=user,
@@ -2271,7 +2271,8 @@ def integrations_context(
         "match_saved_references": match_saved_references,
         "plex_share_recipients": plex_share_recipients,
         "plex_connected": bool(plex_account and plex_account.plex_token),
-        "jellyfin_account": jellyfin_account,
+        "jellyfin_accounts": jellyfin_accounts,
+        "jellyfin_any_connected": any(row.is_connected for row in jellyfin_accounts),
         "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
         "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
         "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),

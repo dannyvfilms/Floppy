@@ -14,6 +14,7 @@ const STATUS_BY_CODE = { 0: 'Planning', 1: 'In progress', 2: 'Paused', 3: 'Compl
 const STATUS_OPTIONS = ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped']
   .map(value => ({ value, label: value }));
 const PROGRESS_TYPES = new Set(['anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame', 'music']);
+const SOURCE_TYPES = new Set(['movie', 'tv', 'season', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame']);
 const DATE_TYPES = new Set(['movie', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame', 'music']);
 const EPISODIC_TYPES = new Set(['tv', 'season', 'episode', 'anime']);
 
@@ -207,7 +208,8 @@ function trackFields(identity, detail, consumption, withTime = false, scaleMax =
     fields.push(field('start_date', 'Start date', 'date', dateText(consumption && consumption.start_date, withTime), presetData));
     fields.push(field('end_date', 'End date', 'date', dateText(consumption && consumption.end_date, withTime), presetData));
   }
-  if (mediaType === 'comicissue') fields.push(field('entry_source', 'Source', 'text', consumption?.entry_source ?? consumption?.source));
+  // Every type whose entry the API lets you give a source (where you watched, read or played it).
+  if (SOURCE_TYPES.has(mediaType)) fields.push(field('entry_source', 'Source', 'text', consumption?.entry_source ?? consumption?.source));
   return fields;
 }
 

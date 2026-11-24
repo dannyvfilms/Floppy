@@ -122,6 +122,17 @@ test('media-card transport routes reads and writes through the session', async (
   assert.equal(hasMediaCardTransport(), false);
 });
 
+test('every type that accepts a source offers the Source field', async () => {
+  const { session } = authFixture(path => path.endsWith('/state/') ? { tracked: false, consumptions: [] } : { title: 'Game' });
+  configureMediaCardTransport({ auth: session });
+  try {
+    for (const mediaType of ['game', 'movie', 'book']) {
+      const loaded = await loadTrack({ mediaType, source: 'igdb', mediaId: '1' });
+      assert.ok(loaded.model.fields.some(field => field.name === 'entry_source'), mediaType);
+    }
+  } finally { resetMediaCardTransport(); }
+});
+
 test('an untracked comic issue submits its required zero progress and date fields', async () => {
   const { calls, session } = authFixture(path => path.endsWith('/state/')
     ? { tracked: false, consumptions: [] }

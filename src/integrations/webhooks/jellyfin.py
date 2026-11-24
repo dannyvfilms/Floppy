@@ -77,6 +77,90 @@ def _note_template_version(payload, user_id):
         cache.set(key, True, JELLYFIN_TEMPLATE_OUTDATED_TTL)
 
 
+def _match_profile(accounts, payload):
+    """Return the one connection whose Jellyfin user sent the event, else None."""
+
+    def plain(value):
+        return str(value or "").replace("-", "").strip().lower()
+
+    user_id = plain(payload.get("UserId"))
+    if not user_id:
+        return None
+    matches = [a for a in accounts if plain(a.jellyfin_user_id) == user_id]
+    return matches[0] if len(matches) == 1 else None
+
+
+def attribute_connection(user, payload):
+    """Return ``(account, ambiguous)`` for the server a webhook event came from.
+
+    The receiver URL names only the Floppy user, so the server is read from the
+    payload's ``ServerId``. Two connections can share a server (one per Jellyfin
+    profile), so when several match, the payload's ``UserId`` picks the profile.
+    A payload without a server is attributed only when the user has a single
+    connection; with several it is ambiguous, and writing it to a guessed
+    server or profile would corrupt that connection's link and ownership state.
+    """
+    accounts = list(user.jellyfin_accounts.order_by("id"))
+    server_id = str(payload.get("ServerId") or "").strip()
+    if server_id:
+        matches = [account for account in accounts if account.server_id == server_id]
+        if len(matches) == 1:
+            return matches[0], False
+        if len(matches) > 1:
+            account = _match_profile(matches, payload)
+            return account, account is None
+    if len(accounts) <= 1 and not server_id:
+        return (accounts[0] if accounts else None), False
+    if len(accounts) == 1:
+        # The one connection predates server ids (never learned its own), so an
+        # event naming a server cannot be proven foreign.
+        return (accounts[0], False) if not accounts[0].server_id else (None, True)
+    return None, bool(accounts)
+
+
+def source_instance_ids(user, account):
+    """Return ``(collection_instance_id, page_instance_id)`` for a connection.
+
+    The oldest connection keeps the unscoped keys (None and 0) its rows were
+    stored under before multiple connections, so nothing is rewritten.
+    """
+    if account is None:
+        return None, 0
+    oldest = user.jellyfin_accounts.order_by("id").values_list("id", flat=True).first()
+    if account.id == oldest:
+        return None, 0
+    return account.id, account.id
+
+
+def release_connection_sources(user, account):
+    """Drop a connection's stored collection and page records before it is removed.
+
+    The oldest connection owns the unscoped keys (None and 0), so removing it
+    hands those keys to the next oldest. Without this, that connection's own
+    records (stored under its id) would be orphaned and the removed server's
+    records would be read as the survivor's. A lone connection is left as is,
+    as before, so reconnecting the same server keeps its data.
+    """
+    from integrations.models import CollectionSourceState, SourcePage
+
+    others = list(user.jellyfin_accounts.exclude(pk=account.pk).order_by("id"))
+    if not others:
+        return
+    states = CollectionSourceState.objects.filter(
+        user=user,
+        source=JELLYFIN_COLLECTION_SOURCE,
+    )
+    pages = SourcePage.objects.filter(user=user, source=JELLYFIN_COLLECTION_SOURCE)
+    collection_id, page_id = source_instance_ids(user, account)
+    states.filter(source_instance_id=collection_id).delete()
+    pages.filter(source_instance_id=page_id).delete()
+    oldest_id = user.jellyfin_accounts.order_by("id").values_list("id", flat=True).first()
+    if account.id == oldest_id:
+        heir = others[0]
+        states.filter(source_instance_id=heir.id).update(source_instance_id=None)
+        pages.filter(source_instance_id=heir.id).update(source_instance_id=0)
+
+
 def _decode_item_titles(payload):
     """Undo the HTML escaping the Jellyfin template's ``{{Name}}`` applies.
 
@@ -372,6 +456,15 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 )
                 return
 
+        account, ambiguous = attribute_connection(user, payload)
+        if ambiguous:
+            logger.warning(
+                "Ignoring Jellyfin collection event: the server could not be "
+                "matched to one of the user's connections.",
+            )
+            return
+        collection_instance_id, page_instance_id = source_instance_ids(user, account)
+
         item = self._resolve_collection_item(
             payload,
             ids,
@@ -389,6 +482,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 user=user,
                 item=item,
                 source=JELLYFIN_COLLECTION_SOURCE,
+                source_instance_id=collection_instance_id,
             )
             logger.info("Added %s to Jellyfin collection ownership", item.title)
         else:
@@ -396,11 +490,20 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 user=user,
                 item=item,
                 source=JELLYFIN_COLLECTION_SOURCE,
+                source_instance_id=collection_instance_id,
             )
             logger.info("Removed %s from Jellyfin collection ownership", item.title)
-        self._save_page(event_type, payload, user, item)
+        self._save_page(event_type, payload, user, item, page_instance_id, account)
 
-    def _save_page(self, event_type, payload, user, item):
+    def _save_page(
+        self,
+        event_type,
+        payload,
+        user,
+        item,
+        page_instance_id=0,
+        account=None,
+    ):
         """Remember the Jellyfin page of a movie or of an episode's series.
 
         A deleted episode leaves the series page: other episodes may remain.
@@ -415,7 +518,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             _note_series_id(jellyfin_item, user.id)
             jellyfin_id = jellyfin_item.get(
                 "SeriesId",
-            ) or self._lookup_series_id(user, jellyfin_item.get("Id"))
+            ) or self._lookup_series_id(account, jellyfin_item.get("Id"))
             if not jellyfin_id:
                 return
         else:
@@ -428,16 +531,19 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             media_type=media_type,
             media_id=item.media_id,
             path=f"web/#/details?id={jellyfin_id}" if added else "",
+            source_instance_id=page_instance_id,
         )
 
-    def _lookup_series_id(self, user, episode_id):
-        """Ask the connected Jellyfin server for an episode's series ID.
+    def _lookup_series_id(self, account, episode_id):
+        """Ask the server the event came from for an episode's series ID.
 
         Templates from before #2108 do not send SeriesId. Returns None when
-        there is no connection, no episode ID, or the server cannot answer.
+        the event matched no connection, there is no episode ID, or the server
+        cannot answer.
         """
-        account = getattr(user, "jellyfin_account", None) if episode_id else None
-        if account is None or not account.base_url or not account.api_key:
+        if not episode_id or account is None:
+            return None
+        if not account.base_url or not account.api_key:
             return None
         try:
             client = JellyfinClient(

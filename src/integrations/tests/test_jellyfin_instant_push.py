@@ -47,7 +47,7 @@ class JellyfinInstantPushTests(TestCase):
 
         mock_sync.return_value = ({}, "")
         _queue_jellyfin_instant_push(self.user, {"Event": "Stop"})
-        push_jellyfin_watched(user_id=self.user.id)
+        push_jellyfin_watched(user_id=self.user.id, account_id=self.account.id)
         _queue_jellyfin_instant_push(self.user, {"Event": "MarkPlayed"})
 
         self.assertEqual(mock_push.call_count, 2)

@@ -55,6 +55,8 @@ export function detailFromPayload(payload, serverUrl = '') {
     activity: array(data.activity),
     importPreferences: data.importPreferences || null,
     fileImport: data.fileImport && typeof data.fileImport === 'object' ? data.fileImport : null,
+    // One upload per saved connection, for providers that hold several.
+    fileImports: array(data.fileImports),
     forms: data.forms && typeof data.forms === 'object' ? data.forms : {},
     canImport: Boolean(connection.canSchedule),
   };
@@ -92,8 +94,8 @@ export function createRemoteProvidersActions(request, serverUrl = '') {
     cancelLink: slug => send('POST', slugPath(slug, 'connect/cancel/')),
     saveCredentials: (slug, kind, values) => send('PUT', slugPath(slug, 'credentials/'), credentialsBody(kind, values)),
     clearCredentials: slug => send('DELETE', slugPath(slug, 'credentials/')),
-    importFile: (slug, { name, content, contentBase64, mode }) => send('POST', slugPath(slug, 'file-import/'), {
-      name, mode, ...(contentBase64 ? { contentBase64 } : { content }),
+    importFile: (slug, { name, content, contentBase64, mode, accountId }) => send('POST', slugPath(slug, 'file-import/'), {
+      name, mode, ...(accountId ? { accountId } : {}), ...(contentBase64 ? { contentBase64 } : { content }),
     }),
     saveForm: (slug, key, values, tab) => send('POST', slugPath(slug, `forms/${encodeURIComponent(key)}/`), { tab, values }),
     test: (slug, instanceId) => send('POST', slugPath(slug, 'test/'), instanceId ? { instance_id: instanceId } : {}),

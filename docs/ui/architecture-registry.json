@@ -1330,8 +1330,8 @@
       "register": "DATE-TIME",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
+          "status": "verified",
+          "evidence": "Rendered in Chromium at 375 px phone width inside the Track modal's General tab through TrackForm groupedContent; throwaway database and test login. Calendar opens and the date picks."
         },
         "ios": {
           "status": "unverified",
@@ -1350,8 +1350,8 @@
       "register": "DATE-TIME",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Not rendered on web: the browser keeps the compact DateTimePicker field because the grouped layout is native only."
+          "status": "verified",
+          "evidence": "Rendered in Chromium at 375 px phone width inside the Track modal's General tab through TrackForm groupedContent; throwaway database and test login. Calendar opens and the date picks."
         },
         "ios": {
           "status": "unverified",
@@ -3975,10 +3975,51 @@
           "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
         }
       }
+    },
+    "frontend/ui/trackDatePanels.jsx": {
+      "components": [
+        "TrackTimeSteppers"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Time steppers not opened in this pass: the test game has no time tracking. Date rows themselves render in Chromium."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "iOS uses system wheels (TrackDatePanels.ios.jsx); this fallback is not used there."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
     }
   },
   "legacy": {},
   "logic": {
+    "frontend/settings/statusTones.js": {
+      "components": [
+        "isLightTheme",
+        "toneText"
+      ],
+      "register": "SETTINGS-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Built-in browser with the light colour scheme emulated at 430px: Jellyfin Connection tab chips read dark green on a pale green fill, Edit and Disconnect share one row."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iPhone 16 simulator, Expo Go: Jellyfin Overview and Connection tabs in light mode (dark amber, indigo and green chip text, white bordered Edit beside Disconnect) and Connection in dark mode (pale chip text, unchanged). Native theme colours are dynamic objects, so the app colour scheme decides there."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified; the Android emulator hung in this session. Same shared logic as iOS."
+        }
+      }
+    },
     "frontend/ui/actionIcons.js": {
       "components": [
         "actionIcons"

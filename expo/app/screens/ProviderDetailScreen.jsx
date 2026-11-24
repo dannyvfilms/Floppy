@@ -105,7 +105,7 @@ export default function ProviderDetailScreen({ params, onBack, navigate }) {
         frequency: values.frequency, time: values.time, mode: values.mode,
         watchlist_status: values.watchlistStatus, clz_wishlist_status: values.clzWishlistStatus,
       }).filter(([, value]) => value)))}
-      onImportFile={write(({ name, content, contentBase64, mode }) => transport.importFile(slug, { name, content, contentBase64, mode }))}
+      onImportFile={write(({ name, content, contentBase64, mode, accountId }) => transport.importFile(slug, { name, content, contentBase64, mode, accountId }))}
       onSaveForm={write((key, values) => transport.saveForm(slug, key, values, tab))}
       onSaveSource={write(({ key, source, animeMode }) => transport.metadataAction(slug, { action: 'source', key, source, ...(animeMode ? { animeMode } : {}) }))}
       onMove={write(({ key }) => transport.metadataAction(slug, { action: 'move', key }))}

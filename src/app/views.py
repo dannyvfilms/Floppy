@@ -839,6 +839,14 @@ def progress_edit(request, media_type, instance_id):
             instance_id,
         )
 
+    if media_type == MediaTypes.GAME.value:
+        # Keep showing total playtime across sessions, as Home first rendered it.
+        entries = list(
+            Game.objects.filter(user=request.user, item_id=media.item_id),
+        )
+        if len(entries) > 1:
+            BasicMedia.objects._aggregate_item_data(media, entries)
+
     context = {
         "media": media,
     }

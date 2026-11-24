@@ -8,7 +8,7 @@
     {% media_card card_surface video_landscape=media_list.video_landscape media=entry.media item=entry.item title=entry.media|default:entry.item current_sort=None card_media_type=entry.item.media_type media_type_chip_type=entry.item.library_media_type|default:entry.item.media_type show_media_type_chip=media_list.show_media_type_chip|default:False show_played_chip=media_list.show_played_chip|default:False subtitle_override=entry.subtitle_override use_podcast_show=use_podcast_show podcast_show=entry.podcast_show image_override=entry.media.card_image_override|default:entry.item.image image_source=entry.media.card_image_source|default:"primary" home_row_id=media_list.row_id return_url=return_url|default:request.get_full_path %}
     {% endwith %}
 
-    {% if entry.show_progress_controls and entry.media %}
+    {% if entry.show_progress_controls and entry.media and user.quick_season_update_mobile != 'next_episode' %}
       <div class="mt-2 flex items-center justify-center">
         <div id="progress-{{ entry.item.media_type }}-{{ entry.media.id }}" class="media-card-progress" data-progress-mode="always">
           {% include "app/components/progress_changer.html" with media=entry.media csrf_token=csrf_token MediaTypes=MediaTypes only %}

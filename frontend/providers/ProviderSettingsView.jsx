@@ -265,6 +265,7 @@ export function accountSettingsModel(account, pageLabels = {}) {
       disconnected: translated(labels, 'Connection removed'),
       disconnectError: translated(labels, 'Could not disconnect. Try again.'),
       edit: translated(labels, 'Edit connection'),
+      saveConnection: translated(labels, 'Save connection'),
       cancel: translated(labels, 'Cancel'),
       connected: translated(labels, 'Connected'),
       disconnectedStatus: translated(labels, 'Disconnected'),

@@ -133,7 +133,11 @@ function FileImportCard({ model, copy, onImportFile, pickFiles, onOpenUrl, onOpe
     const size = formatSize(file.size);
     setStatus({ message: `${copy.uploading} ${file.name}${size ? ` (${size})` : ''}…`, ok: true, busy: true, done: false });
     try {
-      await onImportFile?.({ name: file.name, content: file.text, contentBase64: file.base64, mode: values.mode });
+      await onImportFile?.({
+        name: file.name, content: file.text, contentBase64: file.base64, mode: values.mode,
+        // A provider that holds several connections says which one this file belongs to.
+        accountId: model.hidden?.account_id,
+      });
       setStatus({ message: copy.importQueued, ok: true, busy: false, done: true });
     } catch (reason) {
       setStatus({ message: reason?.message || copy.importFailed, ok: false, busy: false, done: false });
@@ -141,7 +145,8 @@ function FileImportCard({ model, copy, onImportFile, pickFiles, onOpenUrl, onOpe
   }
   const fail = reason => setStatus({ message: reason?.message || copy.importFailed, ok: false, busy: false, done: false });
   return <View style={styles.stack}>
-    <ProviderFileImportView model={{ ...model, description: '' }} title={model.description} pickFiles={pickFiles} onSubmit={submit}
+    <ProviderFileImportView model={model.title ? model : { ...model, description: '' }} title={model.title || model.description}
+      pickFiles={pickFiles} onSubmit={submit}
       onOpenUrl={onOpenUrl} onPickError={fail} onSubmitError={fail}
       palette={{ ...palette, background: palette.surface ?? palette.background }} buttonPalette={buttonPalette} />
     {status.message ? <Text accessibilityLiveRegion="polite"
@@ -152,8 +157,14 @@ function FileImportCard({ model, copy, onImportFile, pickFiles, onOpenUrl, onOpe
   </View>;
 }
 
+// Forms a provider generates per saved connection (one set each) name their own tab in the model.
+function connectionFormKeys(tab, forms) {
+  const fixed = new Set(Object.values(FORMS_BY_TAB).flat());
+  return Object.keys(forms || {}).filter(key => !fixed.has(key) && forms[key]?.tab === tab);
+}
+
 function FormStack({ tab, forms, copy, onSaveForm, preferences, palette, buttonPalette, plain }) {
-  const keys = (FORMS_BY_TAB[tab] || []).filter(key => forms?.[key]);
+  const keys = [...(FORMS_BY_TAB[tab] || []).filter(key => forms?.[key]), ...connectionFormKeys(tab, forms)];
   return keys.map(key => <FormCard key={key} formKey={key} form={forms[key]} copy={copy}
     onSaveForm={onSaveForm} preferences={preferences} palette={palette} buttonPalette={buttonPalette} plain={plain} />);
 }
@@ -284,14 +295,20 @@ export function ProviderDetailView({
         pickFiles={pickFiles} onOpenUrl={onOpenUrl} onOpenActivity={onOpenActivity ? () => onOpenActivity('activity') : undefined}
         palette={palette} buttonPalette={buttonPalette} /> : null}
       <FormStack tab="import" {...formProps} />
+      {(detail.fileImports || []).map(upload => <FileImportCard key={upload.id} model={upload} copy={copy}
+        onImportFile={onImportFile} pickFiles={pickFiles} onOpenUrl={onOpenUrl}
+        onOpenActivity={onOpenActivity ? () => onOpenActivity('activity') : undefined}
+        palette={palette} buttonPalette={buttonPalette} />)}
     </View>,
     activity: <ProviderActivityList activity={activity} schedules={schedules} palette={palette} />,
-    sync: <SettingsCard title={copy.syncTitle} palette={{ ...palette, background: palette.surface ?? palette.background }}>
-      <Text style={[styles.copy, { color: palette.textMuted }]}>{copy.syncCopy}</Text>
-      <View style={styles.row}>
-        <Button label={copy.syncAction} tone="surface" onPress={onOpenConnections} palette={buttonPalette} />
-      </View>
-    </SettingsCard>,
+    sync: connectionFormKeys('sync', detail.forms).length
+      ? <View style={styles.stack}><FormStack tab="sync" {...formProps} /></View>
+      : <SettingsCard title={copy.syncTitle} palette={{ ...palette, background: palette.surface ?? palette.background }}>
+        <Text style={[styles.copy, { color: palette.textMuted }]}>{copy.syncCopy}</Text>
+        <View style={styles.row}>
+          <Button label={copy.syncAction} tone="surface" onPress={onOpenConnections} palette={buttonPalette} />
+        </View>
+      </SettingsCard>,
     metadata: <MetadataActions model={model} copy={copy} palette={palette} buttonPalette={buttonPalette} onOpenUrl={onOpenUrl}
       onSaveSource={onSaveSource} onMove={onMove} onSaveProxy={onSaveProxy} />,
   };

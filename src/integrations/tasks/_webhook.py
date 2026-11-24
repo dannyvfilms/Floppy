@@ -301,11 +301,19 @@ _JELLYFIN_INSTANT_PUSH_EVENTS = frozenset({"Stop", "MarkPlayed", "MarkUnplayed"}
 
 
 def _queue_jellyfin_instant_push(user, payload):
-    """Queue one delayed push per user, however many events arrive meanwhile."""
-    account = getattr(user, "jellyfin_account", None)
-    if not (account and account.is_connected and account.instant_push_enabled):
-        return
+    """Queue one delayed push for the server an event came from."""
+    from integrations.webhooks.jellyfin import attribute_connection
+
     if payload.get("Event") not in _JELLYFIN_INSTANT_PUSH_EVENTS:
+        return
+    account, ambiguous = attribute_connection(user, payload)
+    if ambiguous:
+        logger.warning(
+            "Jellyfin instant push skipped: the event's server matches none of "
+            "the user's connections.",
+        )
+        return
+    if not (account and account.is_connected and account.instant_push_enabled):
         return
 
     from integrations.tasks._jellyfin_health import (
@@ -316,14 +324,15 @@ def _queue_jellyfin_instant_push(user, payload):
 
     # The push releases this key when it starts, so a pending push absorbs
     # every event until then. The timeout only covers a push that never runs.
+    # The key is per connection, so one server's burst never absorbs another's.
     if not cache_safety.acquire_lock(
-        instant_push_lock_key(user.id),
+        instant_push_lock_key(user.id, account.id),
         timeout=INSTANT_PUSH_DEBOUNCE_SECONDS * 5,
         on_error=cache_safety.ON_ERROR_PROCEED,
     ):
         return
     push_jellyfin_watched.apply_async(
-        kwargs={"user_id": user.id},
+        kwargs={"user_id": user.id, "account_id": account.id},
         countdown=INSTANT_PUSH_DEBOUNCE_SECONDS,
     )
 

@@ -77,6 +77,7 @@ Status: `Web Migrated`
 - `frontend/settings/index.js`
 - `frontend/settings/mount.jsx`
 - `frontend/settings/root.web.js`
+- `frontend/settings/statusTones.js`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
 - `src/templates/app/components/ui_asset_refresh.html`
@@ -1037,6 +1038,8 @@ Status: `Partial / coexisting`
 
 Provider account state and bundled keys: `provider_ui._connection_card` and `provider_catalog.provider_state` (`account_linkable`) split a linked account from credentials; `credentials.ProviderCredentialSpec.bundled_only` (WeTrakr) hides every key surface. `mountAccountConnection` mounts the shared `ProviderLinkCard` device-code flow for WeTrakr through `transport.web.linkRequest` (replacing the Alpine connect box in `wetrakr_sync.html`), `ProviderLinkCard.initialDevice` resumes a pending code on web and via `ProviderDetailView` on native, and `ProviderSettingsView`/`readThemePalette` give the key chip and neutral badges real colors. Web verified in Chromium; iOS and Android unverified.
 
+Multiple Jellyfin connections (#2111): `provider_views` builds one `instances` row per `JellyfinAccount` (`editable`, no keys); the Sync and Import tabs use per-connection `provider_forms` models (`jellyfin_sync_<id>`, `jellyfin_push_<id>`, `jellyfin_history_<id>`, `jellyfin_pull_<id>`) and `fileImports` through `ProviderSettingsFormView` and `ProviderFileImportView`; `AccountSettings` renders Edit/Disconnect side by side per row (light-theme styling and chip text colours come from `frontend/settings/statusTones.js`); views, API routes and tasks address a connection by `instance_id`/`account_id`; `src/templates/users/providers/integrations/jellyfin.html` is the server fallback.
+
 ProviderDetailView consumes portable AccountSettings/ProviderSettingsView, native-only active sign-in slots and CatalogGrantsCard on Stremio Tracking. Existing Django/web adapter bodies coexist until full browser parity and migration acceptance; no platform classification is changed by these native composition edits.
 
 ## CONNECTIONS
@@ -1520,6 +1523,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackTabsGrouped.jsx`
 - `frontend/ui/TrackDateRow.jsx`
 - `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/trackDatePanels.jsx`
 - `frontend/ui/separatorColor.js`
 - `frontend/ui/separatorColor.web.js`
 - `frontend/ui/separatorColor.native.js`
@@ -1641,3 +1645,8 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 - 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
 - 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
 - 2026-11-23 `frontend/ui/TrackDateRow.jsx`: Clear button in the open date panel; `expo/app/surfaces/MediaCardSlot.jsx`: tabs effect moved below the `status` state.
+
+
+Track modal on web (2026-11-24): `TrackForm` takes `groupedContent`, which under 1024 px (phones and an open iPhone Duo; desktop is unchanged) uses the Expo grouped rows (Details and Dates groups, date rows with calendar and time steppers, Presets) and `TrackTabsGrouped` tab bodies (Discover, Status history) inside the web tab navigation and footer; `trackDatePanels.jsx` (`TrackTimeSteppers`) is the shared time panel for web and Android. Web runtime verified (375 px phone; desktop confirmed unchanged); iOS unchanged; Android not verified. Left server-rendered or on the existing tag dialog: Metadata, Collection, Episode plays (richer than the Expo bodies) and Tags (tag deletion has no grouped equivalent yet).
+
+Track modal follow-up (2026-11-24): Score uses the Status picker, rows follow Expo's order, date rows clear with an X button, `MarkdownNotes` has a `grouped` design (Write/Preview and tools on one row, borderless text area in a card, hint behind an info icon), and the grouped form takes Expo's Delete row and Cancel / Update footer used by the grouped Track form, and Expo's `trackFields` offers Source for every type that accepts it.
