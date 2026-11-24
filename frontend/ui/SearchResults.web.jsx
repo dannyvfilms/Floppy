@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { withBasePath } from './basePath.web';
 import { MediaCard } from './MediaCard.web';
 import { SearchResults as SharedSearchResults } from './SearchResults.jsx';
 import { RatingStarIcon } from './RatingStarIcon.web';
@@ -87,7 +88,7 @@ export function SearchResults({ props }) {
 
   const onLoadOnlineRow = useCallback(async source => {
     const params = new URLSearchParams(onlineRowParams(source, props));
-    const response = await window.fetch(`/search/results?${params}`, {
+    const response = await window.fetch(`${withBasePath('/search/results')}?${params}`, {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
