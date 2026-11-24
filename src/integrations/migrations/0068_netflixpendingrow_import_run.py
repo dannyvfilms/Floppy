@@ -9,7 +9,7 @@ from app.migration_operations import AddFieldIfNotExists
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("integrations", "0065_netflix_pending_rows"),
+        ("integrations", "0067_netflix_pending_rows"),
     ]
 
     operations = [
