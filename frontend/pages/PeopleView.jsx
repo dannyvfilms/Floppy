@@ -121,6 +121,7 @@ export function PeopleView({
   onOpenSource,
   onOpenWebsite,
   onViewHistory,
+  onAddToLists,
   onOpenCredit,
   renderCreditGrid,
   renderPersonCard,
@@ -159,7 +160,8 @@ export function PeopleView({
       actionPalette={actionPalette}
       actionSize={actionSize}
       onOpenSource={onOpenSource}
-      onViewHistory={onViewHistory} />;
+      onViewHistory={onViewHistory}
+      onAddToLists={onAddToLists} />;
 
   const watchedHeading = watchedTitle || (isAuthor ? copy.readContent : copy.watchedContent);
   const creditsHeading = creditsTitle || (isAuthor ? copy.bibliography : copy.filmography);

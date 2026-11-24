@@ -1776,6 +1776,23 @@ def lists_modal_click(media, return_url=""):
     )
 
 
+@register.simple_tag(takes_context=True)
+def person_lists_click(context):
+    """Return the onclick attribute that opens Add-to-lists for the person page."""
+    import json
+
+    from users.templatetags.ui_tags import person_lists_modal_spec
+
+    spec = person_lists_modal_spec(context)
+    if spec is None:
+        return ""
+    return format_html(
+        "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
+        '{{detail: {}}}))"',
+        json.dumps(spec),
+    )
+
+
 @register.simple_tag
 def component_id(component_type, media, instance_id=None):
     """Return the component ID for both metadata and model object cases."""

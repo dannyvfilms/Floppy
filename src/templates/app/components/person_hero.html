@@ -19,6 +19,15 @@
         class="w-full inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-sm text-white transition-colors hover:bg-amber-700">
         {% if is_author %}{% translate "View Reads in History" %}{% else %}{% translate "View Plays in History" %}{% endif %}
       </a>
+      {% person_lists_click as lists_click %}
+      {% if lists_click %}
+        <button
+          type="button"
+          class="mt-2 w-full inline-flex items-center justify-center rounded-md bg-[var(--color-surface-strong)] px-3 py-2 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
+          {{ lists_click }}>
+          {% translate "Add to lists" %}
+        </button>
+      {% endif %}
     </div>
   </div>
 

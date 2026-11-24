@@ -51,6 +51,7 @@ const DEFAULT_LABELS = {
   showLess: 'Show less',
   viewReads: 'View Reads in History',
   viewPlays: 'View Plays in History',
+  addToLists: 'Add to lists',
   visitWebsite: 'Visit Website',
   source: 'Source',
   born: 'Born',
@@ -145,6 +146,7 @@ export function PersonHero({
   labels,
   palette,
   onViewHistory,
+  onAddToLists,
   onOpenSource,
   canViewHistory = true,
   biographyLines = 5,
@@ -168,9 +170,11 @@ export function PersonHero({
   return <View style={[styles.hero, wide && styles.heroWide]}>
     <View style={[styles.heroMedia, wide && styles.heroMediaWide]}>
       <Artwork uri={person.imageUrl} title={person.name} palette={colors} />
-      {onViewHistory && canViewHistory ? <View style={[styles.heroAction, { backgroundColor: colors.surface }]}>
-        <Button label={person.isAuthor ? copy.viewReads : copy.viewPlays} width="full"
-          size={actionSize} onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
+      {(onViewHistory && canViewHistory) || onAddToLists ? <View style={[styles.heroAction, { backgroundColor: colors.surface, gap: 8 }]}>
+        {onViewHistory && canViewHistory ? <Button label={person.isAuthor ? copy.viewReads : copy.viewPlays} width="full"
+          size={actionSize} onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} /> : null}
+        {onAddToLists ? <Button label={copy.addToLists} width="full" tone="surface"
+          size={actionSize} onPress={onAddToLists} palette={actionPalette || { radius: colors.radiusSmall }} /> : null}
       </View> : null}
     </View>
     <View style={[styles.heroBody, wide && styles.heroBodyWide]}>

@@ -677,7 +677,7 @@
         {% endif %}
       {% elif request.GET.initial|alphabet_initial %}
         {% alphabet_filter "filter-form" "empty" %}
-      {% else %}
+      {% elif items_count or not list_people %}
       {% if items_count %}
         {% if request.GET.q or has_media_type_filter %}
           <div class="flex flex-col items-center justify-center py-32 px-4 bg-[var(--color-surface)] rounded-lg">
@@ -750,6 +750,36 @@
       {% endif %}
     </div>
     </div>
+
+    {% if list_people %}
+      <section class="mt-10" data-list-people aria-labelledby="list-people-heading">
+        <h2 id="list-people-heading" class="text-xl font-semibold mb-4">{% translate "People" %}</h2>
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+          {% for person in list_people %}
+            <div class="group relative" data-list-person>
+              <a href="{{ person.url }}" class="block">
+                <img src="{{ person.image|default:IMG_NONE|image_url }}" alt="{{ person.name }}" loading="lazy"
+                     class="w-full aspect-[2/3] rounded-lg object-cover bg-[var(--color-surface)]">
+                <p class="mt-2 text-sm font-medium text-[var(--color-text)] truncate">{{ person.name }}</p>
+                {% if person.department %}<p class="text-xs text-[var(--color-text-muted)] truncate">{{ person.department }}</p>{% endif %}
+              </a>
+              {% if can_edit and not custom_list.is_smart %}
+                <button type="button"
+                        hx-post="{% url 'person_list_toggle' %}"
+                        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                        hx-vals='{"custom_list_id": "{{ custom_list.id }}", "item_id": "{{ person.id }}"}'
+                        hx-target="closest [data-list-person]"
+                        hx-swap="delete"
+                        class="absolute top-1 right-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                        aria-label="{% blocktranslate trimmed with value_1=person.name %}Remove {{ value_1 }} from this list{% endblocktranslate %}">
+                  {% translate "Remove" %}
+                </button>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
 
     <div data-page-slot="list-detail-footer">
       <div id="loading-indicator" class="htmx-indicator text-center pt-8">
