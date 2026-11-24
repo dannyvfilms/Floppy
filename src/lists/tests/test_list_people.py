@@ -54,3 +54,37 @@ class ListPeopleTests(TestCase):
         self.assertContains(response, "Brad Pitt")
         self.assertContains(response, "data-list-person")
         self.assertContains(response, reverse("person_list_toggle"))
+
+
+class ListPeopleApiTests(TestCase):
+    """The REST endpoints the native app uses for people on lists."""
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(username="owner", password="x")
+        self.other = user_model.objects.create_user(username="other", password="x")
+        self.client.force_login(self.user)
+        self.person = Person.objects.create(
+            source=Sources.TMDB.value, source_person_id="287", name="Brad Pitt",
+        )
+        self.custom_list = CustomList.objects.create(name="Actors", owner=self.user)
+        self.base = "/api/v1/people/tmdb/287/lists/"
+
+    def test_put_get_delete_roundtrip(self):
+        self.assertEqual(self.client.put(f"{self.base}{self.custom_list.id}/").status_code, 204)
+        results = self.client.get(self.base).json()["results"]
+        self.assertEqual(results, [{"list_id": self.custom_list.id}])
+        detail = self.client.get(f"/api/v1/lists/{self.custom_list.id}/").json()
+        self.assertEqual(detail["people"][0]["name"], "Brad Pitt")
+        self.assertEqual(detail["people"][0]["person_id"], "287")
+        self.assertEqual(self.client.delete(f"{self.base}{self.custom_list.id}/").status_code, 204)
+        self.assertEqual(self.client.get(self.base).json()["results"], [])
+
+    def test_cannot_edit_someone_elses_list(self):
+        foreign = CustomList.objects.create(name="Theirs", owner=self.other)
+        self.assertIn(self.client.put(f"{self.base}{foreign.id}/").status_code, (403, 404))
+        self.assertFalse(CustomListPerson.objects.exists())
+
+    def test_unknown_person_is_404(self):
+        response = self.client.put(f"/api/v1/people/tmdb/999/lists/{self.custom_list.id}/")
+        self.assertEqual(response.status_code, 404)

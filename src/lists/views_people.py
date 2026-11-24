@@ -35,6 +35,8 @@ def list_people_for_display(custom_list):
         people.append(
             {
                 "id": person.id,
+                "source": person.source,
+                "person_id": person.source_person_id,
                 "name": person.name,
                 "image": person.image,
                 "department": person.known_for_department,

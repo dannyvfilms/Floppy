@@ -33,6 +33,7 @@ import { ViewToggle } from '../../../frontend/ui/ViewToggle';
 import { ListHeader } from '../../../frontend/ui/ListHeader';
 import { ListForm } from '../../../frontend/ui/ListFormView';
 import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
+import { ListPeople } from '../../../frontend/ui/ListPeople';
 import { ListBulkBar, ListResults } from '../../../frontend/ui/ListResults';
 import { SmartRuleBuilder, SmartRuleSummary } from '../../../frontend/ui/SmartRules';
 import { ListItemPreview, ListItemSearch } from '../../../frontend/ui/ListSearchView';
@@ -1105,6 +1106,19 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       .catch(() => setTierNotice('The tier image could not be opened.'));
   }
 
+  function openPerson(person) {
+    navigate?.('People', { identity: { kind: 'person', source: person.source, personId: person.personId } });
+  }
+
+  async function removePerson(person) {
+    try {
+      await transport.removePerson?.({ listId: list.id, source: person.source, personId: person.personId });
+      setList(current => ({ ...current, people: (current.people || []).filter(entry => entry.id !== person.id) }));
+    } catch {
+      setNotice('That person could not be removed. Please try again.');
+    }
+  }
+
   function openItem(item) {
     if (navigate) {
       navigate('Detail', { item });
@@ -1324,6 +1338,8 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         hasSearch={!!search.trim()}
         onRecommend={() => openAddFlow('recommend')}
         onBrowse={() => navigate?.('Search', { query: '' })} />}
+      footer={<ListPeople people={list.people} canEdit={canEdit && !isSmart} palette={LIST_PALETTE}
+        onOpen={openPerson} onRemove={removePerson} />}
       dialogs={<>
         <ListMembershipPopup
           open={membersOpen}
