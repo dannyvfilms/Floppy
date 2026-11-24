@@ -135,11 +135,15 @@ export function SettingsView({
   icons = {},
   renderIcon,
   collapsible,
+  navColumnStyle, // web adapter passes sticky/scroll (#1525); native screens scroll as a whole
   children,
 }) {
   const copy = { ...settingsLabels, ...(labels || {}) };
   const { width } = useWindowDimensions();
   const narrow = width < 600;
+  // Menu (256) + gap (32) + content (320) = 608px; with the page's side padding the
+  // columns sit side by side from about 672px. Below that they wrap and stay unpinned.
+  const sideBySide = width >= 672;
   const menuCollapsible = collapsible ?? narrow;
   return <View style={styles.root}>
     <View style={styles.pageHeading}>
@@ -147,7 +151,7 @@ export function SettingsView({
       <Text style={[styles.subtitle, { color: palette.textMuted || '#a1a1aa' }]}>{copy.subtitle}</Text>
     </View>
     <View style={styles.layout}>
-      <View style={[styles.navColumn, narrow && styles.navColumnNarrow]}>
+      <View style={[styles.navColumn, narrow ? styles.navColumnNarrow : sideBySide && navColumnStyle]}>
         <SettingsNav navigation={navigation} active={active} onNavigate={onNavigate}
           permissions={permissions} availablePages={availablePages} labels={labels}
           palette={palette} icons={icons} renderIcon={renderIcon}
