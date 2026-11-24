@@ -127,6 +127,15 @@ class DurableImportTests(TransactionTestCase):
         self.assertEqual(Movie.objects.get().end_date, watched)
         self.assertEqual(Movie.history.get().history_date, watched)
 
+    def test_hydrate_tolerates_payload_staged_before_a_column_existed(self):
+        """A run staged by an older release lacks newer columns such as updated_at."""
+        entries = list(self.run.prepared_entries.order_by("ordinal"))
+        for entry in entries:
+            entry.payload["fields"].pop("updated_at")
+        rows = durable.hydrate(entries, self.user)
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(row.item_id for row in rows))
+
     def test_retained_manifest_detects_changed_or_missing_segment(self):
         """A resume cannot silently accept a different staged prefix."""
         durable.verify_prepared(self.run)

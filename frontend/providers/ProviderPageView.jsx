@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { CatalogGrid } from '../ui/controls/Catalog';
 import { Tabs } from '../ui/controls/Navigation';
 import { Chip } from '../settings/Chip';
+import { isLightTheme, toneText } from '../settings/statusTones';
 import { SettingsCard } from '../settings/SettingsCard';
 import { ProviderProvider, useProvider } from './ProviderContext';
 import { ProviderLogo } from '../ui/ProviderLogo';
@@ -36,12 +37,10 @@ const defaultPalette = {
   infoBackground: 'rgba(99, 102, 241, 0.1)',
   infoBadgeBorder: 'rgba(99, 102, 241, 0.3)',
   infoBadgeBackground: 'rgba(99, 102, 241, 0.1)',
-  infoBadgeText: '#c7d2fe',
   warningBorder: 'rgba(245, 158, 11, 0.3)',
   warningBackground: 'rgba(245, 158, 11, 0.1)',
   warningBadgeBorder: 'rgba(245, 158, 11, 0.4)',
   warningBadgeBackground: 'rgba(245, 158, 11, 0.2)',
-  warningBadgeText: '#fde68a',
 };
 
 const BODY_SLOTS = new Set(['connection', 'import', 'activity', 'metadata', 'tracking', 'sync']);
@@ -59,7 +58,7 @@ function tonePalette(colors, tone) {
       background: colors.infoBackground,
       badgeBorder: colors.infoBadgeBorder,
       badgeBackground: colors.infoBadgeBackground,
-      badgeText: colors.infoBadgeText,
+      badgeText: colors.infoBadgeText ?? toneText(colors, 'info'),
     };
   }
   if (tone === 'warning') {
@@ -69,7 +68,7 @@ function tonePalette(colors, tone) {
       background: colors.warningBackground,
       badgeBorder: colors.warningBadgeBorder,
       badgeBackground: colors.warningBadgeBackground,
-      badgeText: colors.warningBadgeText,
+      badgeText: colors.warningBadgeText ?? toneText(colors, 'warning'),
     };
   }
   return colors;
@@ -97,7 +96,8 @@ export function ProviderPageView({
   onSubmit,
   onNavigate,
 }) {
-  const colors = { ...defaultPalette, ...(palette || {}) };
+  const light = isLightTheme(palette, useColorScheme());
+  const colors = { ...defaultPalette, ...(palette || {}), isLight: light };
   return <ProviderProvider
     model={model}
     labels={labels}

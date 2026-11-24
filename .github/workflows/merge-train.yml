@@ -23,6 +23,14 @@ name: Merge Train
 # A run is red when the queue has pull requests but none could advance. The job
 # summary lists what was decided for each one and why.
 #
+# UI bundles: with the repository variable MERGE_TRAIN_REBUILD_UI set to "true", an
+# owner-authored same-repository PR whose branch and latest both changed the UI
+# build inputs (or conflict) is not refreshed through the API. The planner
+# above only lists it; ui-build merges the exact head and latest SHAs and rebuilds
+# src/static/ui/ in a read-only job with no secrets; ui-publish treats that output as
+# untrusted data, re-checks everything, and pushes one merge commit. See
+# scripts/merge_train_ui.py. Unset the variable to roll back.
+#
 # Needs the AUTO_MERGE_TOKEN secret (Pull requests and Contents read/write): a
 # branch updated with the built-in token does not start CI.
 # Maintainer edit permission on a fork does not guarantee this token can update
@@ -70,6 +78,8 @@ jobs:
       group: merge-train
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    outputs:
+      ui_refresh: ${{ steps.refresh.outputs.ui_refresh || '[]' }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -78,15 +88,105 @@ jobs:
           persist-credentials: false
 
       - name: Refresh approved pull requests
+        id: refresh
         env:
           GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
           GH_REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
           CI_HEAD: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
           MERGE_TRAIN_DEPTH: ${{ vars.MERGE_TRAIN_DEPTH || '3' }}
+          MERGE_TRAIN_REBUILD_UI: ${{ vars.MERGE_TRAIN_REBUILD_UI }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::AUTO_MERGE_TOKEN secret is not set."
             exit 1
           fi
           python3 scripts/merge_train.py $([ "$DRY_RUN" = "true" ] && echo --dry-run)
+
+  # Builds PR code, so it has a read-only token, no secrets and no credentials
+  # on disk. Its output is untrusted data for ui-publish.
+  ui-build:
+    needs: merge-train
+    if: needs.merge-train.outputs.ui_refresh != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.merge-train.outputs.ui_refresh) }}
+    steps:
+      - name: Trusted scripts from latest
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: latest
+          path: trusted
+          persist-credentials: false
+
+      - name: Fetch the exact pull request commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ matrix.entry.head }}
+          BASE_SHA: ${{ matrix.entry.base }}
+        run: |
+          # A plain fetch by SHA (read-only token passed through the environment,
+          # never written to disk) instead of the checkout action.
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          git init -q work
+          cd work
+          git remote add origin "https://github.com/$REPO"
+          git fetch -q origin "$HEAD_SHA" "$BASE_SHA"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
+      - name: Merge latest and rebuild the UI bundles
+        env:
+          NUMBER: ${{ matrix.entry.number }}
+          HEAD_SHA: ${{ matrix.entry.head }}
+          BASE_SHA: ${{ matrix.entry.base }}
+        run: |
+          python3 trusted/scripts/merge_train_ui.py build --work work --out out \
+            --number "$NUMBER" --head "$HEAD_SHA" --base "$BASE_SHA"
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ui-${{ matrix.entry.number }}
+          path: out
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # Has the token. Runs only the script from latest; never runs artifact content.
+  ui-publish:
+    needs: [merge-train, ui-build]
+    if: always() && needs.merge-train.outputs.ui_refresh != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: latest
+          persist-credentials: false
+
+      - name: Download build results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+
+      - name: Publish refreshed branches
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PLAN: ${{ needs.merge-train.outputs.ui_refresh }}
+        run: python3 scripts/merge_train_ui.py publish --artifacts artifacts

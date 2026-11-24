@@ -284,12 +284,21 @@ def replace_source_pages(*, user, source, source_instance_id, pages):
     return len(stale) + len(changed) + len(new)
 
 
-def set_source_page(*, user, source, provider, media_type, media_id, path):
-    """Save (or with an empty ``path``, drop) one page of a single-account source."""
+def set_source_page(
+    *,
+    user,
+    source,
+    provider,
+    media_type,
+    media_id,
+    path,
+    source_instance_id=0,
+):
+    """Save (or with an empty ``path``, drop) one page of a source's server."""
     key = {
         "user": user,
         "source": source,
-        "source_instance_id": 0,
+        "source_instance_id": source_instance_id,
         "provider": provider,
         "media_type": media_type,
         "media_id": str(media_id),

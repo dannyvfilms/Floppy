@@ -645,13 +645,14 @@ def sync_plex_mark_watched(user_id):
 
 
 @shared_task(name="Import from Jellyfin Playback Reporting")
-def import_jellyfin_playback_reporting(file, user_id, mode="new"):
-    """Import a Jellyfin Playback Reporting TSV backup."""
+def import_jellyfin_playback_reporting(file, user_id, mode="new", account_id=None):
+    """Import a Jellyfin Playback Reporting TSV backup into one connection."""
     return _run_file_import(
         jellyfin_playback_reporting.importer,
         file,
         user_id,
         mode,
+        account_id=account_id,
     )
 
 
@@ -800,11 +801,13 @@ def sync_plex_watchlist(user_id, mode="watchlist"):
 
 
 @shared_task(bind=True, name=JELLYFIN_PUSH_TASK_NAME)
-def push_jellyfin_watched(self, user_id):
-    """Celery task for pushing Floppy watched state to Jellyfin."""
+def push_jellyfin_watched(self, user_id, account_id=None):
+    """Celery task for pushing Floppy watched state to one Jellyfin connection."""
     # Events arriving from here on need a push of their own, so let the next
     # webhook queue one.
-    cache_safety.release_lock(_jellyfin_health.instant_push_lock_key(user_id))
+    cache_safety.release_lock(
+        _jellyfin_health.instant_push_lock_key(user_id, account_id),
+    )
 
     user = get_user_model().objects.get(id=user_id)
     if not user.is_active:
@@ -812,7 +815,13 @@ def push_jellyfin_watched(self, user_id):
         # provider work against the user's server, so it must not run.
         logger.info("jellyfin_push_skipped_inactive_user user_id=%s", user_id)
         return "Skipped: the account is deactivated."
-    account = getattr(user, "jellyfin_account", None)
+    account, queued = _jellyfin_health.pick_account(
+        push_jellyfin_watched,
+        user,
+        account_id,
+    )
+    if queued:
+        return queued
     if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before syncing."
         raise helpers.MediaImportError(msg)

@@ -215,7 +215,7 @@ class UpdateBannerTests(TestCase):
     def _page_has_banner(self, user):
         self.client.force_login(user)
         response = self.client.get(reverse("about"))
-        return b"floppy_seen_release" in response.content
+        return b"update-banner-props" in response.content
 
     def test_admins_get_the_banner_with_the_release_tag(self):
         admin = get_user_model().objects.create_superuser(

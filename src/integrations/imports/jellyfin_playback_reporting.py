@@ -57,13 +57,23 @@ class PlaybackReportingRow:
     play_duration: int
     line_number: int
 
-    def source_identity(self, *, rowid: str | int | None = None) -> str:
+    def source_identity(
+        self,
+        *,
+        rowid: str | int | None = None,
+        scope: str = "",
+    ) -> str:
         """Return a stable identity for this source event.
 
         TSV backups do not contain SQLite's ``rowid``. The optional argument
         keeps the identity rule explicit for a future supported API adapter.
         """
         if rowid is not None:
+            # A rowid is only unique within one server's database. ``scope``
+            # is empty for the first connection, whose stored identities
+            # predate it, and names the server for every later one.
+            if scope:
+                return f"{PLAYBACK_REPORTING_SOURCE}:{scope}:rowid:{rowid}"
             return f"{PLAYBACK_REPORTING_SOURCE}:rowid:{rowid}"
 
         fields = (
@@ -402,7 +412,14 @@ class JellyfinPlaybackReportingImporter:
                 continue
             if row.user_id != user_id:
                 continue
-            self._import_row(row, library, source_id=row.source_identity(rowid=rowid))
+            self._import_row(
+                row,
+                library,
+                source_id=row.source_identity(
+                    rowid=rowid,
+                    scope=self.account.identity_scope,
+                ),
+            )
 
         self._save_skipped_count()
         if self.skipped_count:
@@ -649,11 +666,16 @@ class JellyfinPlaybackReportingImporter:
             )
 
 
-def importer(file, user, mode):
-    """Import a Playback Reporting TSV for the user's connected Jellyfin account."""
+def importer(file, user, mode, account_id=None):
+    """Import a Playback Reporting TSV for one of the user's Jellyfin accounts."""
     del mode  # Playback Reporting identities make repeated uploads idempotent.
     payload = file.read() if hasattr(file, "read") else file
-    return JellyfinPlaybackReportingImporter(
-        user,
-        getattr(user, "jellyfin_account", None),
-    ).import_data(payload)
+    accounts = user.jellyfin_accounts.all()
+    if account_id is not None:
+        account = accounts.filter(id=account_id).first()
+    else:
+        # A queued message from before multiple connections names no account;
+        # it is unambiguous only when the user has exactly one.
+        only = list(accounts[:2])
+        account = only[0] if len(only) == 1 else None
+    return JellyfinPlaybackReportingImporter(user, account).import_data(payload)

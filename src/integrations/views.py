@@ -369,31 +369,44 @@ def _disable_plex_watchlist_schedule(user):
     ).delete()
 
 
-def _ensure_jellyfin_push_schedule(user, jellyfin_account):
-    """Create or enable the per-user Jellyfin watched-state push schedule."""
+def _jellyfin_account_task_filter(user_id, account_id):
+    """Return a ``Q`` matching one Jellyfin connection's periodic task exactly."""
+    return Q(**helpers.periodic_task_user_kwargs(user_id)) & Q(
+        kwargs__regex=rf"[\"']account_id[\"']: {int(account_id)}[,}}]",
+    )
+
+
+def _ensure_jellyfin_schedule(user, account, task_name, interval_minutes):
+    """Create or enable one connection's recurring Jellyfin task.
+
+    Each connection owns its schedule, so connecting, editing or disconnecting
+    one server never touches another's. A user-wide schedule left over from
+    before multiple connections would fan out to every server, so it goes.
+    """
     from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-    next_interval_start = timezone.now() + timedelta(
-        minutes=JELLYFIN_PUSH_INTERVAL_MINUTES
-    )
+    PeriodicTask.objects.filter(
+        Q(**helpers.periodic_task_user_kwargs(user.id)),
+        task=task_name,
+    ).exclude(kwargs__contains="account_id").delete()
+
+    next_interval_start = timezone.now() + timedelta(minutes=interval_minutes)
     interval, _ = IntervalSchedule.objects.get_or_create(
-        every=JELLYFIN_PUSH_INTERVAL_MINUTES,
+        every=interval_minutes,
         period=IntervalSchedule.MINUTES,
     )
-    task_filter = PeriodicTask.objects.filter(
-        _plex_watchlist_task_filter(user.id),
-        task=JELLYFIN_PUSH_TASK_NAME,
+    desired_name = (
+        f"{task_name} for {account.display_name} of {user.username} "
+        f"#{account.id} (every {interval_minutes} minutes)"
     )
-    existing_task = task_filter.first()
+    desired_kwargs = json.dumps({"user_id": user.id, "account_id": account.id})
+    existing_task = PeriodicTask.objects.filter(
+        _jellyfin_account_task_filter(user.id, account.id),
+        task=task_name,
+    ).first()
     if existing_task:
         was_enabled = existing_task.enabled
         updated_fields = []
-        desired_name = (
-            f"{JELLYFIN_PUSH_TASK_NAME} for "
-            f"{jellyfin_account.jellyfin_username or user.username} "
-            f"(every {JELLYFIN_PUSH_INTERVAL_MINUTES} minutes)"
-        )
-        desired_kwargs = json.dumps({"user_id": user.id})
         if existing_task.name != desired_name:
             existing_task.name = desired_name
             updated_fields.append("name")
@@ -417,99 +430,57 @@ def _ensure_jellyfin_push_schedule(user, jellyfin_account):
         return existing_task
 
     return PeriodicTask.objects.create(
-        name=(
-            f"{JELLYFIN_PUSH_TASK_NAME} for "
-            f"{jellyfin_account.jellyfin_username or user.username} "
-            f"(every {JELLYFIN_PUSH_INTERVAL_MINUTES} minutes)"
-        ),
-        task=JELLYFIN_PUSH_TASK_NAME,
+        name=desired_name,
+        task=task_name,
         interval=interval,
-        kwargs=json.dumps({"user_id": user.id}),
+        kwargs=desired_kwargs,
         start_time=next_interval_start,
         enabled=True,
     )
 
 
-def _disable_jellyfin_push_schedule(user):
-    """Delete any per-user Jellyfin push periodic tasks."""
+def _disable_jellyfin_schedule(user, account, task_name):
+    """Delete one connection's recurring Jellyfin task."""
     from django_celery_beat.models import PeriodicTask
 
     return PeriodicTask.objects.filter(
-        _plex_watchlist_task_filter(user.id),
-        task=JELLYFIN_PUSH_TASK_NAME,
+        _jellyfin_account_task_filter(user.id, account.id),
+        task=task_name,
     ).delete()
+
+
+def _ensure_jellyfin_push_schedule(user, jellyfin_account):
+    """Create or enable one connection's watched-state push schedule."""
+    return _ensure_jellyfin_schedule(
+        user,
+        jellyfin_account,
+        JELLYFIN_PUSH_TASK_NAME,
+        JELLYFIN_PUSH_INTERVAL_MINUTES,
+    )
+
+
+def _disable_jellyfin_push_schedule(user, jellyfin_account):
+    """Delete one connection's push periodic task."""
+    return _disable_jellyfin_schedule(user, jellyfin_account, JELLYFIN_PUSH_TASK_NAME)
 
 
 def _ensure_jellyfin_pull_schedule(user, jellyfin_account):
-    """Create or enable the per-user Jellyfin history pull schedule."""
-    from django_celery_beat.models import IntervalSchedule, PeriodicTask
-
-    pull_task_name = tasks.JELLYFIN_PULL_TASK_NAME
-    pull_interval_minutes = tasks.JELLYFIN_PULL_INTERVAL_MINUTES
-
-    next_interval_start = timezone.now() + timedelta(minutes=pull_interval_minutes)
-    interval, _ = IntervalSchedule.objects.get_or_create(
-        every=pull_interval_minutes,
-        period=IntervalSchedule.MINUTES,
-    )
-    task_filter = PeriodicTask.objects.filter(
-        _plex_watchlist_task_filter(user.id),
-        task=pull_task_name,
-    )
-    existing_task = task_filter.first()
-    if existing_task:
-        was_enabled = existing_task.enabled
-        updated_fields = []
-        desired_name = (
-            f"{pull_task_name} for "
-            f"{jellyfin_account.jellyfin_username or user.username} "
-            f"(every {pull_interval_minutes} minutes)"
-        )
-        desired_kwargs = json.dumps({"user_id": user.id})
-        if existing_task.name != desired_name:
-            existing_task.name = desired_name
-            updated_fields.append("name")
-        if existing_task.interval_id != interval.id:
-            existing_task.interval = interval
-            updated_fields.append("interval")
-        if existing_task.crontab_id is not None:
-            existing_task.crontab = None
-            updated_fields.append("crontab")
-        if existing_task.kwargs != desired_kwargs:
-            existing_task.kwargs = desired_kwargs
-            updated_fields.append("kwargs")
-        if not existing_task.enabled:
-            existing_task.enabled = True
-            updated_fields.append("enabled")
-        if existing_task.start_time is None or not was_enabled:
-            existing_task.start_time = next_interval_start
-            updated_fields.append("start_time")
-        if updated_fields:
-            existing_task.save(update_fields=updated_fields)
-        return existing_task
-
-    return PeriodicTask.objects.create(
-        name=(
-            f"{pull_task_name} for "
-            f"{jellyfin_account.jellyfin_username or user.username} "
-            f"(every {pull_interval_minutes} minutes)"
-        ),
-        task=pull_task_name,
-        interval=interval,
-        kwargs=json.dumps({"user_id": user.id}),
-        start_time=next_interval_start,
-        enabled=True,
+    """Create or enable one connection's history pull schedule."""
+    return _ensure_jellyfin_schedule(
+        user,
+        jellyfin_account,
+        tasks.JELLYFIN_PULL_TASK_NAME,
+        tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
     )
 
 
-def _disable_jellyfin_pull_schedule(user):
-    """Delete any per-user Jellyfin pull periodic tasks."""
-    from django_celery_beat.models import PeriodicTask
-
-    return PeriodicTask.objects.filter(
-        _plex_watchlist_task_filter(user.id),
-        task=tasks.JELLYFIN_PULL_TASK_NAME,
-    ).delete()
+def _disable_jellyfin_pull_schedule(user, jellyfin_account):
+    """Delete one connection's pull periodic task."""
+    return _disable_jellyfin_schedule(
+        user,
+        jellyfin_account,
+        tasks.JELLYFIN_PULL_TASK_NAME,
+    )
 
 
 def _ensure_arr_schedule(instance, task_name, source_label):
@@ -2200,24 +2171,67 @@ def import_sonarr(request):
     return redirect("import_data")
 
 
+def _jellyfin_posted_account_id(request):
+    """Return the posted connection id; ``instance_id`` is what the shared UI sends."""
+    return (
+        request.POST.get("account_id") or request.POST.get("instance_id") or ""
+    ).strip()
+
+
+def _jellyfin_account_from_post(request):
+    """Return the connection a POST names with ``account_id``, or None.
+
+    Always scoped to the requesting user, so a forged id reaches no one else's
+    server. A user with exactly one connection may omit the id, which keeps
+    forms and clients from before multiple connections working.
+    """
+    accounts = JellyfinAccount.objects.filter(user=request.user)
+    account_id = _jellyfin_posted_account_id(request)
+    if account_id:
+        return accounts.filter(id=account_id).first() if account_id.isdigit() else None
+    only = list(accounts[:2])
+    return only[0] if len(only) == 1 else None
+
+
+def _jellyfin_identity_scope(server_id, base_url):
+    """Return the Playback Reporting identity prefix for a new connection."""
+    return server_id or hashlib.sha256(base_url.encode()).hexdigest()[:16]
+
+
 @require_POST
 def jellyfin_connect(request):
-    """Connect a Jellyfin server using base URL + API key."""
+    """Add a Jellyfin connection, or edit one when ``account_id`` is given."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
     )
+    editing = bool(_jellyfin_posted_account_id(request))
+    existing_account = _jellyfin_account_from_post(request) if editing else None
+    if editing and existing_account is None:
+        messages.error(request, "That Jellyfin connection no longer exists.")
+        return redirect(redirect_target)
+
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
     username = request.POST.get("username", "").strip()
+    name = request.POST.get("name", "").strip()[:100]
+    if existing_account is not None:
+        # Editing keeps whatever the form leaves blank; the key is never shown,
+        # so blank means "unchanged".
+        base_url = base_url or existing_account.base_url
+        if not api_key and existing_account.api_key:
+            try:
+                api_key = helpers.decrypt_or_raise(existing_account.api_key)
+            except helpers.MediaImportError:
+                api_key = ""
     if not base_url or not api_key:
         messages.error(request, "Jellyfin base URL and API key are required.")
         return redirect(redirect_target)
 
     client = JellyfinClient(base_url, api_key)
     try:
-        client.healthcheck()
+        server_info = client.healthcheck() or {}
         current_user = client.get_current_user()
         if not current_user and username:
             current_user = client.find_user_by_name(username)
@@ -2234,27 +2248,47 @@ def jellyfin_connect(request):
         )
         return redirect(redirect_target)
 
-    existing_account = getattr(request.user, "jellyfin_account", None)
+    server_id = (
+        str(server_info.get("Id") or "") if isinstance(server_info, dict) else ""
+    )
+    same_server = Q(base_url=base_url)
+    if server_id:
+        same_server |= Q(server_id=server_id)
+    duplicates = JellyfinAccount.objects.filter(
+        same_server,
+        user=request.user,
+        jellyfin_user_id=current_user["Id"],
+    )
+    if existing_account is not None:
+        duplicates = duplicates.exclude(pk=existing_account.pk)
+    if duplicates.exists():
+        messages.error(request, "This Jellyfin server and user are already connected.")
+        return redirect(redirect_target)
+
     identity_changed = existing_account is not None and (
         existing_account.base_url != base_url
         or existing_account.jellyfin_user_id != current_user["Id"]
     )
 
-    defaults = {
+    values = {
         "base_url": base_url,
         "api_key": helpers.encrypt(api_key),
         "jellyfin_user_id": current_user["Id"],
         "jellyfin_username": current_user.get("Name", ""),
+        "server_id": server_id,
         "connection_broken": False,
         "last_error_message": "",
         "last_pull_error_message": "",
     }
+    if name or existing_account is None:
+        values["name"] = name
     if existing_account is None or identity_changed:
         # A different server/user invalidates any cached pull state: a
         # Playback Reporting rowid or "unavailable" result from the old
         # identity would otherwise silently carry over to the new one.
-        defaults.update(
+        values.update(
             {
+                "identity_scope": _jellyfin_identity_scope(server_id, base_url),
                 "playback_reporting_available": None,
                 "playback_reporting_last_rowid": None,
                 "library_backfill_completed_at": None,
@@ -2262,20 +2296,28 @@ def jellyfin_connect(request):
         )
 
     def _connect():
-        account, _ = JellyfinAccount.objects.update_or_create(
-            user=request.user,
-            defaults=defaults,
-        )
+        if existing_account is None:
+            account = JellyfinAccount.objects.create(user=request.user, **values)
+        else:
+            account = existing_account
+            for field, value in values.items():
+                setattr(account, field, value)
+            account.save(update_fields=[*values, "updated_at"])
         if account.pull_history_enabled:
             _ensure_jellyfin_pull_schedule(request.user, account)
         return account
 
-    _run_with_lock_retry("connect Jellyfin", _connect)
+    account = _run_with_lock_retry("connect Jellyfin", _connect)
 
     # Seamless by default: queue an automatic history pull right away so a
     # newly connected user sees their watch history without any manual
     # export/upload step, and keep it running on a schedule going forward.
-    if _queue_task_or_message(request, tasks.pull_jellyfin_history, user_id=request.user.id) is not False:
+    if _queue_task_or_message(
+        request,
+        tasks.pull_jellyfin_history,
+        user_id=request.user.id,
+        account_id=account.id,
+    ) is not False:
         messages.success(
             request,
             "Connected Jellyfin. Importing your watch history now.",
@@ -2285,17 +2327,24 @@ def jellyfin_connect(request):
 
 @require_POST
 def jellyfin_disconnect(request):
-    """Disconnect the Jellyfin integration."""
+    """Disconnect one Jellyfin connection, leaving the others untouched."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
     )
+    account = _jellyfin_account_from_post(request)
+    if account is None:
+        messages.error(request, "That Jellyfin connection no longer exists.")
+        return redirect(redirect_target)
 
     def _disconnect():
-        _disable_jellyfin_push_schedule(request.user)
-        _disable_jellyfin_pull_schedule(request.user)
-        JellyfinAccount.objects.filter(user=request.user).delete()
+        from integrations.webhooks.jellyfin import release_connection_sources
+
+        _disable_jellyfin_push_schedule(request.user, account)
+        _disable_jellyfin_pull_schedule(request.user, account)
+        release_connection_sources(request.user, account)
+        account.delete()
 
     _run_with_lock_retry("disconnect Jellyfin", _disconnect)
     messages.info(request, "Disconnected Jellyfin.")
@@ -2304,13 +2353,13 @@ def jellyfin_disconnect(request):
 
 @require_POST
 def jellyfin_settings(request):
-    """Update Jellyfin push-sync and history-pull toggles."""
+    """Update one connection's push-sync and history-pull toggles."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
     )
-    account = getattr(request.user, "jellyfin_account", None)
+    account = _jellyfin_account_from_post(request)
     if not account:
         messages.error(request, "Connect Jellyfin before changing sync settings.")
         return redirect(redirect_target)
@@ -2333,12 +2382,12 @@ def jellyfin_settings(request):
     if account.scheduled_push_enabled:
         _ensure_jellyfin_push_schedule(request.user, account)
     else:
-        _disable_jellyfin_push_schedule(request.user)
+        _disable_jellyfin_push_schedule(request.user, account)
 
     if account.pull_history_enabled:
         _ensure_jellyfin_pull_schedule(request.user, account)
     else:
-        _disable_jellyfin_pull_schedule(request.user)
+        _disable_jellyfin_pull_schedule(request.user, account)
 
     messages.success(request, "Jellyfin sync settings updated.")
     return redirect(redirect_target)
@@ -2346,53 +2395,66 @@ def jellyfin_settings(request):
 
 @require_POST
 def jellyfin_push_now(request):
-    """Queue an immediate Jellyfin watched-state push."""
+    """Queue an immediate watched-state push to one Jellyfin connection."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
     )
-    account = getattr(request.user, "jellyfin_account", None)
+    account = _jellyfin_account_from_post(request)
     if not account:
         messages.error(request, "Connect Jellyfin before syncing.")
         return redirect(redirect_target)
 
-    if _queue_task_or_message(request, tasks.push_jellyfin_watched, user_id=request.user.id) is not False:
+    if _queue_task_or_message(
+        request,
+        tasks.push_jellyfin_watched,
+        user_id=request.user.id,
+        account_id=account.id,
+    ) is not False:
         messages.info(request, "Jellyfin sync queued.")
     return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_pull_now(request):
-    """Queue an immediate automatic Jellyfin history pull."""
+    """Queue an immediate history pull for one Jellyfin connection."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
     )
-    account = getattr(request.user, "jellyfin_account", None)
+    account = _jellyfin_account_from_post(request)
     # A broken account is still queued: the pull re-probes the key and clears
     # the flag when it works again.
     if not account or not account.base_url or not account.api_key:
         messages.error(request, "Connect Jellyfin before importing history.")
         return redirect(redirect_target)
 
-    if _queue_task_or_message(request, tasks.pull_jellyfin_history, user_id=request.user.id) is not False:
+    if _queue_task_or_message(
+        request,
+        tasks.pull_jellyfin_history,
+        user_id=request.user.id,
+        account_id=account.id,
+    ) is not False:
         messages.info(request, "Jellyfin history import queued.")
     return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_playback_reporting_import(request):
-    """Queue a manual Playback Reporting TSV import for the connected user."""
+    """Queue a manual Playback Reporting TSV import for one connection."""
     redirect_target = app_helpers.safe_return_url(
         request,
         request.POST.get("next"),
         reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
     )
-    account = getattr(request.user, "jellyfin_account", None)
+    account = _jellyfin_account_from_post(request)
     if not account or not account.is_connected:
-        messages.error(request, "Connect Jellyfin before importing Playback Reporting data.")
+        messages.error(
+            request,
+            "Connect Jellyfin before importing Playback Reporting data.",
+        )
         return redirect(redirect_target)
 
     uploaded_file = request.FILES.get("playback_reporting_file")
@@ -2422,6 +2484,7 @@ def jellyfin_playback_reporting_import(request):
         staged_file,
         request.user.id,
         "new",
+        account.id,
         staged_paths=(staged_file,),
     ) is False:
         return redirect(redirect_target)
