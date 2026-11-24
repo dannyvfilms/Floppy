@@ -53,7 +53,8 @@ class ListPeopleTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
         self.assertContains(response, "Brad Pitt")
         self.assertContains(response, "data-list-person")
-        self.assertContains(response, reverse("person_list_toggle"))
+        # People come off a list from the person page, like media; no chip here.
+        self.assertNotContains(response, "Remove")
 
 
 class ListPeopleApiTests(TestCase):
