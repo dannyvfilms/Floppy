@@ -523,6 +523,9 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   `npm run build:ui` and `npm run check:ui`. Commit the regenerated
   `src/static/ui/` files with the source. Never hand-edit hashed bundles or
   claim completion if the verification fails.
+  The merge train may later refresh an approved PR's bundles automatically when
+  `latest` changed them too (`docs/architecture/merge-train-throughput.md`); that
+  does not relax committing verified bundles with your change.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.

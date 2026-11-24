@@ -77,7 +77,7 @@ class ProvidersTests(FloppyApiTestCase):
         url = "api_provider_file_import"
         bad = self.call_api("post", url, headers=self.auth_headers, args=("goodreads",), payload={"content": " "})
         self.assertEqual(bad.status_code, HTTP.BAD_REQUEST)
-        unknown = self.call_api("post", url, headers=self.auth_headers, args=("jellyfin",), payload={"content": "x"})
+        unknown = self.call_api("post", url, headers=self.auth_headers, args=("plex",), payload={"content": "x"})
         self.assertEqual(unknown.status_code, HTTP.NOT_FOUND)
         with patch("integrations.upload_staging.enqueue_staged_task") as queued:
             queued.return_value.id = "task-1"
@@ -131,6 +131,85 @@ class ProvidersTests(FloppyApiTestCase):
         self.assertEqual(ok.status_code, HTTP.ACCEPTED, ok.content)
         self.assertEqual(loose.status_code, HTTP.ACCEPTED, loose.content)
         self.assertTrue(queued.call_args.kwargs["file"].endswith(".zip"))
+
+    def _jellyfin_pair(self):
+        from integrations.imports.helpers import encrypt
+        from integrations.models import JellyfinAccount
+
+        return [
+            JellyfinAccount.objects.create(
+                user=self.user1, name=f"Server {n}", base_url=f"https://jf{n}.local:8096",
+                api_key=encrypt(f"key-{n}"), jellyfin_user_id=f"user-{n}", server_id=f"server-{n}",
+            )
+            for n in (1, 2)
+        ]
+
+    def test_jellyfin_sync_and_import_tabs_list_cards_per_connection(self):
+        first, second = self._jellyfin_pair()
+        detail = lambda tab: self.call_api(  # noqa: E731
+            "get", "api_provider_detail", headers=self.auth_headers, args=("jellyfin",), params={"tab": tab},
+        ).json()
+
+        sync = detail("sync")["forms"]
+        self.assertEqual(
+            [key for key in sync if key.startswith(("jellyfin_s", "jellyfin_p"))],
+            [f"jellyfin_sync_{first.id}", f"jellyfin_push_{first.id}",
+             f"jellyfin_sync_{second.id}", f"jellyfin_push_{second.id}"],
+        )
+        card = sync[f"jellyfin_sync_{second.id}"]
+        self.assertEqual(card["tab"], "sync")
+        self.assertEqual(card["hidden"]["account_id"], second.id)
+        self.assertIn("Server 2", card["title"])
+        self.assertIn("https://jf2.local:8096", card["intro"])
+        self.assertEqual(sync[f"jellyfin_push_{first.id}"]["fields"], [])
+
+        imports = detail("import")
+        self.assertIn(f"jellyfin_history_{first.id}", imports["forms"])
+        self.assertEqual(
+            [upload["hidden"]["account_id"] for upload in imports["fileImports"]],
+            [first.id, second.id],
+        )
+        self.assertEqual(imports["fileImports"][0]["fileField"], "playback_reporting_file")
+        self.assertFalse(imports["fileImports"][0]["autoSubmit"])
+        self.assertEqual(detail("connection")["fileImports"], [])
+
+    def test_jellyfin_connection_form_saves_only_that_connection(self):
+        first, second = self._jellyfin_pair()
+        before = (first.push_watched_enabled, first.instant_push_enabled)
+
+        response = self.call_api(
+            "post", "api_provider_form", headers=self.auth_headers,
+            args=("jellyfin", f"jellyfin_sync_{second.id}"),
+            payload={"tab": "sync", "values": {"push_watched_enabled": True, "instant_push_enabled": True}},
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertTrue(second.push_watched_enabled)
+        self.assertTrue(second.instant_push_enabled)
+        self.assertFalse(second.push_unwatched_enabled)
+        self.assertEqual((first.push_watched_enabled, first.instant_push_enabled), before)
+
+    def test_jellyfin_playback_reporting_upload_goes_to_the_chosen_connection(self):
+        first, second = self._jellyfin_pair()
+        call = lambda payload: self.call_api(  # noqa: E731
+            "post", "api_provider_file_import", headers=self.auth_headers, args=("jellyfin",), payload=payload,
+        )
+        with patch("integrations.upload_staging.enqueue_staged_task") as queued:
+            queued.return_value.id = "task-pr"
+            ok = call({"name": "pr.tsv", "content": "a\tb\n", "accountId": second.id})
+            missing = call({"name": "pr.tsv", "content": "a\tb\n"})
+            foreign = call({"name": "pr.tsv", "content": "a\tb\n", "accountId": 999999})
+            wrong = call({"name": "pr.csv", "content": "a", "accountId": first.id})
+
+        self.assertEqual(ok.status_code, HTTP.ACCEPTED, ok.content)
+        queued.assert_called_once()
+        self.assertEqual(queued.call_args.kwargs["account_id"], second.id)
+        self.assertEqual(queued.call_args.kwargs["user_id"], self.user1.id)
+        self.assertEqual(missing.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(foreign.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(wrong.status_code, HTTP.UNSUPPORTED_MEDIA_TYPE)
 
     def test_trakt_import_tab_describes_its_export_upload(self):
         data = self.call_api(

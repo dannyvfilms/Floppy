@@ -89,6 +89,26 @@ def file_import(request, slug, preferences, context=None):
     return model
 
 
+def jellyfin_file_imports(request, accounts):
+    """One Playback Reporting TSV upload per Jellyfin connection.
+
+    The file is read against the connection it is sent to, so each model carries
+    that connection's id as a hidden value the client posts with the file.
+    """
+    several = len(accounts) > 1
+    return [{
+        "id": f"jellyfin-pr-import-{account.id}",
+        "title": _("Playback Reporting TSV") + (f": {account.display_name}" if several or account.name else ""),
+        "action": reverse("jellyfin_playback_reporting_import"), "csrf": get_token(request),
+        "next": request.get_full_path(), "hidden": {"account_id": account.id}, "accountId": account.id,
+        "values": {}, "postFields": [], "textFields": [], "mediaTypes": [], "multiple": False,
+        "description": _("Or upload a Playback Reporting TSV manually. Only needed if your key can't reach the Playback Reporting API (e.g. a non-admin key) and you'd rather not use the current-watched-state backfill above."),
+        "fileField": "playback_reporting_file", "accept": ".tsv,.txt,text/tab-separated-values,text/plain",
+        "selectLabel": _("Select TSV file"), "autoSubmit": False, "submitLabel": _("Import / reimport history"),
+        "note": "", "blockedLabel": "",
+    } for account in accounts]
+
+
 def import_preferences(request, slug, context=None):
     """Shared import controls and saved preferences, with no provider secrets."""
     context = context or {}

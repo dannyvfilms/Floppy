@@ -17,10 +17,108 @@ def _form(request, form_id, action, fields, hidden=None, submit="Save Changes"):
     }
 
 
+def _connection_status(user, account):
+    """One status line per fact worth showing about a saved Jellyfin connection."""
+    from users.templatetags.user_tags import user_datetime_format
+
+    parts = [account.base_url]
+    if account.jellyfin_username:
+        parts.append(account.jellyfin_username)
+    if account.last_sync_at:
+        parts.append(_("Last sync: %(when)s") % {"when": user_datetime_format(account.last_sync_at, user)})
+    lines = [" • ".join(parts)]
+    if account.connection_broken:
+        lines.append(_("Jellyfin rejected the API key. Floppy re-checks it on every scheduled run; reconnect if the key was changed or revoked."))
+    if account.last_error_message:
+        lines.append(_("Error: %(message)s") % {"message": account.last_error_message})
+    return "\n".join(lines)
+
+
+def _pull_status(user, account):
+    """Describe the history pull's mode, last run and last error for one connection."""
+    from users.templatetags.user_tags import user_datetime_format
+
+    if account.playback_reporting_available:
+        line = _("Using Playback Reporting's API (full per-play history).")
+    elif account.playback_reporting_available is False:
+        line = _("Playback Reporting's API isn't reachable with this key, so Floppy is using the current-watched-state backfill instead (one event per item).")
+    else:
+        line = _("Not yet run.")
+    if account.last_pull_at:
+        line += " " + _("Last run: %(when)s.") % {"when": user_datetime_format(account.last_pull_at, user)}
+    if account.last_pull_error_message:
+        line += "\n" + _("Error: %(message)s") % {"message": account.last_pull_error_message}
+    return line
+
+
+def jellyfin_connection_forms(request, tab, accounts, pull_interval_minutes):
+    """Ordered ``[(key, form)]`` for each Jellyfin connection's Sync or Import tab.
+
+    One form set per connection, every action addressed by ``account_id``, so the
+    web islands and the native client render the same cards. Each model carries its
+    ``tab`` so a client shows only the forms that belong to the tab it is on. A
+    toggle left off is simply not posted, which the views read as off.
+    """
+    user = request.user
+    several = len(accounts) > 1
+    forms = []
+    for account in accounts:
+        name = account.display_name if several or account.name else ""
+
+        def titled(heading, name=name):
+            return f"{heading}: {name}" if name else heading
+
+        base = {"account_id": account.id}
+        toggles = {
+            "pull_history_enabled": account.pull_history_enabled,
+            "push_watched_enabled": account.push_watched_enabled,
+            "push_unwatched_enabled": account.push_unwatched_enabled,
+            "scheduled_push_enabled": account.scheduled_push_enabled,
+            "instant_push_enabled": account.instant_push_enabled,
+        }
+
+        def carry(*names, toggles=toggles):
+            return {name: "on" for name in names if toggles[name]}
+
+        if tab == "sync":
+            sync = _form(request, f"jellyfin-sync-{account.id}", "jellyfin_settings", [
+                {"name": "push_watched_enabled", "type": "toggle", "onValue": "on",
+                 "label": _("Push watched status to Jellyfin"), "value": account.push_watched_enabled},
+                {"name": "push_unwatched_enabled", "type": "toggle", "onValue": "on",
+                 "label": _("Push unwatched status to Jellyfin"), "value": account.push_unwatched_enabled},
+                {"name": "scheduled_push_enabled", "type": "toggle", "onValue": "on",
+                 "label": _("Sync on a schedule (hourly)"), "value": account.scheduled_push_enabled},
+                {"name": "instant_push_enabled", "type": "toggle", "onValue": "on",
+                 "label": _("Instant push after playback events"), "value": account.instant_push_enabled},
+            ], {**base, **carry("pull_history_enabled")}, submit="Save Settings")
+            sync.update(tab="sync", title=titled(_("Floppy → Jellyfin")), intro=_connection_status(user, account))
+            forms.append((f"jellyfin_sync_{account.id}", sync))
+            push = _form(request, f"jellyfin-push-{account.id}", "jellyfin_push_now", [], base, submit="Sync Now")
+            push.update(tab="sync", title=titled(_("Push watched status now")), intro=_("Push your Floppy watched status onto this Jellyfin server now, e.g. after re-adding media or setting up a fresh Jellyfin instance."))
+            forms.append((f"jellyfin_push_{account.id}", push))
+        elif tab == "import":
+            history = _form(request, f"jellyfin-history-{account.id}", "jellyfin_settings", [
+                {"name": "pull_history_enabled", "type": "toggle", "onValue": "on",
+                 "label": _("Automatically import new Jellyfin history (every %(minutes)s minutes)") % {"minutes": pull_interval_minutes},
+                 "value": account.pull_history_enabled},
+            ], {**base, **carry("push_watched_enabled", "push_unwatched_enabled",
+                                "scheduled_push_enabled", "instant_push_enabled")}, submit="Save Settings")
+            history.update(tab="import", title=titled(_("Jellyfin → Floppy")), intro=_pull_status(user, account))
+            forms.append((f"jellyfin_history_{account.id}", history))
+            pull = _form(request, f"jellyfin-pull-{account.id}", "jellyfin_pull_now", [], base, submit="Import history now")
+            pull.update(tab="import", title=titled(_("Import history now")), intro=_(
+                "No manual export needed. Floppy pulls your watch history straight from your Jellyfin server: full per-play history via the Playback Reporting plugin's API when it's reachable with an admin key, otherwise a one-event-per-item backfill of what Jellyfin currently marks as watched."))
+            forms.append((f"jellyfin_pull_{account.id}", pull))
+    return forms
+
+
 def build(request, slug, tab, context):
     """Return {form key: model} for the integration forms a provider tab shows."""
     user = request.user
     forms = {}
+    if slug == "jellyfin":
+        forms.update(jellyfin_connection_forms(
+            request, tab, context.get("jellyfin_accounts") or [], context.get("jellyfin_pull_interval_minutes", 15)))
     if slug in {"plex", "jellyfin", "emby", "kodi", "stremio"}:
         # The web shows this as a standalone card on the tracking tab; it is
         # an option form for clients that render forms from data.

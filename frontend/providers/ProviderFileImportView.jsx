@@ -68,6 +68,10 @@ function normalizedPreferences(values, model) {
 
 function initialValues(model, preferences) {
   const values = {};
+  // Values the page fixes for this upload, such as which connection the file belongs to.
+  Object.entries(model.hidden || {}).forEach(([name, value]) => {
+    values[name] = value ?? '';
+  });
   if (model.frequency) values.frequency = model.frequency;
   (model.postFields || []).forEach(field => {
     values[field.name] = preferences[field.key] ?? '';

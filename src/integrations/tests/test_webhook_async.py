@@ -521,7 +521,7 @@ class ProcessWebhookTaskTests(TestCase):
     @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
     def test_jellyfin_instant_push_when_enabled(self, _mock_process, mock_push_delay):
         """A Jellyfin webhook should queue a push-back when instant push is enabled."""
-        JellyfinAccount.objects.create(
+        account = JellyfinAccount.objects.create(
             user=self.user,
             base_url="https://jellyfin.local:8096",
             api_key="encrypted",
@@ -535,7 +535,7 @@ class ProcessWebhookTaskTests(TestCase):
         mock_push_delay.assert_called_once()
         self.assertEqual(
             mock_push_delay.call_args.kwargs["kwargs"],
-            {"user_id": self.user.id},
+            {"user_id": self.user.id, "account_id": account.id},
         )
 
     @patch("integrations.tasks.push_jellyfin_watched.apply_async")
