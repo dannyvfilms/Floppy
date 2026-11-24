@@ -961,6 +961,10 @@ check runs even when startup is what fails.
 
 Both commands work with `podman` in place of `docker`.
 
+When you report a problem, add `--json` to either command and paste the output
+into the bug report's Logs & diagnostics field after checking it for private
+information.
+
 The `docker exec` form above uses the container's Compose service name
 (`container_name: floppy`). If you run outside Compose, or under an
 orchestrator that renames containers on every recreation (for example

@@ -30,8 +30,8 @@ jobs:
             const BLACKLIST = /^(bug|bugs?|broken|error|issue|issues|problem|help|not working|crash|fix|request|feature)$/i;
 
             const tooShort =
-              normalized.length < 20 ||
-              words.length < 4 ||
+              normalized.length < 10 ||
+              words.length < 3 ||
               BLACKLIST.test(normalized);
 
             if (!tooShort) {

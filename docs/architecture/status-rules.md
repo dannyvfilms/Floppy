@@ -14,6 +14,7 @@ and update both. The scenario table below was agreed with Daniel on 2026-10-28.
 | R4 | **Only "ended" finishes a show.** Completed needs the provider to say the series has ended (or a manual show), and every aired season Completed. A provider that is unreachable, silent or unrecognised leaves the status alone. | `TV._handle_completed_season_inner` |
 | R5 | **Otherwise a played show is In Progress, and the label says Caught Up.** In Progress on a show means "I am following this". It stays on the Home shelf. When every aired episode is watched and more is still to come, the details page progress card reads Caught Up. This is display only; the stored status does not change. Library cards get no extra chip. | `ProgressBreakdown.caught_up`, `detail_progress_card_slot.html` |
 | R6 | **Announcements and plays reopen.** A new season announced for a Completed show reopens it to In Progress with a Planning season. A real play reopens Planning, Paused or Dropped entries. | `events/calendar/tv.py`, `integrations/webhooks/base.py` |
+| R7 | **Specials never decide the show.** Season 0 is ignored when deciding if a show is Completed or In Progress: watched main seasons finish an ended show, and watching a special never reopens it. | `Season._sync_status_after_episode_change`, `TV.has_unfinished_aired_seasons` |
 
 **What counts as watching an episode.** A play is a watch only when it is finished:
 status Completed and not dropped. An open play (a check-in, a paused scrobble) is

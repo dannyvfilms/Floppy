@@ -2003,6 +2003,11 @@ class Season(Media):
         tv = getattr(self, "related_tv", None)
         if not tv or tv.status == Status.DROPPED.value or not desired_status:
             return
+        if self.item.season_number == 0:
+            # Specials never decide the show's status: a show whose main
+            # seasons are watched is complete whether or not Specials are
+            # (#1949), and watching a special must not reopen it.
+            return
         if desired_status == Status.COMPLETED.value and (
             became_completed
             or plays_added
