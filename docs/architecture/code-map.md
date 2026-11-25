@@ -135,6 +135,7 @@ See `docs/deployment-bundled.md`.
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
 | A user-defined rating scale (named criteria, ranges, weight tiers) and how an entry's criteria become its 0-10 score | `src/users/rating_scales.py` (rules, saving, API payloads); models in `src/users/rating_scale_models.py`; tests `users.tests.test_rating_scales`; UI rules in `frontend/ui/ratingScaleModel.js` | `docs/architecture/rating-sync.md` (final score only leaves Floppy) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
+| Browser-only input behaviour on every page (keyboard shortcut, game controller) | A plain script in `src/static/js/`, loaded from `src/templates/base.html`, with a `scripts/*.test.mjs` for its pure logic | `src/static/js/gamepadNavigation.js`; listed in `docs/ui/component-register.md` (SEARCH) |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
 **Recorded server answers for the Expo app.** `expo/app/data/__recorded__/`

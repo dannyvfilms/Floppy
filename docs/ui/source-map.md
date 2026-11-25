@@ -430,6 +430,8 @@ Status: `Partial / coexisting`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
 - `src/static/js/searchAutocomplete.js`
+- `src/static/js/gamepadNavigation.js` (game controller focus navigation; browser only, listed under SEARCH with the other global keyboard script)
+- `scripts/gamepadNavigation.test.mjs`
 - `src/static/js/searchShortcut.js`
 - `src/templates/app/components/search_local_album_cards.html`
 - `src/templates/app/components/search_parent_season.html`
