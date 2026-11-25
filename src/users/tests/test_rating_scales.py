@@ -366,3 +366,15 @@ class PreferencesPageTests(ScaleTestCase):
         self.user.refresh_from_db()
         self.assertIsNone(self.user.custom_rating_scale_id)
         self.assertEqual(self.user.rating_scale, "5")
+
+
+class HalfStarStorageTests(ScaleTestCase):
+    """Half stars on the built-in star scales store and read back exactly (#2164)."""
+
+    def test_half_star_round_trips_on_both_star_scales(self):
+        """3.5 of 5 stores as 7.0 and 6.5 of 10 stays 6.5."""
+        self.user.rating_scale = "5"
+        self.assertEqual(self.user.scale_score_for_storage(Decimal("3.5")), Decimal("7.0"))
+        self.assertEqual(self.user.scale_score_for_display(Decimal("7.0")), Decimal("3.5"))
+        self.user.rating_scale = "10"
+        self.assertEqual(self.user.scale_score_for_storage(Decimal("6.5")), Decimal("6.5"))

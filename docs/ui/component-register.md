@@ -368,6 +368,7 @@ Shared MediaCard preserves the accepted status-specific icon shapes and colors, 
 - Podcasts rate per show: chip and list cards post to `update_podcast_show_score` (tracker id), not `update_media_score` (episode plays) (#1830).
 - Card consumer: the media card's rating button and its popup are React-owned (`CardRating`, using the shared `RatingStars`); detail chips, episode and track rows and music pages keep the Alpine popup wrapper.
 - Retirement: the Alpine popup wrappers and direct-rating stars in `detail_score_chip.html` retire when the chip and card rate button are ported with a portal/focus proof.
+- Half stars (#2164): on the built-in 1-5 and 1-10 star scales each star has a left half (x.5) and a right half (whole); hover previews the half and the lit star is clipped over the unlit one, so every `renderStar(lit)` caller is unchanged. No new preference; number fields and maximums above 10 are custom scales.
 - Contract: viewer scale, empty/read-only states, hover preview, toggle-to-clear, CSRF writes, teleported popup and OOB/events; derived score/coverage differs from direct score.
 - Data: `src/app/score_views.py` and server score projections.
 

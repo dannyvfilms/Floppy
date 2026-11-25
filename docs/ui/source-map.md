@@ -264,6 +264,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/RatingStars.jsx`
+  - Half stars: left half of a star picks x.5 (#2164).
 - `frontend/ui/mountRatingStars.jsx`
 - `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
