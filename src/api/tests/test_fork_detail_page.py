@@ -157,12 +157,12 @@ class DetailPageTests(FloppyApiTestCase):
         self.user1.save(update_fields=["rating_scale"])
         path = f"/api/v1/media/movie/{item.source}/{item.media_id}/detail/"
         body = self.client.get(path, **self.auth_headers).json()
-        self.assertEqual(body["viewer_rating"], {"enabled": True, "scale_max": 5, "value": 4})
+        self.assertEqual(body["viewer_rating"], {"enabled": True, "scale_max": 5, "value": 4, "criteria": None})
         self.assertEqual(body["people"]["cast"][0]["imageUrl"], "https://example.com/actor.jpg")
         self.assertEqual(body["people"]["cast"][0]["personId"], "12")
         self.assertIn("cardLines", body["people"]["cast"][0])
         public = self.client.get(path, {"public_view": "1"}, **self.auth_headers).json()
-        self.assertEqual(public["viewer_rating"], {"enabled": False, "scale_max": 10, "value": None})
+        self.assertEqual(public["viewer_rating"], {"enabled": False, "scale_max": 10, "value": None, "criteria": None})
 
     @patch(
         "api.fork_views_detail.services.get_media_metadata",

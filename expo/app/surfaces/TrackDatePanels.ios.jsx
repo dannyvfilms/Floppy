@@ -49,3 +49,19 @@ export function renderMonthYearWheels({ year, month, onChange }) {
     </HStack>
   </Host>;
 }
+
+// A system wheel of numbers for the rating scale rows (a criterion's value, and the minimum and maximum
+// in the scale editor), the same control as the date and time wheels above.
+export function renderNumberWheel({ value, min, max, step, onChange }) {
+  const count = Math.round((max - min) / step) + 1;
+  const items = range(count).map(index => {
+    const number = Number((min + index * step).toFixed(2));
+    return { value: number, label: Number.isInteger(number) ? String(number) : number.toFixed(1) };
+  });
+  const current = Number(Math.min(max, Math.max(min, value)).toFixed(2));
+  return <Host style={{ width: 160, height: 170 }}>
+    <HStack spacing={0}>
+      <Wheel width={160} value={current} items={items} onChange={next => onChange(Number(next))} />
+    </HStack>
+  </Host>;
+}

@@ -30,10 +30,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SPONSORS_GOAL_TOKEN || secrets.SPONSORS_TOKEN }}
         run: |
+          echo "Base: latest at $(git rev-parse --short HEAD)"
+          echo "Card on latest: $(grep -o '[0-9]*% of \$[0-9,]* per month' docs/brand/sponsors-goal.svg | head -1)"
           if git diff --quiet -- docs/brand/sponsors-goal.svg; then
             echo "Sponsors goal card is already current"
+            echo "Card is already current: $(grep -o '[0-9]*% of \$[0-9,]* per month' docs/brand/sponsors-goal.svg | head -1)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          new=$(grep -o '[0-9]*% of \$[0-9,]* per month' docs/brand/sponsors-goal.svg | head -1)
+          old=$(git show HEAD:docs/brand/sponsors-goal.svg | grep -o '[0-9]*% of \$[0-9,]* per month' | head -1)
+          echo "Card change: $old -> $new"
+          echo "Card change: $old -> $new" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open card PRs: $(gh pr list --head automation/sponsors-goal-card --state open --json number,createdAt --jq 'map("#\(.number) opened \(.createdAt)")|join(", ")')"
           branch=automation/sponsors-goal-card
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
@@ -46,3 +54,9 @@ jobs:
               --title "Update GitHub Sponsors goal card" \
               --body "Daily refresh of the README Sponsors goal card."
           fi
+          # Keep the PR description current so it says what this run changed and when.
+          body=$(printf 'Daily refresh of the README Sponsors goal card.\n\nChange: %s -> %s\nGenerated: %s\nRun: %s/%s/actions/runs/%s' "$old" "$new" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          gh pr edit "$branch" --body "$body" || true
+          # The README shows whatever is on latest, so an unmerged card PR leaves the old
+          # figure up. Merge it once checks pass.
+          gh pr merge "$branch" --auto --squash || echo "Auto-merge unavailable; merge the card PR by hand"

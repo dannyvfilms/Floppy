@@ -37,6 +37,7 @@ from app.models import (
     Status,
     Video,
 )
+from users import rating_scales
 
 CHOICE_PAIR_LENGTH = 2
 
@@ -454,11 +455,56 @@ class RatingScaleFormMixin:
             )
 
     def clean_score(self):
-        """Validate the score field."""
+        """Validate the score field, or derive it from the custom scale's criteria."""
         score = self.cleaned_data.get("score")
+        self._criteria_result = None
+        if self.user and self.user.custom_rating_scale_id and self.data.get(
+            "criteria_submitted",
+        ):
+            return self._clean_criteria_score(score)
         if score is None or not self.user:
             return score
         return self.user.scale_score_for_storage(score)
+
+    def _clean_criteria_score(self, typed_score):
+        """Score an entry from its criterion values; a manual score overrides it."""
+        prefix = "criterion:"
+        raw = {
+            key[len(prefix):]: value
+            for key, value in self.data.items()
+            if key.startswith(prefix)
+        }
+        manual = self.data.get("score_is_manual") in {"1", "true", "on"}
+        manual_score = self.user.scale_score_for_storage(typed_score) if manual else None
+        try:
+            score, computed, manual, cleaned = rating_scales.apply_rating(
+                self.user,
+                raw,
+                manual_score,
+            )
+        except rating_scales.RatingScaleError as error:
+            raise forms.ValidationError(error.message) from error
+        if rating_scales.keeps_plain_score(self.instance, cleaned, manual):
+            # Rated before the custom scale: keep that score unless criteria are filled in.
+            return self.user.scale_score_for_storage(typed_score)
+        self._criteria_result = {
+            "user": self.user,
+            "values": cleaned,
+            "computed": computed,
+            "manual": manual,
+        }
+        return score
+
+    def save(self, commit=True):
+        """Save, then attach the per-criterion values to the saved entry."""
+        instance = super().save(commit=False)
+        result = getattr(self, "_criteria_result", None)
+        if result is not None:
+            instance._pending_entry_rating = result
+        if commit:
+            instance.save()
+            self._save_m2m()
+        return instance
 
 
 class MediaForm(RatingScaleFormMixin, forms.ModelForm):

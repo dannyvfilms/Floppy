@@ -2312,6 +2312,7 @@ class MediaCoreTests(FloppyApiTestCase):
                 "end_date",
                 "notes",
                 "source",
+                "criteria",
             },
         )
 

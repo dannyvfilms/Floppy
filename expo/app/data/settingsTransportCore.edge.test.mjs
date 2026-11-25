@@ -39,7 +39,7 @@ test('preferencesToForm coerces the numeric fields to strings', () => {
 });
 
 test('preferencesMeta defaults the superuser flag, libraries and choices', () => {
-  assert.deepEqual(preferencesMeta(undefined), { isSuperuser: false, autoPauseLibraries: [], choices: {} });
+  assert.deepEqual(preferencesMeta(undefined), { isSuperuser: false, autoPauseLibraries: [], choices: {}, ratingScales: [] });
 });
 
 test('preferencesPatch drops non-numeric session values and derives the auto-pause flag', () => {
