@@ -96,7 +96,7 @@ from integrations.models import (
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
-from users import cache_management, helpers, release_notes
+from users import cache_management, helpers, rating_scales, release_notes
 from users.advanced_props import about_props as build_about_props
 from users.advanced_props import advanced_props as build_advanced_props
 from users.advanced_props import server_port_props as build_server_port_props
@@ -1945,13 +1945,27 @@ def preferences(request):
             fields_to_update.append("top_talent_sort_by")
             top_talent_sort_changed = True
 
-        if (
+        if rating_scale and rating_scale.startswith("custom:"):
+            # A user-created scale: "custom:<id>" keeps the built-in value untouched.
+            custom = rating_scales.user_scales_by_id(
+                request.user,
+                rating_scale.removeprefix("custom:"),
+            )
+            if custom is not None and request.user.custom_rating_scale_id != custom.id:
+                request.user.custom_rating_scale = custom
+                fields_to_update.append("custom_rating_scale")
+                rating_scale_changed = True
+        elif (
             rating_scale
             and rating_scale in [choice[0] for choice in RatingScaleChoices.choices]
-            and request.user.rating_scale != rating_scale
+            and (
+                request.user.rating_scale != rating_scale
+                or request.user.custom_rating_scale_id
+            )
         ):
             request.user.rating_scale = rating_scale
-            fields_to_update.append("rating_scale")
+            request.user.custom_rating_scale = None
+            fields_to_update.extend(["rating_scale", "custom_rating_scale"])
             rating_scale_changed = True
 
         if hide_completed_recommendations_raw is not None:
@@ -2088,6 +2102,40 @@ def preferences(request):
         "session_duration_choices": SessionDurationChoices.choices,
         "week_start_day_choices": WeekStartDayChoices.choices,
         "currency_choices": User._meta.get_field("currency").choices,
+        "rating_scales": [
+            rating_scales.scale_payload(scale)
+            for scale in rating_scales.user_scales(request.user)
+        ],
+        "rating_scale_editor_props": {
+            "labels": {
+                "newTitle": gettext("Create Rating Scale"),
+                "editTitle": gettext("Edit Rating Scale"),
+                "subtitle": gettext(
+                    "Each criterion has its own range. Higher weights count more.",
+                ),
+                "name": gettext("Name"),
+                "namePlaceholder": gettext("Anime, Movies, Games"),
+                "criterionName": gettext("Criterion name"),
+                "range": gettext("Range"),
+                "to": gettext("to"),
+                "weight": gettext("Weight"),
+                "addCriterion": gettext("Add Criterion"),
+                "addTier": gettext("Add Weight Tier"),
+                "save": gettext("Save"),
+                "saving": gettext("Saving"),
+                "cancel": gettext("Cancel"),
+                "close": gettext("Close"),
+                "delete": gettext("Delete Rating Scale"),
+                "deleteHint": gettext(
+                    "Ratings already saved with this scale keep their scores.",
+                ),
+            },
+        },
+        "rating_scale_selected": (
+            f"custom:{request.user.custom_rating_scale_id}"
+            if request.user.custom_rating_scale_id
+            else request.user.rating_scale
+        ),
     }
 
     return render(request, "users/preferences.html", context)

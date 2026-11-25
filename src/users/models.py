@@ -863,6 +863,14 @@ class User(AbstractUser):
         choices=RatingScaleChoices.choices,
         help_text="Preferred rating scale for user scores",
     )
+    custom_rating_scale = models.ForeignKey(
+        "users.RatingScale",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="User-defined rating scale; overrides rating_scale when set",
+    )
 
     # Progress visibility preferences
     hide_completed_recommendations = models.BooleanField(
@@ -1911,6 +1919,9 @@ class User(AbstractUser):
 
         Disabled ratings keep the 10-point maths so stored scores still convert.
         """
+        if self.custom_rating_scale_id:
+            # Custom scales derive the internal 0-10 score themselves.
+            return 10
         try:
             return int(self.rating_scale) or 10
         except (TypeError, ValueError):
@@ -1919,7 +1930,10 @@ class User(AbstractUser):
     @property
     def ratings_enabled(self):
         """Return whether the user's own rating controls should be shown."""
-        return self.rating_scale != RatingScaleChoices.DISABLED
+        return (
+            bool(self.custom_rating_scale_id)
+            or self.rating_scale != RatingScaleChoices.DISABLED
+        )
 
     def _coerce_score_decimal(self, score):
         """Coerce a score into a Decimal, returning None on failure."""
@@ -2700,3 +2714,10 @@ class SavedView(models.Model):
         else:
             base = reverse("medialist", args=[self.media_type])
         return f"{base}?{self.query}" if self.query else base
+
+
+from users.rating_scale_models import (  # noqa: E402, F401
+    EntryRating,
+    RatingCriterion,
+    RatingScale,
+)

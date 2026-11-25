@@ -250,3 +250,21 @@ test('password session Access settings load the account credential', async () =>
   await actions.loadAccess();
   assert.equal(fixture.calls[0].path, '/api/v1/user/token/');
 });
+
+test('a custom rating scale is chosen as custom:<id> and saved as custom_rating_scale', async () => {
+  const payload = { preferences: { rating_scale: '10', custom_rating_scale: 'abc', rating_scales: [{ id: 'abc', name: 'Anime' }] } };
+  assert.equal(preferencesToForm(payload).rating_scale, 'custom:abc');
+  assert.equal(preferencesMeta(payload).ratingScales[0].name, 'Anime');
+  assert.deepEqual(preferencesPatch({ rating_scale: 'custom:abc' }), { custom_rating_scale: 'abc' });
+  assert.deepEqual(preferencesPatch({ rating_scale: '5' }), { rating_scale: '5' });
+  const { request, calls } = recorder({});
+  const actions = createRemoteSettingsActions(request);
+  await actions.saveRatingScale({ id: 'abc', scale: { name: 'x' } });
+  await actions.saveRatingScale({ scale: { name: 'y' } });
+  await actions.deleteRatingScale({ id: 'abc' });
+  assert.deepEqual(calls.map(call => [call.options?.method, call.path]), [
+    ['PUT', '/api/v1/user/rating-scales/abc/'],
+    ['POST', '/api/v1/user/rating-scales/'],
+    ['DELETE', '/api/v1/user/rating-scales/abc/'],
+  ]);
+});

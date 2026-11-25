@@ -36,6 +36,7 @@ from app.models import (
 from app.templatetags.app_tags import media_url
 from events.models import Event
 from lists.models import CustomList, CustomListItem
+from users import rating_scales
 from users.home_screen import HomeRowEntry
 
 from .changes_history_processor import (
@@ -805,6 +806,7 @@ class HistorySerializer(serializers.Serializer):
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
                 else None,
+                "criteria": rating_scales.api_criteria(instance),
                 "scored_at": getattr(instance, "scored_at", None),
                 "progress": 1 if instance.end_date else 0,
                 "progressed_at": instance.end_date,
@@ -844,6 +846,7 @@ class HistorySerializer(serializers.Serializer):
             "score": float(instance.score)
             if hasattr(instance, "score") and instance.score is not None
             else None,
+            "criteria": rating_scales.api_criteria(instance),
             "scored_at": getattr(instance, "scored_at", None),
             "progress": instance.progress if hasattr(instance, "progress") else None,
             "progressed_at": instance.progressed_at

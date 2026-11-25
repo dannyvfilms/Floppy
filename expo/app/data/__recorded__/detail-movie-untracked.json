@@ -274,6 +274,7 @@
   "tracking_entries_count": 0,
   "tracking_entries_has_more": false,
   "viewer_rating": {
+    "criteria": null,
     "enabled": true,
     "scale_max": 10,
     "value": null
