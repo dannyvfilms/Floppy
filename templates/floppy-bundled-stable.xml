@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>floppy-bundled</Name>
+  <Repository>ghcr.io/dannyvfilms/floppy:release-bundled</Repository>
+  <Registry>https://github.com/dannyvfilms/Floppy/pkgs/container/floppy</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/dannyvfilms/Floppy/issues</Support>
+  <Project>https://github.com/dannyvfilms/Floppy</Project>
+  <Overview>Floppy (Bundled, Stable) follows the release branch: tested releases only. For the newest changes use Floppy (Bundled, Latest). It is the self-hosted media tracker in one container: it includes its own PostgreSQL and Valkey, so there is nothing else to install or connect. Choose three host folders (app data, database, backups). A fresh install only: it does not convert an existing SQLite or PostgreSQL Floppy. Full guide: https://github.com/dannyvfilms/Floppy/blob/latest/docs/deployment-bundled.md</Overview>
+  <Category>MediaApp:Other Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/templates/floppy-bundled-stable.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/src/static/favicon/android-chrome-512x512.png</Icon>
+  <ExtraParams>--stop-timeout 150</ExtraParams>
+  <DonateText></DonateText>
+  <DonateLink></DonateLink>
+  <Requires>Nothing else. PostgreSQL and Valkey run inside this container.</Requires>
+  <Config Name="WebUI Port" Target="8000" Default="8000" Mode="tcp" Description="Port the Floppy web UI listens on." Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="App Data" Target="/floppy/db" Default="/mnt/user/appdata/floppy/db" Mode="rw" Description="App settings, uploaded covers and the signing secret." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/floppy/db</Config>
+  <Config Name="Database" Target="/floppy/pgdata" Default="/mnt/user/appdata/floppy/pgdata" Mode="rw" Description="PostgreSQL data. Required: without it the container refuses to start rather than create a database that disappears." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/floppy/pgdata</Config>
+  <Config Name="Backups" Target="/floppy/backups" Default="/mnt/user/appdata/floppy/backups" Mode="rw" Description="Daily database backups and exports. Restore instructions are in the guide." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/floppy/backups</Config>
+  <Config Name="SECRET" Target="SECRET" Default="" Mode="" Description="Optional. Leave blank and Floppy generates a secret once and keeps it in App Data. Back it up with your database." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="TZ" Target="TZ" Default="America/Chicago" Mode="" Description="Timezone used for scheduling and displayed dates." Type="Variable" Display="always" Required="false" Mask="false">America/Chicago</Config>
+  <Config Name="REGISTRATION" Target="REGISTRATION" Default="True" Mode="" Description="Allow new account sign-ups. Set to False after creating your account." Type="Variable" Display="always" Required="false" Mask="false">True</Config>
+  <Config Name="DEMO_ACCOUNT_ENABLED" Target="DEMO_ACCOUNT_ENABLED" Default="False" Mode="" Description="Provision the public demo/demodemo account after migrations. Leave False unless you want it." Type="Variable" Display="always" Required="false" Mask="false">False</Config>
+  <Config Name="TMDB_API" Target="TMDB_API" Default="" Mode="" Description="TMDB API key for movie/TV metadata. Optional but recommended." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="URLS" Target="URLS" Default="" Mode="" Description="Public URL if using a reverse proxy, e.g. https://floppy.yourdomain.com" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="ADMIN_ENABLED" Target="ADMIN_ENABLED" Default="False" Mode="" Description="Enable the Django admin interface at /admin/." Type="Variable" Display="advanced" Required="false" Mask="false">False</Config>
+  <Config Name="WEB_CONCURRENCY" Target="WEB_CONCURRENCY" Default="" Mode="" Description="Gunicorn worker processes. Leave blank - Floppy sizes this from the host&apos;s memory, CPU and swap. Each extra worker holds its own resident copy of the application. If this field already shows a number from an older template, clear it and apply." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="GUNICORN_THREADS" Target="GUNICORN_THREADS" Default="" Mode="" Description="Gunicorn threads per worker. Leave blank - Floppy sizes this from the host. A fixed 4 is too many for a small host, where the detected profile would use 2." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="DEBUG" Target="DEBUG" Default="False" Mode="" Description="Enable Django debug mode. Leave False in production - it slows every request." Type="Variable" Display="advanced" Required="false" Mask="false">False</Config>
+  <Config Name="PUID" Target="PUID" Default="1000" Mode="" Description="User ID to run the container as." Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+  <Config Name="PGID" Target="PGID" Default="1000" Mode="" Description="Group ID to run the container as." Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+</Container>
