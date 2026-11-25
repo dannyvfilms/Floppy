@@ -74,7 +74,7 @@ from app.models import (
     Sources,
 )
 from app.models.episode_runtimes import build_season_runtime_index
-from app.providers import services, tmdb
+from app.providers import rottentomatoes, services, tmdb
 from app.services import metadata_resolution, opencritic_scores
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
@@ -2202,6 +2202,18 @@ def media_details(
             item=detail_item,
             # The secondary fragment has no links menu, so it skips the lookups.
             viewer=None if public_view or render_secondary_only else request.user,
+        ),
+        "rt_extras_url": (
+            reverse(
+                "rt_extras",
+                kwargs={
+                    "source": source,
+                    "media_type": media_type,
+                    "media_id": media_id,
+                },
+            )
+            if media_type in rottentomatoes.LINKED_MEDIA_TYPES
+            else None
         ),
         "detail_tag_sections": build_detail_tag_sections(
             media_metadata,

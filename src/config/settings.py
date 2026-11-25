@@ -1343,6 +1343,13 @@ TMDB_API = config(
 TMDB_NSFW = config("TMDB_NSFW", default=False, cast=bool)
 TMDB_LANG = config("TMDB_LANG", default="en")
 
+# Rotten Tomatoes has no API: page links and Tomatometer scores are resolved by
+# searching and scraping rottentomatoes.com pages lazily (loaded after the
+# detail page renders, then cached for a week). Search results whose title
+# similarity (0-1) is below the threshold are ignored.
+ROTTEN_TOMATOES = config("ROTTEN_TOMATOES", default=True, cast=bool)
+RT_TITLE_MATCH_THRESHOLD = config("RT_TITLE_MATCH_THRESHOLD", default=0.75, cast=float)
+
 SEERR_GLOBAL_WEBHOOK_SECRET = config(
     "SEERR_GLOBAL_WEBHOOK_SECRET",
     default=secret("SEERR_GLOBAL_WEBHOOK_SECRET_FILE", ""),

@@ -1093,6 +1093,15 @@ def season_details(
             # The secondary fragment has no links menu, so it skips the lookups.
             viewer=None if public_view or render_secondary_only else request.user,
         ),
+        "rt_extras_url": reverse(
+            "rt_extras",
+            kwargs={
+                "source": source,
+                "media_type": MediaTypes.SEASON.value,
+                "media_id": media_id,
+                "season_number": season_number,
+            },
+        ),
         "detail_tag_sections": build_detail_tag_sections(
             season_metadata,
             season_item,

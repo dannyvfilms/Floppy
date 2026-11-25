@@ -5,7 +5,7 @@
 {% load humanize %}
 {% load static %}
 {# Score chips #}
-{% if media.score_count is not None or trakt_score or imdb_score or mal_score or opencritic_score or user_medias and current_instance and not public_view|default:False and user.ratings_enabled %}
+{% if media.score_count is not None or trakt_score or imdb_score or mal_score or opencritic_score or rt_extras_url or user_medias and current_instance and not public_view|default:False and user.ratings_enabled %}
   <div class="detail-score-card-shell order-2 mt-0 mb-5 w-full sm:order-1 sm:mt-4"
        x-data="{ hasOverflow: false, atStart: true, atEnd: true, updateScroll() { const row = this.$refs.scoreRow; this.hasOverflow = row.scrollWidth > row.clientWidth + 2; this.atStart = row.scrollLeft < 2; this.atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 2 } }"
        x-init="$nextTick(() => { updateScroll(); new ResizeObserver(() => updateScroll()).observe($refs.scoreRow) })"
@@ -214,6 +214,12 @@
           <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% translate "Top critic average" %}</span>
         {% endif %}
       </a>
+    {% endif %}
+
+    {# Rotten Tomatoes extras resolve lazily: this span fires rt_extras, whose #}
+    {# out-of-band swap replaces it with score cards and fills the links popup. #}
+    {% if rt_extras_url %}
+      <span id="detail-score-rt" hx-get="{{ rt_extras_url }}" hx-trigger="load" hx-swap="none"></span>
     {% endif %}
 
     {% include "app/components/detail_score_chip_slot.html" with media=media current_instance=current_instance media_type=media_type user=user user_medias=user_medias public_view=public_view csrf_token=csrf_token only %}

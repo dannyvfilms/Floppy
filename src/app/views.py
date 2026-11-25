@@ -311,6 +311,7 @@ from app.providers import (
     mangaupdates,
     manual,
     openlibrary,
+    rottentomatoes,
     services,
     tmdb,
 )
@@ -787,6 +788,63 @@ def trakt_series_graph_fragment(request, source, media_id):
             "next_attempt": attempt + 1,
             "source": source,
             "media_id": media_id,
+        },
+    )
+
+
+@login_not_required
+@require_GET
+def rt_extras(
+    request,
+    source,
+    media_type,
+    media_id,
+    season_number=None,
+):
+    """HTMX fragment: the deferred Rotten Tomatoes extras for a detail page.
+
+    Loaded after the page renders because a cold match searches and scrapes
+    rottentomatoes.com; results cache for a week. Returns out-of-band
+    Tomatometer/Popcornmeter score cards plus an external-links chip for
+    movie/TV/anime/season pages (which warms the match cache
+    `build_detail_link_sections` reads on later renders).
+    """
+    rt_link = None
+    rt_scores = None
+
+    try:
+        if media_type == MediaTypes.SEASON.value:
+            tv_metadata = services.get_media_metadata(
+                "tv_with_seasons",
+                media_id,
+                source,
+                [season_number],
+            )
+            rt_scores = rottentomatoes.season_scores(tv_metadata, season_number)
+            rt_link = (rt_scores or {}).get("url")
+        elif media_type in rottentomatoes.LINKED_MEDIA_TYPES:
+            media_metadata = services.get_media_metadata(
+                media_type, media_id, source
+            )
+            rt_scores = rottentomatoes.media_scores(media_metadata)
+            rt_link = (rt_scores or {}).get("url")
+    except services.ProviderAPIError:
+        # the page already showed any provider error; just leave the extras out
+        logger.warning(
+            "Rotten Tomatoes extras unavailable for %s %s", media_type, media_id
+        )
+
+    rt_link_entry = (
+        _build_detail_link_entry("Rotten Tomatoes", rt_link, "rottentomatoes")
+        if rt_link
+        else None
+    )
+    return render(
+        request,
+        "app/components/rt_extras.html",
+        {
+            "rt_link": rt_link_entry,
+            "rt_scores": rt_scores,
         },
     )
 

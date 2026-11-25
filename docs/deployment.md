@@ -626,6 +626,8 @@ up if you rely on the generated one.
 - `WETRAKR_CLIENT_ID` - optional [WeTrakr](https://api.wetrakr.com/) application key, for sending plays, statuses and ratings out to WeTrakr. Floppy ships no shared key: bring your own here, or each member can paste theirs in Settings > Metadata. Supports `WETRAKR_CLIENT_ID_FILE`; see [WeTrakr](integrations/wetrakr.md)
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
 - `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
+- `ROTTEN_TOMATOES` - defaults to `True`. Adds a Rotten Tomatoes link chip to movie, show, anime and season detail pages, and a Tomatometer pill to episode pages. Rotten Tomatoes has no public API, so pages resolve titles through rottentomatoes.com search results lazily (loaded after the page renders, then cached for a week). Set to `False` to disable all of it
+- `RT_TITLE_MATCH_THRESHOLD` - defaults to `0.75`. Minimum title similarity (0 to 1) a Rotten Tomatoes search result must reach to be used. Raise it for fewer, stricter matches
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))

@@ -938,6 +938,13 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "WD",
     },
+    "rottentomatoes": {
+        "logo_src": static("img/rottentomatoes-logo.svg"),
+        "chip_classes": "border-red-400/18 bg-red-500/[0.07]",
+        "badge_classes": "border-red-400/28 bg-red-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "RT",
+    },
     "letterboxd": {
         "logo_src": static("img/letterboxd-logo.png"),
         "chip_classes": "border-emerald-400/18 bg-emerald-500/[0.07]",
@@ -1168,6 +1175,17 @@ def build_detail_link_sections(
         )
         if trakt_url:
             append_entry(external_entries, "Trakt", trakt_url, "trakt")
+
+    # Rotten Tomatoes has no id in provider metadata: the page URL comes from a
+    # lazily-resolved site search (see the rt_extras fragment), so the chip
+    # appears only once the match is already cached. Cache reads only, never a
+    # request on the render path.
+    from app.providers import rottentomatoes
+
+    if media_type in rottentomatoes.LINKED_MEDIA_TYPES:
+        rt_url = rottentomatoes.cached_page_url(media_metadata)
+        if rt_url:
+            append_entry(external_entries, "Rotten Tomatoes", rt_url, "rottentomatoes")
 
     sections = []
     if metadata_source_entries:
