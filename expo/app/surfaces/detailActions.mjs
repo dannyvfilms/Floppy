@@ -28,6 +28,8 @@ export function viewerRatingFromPayload(payload, publicView = false) {
     value: payload.viewer_rating?.value ?? payload.tracking.score,
     scaleMax: payload.viewer_rating?.scale_max || 10,
     editable: Boolean(payload?.capabilities?.can_update),
+    // A custom rating scale with this entry's criterion values; null on a built-in scale.
+    ratingScale: payload.viewer_rating?.criteria ?? null,
   };
 }
 

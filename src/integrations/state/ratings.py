@@ -37,8 +37,10 @@ def rating_edit(view=None, *, implicit_clear=False):
     def wrapped(*args, **kwargs):
         request = args[0] if hasattr(args[0], "user") else args[1]
         data = request.data if hasattr(request, "data") else request.POST
+        # A custom-scale save sends `criteria` and derives the score from them.
+        carries_rating = "score" in data or "criteria" in data
         if (
-            "score" not in data and not implicit_clear
+            not carries_rating and not implicit_clear
         ) or not request.user.is_authenticated:
             return view(*args, **kwargs)
         with transaction.atomic():
