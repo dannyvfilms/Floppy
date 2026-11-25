@@ -84,6 +84,16 @@ blocks on tracking models, and fails when one is not in
 Home and Statistics, make a bulk change through its view or service, and check
 that nothing cached from before the change can still be served.
 
+## Game watch-time summaries
+
+The private game detail follow-up caches the viewer's total and channel
+breakdown together for five minutes, including an empty result. It uses a
+viewer generation for video and manual-link changes and a shared generation
+for YouTube tag and runtime updates. Model signals rotate those generations
+after commit so a request still reading old rows cannot populate the new
+generation. The game title and release date also participate in the key.
+Expired summaries are rebuilt on the next watch-time request.
+
 ## Token feeds
 
 The calendar links (`events.views.download_calendar`,

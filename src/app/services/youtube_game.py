@@ -14,7 +14,7 @@ import requests
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from app.models import Item, MediaTypes, Sources, VideoGameTag, VideoPlay
+from app.models import Item, MediaTypes, Sources, VideoGameLink, VideoGameTag, VideoPlay
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,8 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 MARKER = "var ytInitialData = "
+PLAYER_MARKER = "var ytInitialPlayerResponse = "
+MAX_RUNTIME_SECONDS = 2**31 - 1
 # Checked again later: a creator can tag a stream after it ends. Only while
 # someone has watched the video recently; rechecking every video ever watched,
 # every week, forever, was a full batch of page fetches on every run.
@@ -91,8 +93,8 @@ def extract_games(initial_data):
     return games
 
 
-def fetch_initial_data(video_id):
-    """Download the watch page and parse its embedded data."""
+def fetch_watch_page(video_id):
+    """Return embedded watch-page data and the video's published runtime."""
     if not VIDEO_ID.match(video_id):
         raise WatchPageUnavailableError(BAD_ID)
     try:
@@ -118,7 +120,22 @@ def fetch_initial_data(video_id):
         data, _end = json.JSONDecoder().raw_decode(html[start + len(MARKER) :])
     except ValueError as exc:
         raise WatchPageUnavailableError(UNPARSEABLE) from exc
-    return data
+    return data, _runtime_seconds(html, video_id)
+
+
+def _runtime_seconds(html, video_id):
+    start = html.find(PLAYER_MARKER)
+    if start < 0:
+        return 0
+    try:
+        player, _end = json.JSONDecoder().raw_decode(html[start + len(PLAYER_MARKER) :])
+        details = player.get("videoDetails") or {}
+        if details.get("videoId") != video_id or details.get("isLive"):
+            return 0
+        runtime = int(details.get("lengthSeconds") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+    return runtime if 0 < runtime <= MAX_RUNTIME_SECONDS else 0
 
 
 def refresh_game_tag(item_id):
@@ -128,21 +145,27 @@ def refresh_game_tag(item_id):
         return None
     existing = VideoGameTag.objects.filter(item=item).first()
     failures = existing.failures if existing else 0
+    already_found = existing and existing.status == VideoGameTag.Status.FOUND
     try:
-        games = extract_games(fetch_initial_data(item.media_id))
+        data, runtime = fetch_watch_page(item.media_id)
+        games = extract_games(data)
     except WatchPageUnavailableError as exc:
         logger.info("youtube_game: unavailable item=%s reason=%s", item.pk, exc)
+        status = VideoGameTag.Status.FOUND if already_found else VideoGameTag.Status.UNAVAILABLE
         VideoGameTag.objects.update_or_create(
             item=item,
             defaults={
-                "status": VideoGameTag.Status.UNAVAILABLE,
+                "status": status,
                 "checked_at": timezone.now(),
                 "failures": min(failures + 1, MAX_FAILURES),
             },
         )
-        return VideoGameTag.Status.UNAVAILABLE
+        return status
     # The first game is the one the watch page leads with.
     game = games[0] if games else None
+    if already_found and not game:
+        # Looking for the runtime can return a page variant without the game panel.
+        game = {"title": existing.game_title, "game_id": existing.game_id, "year": existing.release_year}
     VideoGameTag.objects.update_or_create(
         item=item,
         defaults={
@@ -150,6 +173,7 @@ def refresh_game_tag(item_id):
             "game_title": game["title"][:255] if game else "",
             "game_id": game["game_id"][:64] if game else "",
             "release_year": game["year"][:8] if game else "",
+            "runtime_seconds": runtime or (existing.runtime_seconds if existing else None) or 0,
             "checked_at": timezone.now(),
             "failures": 0,
         },
@@ -166,7 +190,7 @@ def lookup_due(item):
         return True
     age = timezone.now() - tag.checked_at
     if tag.status == VideoGameTag.Status.FOUND:
-        return False
+        return tag.runtime_seconds is None and tag.failures < MAX_FAILURES and age >= UNAVAILABLE_BACKOFF
     if tag.status == VideoGameTag.Status.NOT_FOUND:
         return age >= NOT_FOUND_RECHECK and _watched_recently(item.pk)
     return tag.failures < MAX_FAILURES and age >= UNAVAILABLE_BACKOFF
@@ -194,9 +218,21 @@ def backfill_due_items(limit=20):
     base = Item.objects.filter(
         source=Sources.YOUTUBE.value, media_type=MediaTypes.VIDEO.value
     )
-    ids = list(
-        base.filter(video_game_tag__isnull=True).values_list("pk", flat=True)[:limit]
+    # Prioritize historical games and manual links that can use runtimes today.
+    linked = VideoGameLink.objects.filter(
+        video__item_id=OuterRef("pk"),
+        game_item__isnull=False,
     )
+    runtime_due = Q(
+        video_game_tag__runtime_seconds__isnull=True,
+        video_game_tag__checked_at__lte=now - UNAVAILABLE_BACKOFF,
+        video_game_tag__failures__lt=MAX_FAILURES,
+    ) & (Q(video_game_tag__status=VideoGameTag.Status.FOUND) | Q(Exists(linked)))
+    ids = list(base.filter(runtime_due).order_by("pk").values_list("pk", flat=True)[:limit])
+    if len(ids) < limit:
+        ids += list(
+            base.filter(video_game_tag__isnull=True).values_list("pk", flat=True)[: limit - len(ids)]
+        )
     if len(ids) < limit:
         due = Q(
             Exists(_recent_play(OuterRef("pk"))),
@@ -208,7 +244,7 @@ def backfill_due_items(limit=20):
             video_game_tag__checked_at__lte=now - UNAVAILABLE_BACKOFF,
         )
         ids += list(
-            base.filter(due).values_list("pk", flat=True)[: limit - len(ids)]
+            base.filter(due).exclude(pk__in=ids).values_list("pk", flat=True)[: limit - len(ids)]
         )
     for pk in ids:
         refresh_game_tag(pk)

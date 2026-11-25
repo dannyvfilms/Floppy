@@ -2470,6 +2470,14 @@ paths:
           type: string
           pattern: ^[^/]+$
         required: true
+      - in: query
+        name: youtube_watch
+        schema:
+          type: string
+          enum:
+          - deferred
+          - only
+        description: Defer game watch time or return just the viewer's watch summary.
       tags:
       - api
       security:

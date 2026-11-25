@@ -1,6 +1,7 @@
 import { Modal, ModalCloseButton } from './Modal';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   ScrollView,
@@ -73,12 +74,13 @@ const DEFAULT_LABELS = {
   submissions: 'submissions',
   timeToBeatPending: 'Fetching',
   timeToBeatEmpty: 'Not available',
-  watchedOnYouTube: 'Watched on YouTube',
-  started: 'Started',
+  youtubeTimeUnavailable: 'Unavailable',
+  youtubeCalculating: 'Calculating',
+  youtubeMissingTime: 'Watch time is unavailable for some videos.',
   time: 'Time',
   timePlayed: 'Time Played',
   timeWatched: 'Time Watched',
-  youtubeEstimate: 'Estimated from how far you got in each video. Your playtime is not affected.',
+  youtubeWatchBasis: 'Uses playback progress or the full runtime of completed videos.',
   readingActivity: 'Reading Activity',
   listeningTime: 'Listening Time',
   mostRead: 'Most Read',
@@ -429,11 +431,28 @@ export function MediumExtras({
   if (gameLengths || youtubeWatch || playedLabel) {
     const rows = [];
     if (playedLabel) rows.push(<CollectionRow key="played" icon={actionIcons.play} label={copy.timePlayed} value={playedLabel} palette={colors} />);
-    if (youtubeWatch) {
-      const watched = youtubeWatch.seconds ? `~${youtubeWatch.hoursLabel}` : copy.started;
+    if (youtubeWatch?.pending) {
+      rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}>
+        <View accessibilityLiveRegion="polite" accessibilityState={{ busy: true }} style={styles.watchPending}>
+          <Text style={[styles.watchPendingText, { color: colors.textSecondary }]}>{copy.youtubeCalculating}</Text>
+          <ActivityIndicator size="small" color={colors.textMuted} accessible={false} />
+        </View>
+      </CollectionRow>);
+    } else if (youtubeWatch) {
+      const watched = youtubeWatch.seconds ? youtubeWatch.hoursLabel : copy.youtubeTimeUnavailable;
+      const channels = (youtubeWatch.channels || []).filter(channel => channel.seconds > 0)
+        .map(channel => {
+          const minutes = Math.floor(channel.seconds / 60);
+          const hours = Math.floor(minutes / 60);
+          const duration = minutes
+            ? `${hours ? `${hours}h ` : ''}${minutes % 60}m`
+            : `${channel.seconds}s`;
+          return { key: channel.name, label: channel.name, value: `${duration} · ${channel.percent}%` };
+        });
       // The Collection Summary's disclosure: the total stays visible, the channel split opens inline.
-      rows.push(<CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors}
-        items={(youtubeWatch.channels || []).map(channel => ({ key: channel.name, label: channel.name, value: `${channel.percent}%` }))} />);
+      rows.push(channels.length
+        ? <CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors} items={channels} />
+        : <CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} value={watched} palette={colors} />);
     }
     if (gameLengths?.available && gameLengths.cards?.length) {
       const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, label: card.label, value: card.value }));
@@ -447,7 +466,8 @@ export function MediumExtras({
     }
     sections.push(<View key="time" style={styles.extraSection}>
       {group('time-rows', copy.time, rows)}
-      {youtubeWatch ? note('note', copy.youtubeEstimate) : null}
+      {youtubeWatch?.seconds ? note('watch-basis', copy.youtubeWatchBasis) : null}
+      {youtubeWatch?.seconds && youtubeWatch.videosWithoutTime ? note('missing-time', copy.youtubeMissingTime) : null}
     </View>);
   }
 
@@ -470,6 +490,8 @@ export function MediumExtras({
 }
 
 const styles = StyleSheet.create({
+  watchPending: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  watchPendingText: { fontSize: 16 },
   hero: { gap: 20 },
   heroWide: { flexDirection: 'row', alignItems: 'flex-start' },
   heroMedia: { gap: 12, alignSelf: 'stretch' },

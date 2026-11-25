@@ -507,6 +507,20 @@ Status: `Legacy`
 
 ## DETAIL
 
+The game Time card is shared through `frontend/ui/People.jsx` (`MediumExtras`).
+The expandable breakdown shows each channel's duration, a middle dot and its share.
+Web uses `src/users/templatetags/ui_tags.py` and `frontend/ui/mountPeople.jsx`,
+with `game_lengths_section.html` as the Time to Beat server fallback.
+iOS and Android use `DetailMediumExtras` with the same data via
+`expo/app/surfaces/DetailSlot.jsx` and `frontend/ui/detailSecondaryModel.js`.
+`frontend/ui/useDeferredYoutubeWatch.js` loads just the watch-time summary
+after either surface displays its detail, independently of the rest of the card.
+`src/app/services/youtube_game_watch.py` supplies game matching and watch time.
+`src/app/services/youtube_game.py` stores published
+runtime in the shared YouTube tag lookup so completed imports can contribute
+time even without a recorded playback position. Ownership
+coexists until the PWA detail shell can retire the server-rendered Time content.
+
 Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
 `DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
 sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
@@ -782,7 +796,6 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
-- `src/templates/app/components/youtube_watch_section.html`
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
@@ -1002,7 +1015,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `src/templates/users/home_screen.html`
-`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified.
+`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified. Last Watched preset now starts TV on Episodes (shared `addRow` and the Django `addRow`), and the shared summary lists each chosen family with its display level, as the Django editor does. Browser: Django editor and Expo Web compared before and after at 375x812. iOS: Expo Go on an iPhone 16 simulator showed `TV Shows: Episodes` on a preset row (no before frame). Android: not verified. Django editor stays coexisting under the retirement conditions above.
 
 ## SET-PROVIDERS
 

@@ -121,9 +121,15 @@ export function detailSecondaryModel(payload = {}, { formatDate = value => Strin
     // "12h 3min played" arrives as the activity subtitle; the card shows the duration alone.
     playedLabel: payload.identity?.media_type === 'game'
       ? String(payload.activity_subtitle?.duration_text || '').replace(/ played$/, '') : '',
-    youtubeWatch: youtube ? { seconds: youtube.seconds, hoursLabel: youtube.hours_label || '', videos: youtube.videos || 0,
-      channels: (youtube.channels || []).map(channel => ({ name: channel.name, percent: channel.percent })) } : null,
+    youtubeWatch: detailYoutubeWatchModel(youtube),
   };
+}
+
+export function detailYoutubeWatchModel(youtube) {
+  return youtube ? {
+    seconds: youtube.seconds, hoursLabel: youtube.hours_label || '', videos: youtube.videos || 0,
+    videosWithoutTime: youtube.videos_without_time ?? 0, channels: youtube.channels || [],
+  } : null;
 }
 
 /** Missing layouts use the established default; explicit empty zones stay hidden. */

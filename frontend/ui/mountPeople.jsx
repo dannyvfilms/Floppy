@@ -6,6 +6,10 @@ import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
 import { shelfCardWidth } from './HomeShelves';
 import { rootStyle } from './rootStyle.web';
+import { createWebRequest } from './webRequest.web';
+import { useDeferredYoutubeWatch } from './useDeferredYoutubeWatch';
+
+const request = createWebRequest();
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -116,6 +120,7 @@ function CastRail({ props, palette }) {
 
 function Adapter({ props }) {
   const [palette, setPalette] = useState(readPalette);
+  const youtubeWatch = useDeferredYoutubeWatch(props.youtubeWatchUrl, request);
 
   useEffect(() => {
     const update = () => setPalette(readPalette());
@@ -146,7 +151,7 @@ function Adapter({ props }) {
       part="extras"
       variant="web"
       gameLengths={props.gameLengths}
-      youtubeWatch={props.youtubeWatch}
+      youtubeWatch={youtubeWatch}
       playedLabel={props.playedLabel}
       labels={props.labels}
       palette={palette}

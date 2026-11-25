@@ -2696,8 +2696,10 @@ class MediaDetailsViewTests(TestCase):
             {"fragment": "secondary"},
         )
 
-        self.assertContains(response, "Watched on YouTube")
-        self.assertEqual(response.context["youtube_watch"]["seconds"], 1800)
+        self.assertContains(response, "youtubeWatchUrl")
+        self.assertNotContains(response, "hoursLabel")
+        result = self.client.get(response.context["youtube_watch_url"], {"youtube_watch": "only"})
+        self.assertEqual(result.json()["youtube_watch"]["seconds"], 1800)
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_notes_button_opens_notes_for_latest_entry(

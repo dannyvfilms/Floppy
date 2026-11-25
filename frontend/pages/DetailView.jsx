@@ -38,7 +38,6 @@ export const detailSectionPlan = [
   { id: 'related', title: 'Related media' },
   { id: 'activity', title: 'Your activity' },
   { id: 'collection', title: 'Collection' },
-  { id: 'youtube-watch', title: 'Watched on YouTube' },
   { id: 'history', title: 'Recent history' },
   { id: 'notes', title: 'Your notes' },
 ];

@@ -61,12 +61,47 @@ from app.models import (
     Sources,
     Status,
     Video,
+    VideoGameLink,
+    VideoGameTag,
     VideoPlay,
 )
-from app.services import podcast_plays
+from app.services import podcast_plays, youtube_game_watch
 from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
+
+_VIDEO_WATCH_SUMMARY_FIELDS = {"progress", "status", "length_seconds", "channel", "item_id"}
+_VIDEO_TAG_SUMMARY_FIELDS = {"status", "game_title", "release_year", "game_id", "runtime_seconds"}
+
+
+@receiver([post_save, post_delete], sender=Video)
+def invalidate_video_watch_summary(sender, instance, signal, using, **kwargs):
+    """Invalidate the viewer's Time Watched result when its inputs change."""
+    if kwargs.get("raw"):
+        return
+    if signal is post_delete or kwargs.get("created") or _VIDEO_WATCH_SUMMARY_FIELDS.intersection(instance.tracker.changed()):
+        youtube_game_watch.invalidate_watch_summaries(instance.user_id, using=using)
+
+
+@receiver([post_save, post_delete], sender=VideoGameLink)
+def invalidate_linked_watch_summary(sender, instance, using, **kwargs):
+    """Invalidate cached totals when a manual link moves a video's watch time."""
+    if kwargs.get("raw"):
+        return
+    try:
+        user_id = instance.video.user_id
+    except Video.DoesNotExist:
+        return  # The video's deletion invalidates that viewer.
+    youtube_game_watch.invalidate_watch_summaries(user_id, using=using)
+
+
+@receiver([post_save, post_delete], sender=VideoGameTag)
+def invalidate_tagged_watch_summaries(sender, instance, using, **kwargs):
+    """Tags and runtimes are shared across every viewer."""
+    fields = kwargs.get("update_fields")
+    if not kwargs.get("raw") and (fields is None or _VIDEO_TAG_SUMMARY_FIELDS.intersection(fields)):
+        youtube_game_watch.invalidate_watch_summaries(using=using)
+
 
 RUNTIME_UNKNOWN_FAILED = 999999  # runtime completely unknown / failed lookup
 

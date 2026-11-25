@@ -630,6 +630,22 @@ sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` an
 places the viewer rating beside provider scores; `ProgressCard` has an opt-in
 detail presentation. Native metadata adapters preserve server formatting and
 viewer rating preferences. `detailHeroLayout` and `detailArtworkCrop` anchor artwork geometry.
+`MediumExtras` owns the game Time card in shared React Native on the PWA
+(`mountPeople`) and on iOS and Android (`DetailMediumExtras`). The card uses
+recorded playback positions or published runtimes for completed videos.
+Its shared Time Watched row shows a spinner while the mounted adapter loads
+the viewer's summary. A successful empty response removes the row. Time to
+Beat still has its server fallback, so the PWA Time surface remains
+partial/coexisting until the detail shell retires that fallback.
+`useDeferredYoutubeWatch` shares request cancellation and timeout handling
+between the PWA and Expo adapters. `detailYoutubeWatchModel` maps the API
+summary into props for the shared Time card.
+The shared channel breakdown shows the watch duration first, followed by a
+middle dot and the percentage.
+Desktop and mobile Chromium exercised the follow-up request and channel
+expansion, including the duration-first values. The iOS simulator and Android
+emulator each rendered the Calculating and resolved states with a delayed
+fixture response and the expanded duration-first rows.
 `DetailActivitySubtitle` renders the same activity dates and duration on desktop,
 mobile web and Expo, with a white separator. Web retains its history button and
 server fallback; Expo supplies formatted dates through its detail adapter. This
@@ -1066,6 +1082,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - `HomeScreenEditor` and `SettingsHomeView` use shared measured-layout drag handles, parsed media icons, complete filter summaries, color swatch dialog and native page-card framing; native `HomeSettingsSlot` omits the duplicate heading and uses the web's inline save action and Label appearance dropdown. Browser Django/SortableJS consumers remain; retirement requires native reorder and full editor parity. Browser: compared at 375x812; Label appearance Outline saved and Soft restored with web confirmation. Section/row drag and expanded editor parity remain pending. iOS: Not verified. Android: Not verified. Native readiness: `Primitives`.
 
 - Up Next rows have a "Hide caught-up shows" option (`hide_caught_up`, stored in the row's filters), drawn by shared `HomeScreenEditor` as a `ToggleChip` in the row editor for Expo and by the Django editor as a "Show/Hide Caught Up" chip for the browser. Both consumers carry the same payload; the browser editor stays Django/Alpine under the retirement conditions above. Browser row controls (`.home-settings-row-controls` in `input.css`) now wrap under the row name when the panel is narrow, so the name keeps 12rem instead of collapsing; wide panels keep one line. Browser: toggled, saved and reloaded at 1280x800 and 375x812; row layout checked at 1024, 1440 and 375 wide. iOS: Not verified (no simulator on the host). Android: Not verified (no emulator). Expo: structural only (bundle build and checks pass).
+- Last Watched preset starts TV on Episodes (`HomeScreenEditor` `addRow` and the Django `addRow` both seed `filters.media_subviews.tv = episodes`), and the shared row summary now lists each chosen family with its display level (`TV Shows: Episodes`), as the Django editor already did. Existing rows are untouched. Browser: Django editor and Expo Web at 375x812, before and after, saved and reloaded (`end_date` desc, TV + Movies, `tv: episodes`). iOS: Expo Go on an iPhone 16 simulator, signed in to a local server, the preset adds a row that reads `TV Shows: Episodes`; the unmodified build was not run there (shared component, baseline captured in Expo Web). Android: Not verified.
 - Purpose/usage: Home rows/filter/sort/list-backed sections.
 - Native readiness: `Primitives`. Browser evidence only; no iOS or Android runtime verification.
 - Status: `Partial / coexisting`. Browser server templates remain; Expo consumes shared React presentation.

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.apps import apps
+from django.utils import timezone
 
 from api.fork_views_detail import _child_row, _media_card
 from app.models import (
@@ -18,6 +19,8 @@ from app.models import (
     Sources,
     Status,
     Studio,
+    Video,
+    VideoGameTag,
 )
 from app.providers.services import ProviderAPIError
 from app.services import metadata_resolution
@@ -41,6 +44,37 @@ class DetailPageTests(FloppyApiTestCase):
     def tearDown(self):
         self.carousel_patch.stop()
         super().tearDown()
+
+    @patch("api.fork_views_detail.services.get_media_metadata", return_value={"title": "Game"})
+    def test_video_activity_is_available_for_an_untracked_game_in_private_detail(self, metadata):
+        game = Item.objects.create(media_type="game", source="igdb", media_id="121", title="Minecraft: Java Edition")
+        item = Item.objects.create(media_type="video", source="youtube", media_id="abcdefghijk", title="Minecraft video")
+        Video.objects.create(item=item, user=self.user1, progress=0)
+        VideoGameTag.objects.create(
+            item=item, status=VideoGameTag.Status.FOUND, game_title="Minecraft",
+            release_year="2009", game_id="UCQvWX73GQygcwXOTSf_VDVg", checked_at=timezone.now(),
+        )
+        path = f"/api/v1/media/game/{game.source}/{game.media_id}/detail/"
+        private = self.client.get(path, **self.auth_headers)
+        self.assertEqual(private.status_code, HTTP.OK)
+        self.assertEqual(private.json()["youtube_watch"]["videos_without_time"], 1)
+        public = self.client.get(path, {"public_view": "1"}, **self.auth_headers)
+        self.assertEqual(public.status_code, HTTP.OK)
+        self.assertIsNone(public.json()["youtube_watch"])
+
+        with patch("api.fork_views_detail.youtube_game_watch.watched_for_game") as calculate:
+            deferred = self.client.get(path, {"youtube_watch": "deferred"}, **self.auth_headers)
+            self.assertEqual(deferred.status_code, HTTP.OK)
+            self.assertTrue(deferred.json()["youtube_watch_pending"])
+            self.assertIsNone(deferred.json()["youtube_watch"])
+            self.client.get(path, {"youtube_watch": "only", "public_view": "1"}, **self.auth_headers)
+            calculate.assert_not_called()
+
+        metadata.reset_mock()
+        summary = self.client.get(path, {"youtube_watch": "only"}, **self.auth_headers)
+        self.assertEqual(summary.json(), {"youtube_watch": private.json()["youtube_watch"]})
+        self.assertEqual(summary["Cache-Control"], "private, no-store")
+        metadata.assert_not_called()
 
     @patch("api.fork_views_detail._seerr_configured", return_value=True)
     @patch("api.fork_views_detail.services.get_media_metadata", return_value={"title": "Film"})

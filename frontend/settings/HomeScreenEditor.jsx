@@ -142,6 +142,16 @@ function rowFilterPills(section, row) {
     const mediaField = fieldDefinition('media_types');
     if (!selected.length) pills.push({ key: 'media_types', label: mediaField?.label || 'Media types', value: 'No media' });
     else if (selected.length !== (mediaField?.options?.length || 0)) addPill('media_types', selected);
+    // Same summary the web row shows: each chosen family with its display level.
+    (mediaField?.options || []).forEach(option => {
+      if (!selected.includes(option.value) || !(option.subviews || []).length) return;
+      const level = row.filters?.media_subviews?.[option.value] || option.default_subview;
+      pills.push({
+        key: `media_subview:${option.value}`,
+        label: option.label,
+        value: option.subviews.find(choice => choice.value === level)?.label || level,
+      });
+    });
   }
   addPill('status', rowStatusValues(row));
   if (section.media_type === 'music') addPill('subview', [row.filters?.subview || 'tracks']);
@@ -389,6 +399,8 @@ export function HomeScreenEditor({
       newRow.filters.media_types = (section.available_media_types || []).filter(type => ['movie', 'tv'].includes(type));
       newRow.filters.status = ['In progress', 'Completed', 'Paused', 'Dropped'];
       newRow.filters.progress = 'all';
+      // Each watched episode is its own card; a show-level row would collapse a binge into one.
+      if (newRow.filters.media_types.includes('tv')) newRow.filters.media_subviews = { tv: 'episodes' };
     }
     section.rows = [...(section.rows || []), newRow];
     setNextRowId(current => current + 1);

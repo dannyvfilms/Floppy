@@ -836,11 +836,10 @@ def _people_labels():
         "submissions": str(_("submissions")),
         "timeToBeatPending": str(_("Fetching")),
         "timeToBeatEmpty": str(_("Not available")),
-        "watchedOnYouTube": str(_("Watched on YouTube")),
-        "started": str(_("Started")),
-        "youtubeEstimate": str(
-            _("Estimated from how far you got in each video. Your playtime is not affected."),
-        ),
+        "youtubeTimeUnavailable": str(_("Unavailable")),
+        "youtubeCalculating": str(_("Calculating")),
+        "youtubeMissingTime": str(_("Watch time is unavailable for some videos.")),
+        "youtubeWatchBasis": str(_("Uses playback progress or the full runtime of completed videos.")),
         "readingActivity": str(_("Reading Activity")),
         "listeningTime": str(_("Listening Time")),
         "mostRead": str(_("Most Read")),
@@ -964,18 +963,6 @@ def _people_game_lengths_props(game_lengths, pending):
         "available": bool(game_lengths.get("available")),
         "pending": bool(pending) and not game_lengths.get("available"),
         "cards": cards,
-    }
-
-
-def _people_youtube_props(youtube_watch):
-    """Shape the YouTube watch summary for the shared medium extras view."""
-    if not youtube_watch:
-        return None
-    return {
-        "seconds": youtube_watch.get("seconds"),
-        "hoursLabel": youtube_watch.get("hours_label") or "",
-        "videos": youtube_watch.get("videos") or 0,
-        "channels": youtube_watch.get("channels") or [],
     }
 
 
@@ -1256,8 +1243,8 @@ def people_extras(parser, token):
     """Wrap one medium-extras section in the shared extras mount."""
     bits = token.split_contents()
     part = bits[1].strip("\"'") if len(bits) > 1 else ""
-    if part not in {"game_lengths", "youtube", "time"}:
-        message = 'people_extras requires "game_lengths", "youtube" or "time"'
+    if part not in {"game_lengths", "time"}:
+        message = 'people_extras requires "game_lengths" or "time"'
         raise template.TemplateSyntaxError(message)
     body = parser.parse(("endpeople_extras",))
     parser.delete_first_token()
@@ -1279,44 +1266,33 @@ class PeopleExtrasNode(template.Node):
             if not _people_section_visible(context, "game", "content", "game_lengths"):
                 return self.body.render(context)
             game_lengths = context.get("game_lengths")
-            youtube_watch = _people_youtube_props(context.get("youtube_watch"))
+            youtube_watch_url = context.get("youtube_watch_url")
             played = (context.get("activity_subtitle") or {}).get("duration_text") or ""
             props = {
                 "kind": "extras",
                 "gameLengths": _people_game_lengths_props(
                     game_lengths, context.get("game_lengths_pending"),
                 ) if game_lengths else None,
-                "youtubeWatch": youtube_watch,
+                "youtubeWatchUrl": youtube_watch_url,
                 "playedLabel": played.removesuffix(" played"),
                 "labels": _people_labels(),
             }
-            if not (game_lengths or youtube_watch or played):
+            if not (game_lengths or youtube_watch_url or played):
                 return self.body.render(context)
             return _people_island(context, "extras", props, self.body.render(context))
-        if self.part == "game_lengths":
-            if not _people_section_visible(context, "game", "content", "game_lengths"):
-                return self.body.render(context)
-            game_lengths = context.get("game_lengths")
-            props = {
-                "kind": "extras",
-                "gameLengths": _people_game_lengths_props(
-                    game_lengths,
-                    context.get("game_lengths_pending"),
-                ),
-                "labels": _people_labels(),
-            }
-            if not game_lengths:
-                return self.body.render(context)
-            return _people_island(context, "extras", props, self.body.render(context))
-        youtube_watch = _people_youtube_props(context.get("youtube_watch"))
-        if not youtube_watch:
+        if not _people_section_visible(context, "game", "content", "game_lengths"):
+            return self.body.render(context)
+        game_lengths = context.get("game_lengths")
+        if not game_lengths:
             return self.body.render(context)
         return _people_island(
             context,
             "extras",
             {
                 "kind": "extras",
-                "youtubeWatch": youtube_watch,
+                "gameLengths": _people_game_lengths_props(
+                    game_lengths, context.get("game_lengths_pending"),
+                ),
                 "labels": _people_labels(),
             },
             self.body.render(context),

@@ -110,15 +110,6 @@ function detailFromProviderPayload(payload, item, identity) {
   ];
   const gameLengthSection = section('game-lengths', 'Game lengths', gameLengthItems);
   if (gameLengthSection) sections.push(gameLengthSection);
-  if (payload?.youtube_watch) {
-    const watched = payload.youtube_watch;
-    const youtubeSection = section('youtube-watch', 'Watched on YouTube', [
-      watched.seconds ? `~${watched.hours_label}` : 'Started',
-      `${watched.videos || 0} tagged videos`,
-      'Estimated from video progress; does not affect playtime.',
-    ]);
-    if (youtubeSection) sections.push(youtubeSection);
-  }
   const activity = payload?.activity_subtitle;
   const activitySection = section('activity', 'Your activity', [
     activity?.primary_text,
@@ -241,6 +232,8 @@ function detailFromProviderPayload(payload, item, identity) {
     } : null,
     details: payload?.media_details || {},
     secondary: detailSecondaryModel(payload, { formatDate: formatUserDate }),
+    youtubeWatchPath: payload.youtube_watch_pending
+      ? detailEndpoint({ mediaType: identity.mediaType, source: identity.source, mediaId: identity.mediaId }) : null,
     providers: payload?.providers || [],
     linkSections: payload?.link_sections || [],
     gameLengths: payload?.game_lengths || null,
@@ -420,7 +413,8 @@ export async function loadDetailModel(item, options = {}) {
         options.onGallery?.(result?.gallery);
         return result;
       }).catch(() => null) : null;
-    const response = await request(detailEndpoint(requestIdentity));
+    const youtubeWatch = requestIdentity.mediaType === 'game' && !requestIdentity.publicView ? 'deferred' : undefined;
+    const response = await request(detailEndpoint(requestIdentity, { youtubeWatch }));
     if (wantsGallery && response?.artwork?.gallery_supported && !response.artwork.backdrop) {
       try {
         const gallery = galleryRequest ? await galleryRequest : await request(detailGalleryEndpoint(requestIdentity));
