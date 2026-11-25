@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a new feature or improvement to Floppy.
+title: "[Feature Request] "
+labels: ["enhancement"]
+type: Feature
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: What does your request primarily relate to?
+      description: Choose the closest match. It's okay if your request relates to more than one category.
+      options:
+        - Interface & Usability — Appearance, navigation, sorting and filtering
+        - Tracking & Media Management — Progress, ratings, notes and collections
+        - Integrations & Data Sources — External services, metadata, imports and sync
+        - Performance & Technical — Speed, resources, deployment, API and MCP
+        - Other / Not Sure
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like Floppy to do?
+      description: Describe what you'd like to see improved or added, and how it would help you.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include screenshots, links, examples from other apps or anything else that might help explain your idea.
+    validations:
+      required: false
