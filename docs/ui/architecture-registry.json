@@ -4015,6 +4015,108 @@
           "evidence": "Not run on an emulator."
         }
       }
+    },
+    "frontend/ui/NumberPickerRow.jsx": {
+      "components": [
+        "NumberPickerRow",
+        "NumberStepper"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at desktop and phone width from the Track modal and the detail rating chip; criteria values, live overall, manual override and Use calculated were exercised. The stepper fallback is what web shows; the iOS wheel is supplied by TrackDatePanels.ios.jsx."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Ran in Expo Go on the iPhone 16e simulator (iOS 18.6) against the local server with a throwaway account: the native number wheel opened from the scale editor's range pills and from a criterion row in the rating sheet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RatingSheet.jsx": {
+      "components": [
+        "RatingSheet"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at desktop (1280 px) and phone (390 px) width from the Preferences Rating Scale menu; throwaway database and test login. Creating, editing, tier moves and saving were exercised."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Ran in Expo Go on the iPhone 16e simulator (iOS 18.6) against the local server with a throwaway account: presented as a full-width sheet for the scale editor and the rating sheet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RatingScaleEditor.jsx": {
+      "components": [
+        "RatingScaleEditor"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at desktop (1280 px) and phone (390 px) width from the Preferences Rating Scale menu; throwaway database and test login. Creating, editing, tier moves and saving were exercised."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Ran in Expo Go on the iPhone 16e simulator (iOS 18.6) against the local server with a throwaway account: Settings, Preferences, Rating Scale: Edit Rating Scale with weight tiers, drag handles, tier arrows and the range wheel."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RatingCriteriaSheet.jsx": {
+      "components": [
+        "RatingCriteriaSheet",
+        "RatingScaleButton"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at desktop and phone width from the Track modal and the detail rating chip; criteria values, live overall, manual override and Use calculated were exercised."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Ran in Expo Go on the iPhone 16e simulator (iOS 18.6) against the local server with a throwaway account: the Edit Entry score row as a button, the sheet with Overall, Calculated, Override and Use calculated score, and criterion values."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RatingBreakdown.jsx": {
+      "components": [
+        "RatingBreakdown"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium in the media details sidebar at desktop width with a calculated rating."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled in the Expo bundle for the detail page; the Your Rating block was not scrolled into view on the simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4689,6 +4791,35 @@
         "android": {
           "status": "unverified",
           "evidence": "Not run on an Android emulator."
+        }
+      }
+    },
+    "frontend/ui/ratingScaleModel.js": {
+      "components": [
+        "computeScore",
+        "scaleToTen",
+        "groupByTier",
+        "draftFromScale",
+        "draftPayload",
+        "validateDraft",
+        "overallSummary",
+        "ratingFormValues",
+        "criteriaBody",
+        "chipFitsLines"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "scripts/ratingScaleModel.test.mjs covers the weighted score, empty versus zero, mixed ranges, tier moves, validation and the form values."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "The same pure module runs in the Expo transport tests (node); no platform code."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Pure logic shared with iOS and web; no platform code."
         }
       }
     }
@@ -6396,6 +6527,10 @@
     "frontend/ui/mountProgressPage.jsx": {
       "register": "PROGRESS",
       "purpose": "Mount ProgressPageView on /progress over the Django heading, loading the list and season breakdowns from same-origin /api/v1 and opening shows by their detail URL."
+    },
+    "frontend/ui/mountRatingScaleEditor.jsx": {
+      "register": "RATING",
+      "purpose": "Opens the shared rating scale editor from the Preferences Rating Scale menu and saves through /api/v1/user/rating-scales/."
     }
   }
 }

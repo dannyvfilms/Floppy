@@ -1,6 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { RatingChip } from './RatingChip';
+import { RatingCriteriaSheet } from './RatingCriteriaSheet';
+import { palette as basePalette } from './mountCollectionCopyFields';
+
+const sheetPalette = { ...basePalette, surfaceDim: 'var(--color-page-bg)' };
+import { overallSummary, ratingFormValues } from './ratingScaleModel';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { rootStyle } from './rootStyle.web';
 
@@ -156,6 +161,26 @@ function Adapter({ host, props }) {
     setOpen(next);
   }
 
+  // Custom rating scale: criterion values live here until Done, then post together.
+  const scale = props.ratingScale || null;
+  const [sheet, setSheet] = useState(false);
+  const [form, setForm] = useState(() => (scale ? { ...ratingFormValues(scale), score: props.value ?? '' } : {}));
+  useEffect(() => {
+    if (scale) setForm({ ...ratingFormValues(scale), score: props.value ?? '' });
+  }, [props.postUrl, props.value, props.ratingScale]);
+  const changeForm = (name, next) => setForm(current => ({ ...current, [name]: next }));
+  const snapshot = useRef(form);
+  const openSheet = () => { snapshot.current = form; setSheet(true); };
+  function saveCriteria() {
+    const summary = overallSummary(scale, form);
+    setValue(summary.shown);
+    window.htmx?.ajax('POST', props.postUrl, {
+      source: host, swap: 'none',
+      headers: { 'X-CSRFToken': props.csrfToken },
+      values: { ...form, score: summary.manual ? form.score : '' },
+    });
+  }
+
   function onSelect(score) {
     setValue(score);
     window.htmx?.ajax('POST', props.postUrl, {
@@ -165,7 +190,12 @@ function Adapter({ host, props }) {
     });
   }
 
-  return <RatingChip
+  return <><RatingChip
+    scale={scale}
+    criteriaValues={scale ? form : null}
+    onCriteriaChange={changeForm}
+    onCriteriaDone={saveCriteria}
+    onOpenSheet={openSheet}
     value={value}
     scaleMax={props.scaleMax}
     displayValue={props.displayValue}
@@ -178,7 +208,11 @@ function Adapter({ host, props }) {
     palette={palette}
     open={open}
     onOpenChange={onOpenChange}
-    anchor={anchor} />;
+    anchor={anchor} />
+  {scale ? <RatingCriteriaSheet open={sheet} scale={scale} values={form} onChange={changeForm}
+    onClose={() => { setSheet(false); saveCriteria(); }}
+    onCancel={() => { setForm(snapshot.current); setSheet(false); }} palette={sheetPalette} subtitle={scale.name} /> : null}
+  </>;
 }
 
 export function mountRatingChip(host, props) {

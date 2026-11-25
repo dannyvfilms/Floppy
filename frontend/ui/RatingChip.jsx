@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { RatingStars } from './RatingStars';
+import { CRITERION_PREFIX, chipFitsLines, formatScore, overallSummary } from './ratingScaleModel';
 
 const fallbackPalette = {
   lit: '#facc15',
@@ -73,6 +74,12 @@ export function RatingChip({
   open = false,
   onOpenChange,
   anchor = null,
+  // A custom rating scale: the popup lists one star line per criterion when they fit, else the sheet opens.
+  scale = null,
+  criteriaValues = null,
+  onCriteriaChange,
+  onCriteriaDone,
+  onOpenSheet,
 }) {
   const [showCoverage, setShowCoverage] = useState(false);
   const colors = { ...fallbackPalette, ...palette };
@@ -88,6 +95,31 @@ export function RatingChip({
     close();
   };
 
+  const lines = Boolean(scale) && chipFitsLines(scale);
+  const toggle = () => (scale && !lines ? onOpenSheet?.() : onOpenChange?.(!open));
+  const summary = scale && criteriaValues ? overallSummary(scale, criteriaValues) : null;
+  const criteriaPopup = lines && criteriaValues ? <View style={{ gap: 10 }}>
+    {scale.criteria.map(criterion => {
+      const picked = criteriaValues[`${CRITERION_PREFIX}${criterion.id}`];
+      return <View key={criterion.id} style={{ gap: 2 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{criterion.name}</Text>
+        <RatingStars scaleMax={criterion.max} label={criterion.name} renderStar={renderStar}
+          value={picked === '' || picked == null ? null : Number(picked)} showLabels={false} palette={colors}
+          onSelect={next => onCriteriaChange?.(`${CRITERION_PREFIX}${criterion.id}`, next == null ? '' : String(next))} />
+      </View>;
+    })}
+    <View style={styles.criteriaFooter}>
+      <Text accessibilityLiveRegion="polite" style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>
+        {text.overall || 'Overall'}: {summary?.shown == null ? '-' : formatScore(summary.shown)}</Text>
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <Pressable accessibilityRole="button" onPress={() => { close(); onOpenSheet?.(); }}>
+          <Text style={{ color: colors.muted, fontSize: 13 }}>{text.more || 'More'}</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => { onCriteriaDone?.(); close(); }}>
+          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{text.done || 'Done'}</Text></Pressable>
+      </View>
+    </View>
+  </View> : null;
+
   const popup = <Modal visible={open} transparent animationType="none" onRequestClose={close}>
     <View style={styles.modalRoot}>
       <Pressable accessible={false} style={StyleSheet.absoluteFill} onPress={close} />
@@ -98,8 +130,8 @@ export function RatingChip({
         backgroundColor: colors.surface,
         borderColor: colors.border,
       }, anchor ? { position: 'absolute', left: anchor.left, top: anchor.top } : null]}>
-        <RatingStars scaleMax={scaleMax} value={value} label={text.rate}
-          renderStar={renderStar} onSelect={choose} palette={colors} />
+        {criteriaPopup || <RatingStars scaleMax={scaleMax} value={value} label={text.rate}
+          renderStar={renderStar} onSelect={choose} palette={colors} />}
       </View>
     </View>
   </Modal>;
@@ -110,7 +142,7 @@ export function RatingChip({
         accessibilityLabel={rated ? `${text.yourScore}: ${shown}` : text.addRating}
         accessibilityHint={rated ? text.editRating : text.addRating}
         title={text.rateTitle || text.rate}
-        onPress={() => onOpenChange?.(!open)}
+        onPress={toggle}
         style={({ hovered, pressed, focused }) => [styles.compactButton, {
           width: colors.starBadgeSize,
           height: colors.starBadgeSize,
@@ -141,7 +173,7 @@ export function RatingChip({
       }]}>
         {rated
           ? <Pressable accessibilityRole="button" accessibilityLabel={`${text.yourScore}: ${cardShown}`}
-            onPress={() => onOpenChange?.(!open)}
+            onPress={toggle}
             style={({ hovered, pressed, focused }) => [styles.cardButton, (hovered || pressed) && styles.cardButtonActive, focused && colors.focusStyle]}>
             <View style={[styles.starBadge, {
               width: colors.starBadgeSize,
@@ -154,6 +186,9 @@ export function RatingChip({
             <Text numberOfLines={1} style={[styles.cardMeta, { color: colors.textSecondary, fontSize: colors.fontSize }]}>
               {hasDerived ? `${text.derived} ${derived.score} · ${derived.coverage}` : text.yourRating}
             </Text>
+          </Pressable>
+          : scale ? <Pressable accessibilityRole="button" accessibilityLabel={text.addRating} onPress={toggle}>
+            <Text style={[styles.cardPrompt, { color: colors.textSecondary, fontSize: colors.fontSize }]}>{text.prompt}</Text>
           </Pressable>
           : <>
             <Text style={[styles.cardPrompt, { color: colors.textSecondary, fontSize: colors.fontSize }]}>
@@ -177,7 +212,7 @@ export function RatingChip({
         ? hasDerived ? `${text.yourScore}: ${shown}. ${text.derivedRating}: ${derived.score}, ${derived.coverage}` : `${text.yourScore}: ${shown}`
         : hasDerived ? `${text.derivedRating}: ${derived.score}, ${derived.coverage}` : text.addRating}
       accessibilityHint={rated ? text.editRating : text.addRating}
-      onPress={() => onOpenChange?.(!open)}
+      onPress={toggle}
       onHoverIn={() => hasDerived && rated && setShowCoverage(true)}
       onHoverOut={() => setShowCoverage(false)}
       onFocus={() => hasDerived && rated && setShowCoverage(true)}
@@ -254,4 +289,5 @@ const styles = StyleSheet.create({
   compactValue: { fontWeight: '700' },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   popup: { borderWidth: 1, overflow: 'hidden' },
+  criteriaFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
 });

@@ -1485,6 +1485,12 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
+- `frontend/ui/NumberPickerRow.jsx`
+- `frontend/ui/RatingBreakdown.jsx`
+- `frontend/ui/RatingCriteriaSheet.jsx`
+- `frontend/ui/RatingScaleEditor.jsx`
+- `frontend/ui/RatingSheet.jsx`
+- `frontend/ui/ratingScaleModel.js`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
 - `frontend/ui/RefreshNotice.jsx`
@@ -1585,6 +1591,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
+- `frontend/ui/mountRatingScaleEditor.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`
 - `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/mountShell.jsx`

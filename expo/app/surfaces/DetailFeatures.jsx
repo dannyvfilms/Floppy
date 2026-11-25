@@ -11,12 +11,15 @@ import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
 import { CollectionCopyDialog, collectionSeasonEpisodes } from '../../../frontend/ui/CollectionCopies';
 import { renderSelectRowPicker } from './SelectRowPicker';
 import { brightAccent } from './brightAccent';
-import { renderMonthYearWheels, renderTimeWheels } from './TrackDatePanels';
+import { renderMonthYearWheels, renderNumberWheel, renderTimeWheels } from './TrackDatePanels';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { TrackPresentation } from './TrackPresentation';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
+import { RatingBreakdown } from '../../../frontend/ui/RatingBreakdown';
+import { RatingCriteriaSheet } from '../../../frontend/ui/RatingCriteriaSheet';
+import { criteriaBody, overallSummary, ratingFormValues } from '../../../frontend/ui/ratingScaleModel';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import { TagAssignmentDialog } from '../../../frontend/ui/TagManagement';
 import { TrackDialog } from '../../../frontend/ui/TrackDialog';
@@ -82,6 +85,7 @@ import {
   loadTrack,
   loadTrackTabs,
   saveArtwork,
+  saveCriteria,
   saveScore,
   saveTrack,
   setDiscoverHidden,
@@ -397,6 +401,14 @@ function SeerrDialog({ open, state, busy, error, onRequest, onClose }) {
 export function useDetailFeatures({ model, ready, dataReady, version, refresh, optimistic, navigate, onOpenItem, onOpenExternal, shelfWidth }) {
   const { width } = useWindowDimensions();
   const [ratingOpen, setRatingOpen] = useState(false);
+  // A custom rating scale: criterion values are edited here and saved together (chip lines or the sheet).
+  const customScale = model?.viewerRating?.ratingScale || null;
+  const [criteriaForm, setCriteriaForm] = useState({});
+  const [criteriaSheet, setCriteriaSheet] = useState(false);
+  const criteriaSnapshot = useRef(null);
+  useEffect(() => {
+    setCriteriaForm(customScale ? { ...ratingFormValues(customScale), score: model?.viewerRating?.value ?? '' } : {});
+  }, [customScale, model?.viewerRating?.value]);
   const identityKey = JSON.stringify(featureIdentity(model));
   const identity = useMemo(() => JSON.parse(identityKey), [identityKey]);
   const enabled = Boolean(identity && ready && !model?.publicView);
@@ -1013,7 +1025,24 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
     logo: row.logo_src || row.logo || model?.scoreChips?.find(chip => chip.key === 'provider')?.logo_src || '',
   })), scores);
   const viewerRating = model?.viewerRating;
-  const ratingSlot = viewerRating?.editable ? <RatingChip
+  const saveCriteriaForm = () => {
+    const summary = overallSummary(customScale, criteriaForm);
+    const body = criteriaBody(customScale, criteriaForm);
+    setNotice('');
+    if (tracking.tracked) historyStale.current = true;
+    return runOptimistic({
+      write: () => saveCriteria(identity, { ...body, ...(summary.manual ? { score: Number(criteriaForm.score) } : {}) }),
+      revert: () => {},
+      scopes: RELOAD_SCOPES.rate,
+      onError: cause => setNotice(cause?.message || 'The rating could not be saved.'),
+    });
+  };
+  const chip = viewerRating?.editable ? <RatingChip
+    scale={customScale}
+    criteriaValues={customScale ? criteriaForm : null}
+    onCriteriaChange={(name, value) => setCriteriaForm(current => ({ ...current, [name]: value }))}
+    onCriteriaDone={saveCriteriaForm}
+    onOpenSheet={() => { criteriaSnapshot.current = criteriaForm; setCriteriaSheet(true); }}
     value={viewerRating.value}
     scaleMax={viewerRating.scaleMax || 10}
     displayValue={viewerRating.displayValue}
@@ -1038,6 +1067,14 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
         onError: cause => setNotice(cause?.message || 'The rating could not be saved.'),
       });
     }} /> : null;
+  const ratingSlot = chip && customScale ? <>
+    {chip}
+    <RatingCriteriaSheet open={criteriaSheet} scale={customScale} values={criteriaForm} palette={palette}
+      onChange={(name, value) => setCriteriaForm(current => ({ ...current, [name]: value }))}
+      onClose={() => { setCriteriaSheet(false); saveCriteriaForm(); }}
+      onCancel={() => { setCriteriaForm(criteriaSnapshot.current || {}); setCriteriaSheet(false); }} renderWheel={renderNumberWheel}
+      subtitle={customScale.name} />
+  </> : chip;
   const progressSlot = progress.data ? <ProgressCard
     model={progress.data.card}
     variant="detail"
@@ -1101,7 +1138,12 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       onEdit={entry => openTrack(false, entry.identity)}
       onOpenHistory={() => { refreshStaleHistory(); setDialog({ ...NO_DIALOG, kind: 'history' }); }} palette={palette} /> : null;
   const sectionSlots = { collection: collectionSlot, notes: notesSlot, history: historySlot };
-  const sectionsSlot = <>{collectionSlot}{notesSlot}{noticeSlot}</>;
+  // The custom scale's per-criterion values, in the Collection block's grouped style.
+  const ratingBreakdownSlot = customScale && Object.keys(customScale.values || {}).length && !isEpisode
+    ? <DetailBlock grouped title="Your Rating" palette={palette}>
+      <RatingBreakdown rating={{ ...customScale, overall: viewerRating?.value }} palette={palette} />
+    </DetailBlock> : null;
+  const sectionsSlot = <>{ratingBreakdownSlot}{collectionSlot}{notesSlot}{noticeSlot}</>;
 
   const sortedEpisodes = [...episodes.rows]
     .sort((left, right) => (episodes.order === 'desc' ? -1 : 1) * ((Number(left.number) || 0) - (Number(right.number) || 0)))
@@ -1191,6 +1233,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       renderSelectPicker={renderSelectRowPicker}
       renderMonthYearWheels={renderMonthYearWheels}
       renderTimeWheels={renderTimeWheels}
+      renderNumberWheel={renderNumberWheel}
       open={track.open}
       embedded
       // The web offers "Save as new entry" on a tracked entry where it offers a new entry at all.

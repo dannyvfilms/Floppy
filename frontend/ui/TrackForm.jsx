@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -22,6 +22,8 @@ import { actionIcons } from './actionIcons';
 import { TrackDateRow } from './TrackDateRow';
 import { formatTrackDuration, parseTrackDurationMinutes } from './trackDuration';
 import { valueFromDate } from './dateTime';
+import { RatingCriteriaSheet, RatingScaleButton } from './RatingCriteriaSheet';
+import { overallSummary } from './ratingScaleModel';
 
 const MOBILE_WEB_MAX_WIDTH = 1024;
 
@@ -198,6 +200,7 @@ export function TrackForm({
   renderSelectPicker,
   renderMonthYearWheels,
   renderTimeWheels,
+  renderNumberWheel,
 }) {
   const labels = { ...DEFAULT_LABELS, ...(suppliedLabels || {}) };
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
@@ -208,6 +211,8 @@ export function TrackForm({
   const [localTab, setLocalTab] = useState('general');
   const [since, setSince] = useState('');
   // The one open date picker, { name, mode }; opening another closes it.
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const ratingSnapshot = useRef(null);
   const [openPicker, setOpenPicker] = useState(null);
   // The preset last applied, with the dates it set; changing either date clears it.
   const [appliedPreset, setAppliedPreset] = useState(null);
@@ -307,6 +312,18 @@ export function TrackForm({
     ],
   };
 
+  // Remember the rating values when the sheet opens so Cancel can put them back.
+  function openRating() {
+    ratingSnapshot.current = Object.fromEntries(Object.keys(values)
+      .filter(key => key.startsWith('criterion:') || key === 'score' || key === 'score_is_manual')
+      .map(key => [key, values[key]]));
+    setRatingOpen(true);
+  }
+  function cancelRating() {
+    Object.entries(ratingSnapshot.current || {}).forEach(([key, value]) => change(key, value));
+    setRatingOpen(false);
+  }
+
   function change(name, value) {
     if (localErrors[name]) setLocalErrors(current => ({ ...current, [name]: '' }));
     onChange?.(name, value);
@@ -352,6 +369,13 @@ export function TrackForm({
     const error = fieldErrors[field.name];
     const icon = rowIcons[field.name] || (type === 'date' ? actionIcons.calendar : actionIcons.page);
     const errorText = error ? <Text accessibilityLiveRegion="polite" style={[styles.rowError, { color: palette.danger }]}>{error}</Text> : null;
+    // A custom rating scale replaces the score picker with a button that opens the criteria sheet.
+    if (field.name === 'score' && field.ratingScale) {
+      const summary = overallSummary(field.ratingScale, values);
+      return <RatingScaleButton key={field.name} grouped icon={icon} label={field.label} error={error} palette={palette}
+        placeholder={labels.addRating || 'Add Rating'} value={summary.shown} manual={summary.manual}
+        onPress={openRating} />;
+    }
     if (type === 'select') {
       return <CollectionSelectRow key={field.name} icon={icon} label={field.label} error={error}
         palette={palette} filter popover renderPicker={renderSelectPicker} value={value} options={field.options}
@@ -415,7 +439,15 @@ export function TrackForm({
     const type = fieldType(field);
     const value = values[field.name] == null ? '' : values[field.name];
     let control;
-    if (type === 'select') {
+    if (field.name === 'score' && field.ratingScale) {
+      const summary = overallSummary(field.ratingScale, values);
+      control = <FormField label={field.label} required={field.required} help={field.help}
+        error={fieldErrors[field.name]} palette={palette}>
+        <RatingScaleButton label={field.label} palette={inputPalette} placeholder={labels.addRating || 'Add Rating'}
+          value={summary.shown} manual={summary.manual} error={fieldErrors[field.name]}
+          onPress={openRating} />
+      </FormField>;
+    } else if (type === 'select') {
       control = <FormField label={field.label} required={field.required} help={field.help}
         error={fieldErrors[field.name]} palette={palette}>
         <SelectField labelHidden filter label={field.label} accessibilityLabel={`${field.label}: ${
@@ -515,7 +547,14 @@ export function TrackForm({
       width="full" palette={palette} busy={busy} disabled={busy} onPress={submit} /></View>
   </View> : null;
 
+  // The custom rating scale's criteria sheet; the score row above is only its button.
+  const ratingField = (model?.fields || []).find(field => field.name === 'score' && field.ratingScale);
+  const ratingSheet = ratingField ? <RatingCriteriaSheet open={ratingOpen} scale={ratingField.ratingScale}
+    values={values} onChange={change} onClose={() => setRatingOpen(false)} onCancel={cancelRating} palette={palette}
+    renderWheel={renderNumberWheel} labels={labels.rating} subtitle={ratingField.ratingScale.name} /> : null;
+
   const generalBody = <View style={sidebar ? styles.generalSide : styles.stack}>
+    {ratingSheet}
     {generalPrefix}
     {groupedRows ? <View style={styles.generalSide}>
       {groupedMain.length ? <CollectionGroup title={labels.details || 'Details'} palette={palette}>{groupedMain}</CollectionGroup> : null}

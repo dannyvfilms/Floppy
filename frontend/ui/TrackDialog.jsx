@@ -145,6 +145,7 @@ export function TrackDialog({
   renderSelectPicker,
   renderMonthYearWheels,
   renderTimeWheels,
+  renderNumberWheel,
   activeTab: controlledTab,
   onTabChange,
   railTabs = false,
@@ -256,7 +257,8 @@ export function TrackDialog({
 groupedContent={groupedContent}
     renderSelectPicker={renderSelectPicker}
     renderMonthYearWheels={renderMonthYearWheels}
-    renderTimeWheels={renderTimeWheels} />;
+    renderTimeWheels={renderTimeWheels}
+    renderNumberWheel={renderNumberWheel} />;
 
   if (embedded) return form;
 
