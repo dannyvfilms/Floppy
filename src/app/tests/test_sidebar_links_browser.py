@@ -36,21 +36,25 @@ class SidebarLinksBrowserTests(SerialStaticLiveServerTestCase):
             expect(logout).to_have_attribute("href", reverse("account_logout"))
             # A modifier-click must stay a plain link click so the browser can open
             # it in a new tab. Opening a real tab is not asserted: CI Chromium
-            # sometimes never opens or loads it. Instead dispatch the click and
-            # check, after the sidebar's own handlers have run (window bubble
-            # phase), that nothing cancelled it and no POST was sent. The probe
-            # cancels it afterwards so the test page does not navigate.
+            # sometimes never opens or loads it. Instead dispatch the click
+            # synchronously and watch whether the sidebar cancels it (a promise
+            # waiting on a window listener would hang if the sidebar stops
+            # propagation). The link is pointed at a new tab first so an uncancelled
+            # synthetic click cannot navigate this page.
             posts = []
             page.on("request", lambda request: posts.append(request.url) if request.method == "POST" else None)
             cancelled = page.evaluate(
-                """() => new Promise((resolve) => {
+                """() => {
                     const link = document.querySelector('[data-sidebar-root] a[href$="/accounts/logout/"]');
-                    window.addEventListener('click', (event) => {
-                        resolve(event.defaultPrevented);
-                        event.preventDefault();
-                    }, {once: true});
-                    link.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true, metaKey: true}));
-                })"""
+                    link.target = '_blank';
+                    const event = new MouseEvent('click', {bubbles: true, cancelable: true, ctrlKey: true, metaKey: true});
+                    let cancelled = false;
+                    const preventDefault = event.preventDefault.bind(event);
+                    event.preventDefault = () => { cancelled = true; preventDefault(); };
+                    link.dispatchEvent(event);
+                    link.removeAttribute('target');
+                    return cancelled || event.defaultPrevented;
+                }"""
             )
             self.assertFalse(cancelled, "the sidebar cancelled a modifier-click on Logout")
             page.wait_for_timeout(500)
