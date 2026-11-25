@@ -47,7 +47,7 @@ later is possible; re-check before building.
 
 | Service | Result |
 |---|---|
-| IGDB | Read-only game database. Its `rating` fields are site-wide averages. There is no per-user login: the Twitch key only produces an app token that cannot act as a user, and no endpoint reads or writes a user's own ratings. Importing a personal score is impossible for the same reason. |
+| IGDB | Read-only game database. Its `rating` fields are site-wide averages. There is no per-user login: the Twitch key only produces an app token that cannot act as a user, and no endpoint reads or writes a user's own ratings. Importing a personal score is impossible for the same reason. Confirmed by the IGDB team (2026-11-25): GraphQL is not a supported endpoint, and the API does not accept data contributions. |
 | RAWG | API key and read endpoints only. No documented write for user ratings. |
 | Steam | Reads user reviews (recommend / not recommend, not a numeric score). No documented way for a third party to publish one. |
 | PlayStation | Store ratings exist for purchases, but there is no public API to write them. |
