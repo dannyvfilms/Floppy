@@ -95,3 +95,29 @@ watched intents survive; remote TMDb ratings are not reversed.
 Run `scripts/test.sh integrations.tests.test_rating_sync` for the rating
 contract and `integrations.tests.test_state_outbound` for watched regression
 coverage. Ordinary tests mock TMDb and never write to a real account.
+
+## Custom rating scales
+
+A custom rating scale (`users.RatingScale`) only describes how an entry's score is
+derived. The entry still stores one internal 0-10 `score`, and that final score is the
+only value the outbox sees: `enqueue_rating_change(user, item, score)` gets the
+calculated score, or the manual override when the user typed one over it. Per-criterion
+values (`users.EntryRating`) never leave Floppy, so a provider sees the same shape it
+saw before and TMDb's half-point rounding applies to the final score as usual.
+
+Saving criteria goes through the same writers as a flat score (the track form,
+`update_media_score`, and media or history `PATCH`), so it runs inside `rating_edit`
+and a changed score is enqueued exactly once. A save that leaves the score unchanged
+(for example a criterion edit that rounds to the same value) enqueues nothing. Clearing
+every criterion of an entry that had criteria clears its score, which is an explicit
+removal; a save that carries no criteria for an entry rated before the scale existed
+leaves that historical score alone.
+
+Editing a scale never rewrites saved scores: a renamed or reordered criterion keeps its
+id, a removed criterion is archived, and deleting a scale that has ratings archives it.
+Changed ranges or tiers apply the next time an entry's criteria are saved.
+
+Deferred (not part of the first stage, tracked on #1748): criteria for podcast show ratings (the chip there keeps the flat score), media-type profiles (one
+scale for the user today), CSV `criterion:<key>` import and export columns, and AniList
+`advancedScores` import and push. Until then the AniList importer keeps reading its
+overall score, and a push sends the final score as before.

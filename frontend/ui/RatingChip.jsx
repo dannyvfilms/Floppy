@@ -73,6 +73,9 @@ export function RatingChip({
   open = false,
   onOpenChange,
   anchor = null,
+  // A custom rating scale: the chip opens the criteria sheet instead of the star popup.
+  scale = null,
+  onOpenSheet,
 }) {
   const [showCoverage, setShowCoverage] = useState(false);
   const colors = { ...fallbackPalette, ...palette };
@@ -87,6 +90,8 @@ export function RatingChip({
     onSelect?.(score);
     close();
   };
+
+  const toggle = () => (scale ? onOpenSheet?.() : onOpenChange?.(!open));
 
   const popup = <Modal visible={open} transparent animationType="none" onRequestClose={close}>
     <View style={styles.modalRoot}>
@@ -110,7 +115,7 @@ export function RatingChip({
         accessibilityLabel={rated ? `${text.yourScore}: ${shown}` : text.addRating}
         accessibilityHint={rated ? text.editRating : text.addRating}
         title={text.rateTitle || text.rate}
-        onPress={() => onOpenChange?.(!open)}
+        onPress={toggle}
         style={({ hovered, pressed, focused }) => [styles.compactButton, {
           width: colors.starBadgeSize,
           height: colors.starBadgeSize,
@@ -135,13 +140,14 @@ export function RatingChip({
         borderColor: colors.cardBorder,
         backgroundColor: colors.cardBackground,
         borderRadius: colors.popupRadius + 4,
-        paddingTop: colors.popupPadding + 2,
-        paddingBottom: colors.popupPadding - 2,
+        // The stacked scale chip is centred; the star-row card keeps its slightly top-heavy padding.
+        paddingTop: scale ? colors.popupPadding : colors.popupPadding + 2,
+        paddingBottom: scale ? colors.popupPadding : colors.popupPadding - 2,
         paddingHorizontal: colors.popupPadding,
       }]}>
         {rated
           ? <Pressable accessibilityRole="button" accessibilityLabel={`${text.yourScore}: ${cardShown}`}
-            onPress={() => onOpenChange?.(!open)}
+            onPress={toggle}
             style={({ hovered, pressed, focused }) => [styles.cardButton, (hovered || pressed) && styles.cardButtonActive, focused && colors.focusStyle]}>
             <View style={[styles.starBadge, {
               width: colors.starBadgeSize,
@@ -150,10 +156,18 @@ export function RatingChip({
               borderColor: colors.starBadgeBorder,
               backgroundColor: colors.starBadgeBackground,
             }]}>{star(true, colors.iconSize)}</View>
-            <Text style={[styles.cardValue, { color: colors.text, fontSize: colors.fontSize }]}>{cardShown}</Text>
-            <Text numberOfLines={1} style={[styles.cardMeta, { color: colors.textSecondary, fontSize: colors.fontSize }]}>
-              {hasDerived ? `${text.derived} ${derived.score} · ${derived.coverage}` : text.yourRating}
-            </Text>
+            {scale ? <View style={styles.stackText}>
+              <Text style={[styles.stackValue, { color: colors.text }]}>{cardShown}</Text>
+              <Text numberOfLines={1} style={[styles.stackLabel, { color: colors.textSecondary }]}>{text.yourRating}</Text>
+            </View> : <>
+              <Text style={[styles.cardValue, { color: colors.text, fontSize: colors.fontSize }]}>{cardShown}</Text>
+              <Text numberOfLines={1} style={[styles.cardMeta, { color: colors.textSecondary, fontSize: colors.fontSize }]}>
+                {hasDerived ? `${text.derived} ${derived.score} · ${derived.coverage}` : text.yourRating}
+              </Text>
+            </>}
+          </Pressable>
+          : scale ? <Pressable accessibilityRole="button" accessibilityLabel={text.addRating} onPress={toggle}>
+            <Text style={[styles.cardPrompt, { color: colors.textSecondary, fontSize: colors.fontSize }]}>{text.prompt}</Text>
           </Pressable>
           : <>
             <Text style={[styles.cardPrompt, { color: colors.textSecondary, fontSize: colors.fontSize }]}>
@@ -177,7 +191,7 @@ export function RatingChip({
         ? hasDerived ? `${text.yourScore}: ${shown}. ${text.derivedRating}: ${derived.score}, ${derived.coverage}` : `${text.yourScore}: ${shown}`
         : hasDerived ? `${text.derivedRating}: ${derived.score}, ${derived.coverage}` : text.addRating}
       accessibilityHint={rated ? text.editRating : text.addRating}
-      onPress={() => onOpenChange?.(!open)}
+      onPress={toggle}
       onHoverIn={() => hasDerived && rated && setShowCoverage(true)}
       onHoverOut={() => setShowCoverage(false)}
       onFocus={() => hasDerived && rated && setShowCoverage(true)}
@@ -254,4 +268,8 @@ const styles = StyleSheet.create({
   compactValue: { fontWeight: '700' },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   popup: { borderWidth: 1, overflow: 'hidden' },
+  // Two rows like the provider score cards beside it: the value, then its label.
+  stackText: { flexShrink: 1 },
+  stackValue: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
+  stackLabel: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
 });

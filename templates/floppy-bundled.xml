@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>floppy-bundled</Name>
-  <Repository>ghcr.io/dannyvfilms/floppy:release-bundled</Repository>
+  <Repository>ghcr.io/dannyvfilms/floppy:latest-bundled</Repository>
   <Registry>https://github.com/dannyvfilms/Floppy/pkgs/container/floppy</Registry>
   <Network>bridge</Network>
   <MyIP/>
@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/dannyvfilms/Floppy/issues</Support>
   <Project>https://github.com/dannyvfilms/Floppy</Project>
-  <Overview>Floppy (Bundled) is the self-hosted media tracker in one container: it includes its own PostgreSQL and Valkey, so there is nothing else to install or connect. Choose three host folders (app data, database, backups). A fresh install only: it does not convert an existing SQLite or PostgreSQL Floppy. Full guide: https://github.com/dannyvfilms/Floppy/blob/latest/docs/deployment-bundled.md</Overview>
+  <Overview>Floppy (Bundled, Latest) follows the latest branch: the newest changes, before they reach a release. For tested releases only use Floppy (Bundled, Stable). It is the self-hosted media tracker in one container: it includes its own PostgreSQL and Valkey, so there is nothing else to install or connect. Choose three host folders (app data, database, backups). A fresh install only: it does not convert an existing SQLite or PostgreSQL Floppy. Full guide: https://github.com/dannyvfilms/Floppy/blob/latest/docs/deployment-bundled.md</Overview>
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/templates/floppy-bundled.xml</TemplateURL>

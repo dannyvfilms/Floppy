@@ -41,7 +41,12 @@ export function preferencesToForm(payload) {
   const values = {};
   PREFERENCE_FIELDS.forEach(field => {
     if (!(field in prefs)) return;
-    if (field === 'session_duration' || field === 'rating_scale') {
+    if (field === 'rating_scale') {
+      // A custom scale is chosen as `custom:<id>`; the built-in value is kept for when it is switched off.
+      values[field] = prefs.custom_rating_scale ? `custom:${prefs.custom_rating_scale}` : String(prefs[field]);
+      return;
+    }
+    if (field === 'session_duration') {
       values[field] = String(prefs[field]);
       return;
     }
@@ -57,6 +62,7 @@ export function preferencesMeta(payload) {
     isSuperuser: Boolean(payload?.is_superuser),
     autoPauseLibraries: Array.isArray(prefs.auto_pause_libraries) ? prefs.auto_pause_libraries : [],
     choices: payload?.choices || {},
+    ratingScales: Array.isArray(prefs.rating_scales) ? prefs.rating_scales : [],
   };
 }
 
@@ -70,6 +76,10 @@ export function preferencesPatch(values) {
       return;
     }
     if (field === 'auto_pause_in_progress_enabled') return;
+    if (field === 'rating_scale' && String(values[field]).startsWith('custom:')) {
+      patch.custom_rating_scale = String(values[field]).slice('custom:'.length);
+      return;
+    }
     patch[field] = values[field];
   });
   if (Array.isArray(values?.auto_pause_rules)) {
@@ -353,6 +363,11 @@ export function createRemoteSettingsActions(request, { authType = 'session' } = 
     loadPreferences: () => get('/api/v1/user/preferences/'),
     loadPreferenceChoices: () => get('/api/v1/user/preferences/choices/'),
     savePreferences: values => send('PATCH', '/api/v1/user/preferences/', preferencesPatch(values)),
+    loadRatingScales: () => get('/api/v1/user/rating-scales/'),
+    saveRatingScale: ({ id, scale }) => (id
+      ? send('PUT', `/api/v1/user/rating-scales/${encodeURIComponent(id)}/`, scale)
+      : send('POST', '/api/v1/user/rating-scales/', scale)),
+    deleteRatingScale: ({ id }) => send('DELETE', `/api/v1/user/rating-scales/${encodeURIComponent(id)}/`),
     savePlaybackWebhook: values => send('PATCH', '/api/v1/user/preferences/', values),
     loadNotifications: () => get('/api/v1/user/notifications/'),
     saveNotifications: values => send('PATCH', '/api/v1/user/notifications/', values),

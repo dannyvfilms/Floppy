@@ -264,6 +264,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/RatingStars.jsx`
+  - Half stars: left half of a star picks x.5 (#2164).
 - `frontend/ui/mountRatingStars.jsx`
 - `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
@@ -1487,6 +1488,14 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
+- `frontend/ui/NumberPickerRow.jsx`
+- `frontend/ui/inlineNumbers.js`
+- `frontend/ui/inlineNumbers.native.js`
+- `frontend/ui/inlineNumbers.web.js`
+- `frontend/ui/RatingCriteriaSheet.jsx`
+- `frontend/ui/RatingScaleEditor.jsx`
+- `frontend/ui/RatingSheet.jsx`
+- `frontend/ui/ratingScaleModel.js`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
 - `frontend/ui/RefreshNotice.jsx`
@@ -1587,6 +1596,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
+- `frontend/ui/mountRatingScaleEditor.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`
 - `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/mountShell.jsx`
