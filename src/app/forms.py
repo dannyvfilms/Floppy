@@ -483,7 +483,7 @@ class RatingScaleFormMixin:
                 manual_score,
             )
         except rating_scales.RatingScaleError as error:
-            raise forms.ValidationError(str(error)) from error
+            raise forms.ValidationError(error.message) from error
         if rating_scales.keeps_plain_score(self.instance, cleaned, manual):
             # Rated before the custom scale: keep that score unless criteria are filled in.
             return self.user.scale_score_for_storage(typed_score)

@@ -24,7 +24,16 @@ NOT_A_NUMBER = "Enter a number."
 
 
 class RatingScaleError(ValueError):
-    """Raised for invalid scale or rating input; the message is user-facing."""
+    """Raised for invalid scale or rating input; `message` is user-facing.
+
+    The text lives on `message`, never in `args`, so a handler can only ever
+    return text written for the user and not exception internals.
+    """
+
+    def __init__(self, message):
+        """Keep the user-facing text off the exception args."""
+        super().__init__()
+        self.message = str(message)
 
 
 def _decimal(value):
@@ -352,8 +361,10 @@ def criteria_from_body(user, body, entry=None):
         if manual and body.get("score") is not None:
             manual_score = Decimal(str(body["score"]))
         score, computed, manual, cleaned = apply_rating(user, raw, manual_score)
-    except (RatingScaleError, InvalidOperation) as error:
-        return None, str(error) or "Invalid score."
+    except RatingScaleError as error:
+        return None, error.message or "Invalid score."
+    except InvalidOperation:
+        return None, "Invalid score."
     if entry is not None and keeps_plain_score(entry, cleaned, manual):
         return None, None
     body["score"] = None if score is None else float(score)

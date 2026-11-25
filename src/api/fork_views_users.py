@@ -767,7 +767,7 @@ class RatingScalesView(drf_views.APIView):
         try:
             scale = rating_scales.save_scale(request.user, request.data)
         except rating_scales.RatingScaleError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         return Response(rating_scales.scale_payload(scale), status=HTTP.CREATED)
 
 
@@ -792,7 +792,7 @@ class RatingScaleDetailView(drf_views.APIView):
         try:
             scale = rating_scales.save_scale(request.user, request.data, scale=scale)
         except rating_scales.RatingScaleError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         return Response(rating_scales.scale_payload(scale), status=HTTP.OK)
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
