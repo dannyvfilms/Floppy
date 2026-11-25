@@ -90,8 +90,8 @@ export function RatingScaleEditor({
   const actions = criterion => <>{draft.tiers > 1 ? <>{arrow(criterion, -1, labels.moveUp)}{arrow(criterion, 1, labels.moveDown)}</> : null}{trash(criterion)}</>;
 
   // One line per criterion, like the Tracking date rows: handle, name, then the range. Desktop types the range into
-  // whole-number inputs; phones and native show pills and open a wheel (or stepper) below the row, with the
-  // move and remove buttons.
+  // whole-number inputs; phones and native show pills and open a wheel (or stepper) below the row. The move and
+  // remove buttons stay on the same line either way.
   const criterionBlock = (criterion, handle) => {
     const active = picker && picker.id === criterion.id ? picker.which : null;
     const message = errors[criterion.id];
@@ -114,6 +114,7 @@ export function RatingScaleEditor({
           {pill(criterion, 'min')}
           <Text style={[styles.rangeLabel, { color: palette.textMuted }]}>{labels.to}</Text>
           {pill(criterion, 'max')}
+          {actions(criterion)}
         </>}
       </View>
       {!inline && active ? <View style={styles.panel}>
@@ -123,7 +124,6 @@ export function RatingScaleEditor({
         }) : <NumberStepper value={criterion[active]} min={-1000} max={1000} step={1}
           label={`${criterion.name || labels.criterionName} ${active === 'min' ? 'minimum' : 'maximum'}`} palette={palette}
           onChange={next => edit(criterion.id, { [active]: next === '' ? '' : Number(next) })} />}
-        <View style={styles.panelActions}>{actions(criterion)}</View>
       </View> : null}
       {message ? <Text accessibilityLiveRegion="polite" style={[styles.error, { color: palette.danger }]}>{message}</Text> : null}
     </View>;
@@ -166,10 +166,9 @@ export function RatingScaleEditor({
 }
 
 const styles = StyleSheet.create({
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50 },
-  panelActions: { flexDirection: 'row', alignItems: 'center', gap: 18, paddingTop: 10 },
-  nameInput: { flex: 1, minWidth: 80, fontSize: 17, paddingVertical: 8 },
-  iconButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 50 },
+  nameInput: { flex: 1, minWidth: 40, fontSize: 17, paddingVertical: 8 },
+  iconButton: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
   rangeLabel: { fontSize: 14 },
   pill: { borderRadius: 17, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 5, minWidth: 48, alignItems: 'center' },
   pillText: { fontSize: 16 },

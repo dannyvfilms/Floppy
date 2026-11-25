@@ -12,7 +12,7 @@ import { clampValue, formatScore, isFilled } from './ratingScaleModel';
 // score field (`inline`). Props only: the caller owns the value and which row is open.
 
 /** A plain number input. Whole numbers unless `decimal`; an empty field means no value. */
-export function NumberInput({ value, min, max, decimal = false, label, onChange, palette, width = 72, align = 'right' }) {
+export function NumberInput({ value, min, max, decimal = false, label, onChange, palette, width = 64, align = 'center' }) {
   const text = isFilled(value) ? String(value) : '';
   return <TextInput accessibilityLabel={label} keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
     inputMode={decimal ? 'decimal' : 'numeric'} value={text} selectionColor={palette.accent}
@@ -24,7 +24,7 @@ export function NumberInput({ value, min, max, decimal = false, label, onChange,
       if (Number.isFinite(number)) onChange(String(clampValue({ min, max }, number)));
     }}
     style={[styles.numberInput, { width, textAlign: align, color: palette.text,
-      borderColor: palette.inputBorder || palette.border, backgroundColor: palette.surfaceStrong || palette.surface }]} />;
+      backgroundColor: systemFillColor() || palette.surfaceStrong || palette.surface }]} />;
 }
 
 export function NumberStepper({ value, min, max, step, label, onChange, palette }) {
@@ -100,6 +100,7 @@ const styles = StyleSheet.create({
   stepper: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stepButton: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   glyph: { fontSize: 22, lineHeight: 24 },
-  numberInput: { height: 36, borderRadius: 6, borderWidth: 1, paddingHorizontal: 10, fontSize: 15 },
+  // A filled pill with no outline, like the iOS value pills; the browser's focus ring is dropped (the fill darkens instead).
+  numberInput: { height: 34, borderRadius: 17, borderWidth: 0, paddingHorizontal: 12, fontSize: 16, outlineStyle: 'none' },
   error: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 },
 });

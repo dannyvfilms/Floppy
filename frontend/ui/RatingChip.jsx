@@ -140,8 +140,9 @@ export function RatingChip({
         borderColor: colors.cardBorder,
         backgroundColor: colors.cardBackground,
         borderRadius: colors.popupRadius + 4,
-        paddingTop: colors.popupPadding + 2,
-        paddingBottom: colors.popupPadding - 2,
+        // The stacked scale chip is centred; the star-row card keeps its slightly top-heavy padding.
+        paddingTop: scale ? colors.popupPadding : colors.popupPadding + 2,
+        paddingBottom: scale ? colors.popupPadding : colors.popupPadding - 2,
         paddingHorizontal: colors.popupPadding,
       }]}>
         {rated
@@ -270,5 +271,5 @@ const styles = StyleSheet.create({
   // Two rows like the provider score cards beside it: the value, then its label.
   stackText: { flexShrink: 1 },
   stackValue: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
-  stackLabel: { fontSize: 14, lineHeight: 18, fontWeight: '500' },
+  stackLabel: { fontSize: 13, lineHeight: 18, fontWeight: '500' },
 });
