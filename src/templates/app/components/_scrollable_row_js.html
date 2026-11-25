@@ -261,18 +261,28 @@
     if (!probe) {
       probe = document.createElement('div');
       probe.id = 'active-playback-probe';
-      probe.className = 'media-grid';
       probe.setAttribute('aria-hidden', 'true');
       probe.style.cssText = 'height:0;overflow:hidden;visibility:hidden;pointer-events:none;margin:0 !important';
-      probe.innerHTML = '<div data-active-playback-probe></div>';
       container.after(probe);
+    }
+    // Desktop Home shelves are flex rows of fixed-width cards (w-44, gap-4), not
+    // auto-fill grids, so measure that shape or the card overshoots the shelf's
+    // two-card right edge. Mobile shelves keep the grid measurement.
+    const desktop = window.matchMedia('(min-width: 769px)').matches;
+    const probeKind = desktop ? 'row' : 'grid';
+    if (probe.dataset.kind !== probeKind) {
+      probe.dataset.kind = probeKind;
+      probe.className = desktop ? 'flex gap-4' : 'media-grid';
+      probe.innerHTML = desktop
+        ? '<div data-active-playback-probe class="home-row-card w-44 shrink-0"></div>'
+        : '<div data-active-playback-probe></div>';
     }
     const item = probe.firstElementChild;
     if (!item) return;
     const columnWidth = item.getBoundingClientRect().width;
     const gap = parseFloat(getComputedStyle(probe).columnGap) || 0;
     const mobileColumns = document.body.dataset.mobileGrid === 'comfortable' ? 2 : 3;
-    const columns = window.matchMedia('(min-width: 769px)').matches ? 2 : mobileColumns;
+    const columns = desktop ? 2 : mobileColumns;
     const width = Math.round(columnWidth * columns + gap * (columns - 1));
     if (width > 0 && container.dataset.cardWidth !== String(width)) {
       container.dataset.cardWidth = String(width);
