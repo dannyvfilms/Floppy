@@ -25,7 +25,7 @@ from itertools import batched, islice
 from typing import TYPE_CHECKING
 
 from django.db.models import Exists, F, OuterRef, Q
-from django.db.models.functions import Coalesce, Lower
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from app.library_query import filters as filter_registry
@@ -34,6 +34,7 @@ from app.library_query.spec import ROUTING_MODEL, STATUS_MATCH_LATEST
 from app.library_query.trackers import episode_media_for_items, tracker_sources
 from app.models.choices import MediaTypes, Sources
 from app.models.item import Item
+from app.title_sort import title_sort_expr, title_sort_key
 
 # Only grouped shows (anime/seasons stored on TV rows) set library_media_type
 # to another type; every other library matches on media_type alone, which a
@@ -692,13 +693,13 @@ def tie_breakers(*, descending: bool) -> list:
     """
     if descending:
         return [
-            Lower("title").desc(),
+            title_sort_expr("title").desc(),
             F("season_number").desc(nulls_last=True),
             F("episode_number").desc(nulls_last=True),
             F("pk").desc(),
         ]
     return [
-        Lower("title").asc(),
+        title_sort_expr("title").asc(),
         F("season_number").asc(nulls_first=True),
         F("episode_number").asc(nulls_first=True),
         F("pk").asc(),
@@ -709,7 +710,7 @@ def rank_row(value, item) -> tuple:
     """Return a scan row that orders like ``tie_breakers`` after ``value``."""
     season = -1 if item.season_number is None else item.season_number
     episode = -1 if item.episode_number is None else item.episode_number
-    return (value, (item.title or "").lower(), season, episode, item.pk)
+    return (value, title_sort_key(item.title), season, episode, item.pk)
 
 
 def order_rows(rows: list[tuple], *, descending: bool, ties_descending: bool | None = None) -> list[tuple]:

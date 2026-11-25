@@ -223,7 +223,7 @@ export function PreferencesForm({
         onChange={next => onChange?.(field.name, next)}
       />;
     }
-    return <SelectField
+    const select = <SelectField
       key={field.name}
       id={field.name}
       name={field.name}
@@ -238,6 +238,14 @@ export function PreferencesForm({
       iconChevron={Boolean(colors.preferenceCards)}
       onChange={event => onChange?.(field.name, event.target.value)}
     />;
+    // A select can offer one action beneath it (the Rating Scale menu's Edit link).
+    if (!field.footerAction) return select;
+    return <View key={field.name} style={{ gap: 8 }}>
+      {select}
+      <Pressable accessibilityRole="button" onPress={field.footerAction.onPress}>
+        <Text style={[styles.help, { color: colors.link || colors.accent }]}>{field.footerAction.label}</Text>
+      </Pressable>
+    </View>;
   }
 
   return <View style={styles.form}>

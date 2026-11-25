@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.services.episode_scores import rate_episode
 from integrations.state.ratings import rating_edit
+from users import rating_scales
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,41 @@ def update_media_score(request, media_type, instance_id):
     score_raw = request.POST.get("score")
     toggle = request.POST.get("toggle")
     score = None
+    pending_rating = None
+    keeps_score = False
+    if request.POST.get("criteria_submitted") and request.user.custom_rating_scale_id:
+        # Custom scale: the chip popup sends one value per criterion.
+        body = {
+            "criteria": {
+                key[len("criterion:"):]: value
+                for key, value in request.POST.items()
+                if key.startswith("criterion:")
+            },
+            "score": score_raw or None,
+            "score_is_manual": request.POST.get("score_is_manual"),
+        }
+        pending_rating, rating_error = rating_scales.criteria_from_body(
+            request.user,
+            body,
+            media,
+        )
+        if rating_error:
+            return HttpResponseBadRequest(rating_error)
+        score_raw = None if body["score"] is None else str(body["score"])
+        # Nothing filled in on an entry with only a historical score: leave it alone.
+        keeps_score = pending_rating is None
+        toggle = None
+    elif request.user.custom_rating_scale_id and (score_raw or "").strip() not in {"", "null"}:
+        # A flat score on a custom scale is a manual override of the calculation.
+        existing = rating_scales.get_entry_rating(media)
+        if existing is not None:
+            pending_rating = {
+                "user": request.user,
+                "values": {k: Decimal(str(v)) for k, v in existing.values.items()},
+                "computed": existing.computed_score,
+                "manual": True,
+                "scale": existing.scale,
+            }
     if score_raw is not None:
         score_raw = score_raw.strip()
         if score_raw and score_raw.lower() != "null":
@@ -89,7 +125,9 @@ def update_media_score(request, media_type, instance_id):
     if toggle and score is not None and media.score == score:
         score = None
 
-    media.score = score
+    if not keeps_score:
+        media.score = score
+    media._pending_entry_rating = pending_rating
     media.save()
     logger.info(
         "%s score updated to %s",

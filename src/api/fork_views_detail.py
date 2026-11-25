@@ -53,6 +53,7 @@ from app.templatetags.app_tags import (
 )
 from integrations import seerr_api
 from integrations.imports import helpers as import_helpers
+from users import rating_scales
 from users.appearance import resolved_detail_layouts
 from users.templatetags.ui_tags import _people_cast_props
 from users.templatetags.user_tags import detail_layout_family, user_date_format
@@ -151,6 +152,7 @@ def _tracking_entries(viewer, item, *, public_view, can_write, media_type, track
         "media_type": item.media_type,
         "status": entry.status,
         "score": _primitive(entry.score),
+        "criteria": rating_scales.api_criteria(entry) if viewer.custom_rating_scale_id else None,
         "display_score": _primitive(viewer.scale_score_for_display(entry.score)) if viewer.ratings_enabled else None,
         "scale_max": viewer.rating_scale_max,
         "progress": entry.progress,
@@ -880,6 +882,11 @@ class DetailPageView(drf_views.APIView):
                 "scale_max": viewer.rating_scale_max if viewer and not public_view else 10,
                 "value": _primitive(viewer.scale_score_for_display(tracked.score))
                 if tracked is not None and viewer and not public_view else None,
+                # Custom rating scale: its criteria with this entry's values.
+                "criteria": (
+                    rating_scales.entry_payload(viewer, tracked)
+                    if tracked is not None and viewer and not public_view else None
+                ),
             },
             "tracking": tracking,
             "tracking_entries": tracking_entries,
@@ -1484,14 +1491,14 @@ class MediaCheckInView(drf_views.APIView):
         name = request.data.get("action")
         if checkin_session.supports(media_type):
             action = SESSION_ACTIONS.get(name)
-            arguments = (request.user, source, media_type, media_id)
+            arguments, kwargs = (request.user, source, media_type, media_id), {}
         else:
             action = ACTIONS.get(name) if checkin.supports(media_type, source) else None
-            arguments = (request.user, media_type, media_id)
+            arguments, kwargs = (request.user, media_type, media_id), {"source": source}
         if action is None:
             return Response({"detail": "Unsupported check-in."}, status=HTTP.BAD_REQUEST)
         try:
-            action(*arguments)
+            action(*arguments, **kwargs)
         except checkin.CheckInError as error:
             return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         return self.get(request, media_type, source, media_id)

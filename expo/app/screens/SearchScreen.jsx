@@ -88,6 +88,10 @@ export default function SearchScreen({ params, navigate }) {
         query={params?.query || ''}
         mediaType={params?.mediaType || 'all'}
         navigate={navigate}
+        focusRowId={params?.gridRow || ''}
+        onFocusRow={row => navigate('Search', {
+          query: params?.query || '', mediaType: params?.mediaType || 'all', ...(row ? { gridRow: String(row.rowId) } : {}),
+        })}
         onOpenDetail={card => navigate('Detail', { item: card })}
       />}
     />}

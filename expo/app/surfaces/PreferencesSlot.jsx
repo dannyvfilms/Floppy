@@ -8,6 +8,9 @@ import SettingsLoadState from './SettingsLoadState';
 import { useSettingsPalettes } from './settingsPalettes';
 import { useSettingsResource } from './useSettingsResource';
 import SettingsSaveBar from './SettingsSaveBar';
+import { RatingScaleEditor } from '../../../frontend/ui/RatingScaleEditor';
+import { draftFromScale, draftPayload, newDraft } from '../../../frontend/ui/ratingScaleModel';
+import { renderNumberWheel } from './TrackDatePanels';
 
 export const surface = {
   id: 'SET-PREFERENCES',
@@ -234,7 +237,9 @@ function pairsToOptions(pairs) {
   return (pairs || []).map(([value, label]) => ({ value, label }));
 }
 
-function buildSections(meta, lists, current) {
+const CREATE_SCALE = '__create_rating_scale__';
+
+function buildSections(meta, lists, current, ratingScales = [], editScale = () => {}) {
   const choices = meta.choices || {};
   const themeOptions = THEME_OPTIONS.some(option => option.value === current.theme)
     ? THEME_OPTIONS
@@ -243,6 +248,14 @@ function buildSections(meta, lists, current) {
     ...section,
     fields: section.fields.map(field => {
       if (field.name === 'theme') return { ...field, options: themeOptions };
+      if (field.name === 'rating_scale') {
+        // The built-in scales, then the viewer's own, then the action that creates another.
+        const chosen = ratingScales.find(scale => `custom:${scale.id}` === current.rating_scale);
+        return { ...field,
+          options: [...field.options, ...ratingScales.map(scale => ({ value: `custom:${scale.id}`, label: scale.name })),
+            { value: CREATE_SCALE, label: 'Create Rating Scale' }],
+          footerAction: chosen ? { label: 'Edit Rating Scale', onPress: () => editScale(chosen) } : null };
+      }
       if (field.name === 'watch_provider_region') return { ...field, placeholder: 'Disabled', options: pairsToOptions(lists.watch_provider_region) };
       if (field.name === 'metadata_language') return { ...field, options: pairsToOptions(lists.metadata_language) };
       if (field.name === 'ui_language') return { ...field, options: matchServerChoices(uiLanguages, choices.ui_language) };
@@ -294,20 +307,65 @@ function PreferencesForm({ transport, payload, lists, reload, onOpenCards }) {
     }
   }
 
-  return <SettingsPreferencesView
+  const [scales, setScales] = useState(meta.ratingScales);
+  const [draft, setDraft] = useState(null);
+  const [scaleBusy, setScaleBusy] = useState(false);
+  const [scaleError, setScaleError] = useState('');
+
+  // The editor saves on its own (a scale is its own record), then the menu selects what was saved.
+  async function saveScale(next) {
+    setScaleBusy(true);
+    setScaleError('');
+    try {
+      const saved = await transport.saveRatingScale({ id: next.id, scale: draftPayload(next) });
+      const list = await transport.loadRatingScales();
+      setScales(list.results);
+      if (!next.id) setValues(current => ({ ...current, rating_scale: `custom:${saved.id}` }));
+      setDraft(null);
+    } catch (cause) {
+      setScaleError(cause?.message || 'The rating scale could not be saved.');
+    } finally {
+      setScaleBusy(false);
+    }
+  }
+
+  async function deleteScale() {
+    setScaleBusy(true);
+    try {
+      await transport.deleteRatingScale({ id: draft.id });
+      const list = await transport.loadRatingScales();
+      setScales(list.results);
+      setValues(current => (current.rating_scale === `custom:${draft.id}` ? { ...current, rating_scale: '10' } : current));
+      setDraft(null);
+    } catch (cause) {
+      setScaleError(cause?.message || 'The rating scale could not be deleted.');
+    } finally {
+      setScaleBusy(false);
+    }
+  }
+
+  return <>
+    <RatingScaleEditor open={Boolean(draft)} draft={draft} onChange={setDraft} onSave={saveScale}
+      onDelete={deleteScale} onClose={() => setDraft(null)} busy={scaleBusy} error={scaleError}
+      palette={settingsPalette} renderWheel={renderNumberWheel} />
+    <SettingsPreferencesView
     heading={false}
     SaveBar={SettingsSaveBar}
-    sections={buildSections(meta, lists, values)}
+    sections={buildSections(meta, lists, values, scales, scale => { setScaleError(''); setDraft(draftFromScale(scale)); })}
     values={values}
     initialValues={savedValues}
-    onChange={(name, value) => setValues(current => ({ ...current, [name]: value }))}
+    onChange={(name, value) => {
+      if (value === CREATE_SCALE) { setScaleError(''); setDraft(newDraft()); return; }
+      setValues(current => ({ ...current, [name]: value }));
+    }}
     onSave={save}
     validate={validate}
     formError={formError}
     palette={{ ...settingsPalette, preferenceCards: true }}
     onSectionLink={onOpenCards}
     buttonPalette={buttonPalette}
-  />;
+  />
+  </>;
 }
 
 export default function PreferencesSlot({ onOpenCards }) {

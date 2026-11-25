@@ -4,6 +4,7 @@
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -45,6 +46,8 @@ def fetch_goal() -> dict:
     )
     with urlopen(request, timeout=20) as response:
         result = json.load(response)
+    # Log the raw answer so a surprising figure can be traced to what GitHub actually returned.
+    print(f"[sponsors-goal] {datetime.now(timezone.utc).isoformat()} API response: {json.dumps(result)}")
     if result.get("errors"):
         raise SystemExit(f"GitHub GraphQL error: {result['errors']}")
     goal = (result.get("data", {}).get("user", {}).get("sponsorsListing") or {}).get("activeGoal")
@@ -94,5 +97,11 @@ def render(goal: dict) -> str:
 
 if __name__ == "__main__":
     goal = fetch_goal()
-    if not card_is_current(goal):
+    percent, target = figures(goal)
+    old = LABEL.search(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else None
+    old_text = f"{old[1]}% of ${old[2]}" if old else "none"
+    if card_is_current(goal):
+        print(f"[sponsors-goal] card already shows {old_text}; API says {percent}% of ${target}. No change.")
+    else:
         OUTPUT.write_text(render(goal), encoding="utf-8")
+        print(f"[sponsors-goal] card changed: {old_text} -> {percent}% of ${target}")

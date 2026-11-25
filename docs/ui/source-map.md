@@ -58,7 +58,7 @@ Status: `Partial / coexisting`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `frontend/ui/dropdownMetrics.js`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
-- `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
+- `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; on a phone (no rail) the shared `TopBar` (menu button, then search) sits in flow above the page and a left-edge drag goes back, while a rail device keeps the floating search and toolbar buttons; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
@@ -264,6 +264,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/RatingStars.jsx`
+  - Half stars: left half of a star picks x.5 (#2164).
 - `frontend/ui/mountRatingStars.jsx`
 - `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
@@ -411,7 +412,7 @@ Status: `Partial / coexisting`
 ## SEARCH
 
 `expo/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `expo/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `expo/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` supplies MediaCardSlot to each shared shelf card for in-place actions; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Native shelf actions use the MediaCardSlot host; unsupported media retain their existing detail flow.
-
+ A row title opens that row as a grid: `SearchResults` `RowGrid`, `focusRowId`/`onFocusRow` (web `?grid=<rowId>`, Expo `Search` `gridRow`); `Rail` omits paging arrows on native.
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
 Suggestion requests (2026-11-16): `GlobalSearch` cancels the superseded request with an `AbortController` and passes `signal` to the platform loader; web loads through `frontend/ui/webRequest.web.js`, Expo through `searchTransportCore` and `authTransportCore` `send`. Both send a per-box `sid` (made in `GlobalSearch.web.jsx`, and per transport by `searchBoxId` in `searchTransportCore`) that `search_views.suggestion_superseded_check` uses to stop older All-media requests early.
@@ -1485,6 +1486,14 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
+- `frontend/ui/NumberPickerRow.jsx`
+- `frontend/ui/inlineNumbers.js`
+- `frontend/ui/inlineNumbers.native.js`
+- `frontend/ui/inlineNumbers.web.js`
+- `frontend/ui/RatingCriteriaSheet.jsx`
+- `frontend/ui/RatingScaleEditor.jsx`
+- `frontend/ui/RatingSheet.jsx`
+- `frontend/ui/ratingScaleModel.js`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
 - `frontend/ui/RefreshNotice.jsx`
@@ -1585,6 +1594,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
+- `frontend/ui/mountRatingScaleEditor.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`
 - `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/mountShell.jsx`

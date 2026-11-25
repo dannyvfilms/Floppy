@@ -124,6 +124,7 @@ See `docs/deployment-bundled.md`.
 | A page view | The subject's `*_views.py` in its app; route in that app's `urls.py` | Authentication and public routes: `docs/agents/view_authentication.md` |
 | An API endpoint | `src/api/fork_views_<subject>.py`, route in `src/api/fork_urls.py` | Declare its scope: `docs/architecture/api-scopes.md` |
 | A filter or sort for a list-shaped page | `src/app/library_query/filters.py` or `src/app/library_query/sorts.py` | "Adding a filter or sort" in `docs/architecture/library-query.md`, which also lists the tests and surfaces to update |
+| A title sort or comparison | `src/app/title_sort.py` (`title_sort_key` in Python, `title_sort_expr` in SQL) | Orders by the title without a leading "The ", "A " or "An "; the displayed title never changes. The two must agree: keyset paging compares one with the other |
 | A cache for a page | Key builder and registration in `src/app/cache_utils.py` | Clear it through `clear_library_view_caches`: `docs/architecture/view-caches.md` |
 | A bulk write to tracking rows (`update`, `bulk_create`, `bulk_update`) | Where the write is; a row in `src/app/bulk_write_refresh.py` | Say how the library pages, Statistics and History learn about it: `app.tests.test_bulk_write_refresh` fails until you do |
 | A rule that changes seasons when a show's status changes | `TV._propagate_status_to_seasons` in `src/app/models/tv.py`, one narrow branch per transition. Season to show rules are in `Season.save` | Guard on the exact transition (`tracker.previous`), touch only seasons, add a row in `src/app/bulk_write_refresh.py` for a bulk write |
@@ -132,6 +133,7 @@ See `docs/deployment-bundled.md`.
 | An import or scheduled sync | `src/integrations/imports/<source>.py` | A run that finds no change writes nothing (see the rules below) |
 | A new media type | Follow the playbook | `docs/agents/media_type_integration.md` |
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
+| A user-defined rating scale (named criteria, ranges, weight tiers) and how an entry's criteria become its 0-10 score | `src/users/rating_scales.py` (rules, saving, API payloads); models in `src/users/rating_scale_models.py`; tests `users.tests.test_rating_scales`; UI rules in `frontend/ui/ratingScaleModel.js` | `docs/architecture/rating-sync.md` (final score only leaves Floppy) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
