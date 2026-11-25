@@ -19,6 +19,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-title" content="Floppy">
+    <meta name="floppy-base-path" content="{% script_prefix %}">
 
     <title>
       {% block title %}
@@ -367,15 +368,12 @@
                   <span>{% trans "Settings" %}</span>
                 </a>
 
-                <form method="post" action="{% url 'account_logout' %}" class="w-full">
-                  {% csrf_token %}
-                  <button type="submit"
+                <a href="{% url 'account_logout' %}"
                           class="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors duration-200 text-sm cursor-pointer">
                     {% include "app/icons/logout.svg" with classes="w-5 h-5" %}
 
                     <span>{% trans "Logout" %}</span>
-                  </button>
-                </form>
+                </a>
               </div>
             </div>
             </div>

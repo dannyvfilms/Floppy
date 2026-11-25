@@ -4,6 +4,8 @@
 // stay same-origin and unsafe methods carry the CSRF token. Native supplies
 // its own request from authTransportCore. Keep this small: endpoint logic
 // belongs in the shared core, and there is deliberately no cache or retry.
+import { withBasePath } from './basePath.web.js';
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Same encoding as the native transport: empty values are left out.
@@ -14,7 +16,7 @@ export function webQueryString(query = {}) {
   return parts.length ? `?${parts.join('&')}` : '';
 }
 
-export function createWebRequest({ csrfToken = '', fetchImpl, onTiming } = {}) {
+export function createWebRequest({ csrfToken = '', fetchImpl, onTiming, basePath } = {}) {
   const send = fetchImpl || ((url, init) => window.fetch(url, init));
   // Identical GETs already on the way share one answer; nothing is kept after.
   const inFlight = new Map();
@@ -41,7 +43,7 @@ export function createWebRequest({ csrfToken = '', fetchImpl, onTiming } = {}) {
 
   return function request(path, options = {}) {
     const method = String(options.method || 'GET').toUpperCase();
-    const url = `${path}${webQueryString(options.query)}`;
+    const url = `${withBasePath(path, basePath)}${webQueryString(options.query)}`;
     // A caller that may cancel gets its own request, so cancelling never fails another caller.
     if (method !== 'GET' || options.signal) return perform(url, path, method, options);
     if (!inFlight.has(url)) {

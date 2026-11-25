@@ -16,6 +16,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from simple_history.utils import bulk_update_with_history
@@ -411,6 +412,18 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_movie(entry)
             except MediaImportError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "MDBList import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception:
                 self._entry_error_warning(entry, "watched movie")
 
@@ -424,6 +437,18 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_show(entry)
             except MediaImportError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "MDBList import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception:
                 self._entry_error_warning(entry, "watched show")
 
@@ -444,6 +469,18 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self.process_watched_season(entry)
             except MediaImportError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "MDBList import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception:
                 self._entry_error_warning(entry, "watched season")
 
@@ -461,6 +498,18 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 )
             except MediaImportError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "MDBList import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception:
                 self._entry_error_warning(entry, "watched episode")
 
@@ -801,6 +850,18 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 self._process_watchlist_entry(entry)
             except MediaImportError:
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "MDBList watchlist import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception:
                 self._entry_error_warning(entry, "watchlist")
 
@@ -857,6 +918,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             for group in ("movies", "shows", "seasons", "episodes")
         )
         current = 0
+        time_limited = False
 
         for group, handler in (
             ("movies", self._process_movie_rating),
@@ -873,8 +935,23 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     handler(entry)
                 except MediaImportError:
                     raise
+                except SoftTimeLimitExceeded:
+                    logger.warning(
+                        "MDBList ratings import for %s hit the time limit at entry %s/%s",
+                        self.user.username,
+                        current,
+                        total,
+                    )
+                    self.warnings.append(
+                        "Import stopped partway through because it was taking too "
+                        "long. Run the import again to pick up the remaining entries.",
+                    )
+                    time_limited = True
+                    break
                 except Exception:
                     self._entry_error_warning(entry, "rating")
+            if time_limited:
+                break
 
     def _process_movie_rating(self, entry):
         """Apply a movie rating, storing the score without tracking the movie."""
@@ -1094,6 +1171,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         total = len(data.get("movies", [])) + len(data.get("shows", []))
         current = 0
+        time_limited = False
 
         for group, media_type in (
             ("movies", MediaTypes.MOVIE.value),
@@ -1127,5 +1205,20 @@ class MDBListImporter(TraktMetadataResolverMixin):
                         ),
                         metadata=None,
                     )
+                except SoftTimeLimitExceeded:
+                    logger.warning(
+                        "MDBList collection import for %s hit the time limit at entry %s/%s",
+                        self.user.username,
+                        current,
+                        total,
+                    )
+                    self.warnings.append(
+                        "Import stopped partway through because it was taking too "
+                        "long. Run the import again to pick up the remaining entries.",
+                    )
+                    time_limited = True
+                    break
                 except Exception:
                     self._entry_error_warning(entry, "collection")
+            if time_limited:
+                break

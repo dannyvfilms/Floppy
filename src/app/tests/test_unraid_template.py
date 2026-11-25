@@ -55,3 +55,38 @@ class UnraidTemplateSizingTests(SimpleTestCase):
                 config = self.configs[name]
                 self.assertEqual(config.get("Default"), reference.get("Default"))
                 self.assertEqual(config.get("Required"), reference.get("Required"))
+
+
+BUNDLED_TEMPLATE = TEMPLATE.with_name("floppy-bundled.xml")
+
+
+class UnraidBundledTemplateTests(SimpleTestCase):
+    """The bundled template must not carry settings that switch off the bundle."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Parse the bundled template once."""
+        super().setUpClass()
+        cls.root = ET.parse(BUNDLED_TEMPLATE).getroot()
+        cls.targets = {c.get("Target") for c in cls.root.findall("Config")}
+
+    def test_uses_the_bundled_image(self):
+        """A bundled template pointing at the standard tag would find no services."""
+        self.assertTrue(self.root.findtext("Repository").endswith("-bundled"))
+
+    def test_external_service_variables_are_absent(self):
+        """DB_HOST or REDIS_URL, even blank, must not reach the container."""
+        for name in ("DB_HOST", "REDIS_URL", "DB_PASSWORD"):
+            self.assertNotIn(name, self.targets)
+
+    def test_persistent_paths_are_offered(self):
+        """Data, database and backups each have their own host mount."""
+        for path in ("/floppy/db", "/floppy/pgdata", "/floppy/backups"):
+            self.assertIn(path, self.targets)
+
+    def test_standard_template_is_unchanged_in_shape(self):
+        """Existing installs keep SQLite and the external Redis default."""
+        standard = ET.parse(TEMPLATE).getroot()
+        self.assertEqual(
+            standard.findtext("Repository"), "ghcr.io/dannyvfilms/floppy:latest"
+        )

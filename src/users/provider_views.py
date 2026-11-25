@@ -334,28 +334,31 @@ def provider_detail(request, slug):
         context["account_connection"]["title"] = _("Plex account")
         context["account_connection"]["submitLabel"] = _("Reconnect Plex") if account else _("Connect Plex")
     if tab == "connection" and slug == "jellyfin":
-        account = context.get("jellyfin_account")
-        connected = bool(account and _flag(account.is_connected))
+        accounts = context.get("jellyfin_accounts", [])
         context["account_connection"] = provider_ui.account_connection(
-            request, connected=connected, saved=bool(account), attention=bool(account and account.connection_broken),
-            fields=[{"name": "base_url", "label": _("Server URL"), "type": "url", "placeholder": "https://jellyfin.local:8096",
-                     "value": account.base_url if account else ""},
+            request, connected=any(_flag(row.is_connected) for row in accounts), saved=bool(accounts),
+            attention=any(row.connection_broken for row in accounts),
+            fields=[{"name": "name", "label": _("Label (optional)"), "type": "text", "placeholder": _("Label (optional)"), "required": False},
+                    {"name": "base_url", "label": _("Server URL"), "type": "url", "placeholder": "https://jellyfin.local:8096"},
                     {"name": "api_key", "label": _("API key"), "type": "password", "placeholder": _("API key")},
                     {"name": "username", "label": _("Username"), "type": "text", "required": False,
-                     "placeholder": _("Only needed for server-admin keys"), "value": account.jellyfin_username if account else ""}],
+                     "placeholder": _("Only needed for server-admin keys")}],
             messages={"disconnected": _("Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username."),
-                      "connected": _("Your Jellyfin server is connected."),
+                      "connected": _("Add another Jellyfin server, or edit a saved one."),
                       "attention": _("Jellyfin rejected the API key. Floppy re-checks it on every scheduled run; reconnect if the key was changed or revoked.")},
             follow_up=None, connect_url=reverse("jellyfin_connect"), disconnect_url=reverse("jellyfin_disconnect"),
-            summary={"url": " • ".join(filter(None, [account.base_url, account.jellyfin_username])),
-                     "lastSync": _("Last sync: %(when)s") % {"when": user_datetime_format(account.last_sync_at, request.user)} if account.last_sync_at else "",
-                     "error": redact_secrets(account.last_error_message or "")} if account else None,
+            instances=[{"id": row.pk, "name": row.display_name, "connected": bool(_flag(row.is_connected)),
+                        "url": " • ".join(filter(None, [row.base_url, row.jellyfin_username])),
+                        "label": row.name, "baseUrl": row.base_url, "username": row.jellyfin_username,
+                        "editable": True,
+                        "error": redact_secrets(row.last_error_message or "")} for row in accounts],
         )
-        context["account_connection"]["title"] = _("Jellyfin account")
-        context["account_connection"]["editable"] = connected
-        context["account_connection"]["submitLabel"] = _("Update connection") if account else _("Connect Jellyfin")
+        context["account_connection"]["title"] = _("Jellyfin connections") if len(accounts) > 1 else _("Jellyfin account")
+        context["account_connection"]["editable"] = bool(accounts)
+        context["account_connection"]["submitLabel"] = _("Add connection") if accounts else _("Connect Jellyfin")
         context["account_connection"]["labels"]["Edit connection"] = _("Edit connection")
         context["account_connection"]["labels"]["Cancel"] = _("Cancel")
+        context["account_connection"]["labels"]["Save connection"] = _("Save connection")
     if tab == "connection" and slug == "mdblist":
         context["file_import"] = provider_ui.file_import(request, slug, provider_ui.import_preferences(request, slug, context), context)
     if tab == "connection" and slug == "koreader":
@@ -394,6 +397,17 @@ def provider_detail(request, slug):
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
     if slug in {"plex", "jellyfin", "seerr", "koreader", "hardcover"}:
         context["provider_forms"] = provider_forms.build(request, slug, tab, context)
+    if slug == "jellyfin" and tab in {"sync", "import"}:
+        # One set of cards per connection; the web template and the native client both read these.
+        accounts = list(context.get("jellyfin_accounts") or [])
+        uploads = provider_ui.jellyfin_file_imports(request, accounts) if tab == "import" else []
+        context["jellyfin_file_imports"] = uploads
+        context["jellyfin_connection_cards"] = [{
+            "id": account.id,
+            "forms": [(key, form) for key, form in context["provider_forms"].items()
+                      if form.get("hidden", {}).get("account_id") == account.id],
+            "file_imports": [upload for upload in uploads if upload["accountId"] == account.id],
+        } for account in accounts]
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
         if slug in provider_ui.FILE_IMPORTS:
@@ -431,7 +445,7 @@ def provider_detail(request, slug):
                 "href": "" if connected else reverse("provider_detail", args=[slug]) + "?tab=connection",
                 "csrf": get_token(request), "next": request.get_full_path(),
             }
-    if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
+    if slug in {"mal", "tmdb", "wetrakr", "simkl"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
     if slug == "mal" and tab == "connection":
         account = context.get("mal_account")
@@ -450,25 +464,27 @@ def provider_detail(request, slug):
         )
         context["account_connection"]["title"] = _("MyAnimeList account")
         context["account_connection"]["submitLabel"] = _("Authorize and enable MyAnimeList sync")
-    if slug == "wetrakr" and tab == "connection":
-        account = (context.get("wetrakr_sync") or {}).get("account")
+    if slug in {"wetrakr", "simkl"} and tab == "connection":
+        label = {"wetrakr": "WeTrakr", "simkl": "SIMKL"}[slug]
+        account = (context.get(f"{slug}_sync") or {}).get("account")
         pending = bool(account and account.is_pending)
         connected = bool(account and account.is_connected)
         attention = bool(account and account.connection_broken and not pending)
+        sends = {"wetrakr": _("plays, statuses and ratings"), "simkl": _("plays")}[slug]
         context["account_connection"] = provider_ui.account_connection(
             request, connected=connected, saved=bool(account) and not pending, attention=attention,
-            fields=[], follow_up=None, connect_url=reverse("wetrakr_connect"), disconnect_url=reverse("wetrakr_disconnect"),
-            link_slug="wetrakr", link_label=provider["label"],
+            fields=[], follow_up=None, connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
+            link_slug="simkl-send" if slug == "simkl" else slug, link_label=provider["label"],
             messages={
-                "connected": _("Your WeTrakr account is linked. Choose what Floppy sends on the Sync tab."),
-                "attention": _("WeTrakr rejected your login. Reconnect to continue."),
-                "disconnected": _("Link your WeTrakr account to send your plays, statuses and ratings."),
+                "connected": _("Your %(label)s account is linked. Choose what Floppy sends on the Sync tab.") % {"label": label},
+                "attention": _("%(label)s rejected your login. Reconnect to continue.") % {"label": label},
+                "disconnected": _("Link your %(label)s account to send your %(sends)s.") % {"label": label, "sends": sends},
             },
             summary={"url": "", "lastSync": "", "error": redact_secrets(account.last_error_message or "")} if attention and account.last_error_message else None,
             device=provider_ui.device_login(account.user_code, account.verification_url, account.device_interval, account.device_expires_at) if pending else None,
         )
-        context["account_connection"]["title"] = _("WeTrakr account")
-        context["account_connection"]["submitLabel"] = _("Connect WeTrakr")
+        context["account_connection"]["title"] = _("%(label)s account") % {"label": label}
+        context["account_connection"]["submitLabel"] = _("Connect %(label)s") % {"label": label}
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)
     if getattr(request, "provider_context_only", False):
         # The native JSON API reuses this view model instead of rebuilding it.

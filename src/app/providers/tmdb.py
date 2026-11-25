@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 
 from app import backdrops, helpers
+from app.helpers import coerce_int as _coerce_int
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services
@@ -177,6 +178,9 @@ def get_external_links(external_ids, tmdb_id=None):
 
     if external_ids.get("imdb_id"):
         links["IMDb"] = f"https://www.imdb.com/title/{external_ids['imdb_id']}/"
+        links["IMDb Parent's Guide"] = (
+            f"https://www.imdb.com/title/{external_ids['imdb_id']}/parentalguide/"
+        )
 
     if external_ids.get("tvdb_id"):
         links["TVDB"] = (
@@ -455,6 +459,7 @@ def search(media_type, query, page, language=None):
                 "localized_title": get_localized_title(media),
                 "image": get_image_url(media["poster_path"]),
                 "year": get_year(media),
+                "origin_country": media.get("origin_country") or [],
             }
             for media in response["results"]
         ]
@@ -2112,16 +2117,6 @@ def get_score(score):
         return None
 
     return round(score, 1)
-
-
-def _coerce_int(value) -> int | None:
-    """Return a numeric int when possible."""
-    if value in (None, ""):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def get_related(related_medias, media_type, parent_response=None, tv_media_id=None):

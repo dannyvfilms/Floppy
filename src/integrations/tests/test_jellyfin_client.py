@@ -208,6 +208,24 @@ class JellyfinClientTests(SimpleTestCase):
         self.assertFalse(self.client.probe_playback_reporting())
 
     @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
+    def test_fetch_playback_activity_coerces_string_rowid(self, mock_request):
+        """The plugin returns rowid as a string; the cursor needs an int."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "results": [
+                    ["999", *[""] * 9],
+                    ["2000", *[""] * 9],
+                    ["not-a-number", *[""] * 9],
+                ],
+            },
+        )
+
+        rows = self.client.fetch_playback_activity(0, 100)
+
+        self.assertEqual([row["rowid"] for row in rows], [999, 2000])
+
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_fetch_playback_activity_parses_rows(self, mock_request):
         """Rows come back positionally and are mapped to named columns."""
         mock_request.return_value = MagicMock(
@@ -232,20 +250,23 @@ class JellyfinClientTests(SimpleTestCase):
 
         rows = self.client.fetch_playback_activity(2, 100)
 
-        self.assertEqual(rows, [
-            {
-                "rowid": 5,
-                "date_created": "2024-01-02 03:04:05",
-                "user_id": "jf-user",
-                "item_id": "jf-item",
-                "item_type": "Movie",
-                "item_name": "Example",
-                "playback_method": "DirectPlay",
-                "client_name": "Web",
-                "device_name": "Laptop",
-                "play_duration": 120,
-            },
-        ])
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "rowid": 5,
+                    "date_created": "2024-01-02 03:04:05",
+                    "user_id": "jf-user",
+                    "item_id": "jf-item",
+                    "item_type": "Movie",
+                    "item_name": "Example",
+                    "playback_method": "DirectPlay",
+                    "client_name": "Web",
+                    "device_name": "Laptop",
+                    "play_duration": 120,
+                },
+            ],
+        )
         body = mock_request.call_args.kwargs["json"]
         self.assertIn("rowid > 2", body["CustomQueryString"])
         self.assertIn("LIMIT 100", body["CustomQueryString"])
@@ -259,3 +280,32 @@ class JellyfinClientTests(SimpleTestCase):
         )
 
         self.assertEqual(self.client.fetch_max_playback_activity_rowid(), 0)
+
+
+class JellyfinSeriesIdTests(SimpleTestCase):
+    """Cover the episode-to-series lookup (#2108)."""
+
+    def setUp(self):
+        """Create a client pointed at a fake server."""
+        self.client = JellyfinClient("https://jellyfin.local:8096", "api-key")
+
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
+    def test_get_series_id_returns_the_series(self, mock_request):
+        """The lookup asks for SeriesId and returns it."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"Items": [{"Id": "ep-1", "SeriesId": "series-9"}]},
+        )
+
+        self.assertEqual(self.client.get_series_id("ep-1"), "series-9")
+        self.assertEqual(mock_request.call_args.kwargs["params"]["Ids"], "ep-1")
+
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
+    def test_get_series_id_is_none_without_a_match(self, mock_request):
+        """No match means no series, not an error."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"Items": []},
+        )
+
+        self.assertIsNone(self.client.get_series_id("ep-1"))

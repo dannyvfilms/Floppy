@@ -11,6 +11,7 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -186,7 +187,20 @@ class XboxImporter:
         total = len(titles)
         for index, (title_id, title) in enumerate(titles.items(), start=1):
             import_progress.report(index, total, "Xbox")
-            self._process_title(title_id, title, minutes_by_title.get(title_id))
+            try:
+                self._process_title(title_id, title, minutes_by_title.get(title_id))
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Xbox import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    index,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining games.",
+                )
+                break
 
         matched = len(self.bulk_media[MediaTypes.GAME.value]) + len(self.to_update)
         logger.info(
@@ -307,6 +321,10 @@ class XboxImporter:
             self._record_failure(f"{name}: {detail}")
             self.provider_failures += 1
             return
+        except SoftTimeLimitExceeded:
+            # Let the import loop stop early instead of recording every
+            # remaining title as a failed lookup.
+            raise
         except Exception as e:
             # An unexpected exception's message is not written for display: it
             # can carry the request URL, the response body, or the credentials

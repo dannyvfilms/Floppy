@@ -745,3 +745,27 @@ class RecommendationTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         types = [row["activity_type"] for row in response.json()["results"]]
         self.assertIn("recommendation_approved", types)
+
+
+class ListWithVideoTests(FloppyApiTestCase):
+    """A list holding a YouTube video still serializes (assignment 73)."""
+
+    def test_list_detail_includes_a_tracked_video(self):
+        from app.models import Item, Sources, Status, Video
+
+        item = Item.objects.create(
+            media_id="list-video-1",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="Listed Video",
+        )
+        Video.objects.create(item=item, user=self.user1, status=Status.COMPLETED.value)
+        custom_list = CustomList.objects.create(name="Has a video", owner=self.user1)
+        CustomListItem.objects.create(custom_list=custom_list, item=item, added_by=self.user1)
+
+        response = self.call_api(
+            "get", "api_list_detail", args=(custom_list.id,), headers=self.auth_headers
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertIn("Listed Video", response.content.decode())

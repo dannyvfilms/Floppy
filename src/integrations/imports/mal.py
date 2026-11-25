@@ -12,18 +12,75 @@ import app
 import app.providers.mal
 from app.models import MediaTypes, Sources, Status
 from app.providers import credentials
-from integrations import import_progress
+from integrations import import_progress, mal_sync
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
 
+# A status the user chose on purpose; an import never moves a row out of it.
+HELD_STATUSES = frozenset({Status.PAUSED.value, Status.DROPPED.value})
+
 
 def importer(username, user, mode):
     """Import anime and manga from MyAnimeList."""
     mal_importer = MyAnimeListImporter(username, user, mode)
     return mal_importer.import_data()
+
+
+def forward_only_updates(media_type, media, list_status, parse_date):
+    """Return the field changes MAL's list entry brings to a row Floppy tracks.
+
+    Import New only ever moves a tracked title forward, the same rule Sync to
+    Trackers uses when it pulls higher progress (``mal_sync``): progress goes
+    up and never down, status advances (Planning, In Progress, Completed)
+    without leaving a Paused or Dropped the user chose, and score, notes and
+    dates fill only where Floppy has none. Nothing is returned when MAL is
+    equal to or behind Floppy, so a repeat import writes nothing.
+    """
+    updates = {}
+    progress_field = mal_sync.PROGRESS_RESPONSE_FIELDS[media_type][1]
+    remote_progress = list_status.get(progress_field)
+    local_progress = media.progress or 0
+    progress_raised = isinstance(remote_progress, int) and remote_progress > local_progress
+    if progress_raised:
+        updates["progress"] = remote_progress
+
+    target = mal_sync.MAL_STATUS_TO_FLOPPY[media_type].get(list_status.get("status"))
+    status = _forward_status(media.status, target, progress_raised, local_progress)
+    if status is not None:
+        updates["status"] = status
+
+    score = list_status.get("score")
+    if media.score is None and isinstance(score, int) and score > 0:
+        updates["score"] = score
+        updates["scored_at"] = timezone.now()
+    if not media.notes and list_status.get("comments"):
+        updates["notes"] = list_status["comments"]
+    for field, key in (("start_date", "start_date"), ("end_date", "finish_date")):
+        if getattr(media, field) is None and list_status.get(key):
+            updates[field] = parse_date(list_status[key])
+    return updates
+
+
+def _forward_status(local, target, progress_raised, local_progress):
+    """Return the status to move to, or None to keep the local one."""
+    if local is None or local in HELD_STATUSES or target in (None, local):
+        return None
+    if target == Status.COMPLETED.value:
+        return target
+    if local == Status.COMPLETED.value:
+        return None
+    if target == Status.IN_PROGRESS.value:
+        return target
+    # MAL says Paused or Dropped: take it when MAL is the one that moved, or
+    # when Floppy never started the title.
+    if target in HELD_STATUSES and (progress_raised or local_progress == 0):
+        return target
+    if progress_raised and local == Status.PLANNING.value:
+        return Status.IN_PROGRESS.value
+    return None
 
 
 class MyAnimeListImporter:
@@ -53,6 +110,11 @@ class MyAnimeListImporter:
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
 
+        # Tracked titles Import New brought up to date, and how many it left alone
+        self.updated_media = defaultdict(list)
+        self.unchanged = 0
+        self._tracked_rows = {}
+
         logger.info(
             "Initialized MyAnimeList importer for user %s with mode %s",
             username,
@@ -66,11 +128,25 @@ class MyAnimeListImporter:
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
         helpers.bulk_create_media(self.bulk_media, self.user)
+        self._save_updates()
 
         imported_counts = {
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
         }
+        created = sum(imported_counts.values())
+        updated = sum(len(rows) for rows in self.updated_media.values())
+        if updated:
+            # Only a run that updated something adds the split, so a run that
+            # only creates keeps the message it always had.
+            imported_counts["created"] = created
+            imported_counts["updated"] = updated
+            for media_type, rows in self.updated_media.items():
+                imported_counts[media_type] = (
+                    imported_counts.get(media_type, 0) + len(rows)
+                )
+        if self.unchanged:
+            imported_counts["unchanged"] = self.unchanged
 
         deduplicated_messages = "\n".join(dict.fromkeys(self.warnings))
         return imported_counts, deduplicated_messages
@@ -154,16 +230,26 @@ class MyAnimeListImporter:
         except KeyError:
             image_url = settings.IMG_NONE
 
-        # Check if we should process this entry based on mode
+        # Check if we should process this entry based on mode. skip_existing is
+        # off so a deleted title is still skipped, while a title already tracked
+        # reaches the forward-only update below instead of being ignored.
+        media_id = str(content["node"]["id"])
         if not helpers.should_process_media(
             self.existing_media,
             self.to_delete,
             media_type,
             Sources.MAL.value,
-            str(content["node"]["id"]),
+            media_id,
             self.mode,
             deleted_media=self.deleted_media,
+            skip_existing=False,
         ):
+            return
+        if (
+            self.mode == "new"
+            and media_id in self.existing_media[media_type][Sources.MAL.value]
+        ):
+            self._update_existing(content, media_type, media_id)
             return
 
         item, _ = helpers.get_or_create_item_across_buckets(
@@ -238,6 +324,64 @@ class MyAnimeListImporter:
             status,
             updated_at,
         )
+
+    def _update_existing(self, content, media_type, media_id):
+        """Bring a tracked title up to MAL's progress and status, forward only."""
+        media = self._tracked_row(media_type, media_id)
+        updates = forward_only_updates(
+            media_type,
+            media,
+            content["list_status"],
+            self._parse_mal_date,
+        )
+        if not updates:
+            self.unchanged += 1
+            return
+        for field, value in updates.items():
+            setattr(media, field, value)
+        updated_at = parse_datetime(content["list_status"].get("updated_at") or "")
+        if updated_at is not None:
+            media._history_date = updated_at
+        media._update_fields = tuple(updates)
+        self.updated_media[media_type].append(media)
+
+    def _tracked_row(self, media_type, media_id):
+        """Return the row that speaks for a tracked title.
+
+        A rewatch is its own row, so the title can have several; the one with
+        the most progress is the entry MAL describes, and a rewatch in flight
+        is left as it is.
+        """
+        if media_type not in self._tracked_rows:
+            model = apps.get_model(app_label="app", model_name=media_type)
+            best = {}
+            for row in model.objects.filter(
+                user=self.user,
+                item__source=Sources.MAL.value,
+            ).select_related("item"):
+                current = best.get(row.item.media_id)
+                if current is None or (row.progress or 0) > (current.progress or 0):
+                    best[row.item.media_id] = row
+            self._tracked_rows[media_type] = best
+        return self._tracked_rows[media_type].get(media_id) or self.existing_media[
+            media_type
+        ][Sources.MAL.value][media_id]
+
+    def _save_updates(self):
+        """Write the updates, one batch per media type and set of fields."""
+        for media_type, rows in self.updated_media.items():
+            model = apps.get_model(app_label="app", model_name=media_type)
+            by_fields = defaultdict(list)
+            for row in rows:
+                by_fields[row._update_fields].append(row)
+            for fields, batch in by_fields.items():
+                helpers.bulk_update_media(
+                    batch,
+                    model,
+                    fields,
+                    self.user,
+                    change_reason="MyAnimeList import",
+                )
 
     def _sync_to_movie_entry(self, mal_id, media_type, list_status, status, updated_at):
         """If this MAL anime maps to a TMDB movie, sync data to that Movie entry."""

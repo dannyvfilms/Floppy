@@ -2,9 +2,13 @@ import React from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MarkdownPreview } from './MarkdownPreview';
 import { Icon } from './Icon';
+import { MediaCard } from './MediaCard';
+import { relatedCardModel } from './cardModels';
 import { ProviderLogo } from './ProviderLogo';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
+import { CollectionGroup, CollectionRow, CollectionSectionHeading } from './CollectionCopies';
+import { DetailTrackSplit } from './DetailTrackSplit';
 
 // Shared presentation for the detail page's own controls: the track action bar,
 // provider score chips and series graph, the collection and notes blocks, the
@@ -27,23 +31,7 @@ export function DetailActionBar({ primary, edit, quick = [], palette, inlineAt =
   const { width } = useWindowDimensions();
   const inline = width >= inlineAt;
   return <View style={[styles.actionBar, inline ? styles.actionBarInline : null]}>
-    {primary ? <View style={[styles.primaryRow, inline ? styles.primaryRowInline : null]}>
-      <Pressable accessibilityRole="button" onPress={primary.onPress} disabled={primary.disabled}
-        style={({ pressed }) => [styles.primary, inline ? { flex: 0 } : null, edit ? styles.primaryJoined : null, {
-          backgroundColor: pressed ? palette.accent : palette.accentStrong,
-          opacity: primary.disabled ? 0.6 : 1,
-        }]}>
-        {primary.icon ? <Icon spec={actionIcons[primary.icon]} size={20} color={palette.accentContrast} /> : null}
-        <Text style={[styles.primaryText, { color: palette.accentContrast }]}>{primary.label}</Text>
-      </Pressable>
-      {edit ? <Pressable accessibilityRole="button" accessibilityLabel={edit.label} onPress={edit.onPress}
-        style={({ pressed }) => [styles.edit, {
-          backgroundColor: pressed ? palette.accent : palette.accentStrong,
-          borderLeftColor: palette.accent,
-        }]}>
-        <Icon spec={actionIcons[edit.icon || 'edit']} size={20} color={palette.accentContrast} />
-      </Pressable> : null}
-    </View> : null}
+    <DetailTrackSplit primary={primary} edit={edit} palette={palette} inline={inline} />
     {quick.length ? <View style={styles.quickRow}>
       {quick.map(item => <QuickButton key={item.key} item={item} palette={palette} inline={inline} />)}
     </View> : null}
@@ -141,10 +129,12 @@ const PHONE_HERO_MAX = 768;
 const SCORE_CARD_HEIGHT = 375 / 4;
 const SCORE_CARD_WIDTH = SCORE_CARD_HEIGHT * 16 / 9;
 
-export function DetailBlock({ title, action, palette, children }) {
+// `grouped` titles the block like the grouped cards (small muted heading) instead of the large one.
+export function DetailBlock({ title, action, palette, grouped = false, children }) {
   return <View style={styles.block}>
     <View style={styles.blockHeader}>
-      <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
+      {grouped ? <View accessibilityRole="header"><CollectionSectionHeading title={title} palette={palette} /></View>
+        : <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>}
       {action ? <Pressable accessibilityRole="button" accessibilityLabel={action.label} onPress={action.onPress}
         style={({ pressed }) => [styles.roundButton, {
           backgroundColor: pressed ? palette.accent : palette.accentStrong,
@@ -184,19 +174,18 @@ export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
   </View>;
 }
 
-export function DetailCollectionBlock({ counts = [], entries, empty, palette }) {
-  return <View style={[styles.card, { backgroundColor: palette.surface }]}>
-    {counts.map(count => <View key={count.label} style={styles.infoCell}>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{count.label}</Text>
-      <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{count.value}</Text>
-    </View>)}
-    {entries.map(entry => <View key={entry.id} style={styles.infoCell}>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{entry.title}</Text>
-      {entry.date ? <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{entry.date}</Text> : null}
-    </View>)}
-    {!counts.length && !entries.length
-      ? <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{empty}</Text> : null}
-  </View>;
+// `actionRow` (set by the iOS screen) adds the add action as the list's last row, in the accent colour
+// (the system action-row look), instead of the round + button web and Android keep in the heading.
+// With no collection data that row is all that shows.
+export function DetailCollectionBlock({ counts = [], entries, empty, palette, actionRow }) {
+  const rows = [
+    ...counts.map(count => <CollectionRow key={`count-${count.label}`} icon={actionIcons.cube} label={count.label} value={count.value} palette={palette} />),
+    ...entries.map(entry => <CollectionRow key={entry.id} icon={actionIcons.disc} label={entry.title} value={entry.date || undefined} palette={palette} />),
+  ];
+  if (actionRow) rows.push(<CollectionRow key="action" icon={actionIcons[actionRow.icon || 'plus']} tone="accent"
+    label={actionRow.label} palette={palette} onPress={actionRow.onPress} />);
+  else if (!rows.length) rows.push(<CollectionRow key="empty" icon={actionIcons.info} label={empty} palette={palette} />);
+  return <CollectionGroup palette={palette}>{rows}</CollectionGroup>;
 }
 
 const EPISODE_ACTION_ICONS = { watch: 'eyeClosed', unwatch: 'eye', collection: 'cube', lists: 'listAdd', history: 'history' };
@@ -335,27 +324,6 @@ export function DetailEpisodeCards({ title, count, order, orderLabel, onOrderCha
   </View>;
 }
 
-function OverlayCard({ src, title, palette, width, height, accessibilityLabel, accessibilityRole, onPress, disabled, highlighted, fillWidth }) {
-  const [failed, setFailed] = React.useState(false);
-  const uri = failed ? '' : src;
-  const frame = [styles.overlayCard, fillWidth ? { flex: 1, aspectRatio: width / height } : { width, height }, {
-    backgroundColor: palette.placeholder,
-    borderColor: highlighted ? palette.accent : 'transparent',
-    borderWidth: highlighted ? 2 : 0,
-  }];
-  const body = <>
-    {uri ? <Image source={{ uri }} resizeMode="cover" style={StyleSheet.absoluteFill} accessible={false}
-      onError={() => setFailed(true)} /> : <View style={styles.overlayPlaceholder}>
-      <Icon spec={actionIcons.image} size={48} color={palette.textMuted} />
-    </View>}
-    {[56, 62, 68, 74, 80, 86, 92].map(top => [`${top}%`, 0.14]).map(([top, opacity]) => <View key={top} pointerEvents="none"
-      style={[styles.overlayShade, { backgroundColor: palette.background, top, opacity }]} />)}
-    <Text numberOfLines={1} style={[styles.overlayTitle, { color: palette.text }]}>{title}</Text>
-  </>;
-  if (disabled || !onPress) return <View accessible accessibilityLabel={accessibilityLabel} style={frame}>{body}</View>;
-  return <Pressable accessibilityRole={accessibilityRole || 'link'} accessibilityLabel={accessibilityLabel} onPress={onPress} style={frame}>{body}</Pressable>;
-}
-
 /** The web related-media grid (franchise collection, DLC): three cards a row, current title outlined. */
 export function DetailRelatedGrid({ title, items, palette, onOpen, current, moreLabel = 'Show more', lessLabel = 'Show less' }) {
   const [all, setAll] = React.useState(false);
@@ -365,9 +333,9 @@ export function DetailRelatedGrid({ title, items, palette, onOpen, current, more
     <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
     <View style={styles.relatedGrid}>
       {shown.map(item => <View key={item.key} style={styles.relatedCell}>
-        <OverlayCard src={item.image} title={item.title} palette={palette} width={2} height={3} fillWidth
-          accessibilityLabel={item.title} highlighted={Boolean(current && String(item.identity?.mediaId) === String(current))}
-          onPress={() => onOpen?.(item)} />
+        <MediaCard variant="grid" width="100%" palette={{ ...palette, card: palette.surface }}
+          model={relatedCardModel(item, Boolean(current && String(item.identity?.mediaId) === String(current)))}
+          onOpen={onOpen ? () => onOpen(item) : undefined} />
       </View>)}
     </View>
     {items.length > 6 ? <Pressable accessibilityRole="button" onPress={() => setAll(value => !value)} style={styles.showMore}>
@@ -443,12 +411,6 @@ const styles = StyleSheet.create({
   activity: { fontSize: 13, lineHeight: 18 },
   actionBar: { gap: 12 },
   actionBarInline: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  primaryRowInline: { flexShrink: 0 },
-  primaryRow: { flexDirection: 'row' },
-  primary: { flex: 1, minHeight: 48, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 12, paddingHorizontal: 16 },
-  primaryJoined: { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
-  primaryText: { fontSize: 16, fontWeight: '500' },
-  edit: { width: 48, alignItems: 'center', justifyContent: 'center', borderTopRightRadius: 12, borderBottomRightRadius: 12, borderLeftWidth: 1 },
   quickRow: { flexDirection: 'row', gap: 8 },
   quick: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   quickInline: { flex: 0, width: 44 },

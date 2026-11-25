@@ -6,6 +6,7 @@ from csv import DictReader
 from decimal import Decimal, InvalidOperation
 from io import TextIOWrapper
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.conf import settings
 from django.db import IntegrityError
@@ -237,6 +238,9 @@ class YamtrackImporter:
         self.seen_media_keys = set()
         self.processed_media_rows = 0
         self.total_rows = 0
+        # Set when the task's soft time limit fires: the loops stop early and
+        # the importer finishes with what is already staged.
+        self.time_limited = False
         # Item ids whose existing collection entries were already wiped
         # this run (overwrite mode wipes once per item, then recreates
         # every CSV copy).
@@ -326,8 +330,12 @@ class YamtrackImporter:
 
     def _process_phase(self, phase, *, media_type=None):
         """Process one dependency-safe row phase from the staged CSV."""
+        if self.time_limited:
+            return
         chunk = []
         for row_number, row in enumerate(self._iter_rows(), start=1):
+            if self.time_limited:
+                break
             row_type = (row.get("row_type") or "").strip().lower()
             if phase == "media":
                 row_media_type = (row.get("media_type") or "").strip().lower()
@@ -348,6 +356,8 @@ class YamtrackImporter:
         """Resolve the chunk's Items together, then process its rows."""
         self._preload_items([row for _, row in chunk])
         for row_number, row in chunk:
+            if self.time_limited:
+                break
             self._process_row_with_error_handling(row, row_number)
             self._flush_media_batch_if_needed()
         self._item_cache.clear()
@@ -411,6 +421,8 @@ class YamtrackImporter:
         }
         known_media_types = set(_MEDIA_IMPORT_TYPES)
         for row_number, row in enumerate(self._iter_rows(), start=1):
+            if self.time_limited:
+                break
             row_type = (row.get("row_type") or "").strip().lower()
             row_media_type = (row.get("media_type") or "").strip().lower()
             if row_type not in known_types or (
@@ -440,6 +452,23 @@ class YamtrackImporter:
                 f"({app_tags.media_type_readable(row['media_type'])}): {error}"
             )
             self.warnings.append(error_msg)
+        except SoftTimeLimitExceeded:
+            # Rate-limited provider lookups can sleep long enough to trip the
+            # task's soft time limit. Stop processing rows; the flush at the
+            # end of the import persists what is already staged, and "new"
+            # mode skips it on the re-run.
+            self.time_limited = True
+            logger.warning(
+                "Yamtrack import for %s hit the time limit at row %s/%s",
+                self.user.username,
+                self.processed_media_rows,
+                self.total_rows,
+            )
+            self.warnings.append(
+                "Import stopped partway through because it was taking too "
+                "long. Run the import again to pick up the remaining entries.",
+            )
+            return
         except Exception as error:
             error_msg = f"Error processing entry: {row}"
             raise MediaImportUnexpectedError(error_msg) from error

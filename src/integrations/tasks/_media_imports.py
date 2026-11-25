@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 import events
-from app import backfill_queue, cache_safety, statistics_sync
+from app import backfill_queue, cache_safety, cache_utils, statistics_sync
 from app.mixins import disable_fetch_releases
 from app.providers import credentials
 from app.services.watch_state import importing_watch_state
@@ -68,6 +68,8 @@ from integrations.tasks._import_helpers import (
     STREMIO_IMPORT_TIME_LIMIT,
     WETRAKR_IMPORT_SOFT_TIME_LIMIT,
     WETRAKR_IMPORT_TIME_LIMIT,
+    YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT,
+    YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
     _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
@@ -280,6 +282,13 @@ def import_media(
             getattr(importer_func, "__name__", importer_func),
             user_id,
         )
+
+    if has_imported_media(imported_counts):
+        # Importers write in bulk, which sends no save signal, so nothing
+        # else clears the library pages and Home for these rows. Any type can
+        # be among them, TV included, so the time-left order goes too. A poll
+        # that imported nothing clears nothing.
+        cache_utils.clear_library_view_caches(user_id, media_types=("tv",))
 
     # Queue collection metadata update task for media server imports
     _queue_post_import_collection_update(user_id, importer_func)
@@ -584,7 +593,11 @@ def import_hardcover_account(user_id, mode="new", username=None):
     return import_media(hardcover.sync_importer, None, user_id, mode)
 
 
-@shared_task(name="Import from YouTube Takeout")
+@shared_task(
+    name="Import from YouTube Takeout",
+    soft_time_limit=YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
+)
 def import_youtube_takeout(file, user_id, mode):
     """Celery task for importing YouTube watch history from Google Takeout."""
     return _run_file_import(youtube_takeout.importer, file, user_id, mode)
@@ -632,13 +645,14 @@ def sync_plex_mark_watched(user_id):
 
 
 @shared_task(name="Import from Jellyfin Playback Reporting")
-def import_jellyfin_playback_reporting(file, user_id, mode="new"):
-    """Import a Jellyfin Playback Reporting TSV backup."""
+def import_jellyfin_playback_reporting(file, user_id, mode="new", account_id=None):
+    """Import a Jellyfin Playback Reporting TSV backup into one connection."""
     return _run_file_import(
         jellyfin_playback_reporting.importer,
         file,
         user_id,
         mode,
+        account_id=account_id,
     )
 
 
@@ -787,11 +801,13 @@ def sync_plex_watchlist(user_id, mode="watchlist"):
 
 
 @shared_task(bind=True, name=JELLYFIN_PUSH_TASK_NAME)
-def push_jellyfin_watched(self, user_id):
-    """Celery task for pushing Floppy watched state to Jellyfin."""
+def push_jellyfin_watched(self, user_id, account_id=None):
+    """Celery task for pushing Floppy watched state to one Jellyfin connection."""
     # Events arriving from here on need a push of their own, so let the next
     # webhook queue one.
-    cache_safety.release_lock(_jellyfin_health.instant_push_lock_key(user_id))
+    cache_safety.release_lock(
+        _jellyfin_health.instant_push_lock_key(user_id, account_id),
+    )
 
     user = get_user_model().objects.get(id=user_id)
     if not user.is_active:
@@ -799,7 +815,13 @@ def push_jellyfin_watched(self, user_id):
         # provider work against the user's server, so it must not run.
         logger.info("jellyfin_push_skipped_inactive_user user_id=%s", user_id)
         return "Skipped: the account is deactivated."
-    account = getattr(user, "jellyfin_account", None)
+    account, queued = _jellyfin_health.pick_account(
+        push_jellyfin_watched,
+        user,
+        account_id,
+    )
+    if queued:
+        return queued
     if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before syncing."
         raise helpers.MediaImportError(msg)

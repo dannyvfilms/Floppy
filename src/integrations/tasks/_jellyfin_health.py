@@ -22,9 +22,42 @@ RETRY_BASE_SECONDS = 60
 INSTANT_PUSH_DEBOUNCE_SECONDS = 60
 
 
-def instant_push_lock_key(user_id) -> str:
-    """Return the cache key that coalesces webhook-triggered pushes."""
-    return f"jellyfin_instant_push:{user_id}"
+def instant_push_lock_key(user_id, account_id=None) -> str:
+    """Return the cache key that coalesces webhook-triggered pushes.
+
+    One key per connection, so a burst of events from one server never absorbs
+    the push another server is waiting for.
+    """
+    if account_id is None:
+        return f"jellyfin_instant_push:{user_id}"
+    return f"jellyfin_instant_push:{user_id}:{account_id}"
+
+
+def get_account(user, account_id):
+    """Return one of the user's connections, or None when it is not theirs."""
+    from integrations.models import JellyfinAccount
+
+    return JellyfinAccount.objects.filter(user=user, id=account_id).first()
+
+
+def pick_account(task, user, account_id):
+    """Return ``(account, queued_message)`` for a task call.
+
+    A call names its connection. One without (a message queued before multiple
+    connections, or an old schedule) is unambiguous for a user with a single
+    connection and runs as before. With several it is expanded into one call
+    per connection rather than guessing which server was meant.
+    """
+    from integrations.models import JellyfinAccount
+
+    if account_id is not None:
+        return get_account(user, account_id), None
+    accounts = list(JellyfinAccount.objects.filter(user=user))
+    if len(accounts) <= 1:
+        return (accounts[0] if accounts else None), None
+    for account in accounts:
+        task.apply_async(kwargs={"user_id": user.id, "account_id": account.id})
+    return None, f"Queued {len(accounts)} Jellyfin connections."
 
 
 def has_credentials(account) -> bool:
@@ -47,13 +80,17 @@ def reprobe_if_broken(account, *, error_field, client=None) -> bool:
         client.healthcheck()
     except JellyfinAuthError as exc:
         logger.warning(
-            "Jellyfin still rejects the API key for user %s; skipping run",
+            "Jellyfin still rejects the API key for user %s account %s; skipping run",
             account.user_id,
+            account.id,
         )
         record_failure(account, exc, auth=True, error_field=error_field)
         return False
 
-    logger.info("Jellyfin accepted the API key again for user %s", account.user_id)
+    logger.info("Jellyfin accepted the API key again for user %s account %s",
+        account.user_id,
+        account.id,
+    )
     record_success(account, error_field=error_field)
     return True
 

@@ -41,8 +41,8 @@ FILE_IMPORTS = {
     "grouvee": ("import_grouvee", "grouvee_json", ".json,.zip", "Import games", "Select File"),
     "imdb": ("import_imdb", "imdb_csv", ".csv", "Import movies and TV shows from your ratings", "Select CSV File"),
     "goodreads": ("import_goodreads", "goodreads_csv", ".csv", "Import from Goodreads backup", "Select CSV File"),
-    "youtube": ("import_youtube_takeout", "youtube_takeout", ".json,.html,.zip",
-                "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, or the zip.", "Select File", {"fields": ("mode",)}),
+    "youtube": ("import_youtube_takeout", "youtube_takeout", ".json,.html,.zip,.tgz,.tar.gz",
+                "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, the zip, or the .tgz archive.", "Select File", {"fields": ("mode",)}),
     "wetrakr": ("import_wetrakr", "wetrakr_export", ".zip,.csv",
                 "Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr.",
                 "Select File", {"fields": ("mode",), "multiple": True}),
@@ -87,6 +87,26 @@ def file_import(request, slug, preferences, context=None):
     if slug in {"yamtrack", "yamtrack_native"}:
         model["docs"] = {"url": CSV_FORMAT_DOCS, "label": _("View CSV format documentation")}
     return model
+
+
+def jellyfin_file_imports(request, accounts):
+    """One Playback Reporting TSV upload per Jellyfin connection.
+
+    The file is read against the connection it is sent to, so each model carries
+    that connection's id as a hidden value the client posts with the file.
+    """
+    several = len(accounts) > 1
+    return [{
+        "id": f"jellyfin-pr-import-{account.id}",
+        "title": _("Playback Reporting TSV") + (f": {account.display_name}" if several or account.name else ""),
+        "action": reverse("jellyfin_playback_reporting_import"), "csrf": get_token(request),
+        "next": request.get_full_path(), "hidden": {"account_id": account.id}, "accountId": account.id,
+        "values": {}, "postFields": [], "textFields": [], "mediaTypes": [], "multiple": False,
+        "description": _("Or upload a Playback Reporting TSV manually. Only needed if your key can't reach the Playback Reporting API (e.g. a non-admin key) and you'd rather not use the current-watched-state backfill above."),
+        "fileField": "playback_reporting_file", "accept": ".tsv,.txt,text/tab-separated-values,text/plain",
+        "selectLabel": _("Select TSV file"), "autoSubmit": False, "submitLabel": _("Import / reimport history"),
+        "note": "", "blockedLabel": "",
+    } for account in accounts]
 
 
 def import_preferences(request, slug, context=None):

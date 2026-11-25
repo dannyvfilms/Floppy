@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 
@@ -289,7 +290,20 @@ class KoreaderImporter:
                 )
                 continue
 
-            result = self._upsert_book(entry, document_hash, percentage)
+            try:
+                result = self._upsert_book(entry, document_hash, percentage)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "KOReader import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    index,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining books.",
+                )
+                break
             if result is None:
                 imported_counts["skipped"] += 1
                 continue
@@ -717,6 +731,8 @@ class KoreaderImporter:
                     exception_summary(error),
                 )
                 continue
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as error:
                 logger.debug(
                     "KOReader metadata fetch failed provider=%s error=%s",

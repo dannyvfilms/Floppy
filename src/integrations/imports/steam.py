@@ -3,6 +3,7 @@ import time
 from collections import defaultdict
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 
 import app
 from app.models import MediaTypes, Sources, Status
@@ -72,7 +73,20 @@ class SteamImporter:
         total = len(owned_games)
         for index, game_data in enumerate(owned_games, start=1):
             import_progress.report(index, total, "Steam")
-            self._process_game(game_data)
+            try:
+                self._process_game(game_data)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Steam import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    index,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining games.",
+                )
+                break
 
         helpers.bulk_create_media(self.bulk_media, self.user)
 

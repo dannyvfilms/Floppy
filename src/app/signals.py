@@ -124,6 +124,14 @@ _IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
     "importer_replacing_rows",
     default=False,
 )
+_BULK_MEDIA_DELETE: ContextVar[bool] = ContextVar(
+    "bulk_media_delete",
+    default=False,
+)
+_MERGING_ITEMS: ContextVar[bool] = ContextVar(
+    "merging_items",
+    default=False,
+)
 _ACCOUNT_BEING_DELETED: ContextVar[bool] = ContextVar(
     "account_being_deleted",
     default=False,
@@ -168,6 +176,24 @@ def importer_replacing_rows():
         yield
     finally:
         _IMPORTER_REPLACING_ROWS.reset(token)
+
+
+@contextmanager
+def merging_items():
+    """Mark deletes inside the block as two items being merged into one.
+
+    A merge folds a duplicate tracking row into the surviving one and deletes
+    the duplicate. The user still tracks the title (under the surviving
+    identity), so the delete must not leave a deletion tombstone for the old
+    identity. The library change feed (`DeletedEntry`) still records the old
+    identity as gone: a mirroring client drops it and sees the surviving row
+    as changed.
+    """
+    token = _MERGING_ITEMS.set(True)
+    try:
+        yield
+    finally:
+        _MERGING_ITEMS.reset(token)
 
 
 @contextmanager
@@ -311,6 +337,30 @@ def update_task_result_on_failure(
         logger.warning("Unexpected error updating task result: %s", e)
 
 
+@contextmanager
+def bulk_media_delete(user, media_type, item_ids):
+    """Delete many of one user's tracked rows, refreshing derived state once.
+
+    Per-row signals would mark statistics, clear caches and queue a smart-list
+    task for every row (about 10 ms each). Tombstones and history rows still
+    write per row; the rest is done once on exit, for `item_ids` captured
+    before the delete.
+    """
+    token = _BULK_MEDIA_DELETE.set(True)
+    try:
+        with suppress_media_cache_change_signals():
+            yield
+    finally:
+        _BULK_MEDIA_DELETE.reset(token)
+    from app.cache_utils import clear_library_view_caches
+
+    clear_library_view_caches(user.id, media_types=(media_type,))
+    discover_tab_cache.invalidate_for_media_change(user.id, media_type)
+    history_cache.invalidate_history_cache(user.id, reason="bulk_media_delete")
+    statistics_cache.invalidate_statistics_cache(user.id)
+    _sync_owner_smart_lists_for_items(user, [Item(id=pk) for pk in item_ids])
+
+
 def _sync_owner_smart_lists_for_items(owner, items):
     """Sync smart-list membership for a deduped set of owner items.
 
@@ -351,7 +401,7 @@ def sync_smart_lists_on_media_change(sender, instance, **kwargs):
     """Incrementally update smart-list memberships when owner media rows change."""
     if kwargs.get("raw"):
         return
-    if media_change_side_effects_suppressed():
+    if media_change_side_effects_suppressed() or _BULK_MEDIA_DELETE.get():
         return
     _sync_owner_smart_lists_for_items(
         getattr(instance, "user", None),
@@ -760,6 +810,7 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
     if (
         kwargs.get("raw")
         or _IMPORTER_REPLACING_ROWS.get()
+        or _MERGING_ITEMS.get()
         or _ACCOUNT_BEING_DELETED.get()
     ):
         return

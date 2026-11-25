@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% translate "Progress - Floppy" %}
+{% endblock title %}
+
+{% block content %}
+  {# The island loader mounts a root only beside its props script; the page takes none. #}
+  {{ progress_props|json_script:"progress-page-props" }}
+  <div data-progress-page-root data-props-id="progress-page-props"></div>
+{% endblock content %}

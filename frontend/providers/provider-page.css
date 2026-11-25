@@ -31,7 +31,7 @@
 .provider-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; min-width: 0; }
 .provider-name { min-width: 0; }
 .provider-identity > p { margin-top: .25rem; }
-.provider-media { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-left: auto; min-width: 0; }
+.provider-media { display: flex; flex-wrap: nowrap; overflow: hidden; justify-content: flex-end; gap: .5rem; margin-left: auto; min-width: 0; flex: 1 1 0; }
 .provider-media .settings-chip { --settings-card-badge-background: var(--color-surface-strong); }
 .provider-media-chip { border: 1px solid var(--settings-card-badge-border); border-radius: 9999px; padding: 4px 8px;
   background: var(--settings-card-badge-background); color: var(--settings-card-badge-text); font-size: 12px; line-height: 16px; }

@@ -84,11 +84,8 @@
       <input type="hidden" name="item_id" value="{{ item.id }}">
       {{ form.item }}
 
-      <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">
-        {% if visible_existing_entries or season_audit_entries or episode_audit_entries %}{% translate "Add Another Copy" %}{% else %}{% translate "Add Copy" %}{% endif %}
-      </h3>
-
-      {% include "app/components/collection_form_fields.html" with form=form collection_fields=collection_fields %}
+      {% if visible_existing_entries or season_audit_entries or episode_audit_entries %}{% translate "Add Another Copy" as copy_heading %}{% else %}{% translate "Add Copy" as copy_heading %}{% endif %}
+      {% include "app/components/collection_form_fields.html" with form=form collection_fields=collection_fields heading=copy_heading %}
 
       <div class="flex justify-end mt-6">
         {% button _("Add Copy") "primary" "base" submit=True %}

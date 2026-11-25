@@ -1,4 +1,5 @@
 import { ModalCloseButton } from './Modal';
+import { Title } from './Title';
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Spinner } from './Spinner';
@@ -28,7 +29,7 @@ function resolvePalette(palette) {
 export function FormHeader({ title, closeLabel, onClose, closeRef, palette }) {
   const colors = resolvePalette(palette);
   return <View style={styles.header}>
-    <Text accessibilityRole="header" style={[styles.headerTitle, { color: colors.text }]}>{title}</Text>
+    <Title color={colors.text} style={styles.headerTitle}>{title}</Title>
     {onClose ? <ModalCloseButton ref={closeRef} accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
       style={({ focused }) => [styles.close, focused && colors.focusStyle]}>
       <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
@@ -147,7 +148,7 @@ export function FormError({ message, palette }) {
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4 },
-  headerTitle: { flexShrink: 1, fontSize: 18, fontWeight: '700' },
+  headerTitle: { flexShrink: 1 },
   close: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   closeText: { fontSize: 24, lineHeight: 26 },
   field: { gap: 6 },

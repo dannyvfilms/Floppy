@@ -22,6 +22,7 @@ from integrations.models import RadarrInstance
 from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import (
     prune_collection_source_states,
+    replace_source_pages,
     sync_collection_source_state,
 )
 
@@ -142,6 +143,20 @@ class RadarrImporter:
                 auth=isinstance(error, ConnectionAuthError),
             )
             raise
+
+        # Every movie Radarr manages links from its detail page, downloaded or not.
+        replace_source_pages(
+            user=self.user,
+            source="radarr",
+            source_instance_id=self.instance.pk,
+            pages={
+                (Sources.TMDB.value, MediaTypes.MOVIE.value, str(row["tmdbId"])): (
+                    f"movie/{row.get('titleSlug') or row['tmdbId']}"
+                )
+                for row in movies
+                if row.get("tmdbId")
+            },
+        )
 
         total = len(movies)
         for i, row in enumerate(movies, start=1):

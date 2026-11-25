@@ -33,12 +33,28 @@ def _safe_return_url(request, media_type: str) -> str:
     return reverse("medialist", args=[media_type])
 
 
+# Media types the URL accepts that are shown inside another type's list:
+# type -> (list media type, query parameters to add).
+LISTED_UNDER = {
+    MediaTypes.COMIC_ISSUE.value: (MediaTypes.COMIC.value, {"subview": "issues"}),
+    MediaTypes.EPISODE.value: (MediaTypes.TV.value, {}),
+}
+
+
 @login_required
 @require_GET
 def media_list(request, media_type: str):
     """Render a media list with one request-scoped grouping policy."""
     if media_type not in MediaTypes.values:
         raise Http404
+    if media_type in LISTED_UNDER:
+        # No list of their own: open the list that holds them, keeping the
+        # filters (a comic issue's genre link lands here).
+        parent, extra = LISTED_UNDER[media_type]
+        query = request.GET.copy()
+        query.update(extra)
+        url = reverse("medialist", args=[parent])
+        return redirect(f"{url}?{query.urlencode()}" if query else url)
 
     field_name = preference_field(media_type)
     mode = show_separate_entries(request.user, media_type) if field_name else None

@@ -11,6 +11,7 @@ from defusedxml import ElementTree
 from django.conf import settings
 from requests import RequestException
 
+from app.helpers import coerce_int as _coerce_int
 from app.log_safety import exception_summary
 from integrations.safe_fetch import send_to_self_hosted
 
@@ -377,6 +378,7 @@ def fetch_section_all_items(
     start: int = 0,
     size: int | None = None,
     max_retries: int = 3,
+    extra_params: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Fetch all items from a Plex library section.
 
@@ -387,6 +389,7 @@ def fetch_section_all_items(
         start: Starting offset for pagination
         size: Number of items to fetch per page
         max_retries: Maximum number of retry attempts for network errors
+        extra_params: Extra query parameters (e.g. ``type`` and ``sort``)
 
     Returns:
         Tuple of (items list, total count)
@@ -402,6 +405,7 @@ def fetch_section_all_items(
         # response so callers don't need a per-item detail fetch to
         # resolve TMDB/IMDB/TVDB ids.
         "includeGuids": 1,
+        **(extra_params or {}),
     }
 
     # Ensure section_key is numeric (section ID) or use it as-is if it's already a path
@@ -779,14 +783,6 @@ def _extract_users_payload(payload: Any) -> list[dict[str, Any]]:
             return [users]
 
     return []
-
-
-def _coerce_int(value: Any, default: int) -> int:
-    """Best-effort int conversion with fallback."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def extract_external_ids_from_guids(

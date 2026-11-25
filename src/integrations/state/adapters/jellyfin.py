@@ -142,7 +142,22 @@ def build_adapter(binding):
     """Return the adapter for a Jellyfin binding, or None when unusable."""
     from integrations.models import JellyfinAccount
 
-    account = JellyfinAccount.objects.filter(user=binding.user).first()
+    # A binding names one server and profile; resolve exactly that connection so
+    # an approved push can never land on another of the user's servers. A
+    # connection that never learned its server id (saved before ids were
+    # stored) can only be matched when it is the user's single connection.
+    accounts = list(JellyfinAccount.objects.filter(user=binding.user))
+    matches = [
+        row
+        for row in accounts
+        if binding.instance_key
+        and row.server_id == binding.instance_key
+        and (not binding.profile_key or row.jellyfin_user_id == binding.profile_key)
+    ]
+    if len(matches) == 1:
+        account = matches[0]
+    else:
+        account = accounts[0] if len(accounts) == 1 else None
     if account is None or not account.base_url or not account.api_key:
         return None
     return JellyfinStateAdapter(account)

@@ -1509,12 +1509,11 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(
             detail_response, 'hx-trigger="load delay:500ms, every 5s"'
         )
+        # React draws the album cards from these props, so a loaded cover is the album's image.
+        self.assertContains(detail_response, "data-music-albums-root", html=False)
         self.assertContains(
-            detail_response,
-            f'id="album-cover-{scored_album.id}"',
-            html=False,
+            detail_response, '"image": "http://example.com/scored-album.jpg"', html=False
         )
-        self.assertContains(detail_response, "hx-preserve", html=False)
 
         with patch("app.tasks.prefetch_album_covers_batch.delay") as mock_delay:
             refresh_response = self.client.get(
@@ -1525,11 +1524,8 @@ class MediaDetailsViewTests(TestCase):
         mock_delay.assert_called_once_with([artist.id], limit_per_artist=None)
         self.assertContains(refresh_response, "7.5")
         self.assertContains(
-            refresh_response,
-            f'id="album-cover-{scored_album.id}"',
-            html=False,
+            refresh_response, '"image": "http://example.com/scored-album.jpg"', html=False
         )
-        self.assertContains(refresh_response, "hx-preserve", html=False)
         self.assertContains(refresh_response, "Refreshing cover art")
         self.assertContains(refresh_response, 'hx-trigger="every 5s"')
         self.assertNotContains(refresh_response, "load delay")
@@ -3154,6 +3150,15 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(
             {entry["label"] for entry in external_section["entries"]},
             {"Letterboxd", "IMDb", "TVDB", "Wikidata"},
+        )
+        guides_section = next(
+            section
+            for section in response.context["detail_link_sections"]
+            if section["title"] == "Guides"
+        )
+        self.assertEqual(
+            [entry["label"] for entry in guides_section["entries"]],
+            ["IMDb Parent's Guide"],
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -8030,6 +8035,69 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    @patch("app.views.tmdb.episode")
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_episode_details_score_chips_link_to_source_pages(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+        mock_episode,
+    ):
+        """The TMDB and IMDb score pills link to the episode's page on each site."""
+        Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+            imdb_rating=8.2,
+            imdb_rating_count=1355,
+            provider_external_ids={"imdb_id": "tt2306295"},
+        )
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+        mock_episode.return_value = {"score": 7.1, "score_count": 15}
+
+        response = self.client.get(
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'href="https://www.themoviedb.org/tv/1668/season/1/episode/1"',
+        )
+        self.assertContains(
+            response,
+            'href="https://www.imdb.com/title/tt2306295/"',
+        )
+
     @patch("app.views.tmdb.episode", return_value={})
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
@@ -8226,8 +8294,8 @@ class MediaDetailsViewTests(TestCase):
         mock_episode.return_value = {
             "episode_title": "Che i giochi abbiano inizio",
             "title": "Those About to Die",
-            "cast": [],
-            "crew": [],
+            "cast": [{"person_id": "1308445", "name": "Carrie Coon", "role": "Lead"}],
+            "crew": [{"person_id": "123", "name": "Example Director", "department": "Directing"}],
         }
 
         response = self.client.get(
@@ -8249,6 +8317,8 @@ class MediaDetailsViewTests(TestCase):
             "Che i giochi abbiano inizio",
         )
         self.assertContains(response, "Finale di stagione in italiano.")
+        self.assertContains(response, "/person/tmdb/1308445/carrie-coon")
+        self.assertContains(response, "/person/tmdb/123/example-director")
 
         mock_get_metadata.assert_called()
         _args, kwargs = mock_get_metadata.call_args

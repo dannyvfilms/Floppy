@@ -187,15 +187,15 @@ class SpanishPresentationTests(SimpleTestCase):
             self.assertEqual(media_status_readable(Status.COMPLETED), "Completado")
 
     def test_cached_recap_label_translates_at_render_time(self):
+        """The Statistics hero's cards are built per request, from labels cached in English."""
+        from app.statistics_views import _statistics_highlights_model
+
         highlights = {
-            "today_card": {"label": "TODAY IN HISTORY", "entry": None},
+            "today_card": {"label": "TODAY IN HISTORY", "entry": {"title": "Alien"}},
         }
         with translation.override("es"):
-            html = render_to_string(
-                "app/components/statistics/highlight_set.html",
-                {"highlights": highlights},
-            )
-        self.assertIn("HOY EN LA HISTORIA", html)
+            cards = _statistics_highlights_model(highlights, None)
+        self.assertEqual(cards[0]["label"], "HOY EN LA HISTORIA")
         self.assertEqual(highlights["today_card"]["label"], "TODAY IN HISTORY")
 
     def test_cached_activity_labels_translate_without_rebuilding_statistics(self):

@@ -65,7 +65,7 @@ test('game and YouTube data retain the existing shared MediumExtras contract', (
   youtube_watch: { seconds: 3600, hours_label: '1h', videos: 2 } });
   assert.deepEqual(model.gameLengths, { available: true, pending: false, sourceLabel: 'How Long to Beat',
     sourceUrl: 'https://howlongtobeat.com/game/1', cards: [{ label: 'Main Story', value: '12h', count: 6, glyph: '◷' }] });
-  assert.deepEqual(model.youtubeWatch, { seconds: 3600, hoursLabel: '1h', videos: 2 });
+  assert.deepEqual(model.youtubeWatch, { seconds: 3600, hoursLabel: '1h', videos: 2, channels: [] });
   assert.deepEqual(detailSecondaryModel({ identity: { media_type: 'game' } }).gameLengths,
     { available: false, pending: false, sourceLabel: '', sourceUrl: '', cards: [] });
   assert.equal(detailSecondaryModel({ identity: { media_type: 'movie' } }).gameLengths, null);

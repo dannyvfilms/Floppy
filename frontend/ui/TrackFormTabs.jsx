@@ -4,6 +4,7 @@ import { Icon } from './Icon';
 import { Button } from './Button';
 import { FormError, FormStatus, FormTextField } from './MediaCardFormControls';
 import { SelectField } from './SelectField';
+import { GroupedTabBody } from './TrackTabsGrouped';
 
 const DEFAULT_LABELS = {
   general: 'General',
@@ -65,6 +66,13 @@ function tabLabel(tab, labels) {
   if (tab.id === 'general') return labels.general;
   if (tab.label) return tab.label;
   return tab.id;
+}
+
+// The tab list as plain options (General first), for a menu that stands in for the strip.
+export function trackTabItems(tabs = [], suppliedLabels) {
+  const labels = labelsFor(suppliedLabels);
+  const all = tabs.some(tab => tab.id === 'general') ? tabs : [{ id: 'general', label: labels.general }, ...tabs];
+  return all.map(tab => ({ value: tab.id, label: tabLabel(tab, labels) }));
 }
 
 function SideTab({ tab, active, onSelect, palette, labels, wide }) {
@@ -277,6 +285,8 @@ function TabBody({ tab, palette, labels, handlers }) {
       <Button label={labels.retry} tone="surface" onPress={() => handlers.onRetry?.(tab.id)} palette={palette} />
     </View>;
   }
+  const grouped = handlers.grouped && GroupedTabBody({ tab, palette, labels, handlers });
+  if (grouped) return grouped;
   if (tab.kind === 'tags') return <TagsBody tab={tab} palette={palette} labels={labels}
     onTagToggle={handlers.onTagToggle} onTagCreate={handlers.onTagCreate} />;
   if (tab.kind === 'metadata') return <MetadataBody tab={tab} palette={palette} labels={labels}
@@ -302,19 +312,26 @@ export function TrackTabs({
   onArtworkSave,
   onDiscoverToggle,
   sidebar = false,
+  grouped = false,
+  hideNav = false,
+  renderSelectPicker,
 }) {
   const labels = labelsFor(suppliedLabels);
   const palette = resolvePalette(suppliedPalette);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const allTabs = tabs.some(tab => tab.id === 'general')
     ? tabs : [{ id: 'general', label: labels.general }, ...tabs];
   const active = allTabs.find(tab => tab.id === activeId) || allTabs[0];
   const body = <TabBody tab={active} palette={palette} labels={labels} handlers={{
     generalContent, onRetry, onTagToggle, onTagCreate, onArtworkSave, onDiscoverToggle,
+    grouped, renderSelectPicker,
   }} />;
   if (sidebar) {
     const wide = width >= 640;
-    return <View style={[styles.sideRoot, wide && styles.sideRootWide]}>
+    // The 576 px floor is capped to the room the shell has left under its header; on a short window
+    // a fixed floor pushed the footer (Delete / Update) past the clipped shell with no way to scroll to it.
+    const minHeight = Math.min(576, Math.max(240, Math.min(height * 0.92, height - 64) - 80));
+    return <View style={[styles.sideRoot, wide && styles.sideRootWide, wide && { minHeight }]}>
       <View style={[wide ? styles.aside : styles.asideNarrow, {
         backgroundColor: palette.background, borderColor: palette.border,
       }]}>
@@ -325,6 +342,8 @@ export function TrackTabs({
         contentContainerStyle={[styles.sideBodyContent, wide && styles.sideBodyWide]}>{body}</ScrollView>
     </View>;
   }
+  // hideNav: a native menu in the sheet's rail picks the tab, so the strip is not drawn.
+  if (hideNav) return <View style={styles.body}>{body}</View>;
   return <View style={styles.root}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.nav}
       contentContainerStyle={styles.navContent}>

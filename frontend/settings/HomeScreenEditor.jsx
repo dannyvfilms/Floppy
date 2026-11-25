@@ -59,6 +59,8 @@ const defaultLabels = {
   libraryRow: 'Library Row',
   lastWatched: 'Last Watched',
   upNext: 'Up Next',
+  hideCaughtUp: 'Hide caught-up shows',
+  hideCaughtUpHelp: 'Leave out shows you have watched up to the latest episode until the next one airs.',
   recentlyPlayed: 'Recently Played Row',
   addList: 'Add List',
   deleteRow: 'Delete row',
@@ -378,6 +380,7 @@ export function HomeScreenEditor({
       sort_by: rowType === 'recently_unrated' ? 'recent' : defaultSort,
       direction: rowType === 'recently_unrated' ? 'desc' : defaultSortDirection(defaultSort),
       recent_show: 'album',
+      hide_caught_up: false,
       filters: defaultFilters(section, rowType),
       editorOpen: rowType === 'custom_list',
     };
@@ -454,6 +457,7 @@ export function HomeScreenEditor({
         sort_by: row.sort_by,
         direction: row.direction,
         recent_show: row.recent_show || 'album',
+        hide_caught_up: row.row_type === 'up_next' && row.hide_caught_up === true,
         filters: row.filters || {},
       })),
     }));
@@ -745,6 +749,17 @@ export function HomeScreenEditor({
                   />
                   <Text style={[styles.help, { color: colors.textMuted }]}>{copy.selected} {row.custom_list_name || copy.noList}</Text>
                 </View> : null}
+
+                {row.row_type === 'up_next' ? <ToggleChip
+                  value={row.hide_caught_up === true}
+                  label={copy.hideCaughtUp}
+                  help={copy.hideCaughtUpHelp}
+                  offLabel="Off"
+                  onLabel="On"
+                  disabled={disabled}
+                  palette={colors}
+                  onChange={() => updateRow(sectionIndex, rowIndex, entry => { entry.hide_caught_up = entry.hide_caught_up !== true; })}
+                /> : null}
 
                 {row.row_type === 'recently_unrated' && section.media_type === 'music' ? <SelectField iconChevron={Boolean(colors.pageCards)}
                   id={`home-${row.client_id}-recent`}

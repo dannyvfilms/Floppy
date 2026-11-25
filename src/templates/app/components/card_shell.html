@@ -1,0 +1,18 @@
+{% comment %}
+First paint for a card that React draws (frontend/ui/MediaCard.web.jsx or a view built on it): poster and title
+only, so the grid has its shape before the script runs. React replaces it on mount. This is the one place
+server markup draws a card face.
+Args: `media_type` (optional, written as `data-media-type` so a card keeps the attribute the page's CSS and tests read), `bare` (true when the host element already is the `.media-card` root, as the mount hosts below are), `href` (optional), `title`, `image` (a ready URL, may be empty), `aspect` ("2/3", "1/1", "3/2" or "16/9").
+{% endcomment %}
+{% if not bare %}<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group"{% if media_type %} data-media-type="{{ media_type }}"{% endif %}>{% endif %}
+  <div class="media-card-visual relative">
+    <a{% if href %} href="{{ href }}"{% endif %}>
+      <img loading="lazy" decoding="sync" alt="{{ title }}"
+           class="media-card-poster w-full {% if aspect == '1/1' %}aspect-[1/1]{% elif aspect == '3/2' %}aspect-[3/2]{% elif aspect == '16/9' %}aspect-[16/9]{% else %}aspect-[2/3]{% endif %} bg-[var(--color-surface-alt)] object-cover"
+           {% if image %}src="{{ image }}"{% endif %}>
+    </a>
+  </div>
+  <div class="media-card-body p-3 bg-card-body" style="position: absolute; left: 0; right: 0; bottom: 0;">
+    <a{% if href %} href="{{ href }}"{% endif %} class="media-card-title text-sm font-semibold text-[var(--color-text)] line-clamp-1">{{ title }}</a>
+  </div>
+{% if not bare %}</div>{% endif %}

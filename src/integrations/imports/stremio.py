@@ -22,6 +22,7 @@ import zlib
 from collections import defaultdict
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -344,6 +345,18 @@ class StremioImporter:
             import_progress.report(current, total, "Stremio")
             try:
                 self._process_movie(entry)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Stremio import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 msg = f"Error processing entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from error
@@ -357,6 +370,18 @@ class StremioImporter:
                     cinemeta_videos.get(entry["_id"]),
                     anime_router,
                 )
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Stremio import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 msg = f"Error processing entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from error
@@ -366,6 +391,18 @@ class StremioImporter:
             import_progress.report(current, total, "Stremio")
             try:
                 self._process_anime(entry, anime_router)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Stremio import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    current,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as error:
                 msg = f"Error processing entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from error

@@ -102,6 +102,7 @@ export function DetailView({
   error = '',
   onRetry,
   onOpenItem,
+  onOpenTitle,
   onOpenExternal,
   onOpenVideo,
   onLoadMore,
@@ -115,10 +116,12 @@ export function DetailView({
   sectionsSlot,
   childrenSlot,
   sectionSlots,
+  collectedPlatforms,
   childSlots,
   noticeSlot,
   ratingInScoreRow = false,
   onOpenPerson,
+  onOpenStudio,
   onOpenMetadata,
   children,
   heroViewport,
@@ -180,9 +183,9 @@ export function DetailView({
       <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View> : !hideContent ? <>
       {part !== 'sections' ? <>
-        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} actions={actionsSlot} viewport={heroViewport} /> : <>
+        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} onOpenTitle={onOpenTitle} actions={actionsSlot} viewport={heroViewport} /> : <>
           <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
-          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork}
+          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} onOpenTitle={onOpenTitle}
             compact={Boolean(heroViewport) && width < 768} viewportWidth={heroViewport?.width || width} />
           {actionsSlot || <DetailActions model={model} labels={labels} palette={palette} />}
         </>}
@@ -202,7 +205,8 @@ export function DetailView({
       </> : null}
       {model.secondary ? <>
         {noticeSlot}
-        <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette}
+        <DetailSecondary model={model.secondary} sections={secondarySections} palette={palette} collectedPlatforms={collectedPlatforms}
+          onOpenPerson={onOpenPerson} onOpenStudio={onOpenStudio}
           onOpenLink={onOpenMetadata || onOpenExternal} promote={Boolean(model.artwork?.backdrop || model.artwork?.gallery?.photos?.length)} />
       </> : <>
       {hasSections ? sections.map(section => {

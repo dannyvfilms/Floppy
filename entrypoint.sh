@@ -156,9 +156,16 @@ stop_starting_server() {
 }
 start_starting_server
 
+# Floppy (Bundled) image only: bring up the embedded PostgreSQL and Valkey and
+# point DB_*/REDIS_URL at them before anything reads those settings.
+if [ "${FLOPPY_BUNDLED:-false}" = true ]; then
+    . /bundled-services.sh
+    bundled_start
+fi
+
 SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
-    SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}
+    SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-120}
     case "$SQLITE_ADMISSION_TIMEOUT" in
         ''|*[!0-9]*)
             echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be a positive whole number of seconds; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
@@ -251,7 +258,7 @@ if [ -z "$DB_HOST" ]; then
             fi
             case "$integrity_status" in
                 124|143)
-                    echo "[entrypoint] SQLite admission exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts (last exit ${integrity_status}); inspect storage/locks. Startup is paused before migrations and services." >&2
+                    echo "[entrypoint] SQLite admission exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts (last exit ${integrity_status}); inspect storage/locks, or raise FLOPPY_SQLITE_ADMISSION_TIMEOUT if this host is slow. Startup is paused before migrations and services." >&2
                     ;;
                 *)
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
@@ -510,6 +517,10 @@ if [ -d "$LOG_DIR_PATH" ] && [ -w "$LOG_DIR_PATH" ]; then
     FLOPPY_SUPERVISORD_LOG="${LOG_DIR_PATH}/supervisord.log"
 fi
 export FLOPPY_SUPERVISORD_LOG
+
+if [ "${FLOPPY_BUNDLED:-false}" = true ]; then
+    bundled_handoff
+fi
 
 stop_starting_server
 echo "[entrypoint] Starting services" >&2

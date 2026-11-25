@@ -286,6 +286,16 @@ function trackModalCreateToast(detail) {
   `;
   toast.querySelector("button").setAttribute("aria-label", gettext("Dismiss notification"));
   toast.querySelector("p").textContent = message;
+  // Optional link ({label, href}) beside the message, e.g. "See what's new".
+  const action = detail && detail.action;
+  if (action && action.href && action.label) {
+    const link = document.createElement("a");
+    link.href = action.href;
+    link.className = "text-sm font-medium underline whitespace-nowrap";
+    link.textContent = action.label;
+    link.addEventListener("click", () => toast.remove());
+    toast.querySelector("button").before(link);
+  }
   toast
     .querySelector("button")
     .addEventListener("click", () => toast.remove());

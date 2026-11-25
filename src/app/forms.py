@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from app import config
-from app.helpers import minutes_to_hhmm
+from app.helpers import minutes_to_hhmm, seconds_to_clock
 from app.models import (
     TV,
     AlbumTracker,
@@ -296,11 +296,7 @@ def episode_duration_input(seconds):
     """Return a duration as the ``mm:ss`` / ``h:mm:ss`` text the form accepts."""
     if not seconds:
         return ""
-    hours, remainder = divmod(int(seconds), 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
+    return seconds_to_clock(seconds)
 
 
 class PodcastDurationField(forms.CharField):
@@ -1400,7 +1396,7 @@ class CollectionEntryForm(forms.ModelForm):
                 attrs={"placeholder": "9.99", "step": "0.01", "min": "0"},
             ),
             "purchase_location": forms.TextInput(
-                attrs={"placeholder": "Steam, NAS, Home, Storage"},
+                attrs={"placeholder": "Amazon"},
             ),
         }
 

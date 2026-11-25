@@ -62,7 +62,7 @@ _FILE_IMPORTS = {
     "storygraph": ("import_storygraph", "StoryGraph CSV"),
     "youtube-takeout": (
         "import_youtube_takeout",
-        "YouTube Takeout watch history (JSON or zip)",
+        "YouTube Takeout watch history (JSON, HTML, zip or tgz)",
     ),
 }
 
@@ -249,7 +249,7 @@ class ImportActivityView(drf_views.APIView):
                 ] for key in ("results", "mapping_issues")}}
             services = []
             for service in context["outbound_services"]:
-                state = context["tmdb_rating_sync" if service["slug"] == "tmdb" else "wetrakr_sync"]
+                state = context["tmdb_rating_sync" if service["slug"] == "tmdb" else f"{service['slug']}_sync"]
                 services.append({
                     "slug": service["slug"], "state": service["state"], "counts": state["counts"],
                     "last_flushed_at": getattr(state.get("binding"), "last_flushed_at", None),

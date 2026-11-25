@@ -5,8 +5,12 @@ Koito. Endpoint shapes were read from the Koito source (gabehf/Koito) since the
 web API is unversioned and undocumented.
 """
 
+import io
+import json
 import logging
 import random
+import re
+import tempfile
 import time
 from dataclasses import dataclass, field
 from http import HTTPStatus
@@ -25,6 +29,13 @@ USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 MAX_LISTENS_PER_PAGE = 500
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
+
+# The export is one long response that Koito builds as it goes, so a big
+# library needs far more room and time than a normal API page. It is spooled
+# to disk and read one listen at a time, so these limits do not cost memory.
+EXPORT_MAX_BYTES = 2 * 1024 * 1024 * 1024
+EXPORT_TOTAL_TIMEOUT = 30 * 60
+EXPORT_READ_CHUNK = 1024 * 1024
 
 
 class KoitoAPIError(Exception):
@@ -63,6 +74,7 @@ def _make_api_request(
     params: dict[str, Any] | None = None,
     *,
     stream: bool = False,
+    fetch_limits: dict[str, Any] | None = None,
 ) -> Any:
     """GET a Koito endpoint with retry/backoff handling.
 
@@ -72,6 +84,7 @@ def _make_api_request(
         path: Path below /apis/web/v1/
         params: Query parameters
         stream: Return the raw response instead of parsed JSON
+        fetch_limits: Override the pinned fetch's total_timeout / max_bytes
 
     Returns:
         Parsed JSON, or the raw response when stream=True
@@ -100,6 +113,7 @@ def _make_api_request(
                 headers=headers,
                 timeout=REQUEST_TIMEOUT,
                 stream=stream,
+                **(fetch_limits or {}),
             )
             duration = time.time() - start_time
 
@@ -193,12 +207,80 @@ def get_album(base_url: str, api_key: str, album_id: int) -> dict[str, Any]:
     return _make_api_request(base_url, api_key, f"album/{album_id}")
 
 
-def get_export(base_url: str, api_key: str) -> Any:
-    """Fetch the full listening-history export.
+def iter_export(base_url: str, api_key: str):
+    """Yield every listen in Koito's full-history export, oldest first.
 
-    Unpaginated; the caller is responsible for streaming/chunking it.
+    The export can be larger than any single response Floppy accepts, so it is
+    downloaded to a temporary file and parsed one listen at a time. Memory use
+    stays flat however long the history is.
     """
-    return _make_api_request(base_url, api_key, "export")
+    response = _make_api_request(
+        base_url,
+        api_key,
+        "export",
+        stream=True,
+        fetch_limits={
+            "total_timeout": EXPORT_TOTAL_TIMEOUT,
+            "max_bytes": EXPORT_MAX_BYTES,
+        },
+    )
+    with tempfile.TemporaryFile() as spool:
+        try:
+            for chunk in response.iter_content(EXPORT_READ_CHUNK):
+                spool.write(chunk)
+        except (ValueError, requests.exceptions.RequestException) as e:
+            msg = f"Koito export download failed: {e}"
+            raise KoitoAPIError(msg) from e
+        finally:
+            response.close()
+
+        spool.seek(0)
+        yield from _iter_export_items(io.TextIOWrapper(spool, encoding="utf-8"))
+
+
+_EXPORT_LISTENS_START = re.compile(r'"listens"\s*:\s*\[|^\s*\[')
+_EXPORT_SKIP = re.compile(r"[\s,]*")
+
+
+def _iter_export_items(fp):
+    """Yield the objects of an export's `listens` array without loading it all."""
+    decoder = json.JSONDecoder()
+    buf = ""
+    pos = 0
+    started = False
+    eof = False
+
+    while not eof:
+        chunk = fp.read(EXPORT_READ_CHUNK)
+        if chunk:
+            buf = buf[pos:] + chunk
+            pos = 0
+        else:
+            eof = True
+
+        if not started:
+            match = _EXPORT_LISTENS_START.search(buf)
+            if not match:
+                continue
+            pos = match.end()
+            started = True
+
+        while True:
+            pos = _EXPORT_SKIP.match(buf, pos).end()
+            if pos >= len(buf) or buf[pos] == "]":
+                break
+            try:
+                item, pos = decoder.raw_decode(buf, pos)
+            except ValueError as e:
+                if eof:
+                    msg = f"Koito export is not valid JSON: {e}"
+                    raise KoitoAPIError(msg) from e
+                break  # the listen is split across chunks; read more
+            yield item
+
+    if not started:
+        msg = "Koito export did not contain a listens list."
+        raise KoitoAPIError(msg)
 
 
 def validate_connection(base_url: str, api_key: str) -> bool:

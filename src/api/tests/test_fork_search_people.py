@@ -288,6 +288,23 @@ class SearchEndpointTests(FloppyApiTestCase):
 class PeopleEndpointTests(FloppyApiTestCase):
     """GET people/<source>/<id>/ and studios/<source>/<id>/."""
 
+    @patch("app.people_views.studio_detail")
+    def test_unconfigured_provider_names_its_settings_page(self, mock_studio):
+        """A missing credential says which provider to set up and where."""
+        from app.providers import services
+
+        mock_studio.side_effect = services.ProviderNotConfiguredError(
+            Sources.IGDB.value, "IGDB is not configured. Add credentials.",
+        )
+        response = self.call_api(
+            "get", "api_studio", args=(Sources.IGDB.value, "70"), headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        payload = response.json()
+        self.assertEqual(payload["detail"], "IGDB is not configured. Add credentials.")
+        self.assertEqual(payload["errors"]["provider"], Sources.IGDB.value)
+        self.assertEqual(payload["errors"]["settings_path"], "/settings/providers/igdb")
+
     @patch("app.providers.tmdb.person")
     def test_person_returns_profile_credits_and_filters(self, mock_person):
         """A person profile carries the hero, credits and the toolbar state."""

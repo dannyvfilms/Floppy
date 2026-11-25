@@ -3,7 +3,7 @@
 Plex artwork endpoints require an ``X-Plex-Token``, so the raw URL can never be
 embedded in an ``<img src>`` without leaking that token into the page (and into
 Floppy's own database). Covers are instead served through Floppy's authenticated
-proxy (see ``integrations.views.plex_cover``), identified by a signed token so
+proxy (see ``integrations.cover_proxy_views.plex_cover``), identified by a signed token so
 the view never trusts client input for which account/server/item to fetch. This
 mirrors ``integrations.audiobookshelf_cover``; the two differ only in which
 credential the proxy attaches upstream and how the upstream host is resolved.

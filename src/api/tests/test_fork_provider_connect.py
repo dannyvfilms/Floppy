@@ -13,7 +13,7 @@ from integrations.imports.helpers import MediaImportError
 
 from .base import FloppyApiTestCase
 
-APP_LINK = "floppy-native-proof://connect/trakt"
+APP_LINK = "floppy-expo://connect/trakt"
 
 
 @override_settings(URLS=["http://192.168.1.50:8000"])
@@ -208,6 +208,43 @@ class WeTrakrConnectTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
 
+class SimklSendConnectTests(FloppyApiTestCase):
+    """SIMKL's sending login is a device code under its own key; "simkl" stays the import."""
+
+    def test_start_poll_and_cancel_use_the_sending_login(self):
+        flow = {
+            "device_code": "dc", "user_code": "BDWP-HQPK", "verification_url": "https://simkl.com/pin",
+            "interval": 5, "expires_in": 900,
+        }
+        with (
+            patch("integrations.simkl_views.simkl_api.client_id_for", return_value="cid"),
+            patch("integrations.simkl_views.simkl_api.start_device_flow", return_value=flow),
+        ):
+            data = self.call_api(
+                "post", "api_provider_connect_start", args=("simkl-send",), headers=self.auth_headers, payload={},
+            ).json()
+        self.assertEqual((data["kind"], data["userCode"]), ("device", "BDWP-HQPK"))
+
+        poll = lambda: self.call_api(  # noqa: E731
+            "get", "api_provider_connect_poll", args=("simkl-send",), headers=self.auth_headers,
+        ).json()
+        with patch("integrations.simkl_views.simkl_api.poll_device_flow", return_value=("pending", None)):
+            self.assertEqual(poll()["status"], "pending")
+
+        self.call_api(
+            "post", "api_provider_connect_cancel", args=("simkl-send",), headers=self.auth_headers, payload={},
+        )
+        from integrations.models import SimklAccount
+
+        self.assertFalse(SimklAccount.objects.filter(user=self.user1).exists())
+
+    def test_the_import_key_still_starts_the_browser_sign_in(self):
+        from api.fork_views_provider_connect import DEVICE_PROVIDERS, START_ROUTES
+
+        self.assertEqual(START_ROUTES["simkl"], "simkl_oauth")
+        self.assertNotIn("simkl", DEVICE_PROVIDERS)
+
+
 class RedirectConnectTests(FloppyApiTestCase):
     """Redirect providers return an authorize URL and finish on the web callback."""
 
@@ -219,7 +256,7 @@ class RedirectConnectTests(FloppyApiTestCase):
 
     def test_return_address_is_restricted(self):
         for bad in ("https://evil.example/x", "//evil.example", "javascript:alert(1)",
-                    "other-app://connect", "floppy-native-proof-x://a"):
+                    "other-app://connect", "floppy-expo-x://a"):
             response = self._start("anilist", {"returnTo": bad})
             self.assertEqual(response.status_code, HTTP.BAD_REQUEST, bad)
 

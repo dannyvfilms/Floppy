@@ -68,3 +68,14 @@ class WarmOnWorkerStartTests(SimpleTestCase):
             mock.patch.object(celery.app, "send_task", side_effect=OSError("down")),
         ):
             celery._warm_database_on_start()
+
+
+class WarmScheduleTests(SimpleTestCase):
+    """The warm repeats, so a cache another workload flushed is refilled."""
+
+    def test_the_warm_is_scheduled_periodically(self):
+        from django.conf import settings
+
+        entry = settings.CELERY_BEAT_SCHEDULE["warm_database_page_cache"]
+        self.assertEqual(entry["task"], "Warm database page cache")
+        self.assertLessEqual(entry["schedule"], 60 * 15)

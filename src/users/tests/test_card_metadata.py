@@ -267,3 +267,36 @@ class HandRolledCardTests(SimpleTestCase):
                 "date_added", "start_date", "end_date"
             }
             self.assertEqual(ids & {"date_added", "start_date", "end_date"}, expected)
+
+
+class TimeSpentFieldTests(SimpleTestCase):
+    """Games show combined time; Time spent is a choice for games and books."""
+
+    def test_game_progress_shows_combined_time_not_last_session(self):
+        from users.card_metadata import _progress
+
+        item = SimpleNamespace(media_type="game")
+        media = SimpleNamespace(
+            progress=30,
+            aggregated_progress=150,
+            formatted_progress="0h 30min",
+            formatted_aggregated_progress="2h 30min",
+        )
+        self.assertEqual(_progress(item, media, None), "2h 30min")
+
+    def test_time_spent_by_type_and_never_zero(self):
+        from users.card_metadata import _time_spent, field_types
+
+        self.assertEqual(field_types("time_spent"), {"game", "book"})
+        game = SimpleNamespace(media_type="game")
+        self.assertEqual(
+            _time_spent(game, SimpleNamespace(progress=30, aggregated_progress=150), None),
+            "2h 30min",
+        )
+        self.assertEqual(_time_spent(game, SimpleNamespace(progress=45), None), "45min")
+        self.assertIsNone(_time_spent(game, SimpleNamespace(progress=0), None))
+        book = SimpleNamespace(media_type="book", format="hardcover")
+        self.assertEqual(_time_spent(book, SimpleNamespace(reading_time=90, progress=200), None), "1h 30min")
+        self.assertIsNone(_time_spent(book, SimpleNamespace(reading_time=0, progress=200), None))
+        audio = SimpleNamespace(media_type="book", format="audiobook")
+        self.assertEqual(_time_spent(audio, SimpleNamespace(progress=60, reading_time=0), None), "1h 00min")

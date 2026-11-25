@@ -5,6 +5,7 @@ from collections import defaultdict
 from http import HTTPStatus
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 
@@ -196,6 +197,21 @@ class MylarImporter:
                 auth=isinstance(error, ConnectionAuthError),
             )
             raise
+        except SoftTimeLimitExceeded:
+            # A partial pass must not prune: owned_item_ids is incomplete, so
+            # pruning would drop copies the sync never reached. The next run
+            # finishes the list and does the prune.
+            logger.warning(
+                "%s import for %s hit the time limit; skipping prune",
+                self.label,
+                self.user.username,
+            )
+            self.warnings.append(
+                "Import stopped partway through because it was taking too "
+                "long. Run the import again to finish; no owned copies were "
+                "removed in this run.",
+            )
+            return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
         # Only after every series was read: a partial run must not drop copies.
         removed = prune_collection_source_states(

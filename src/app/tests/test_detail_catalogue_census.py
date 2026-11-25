@@ -228,6 +228,8 @@ class DetailCatalogueCensus(TestCase):
                         f"/details/tmdb/tv/{show.media_id}/census?fragment=secondary",
                     ),
                     ("api detail", f"{api}/"),
+                    # The Expo app's own detail page payload.
+                    ("api app detail", f"{api}/detail/"),
                     # The app pages each season's episodes on demand; the
                     # first season stands for one tap.
                     ("api season 1 episodes", f"{api}/1/episodes/"),
@@ -256,6 +258,11 @@ class DetailCatalogueCensus(TestCase):
                         "?fragment=secondary",
                     ),
                     ("api detail", f"{api}/"),
+                    (
+                        "api app detail",
+                        f"/api/v1/media/tv/tmdb/{show.media_id}/detail/"
+                        "?detail_type=season&season_number=1",
+                    ),
                     ("api episodes", f"{api}/episodes/"),
                 ],
             )
@@ -284,6 +291,13 @@ class DetailCatalogueCensus(TestCase):
                 size,
                 [
                     ("web", f"/person/tmdb/{person_id}/census"),
+                    # The next page of the filmography grid, as the web grid
+                    # asks for it on scroll (49-A).
+                    (
+                        "web more",
+                        f"/person/tmdb/{person_id}/census"
+                        "?section=filmography&credits_page=2&fragment=1",
+                    ),
                     ("api detail", f"/api/v1/people/tmdb/{person_id}/"),
                 ],
             )

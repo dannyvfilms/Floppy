@@ -111,7 +111,6 @@ from app.db_retry import run_retryable_db_operation
 from app.detail_builders import (
     _apply_cached_hltb_link,
     _build_detail_link_entry,
-    _build_detail_link_sections,
     _build_detail_person_rows,
     _build_game_length_card,
     _build_game_lengths_context,
@@ -139,7 +138,6 @@ from app.discover_views import (
     _discover_response_rows,
     _discover_rows_context,
     _get_or_create_discover_item,
-    _invalidate_discover_after_action,
     _mark_discover_stale_without_refresh,
     _render_discover_row_fragment,
     _render_discover_rows_fragment,
@@ -276,6 +274,7 @@ from app.music_views import (
     album_detail,
     artist_delete,
     artist_detail,
+    artist_discography_more,
     artist_save,
     artist_track_modal,
     create_album_from_search,
@@ -392,7 +391,6 @@ from app.statistics_views import (
     update_top_talent_sort,
 )
 from app.tag_views import (
-    _build_detail_tag_sections,
     _detail_request_url,
     _parse_detail_tag_preview_genres,
     _render_tag_modal_response,
@@ -407,19 +405,12 @@ from app.tag_views import (
 )
 from app.templatetags import app_tags
 from app.track_modal_views import (
-    _bulk_episode_form_initial_data,
     _bulk_episode_presentation,
     _DummyPodcastWrapper,
-    _episode_domain_template_payload,
     _render_podcast_show_track_modal,
     _render_standard_track_modal,
-    _track_form_presentation,
-    _track_modal_date_suggestion,
-    _track_modal_field_groups,
     _track_modal_release_date_shortcut,
     _track_modal_release_runtime_minutes,
-    _track_tab_labels,
-    _track_tabs_presentation,
     track_modal,
 )
 from app.tv_sort import _sort_tv_media_by_time_left
@@ -906,6 +897,14 @@ def progress_edit(request, media_type, instance_id):
             instance_id,
         )
 
+    if media_type == MediaTypes.GAME.value:
+        # Keep showing total playtime across sessions, as Home first rendered it.
+        entries = list(
+            Game.objects.filter(user=request.user, item_id=media.item_id),
+        )
+        if len(entries) > 1:
+            BasicMedia.objects._aggregate_item_data(media, entries)
+
     context = {
         "media": media,
     }
@@ -1066,6 +1065,22 @@ def episode_details(
         episode_data["item"] = episode_item
 
     imdb_score = _build_imdb_rating_context(episode_item, MediaTypes.EPISODE.value)
+    # Score-chip source links. The TMDB episode URL is derivable from the route;
+    # the IMDb tconst is stored by imdb_ratings.sync_episode_ratings.
+    tmdb_episode_url = (
+        f"https://www.themoviedb.org/tv/{media_id}/season/{season_number}"
+        f"/episode/{episode_number}"
+        if source == Sources.TMDB.value
+        else ""
+    )
+    imdb_episode_id = (
+        (episode_item.provider_external_ids or {}).get("imdb_id")
+        if episode_item is not None
+        else None
+    )
+    imdb_episode_url = (
+        f"https://www.imdb.com/title/{imdb_episode_id}/" if imdb_episode_id else ""
+    )
 
     season_url = reverse(
         "anime_season_details"
@@ -1131,6 +1146,8 @@ def episode_details(
         "next_episode_number": next_episode_number,
         "episode_metadata": episode_metadata,
         "imdb_score": imdb_score,
+        "tmdb_episode_url": tmdb_episode_url,
+        "imdb_episode_url": imdb_episode_url,
         "season_metadata": season_metadata,
         "current_instance": current_season_instance,
         "public_view": public_view,
@@ -1936,8 +1953,6 @@ __all__ = [
     "_build_detail_activity_state",
     "_build_detail_activity_subtitle",
     "_build_detail_link_entry",
-    "_build_detail_link_sections",
-    "_build_detail_tag_sections",
     "_build_game_length_card",
     "_build_game_lengths_context",
     "_build_hours_per_media_type_comparison",
@@ -1951,7 +1966,6 @@ __all__ = [
     "_build_release_history_days",
     "_build_track_modal_discover_tab_context",
     "_build_trakt_popularity_context",
-    "_bulk_episode_form_initial_data",
     "_bulk_episode_presentation",
     "_cached_history_entry_matches_filters",
     "_can_use_cached_month_history",
@@ -1975,7 +1989,6 @@ __all__ = [
     "_discover_response_rows",
     "_discover_rows_context",
     "_episode_collection_entries",
-    "_episode_domain_template_payload",
     "_filter_cached_history_days",
     "_filter_history_by_enabled_media_types",
     "_format_collection_progress",
@@ -1996,7 +2009,6 @@ __all__ = [
     "_get_statistics_minutes_by_type",
     "_get_tv_runtime_display_fallback",
     "_identify_predefined_range",
-    "_invalidate_discover_after_action",
     "_item_has_collection_source_state",
     "_mark_discover_stale_without_refresh",
     "_mark_grouped_anime_route",
@@ -2029,13 +2041,8 @@ __all__ = [
     "_should_queue_game_lengths_refresh",
     "_sort_tv_media_by_time_left",
     "_statistics_day_boundary",
-    "_track_form_presentation",
-    "_track_modal_date_suggestion",
-    "_track_modal_field_groups",
     "_track_modal_release_date_shortcut",
     "_track_modal_release_runtime_minutes",
-    "_track_tab_labels",
-    "_track_tabs_presentation",
     "_tracked_media_entries",
     "_user_tags_for_item",
     "activity_sessions_modal",
@@ -2048,6 +2055,7 @@ __all__ = [
     "app_tags",
     "artist_delete",
     "artist_detail",
+    "artist_discography_more",
     "artist_save",
     "artist_track_modal",
     "bulk_collection_quick_add",

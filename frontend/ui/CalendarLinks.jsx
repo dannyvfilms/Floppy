@@ -9,6 +9,10 @@ import {
 } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button.jsx';
+import { CollectionGroup, CollectionRow, CollectionSwitchRow } from './CollectionCopies';
+import { SelectField } from './SelectField';
+import { actionIcons } from './actionIcons';
+import { cardTypography } from './cardTypography';
 
 const FALLBACK_PALETTE = {
   surface: '#27272a',
@@ -127,6 +131,7 @@ export function CalendarLinks({
   labels,
   palette,
   embedded = false,
+  renderFeedPicker,
   onFeedChange,
   onSelectionChange,
   onCopyLink,
@@ -135,7 +140,9 @@ export function CalendarLinks({
   const { width } = useWindowDimensions();
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  const styles = useMemo(() => createStyles(colors, width >= 768, embedded), [colors, width, embedded]);
+  const wide = width >= 768;
+  const grouped = !embedded || !wide;
+  const styles = useMemo(() => createStyles(colors, wide, embedded), [colors, width, embedded]);
   const releaseTypeValues = useMemo(() => valuesFor(releaseMediaTypes), [releaseMediaTypes]);
   const historyTypeValues = useMemo(() => valuesFor(historyMediaTypes), [historyMediaTypes]);
   const statusValues = useMemo(() => valuesFor(statuses), [statuses]);
@@ -223,6 +230,13 @@ export function CalendarLinks({
     { value: 'releases', label: copy.releasesTab },
     { value: 'history', label: copy.historyTab },
   ];
+  const pickerOptions = [
+    { value: 'releases', label: 'Upcoming Releases', displayLabel: 'Upcoming' },
+    { value: 'history', label: 'Watch History', displayLabel: 'History' },
+  ];
+  const selectedPicker = pickerOptions.find(option => option.value === feed);
+  const mediaOptions = feed === 'history' ? historyMediaTypes : releaseMediaTypes;
+  const selectedMedia = feed === 'history' ? historyTypesSelection : releaseTypesSelection;
 
   const badgePalette = {
     outline: {
@@ -236,6 +250,41 @@ export function CalendarLinks({
     <Text style={styles.title}>{copy.title}</Text>
     <Text style={styles.help}>Sign in with your username and password to manage this.</Text>
   </View>;
+
+  // Expo and mobile web share the grouped-card layout (Collection sheet pattern);
+  // desktop web keeps its original single card with tabs.
+  if (grouped) {
+    const variant = embedded ? 'web' : 'native';
+    const shared = { ...colors, surfaceMuted: colors.surfaceDim, accentContrast: colors.accentText };
+    const switchRows = (items, selection, key) => items.map(item => <CollectionSwitchRow key={item.value}
+      icon={item.icon} label={item.label} value={selection.includes(item.value)} palette={shared} variant={variant}
+      onValueChange={() => {
+        const next = toggle(selection, item.value);
+        changeSelection(key, next, selectionState({ [key]: next }));
+      }} />);
+    const mediaKey = feed === 'history' ? 'historyMediaTypes' : 'releaseMediaTypes';
+    const actions = [
+      onCopyLink && exportUrl ? <CollectionRow key="copy" label="Copy Calendar" value={copied ? 'Copied' : 'Copy'}
+        icon={actionIcons.link} palette={shared} onPress={copyLink} /> : null,
+      onDownload && exportUrl ? <CollectionRow key="download" label="Download Calendar" value="Download"
+        icon={actionIcons.download} palette={shared} onPress={() => onDownload(exportUrl)} /> : null,
+    ];
+    return <View style={styles.linksStack}>
+      <CollectionGroup title="Calendar Links" palette={shared} variant={variant}>
+        <CollectionRow label="Calendar Type" icon={actionIcons.calendar} palette={shared}>
+          {renderFeedPicker ? renderFeedPicker({ value: feed, options: pickerOptions, onChange: changeFeed, palette: colors }) : <SelectField label="Calendar Type" labelHidden value={feed} options={pickerOptions} displayValue={selectedPicker.displayLabel} palette={shared}
+            accessibilityLabel={`Calendar Type: ${selectedPicker.label}`}
+            onChange={event => changeFeed(event.target.value)} popover
+            triggerStyle={styles.pickerTrigger} triggerTextStyle={styles.pickerValue}
+            indicator={<Text style={styles.pickerIndicator}>⌃{'\n'}⌄</Text>} />}
+        </CollectionRow>
+      </CollectionGroup>
+      <CollectionGroup title="Media Types" palette={shared} variant={variant}>{switchRows(mediaOptions, selectedMedia, mediaKey)}</CollectionGroup>
+      {feed === 'releases' && statuses.length ? <CollectionGroup title="Status" palette={shared} variant={variant}>{switchRows(statuses, statusesSelection, 'statuses')}</CollectionGroup> : null}
+      {feed === 'releases' && releaseTypes.length ? <CollectionGroup title="Release Dates" palette={shared} variant={variant}>{switchRows(releaseTypes, datesSelection, 'releaseTypes')}</CollectionGroup> : null}
+      {actions.some(Boolean) ? <CollectionGroup title={copy.ics} palette={shared} variant={variant}>{actions}</CollectionGroup> : null}
+    </View>;
+  }
 
   return <View style={styles.card}>
     <Text style={styles.title}>{copy.title}</Text>
@@ -370,6 +419,10 @@ function OptionSwitch({ label, checked, onPress, styles }) {
 function createStyles(colors, wide, embedded) {
   const optionWidth = wide ? '32%' : '100%';
   return StyleSheet.create({
+    linksStack: { gap: 20 },
+    pickerTrigger: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0, paddingVertical: 0 },
+    pickerValue: { color: colors.textSecondary, fontSize: 16 },
+    pickerIndicator: { color: colors.textMuted, fontSize: 13, lineHeight: 8, textAlign: 'center' },
     card: embedded ? {
       gap: 12,
     } : {

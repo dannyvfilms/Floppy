@@ -72,6 +72,7 @@ from app.services import metadata_resolution
 from app.stats_music import _country_name_from_code
 from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
+from app.title_sort import title_sort_expr, title_sort_key
 from app.tv_sort import (
     _sort_tv_media_by_time_left,
     build_time_left_records,
@@ -1348,6 +1349,53 @@ def _matches_release_filter_value(release_value, filter_value, today):
     return True
 
 
+def _matches_music_range_filters(
+    tracker,
+    range_filters,
+    *,
+    release_value=None,
+):
+    """Say whether one music tracker row sits inside the menu's ranges.
+
+    The music artist and album subviews read from their own trackers instead of
+    the shared library-query engine, so they applied no rating or date range at
+    all: the menu offered the controls and every row passed (issue #2104). The
+    meanings here match ``app.library_query.filters`` — rating is the row's
+    ``score``, date added is ``created_at``, release is the album's release
+    date — so one set of query parameters selects the same rows everywhere.
+    """
+    if not range_filters:
+        return True
+    rating_min = range_filters.get("rating_min") or ""
+    rating_max = range_filters.get("rating_max") or ""
+    score = getattr(tracker, "score", None)
+    if rating_min or rating_max:
+        if score is None:
+            return False
+        if rating_min and score < Decimal(rating_min):
+            return False
+        if rating_max and score > Decimal(rating_max):
+            return False
+    added_from = range_filters.get("date_added_from") or ""
+    added_to = range_filters.get("date_added_to") or ""
+    if added_from or added_to:
+        added = timezone.localtime(tracker.created_at).date().isoformat()
+        if (added_from and added < added_from) or (added_to and added > added_to):
+            return False
+    release_from = range_filters.get("release_date_from") or ""
+    release_to = range_filters.get("release_date_to") or ""
+    if release_from or release_to:
+        released = _release_date_from_value(release_value)
+        if released is None:
+            return False
+        released_text = released.isoformat()
+        if (release_from and released_text < release_from) or (
+            release_to and released_text > release_to
+        ):
+            return False
+    return True
+
+
 def _build_artist_list_context(
     user,
     *,
@@ -1363,12 +1411,15 @@ def _build_artist_list_context(
     layout,
     page,
     is_pagination_req,
+    range_filters=None,
 ):
     """Build the artist page and facets without mutating the route's context.
 
     Status, search, rating and release constrain the facet universe; genre and
-    origin then narrow the page. Image refresh/backfill is limited to that page.
-    The route owns preferences, shared context, and full-page/HTMX rendering.
+    origin then narrow the page, and the range filters do too, so the menu's
+    rating and date ranges mean here what they mean on every other list.
+    Image refresh/backfill is limited to that page. The route owns
+    preferences, shared context, and full-page/HTMX rendering.
     """
     from app.models import Artist, ArtistTracker
 
@@ -1397,7 +1448,11 @@ def _build_artist_list_context(
         artist_trackers = artist_trackers.filter(score__isnull=True)
 
     should_annotate_first_release_date = (
-        release_filter != "all" or sort_filter == "release_date" or layout == "table"
+        release_filter != "all"
+        or sort_filter == "release_date"
+        or layout == "table"
+        or bool(range_filters and range_filters.get("release_date_from"))
+        or bool(range_filters and range_filters.get("release_date_to"))
     )
     if should_annotate_first_release_date:
         artist_trackers = artist_trackers.annotate(
@@ -1406,8 +1461,10 @@ def _build_artist_list_context(
 
     # Apply sorting (limited to what makes sense for artists)
     if sort_filter == "title":
-        order = "artist__name" if direction == "asc" else "-artist__name"
-        artist_trackers = artist_trackers.order_by(order)
+        expr = title_sort_expr("artist__name")
+        artist_trackers = artist_trackers.order_by(
+            expr.asc() if direction == "asc" else expr.desc()
+        )
     elif sort_filter == "score":
         order = "score" if direction == "asc" else "-score"
         artist_trackers = artist_trackers.order_by(order, "artist__name")
@@ -1500,6 +1557,17 @@ def _build_artist_list_context(
             tracker
             for tracker in artist_trackers_list
             if _normalize_filter_value(tracker.artist.country) == target_country
+        ]
+
+    if range_filters:
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if _matches_music_range_filters(
+                tracker,
+                range_filters,
+                release_value=getattr(tracker, "first_release_date", None),
+            )
         ]
 
     # Paginate artist trackers first
@@ -2864,7 +2932,7 @@ def media_list(request, media_type):
                         media, "next_episode_air_date", None
                     )
                     return (_sortable_dt(next_episode_air_date), title.lower())
-                return title.lower()
+                return title_sort_key(title)
 
             _sort_reverse = direction == "desc"
             media_list = sorted(media_list, key=_mixed_sort_key, reverse=_sort_reverse)
@@ -3105,13 +3173,7 @@ def media_list(request, media_type):
                 continue
             parts = [video.channel] if video.channel else []
             if video.length_seconds:
-                minutes, seconds = divmod(video.length_seconds, 60)
-                hours, minutes = divmod(minutes, 60)
-                parts.append(
-                    f"{hours}:{minutes:02d}:{seconds:02d}"
-                    if hours
-                    else f"{minutes}:{seconds:02d}",
-                )
+                parts.append(helpers.seconds_to_clock(video.length_seconds))
             video.home_music_card = True
             video.card_subtitle_text = " · ".join(parts)
 
@@ -3361,8 +3423,10 @@ def media_list(request, media_type):
 
         # Apply sorting
         if sort_filter == "title":
-            order = "show__title" if direction == "asc" else "-show__title"
-            show_trackers = show_trackers.order_by(order)
+            expr = title_sort_expr("show__title")
+            show_trackers = show_trackers.order_by(
+                expr.asc() if direction == "asc" else expr.desc()
+            )
         elif sort_filter == "score":
             order = "score" if direction == "asc" else "-score"
             show_trackers = show_trackers.order_by(order, "show__title")
@@ -3597,6 +3661,8 @@ def media_list(request, media_type):
                 release_filter != "all"
                 or sort_filter == "release_date"
                 or layout == "table"
+                or bool(range_filters and range_filters.get("release_date_from"))
+                or bool(range_filters and range_filters.get("release_date_to"))
             )
             if should_annotate_release_date:
                 album_trackers = album_trackers.annotate(
@@ -3604,8 +3670,10 @@ def media_list(request, media_type):
                 )
 
             if sort_filter == "title":
-                order = "album__title" if direction == "asc" else "-album__title"
-                album_trackers = album_trackers.order_by(order)
+                expr = title_sort_expr("album__title")
+                album_trackers = album_trackers.order_by(
+                    expr.asc() if direction == "asc" else expr.desc()
+                )
             elif sort_filter == "score":
                 order = "score" if direction == "asc" else "-score"
                 album_trackers = album_trackers.order_by(order, "album__title")
@@ -3675,6 +3743,17 @@ def media_list(request, media_type):
                     )
                 ]
 
+            if range_filters:
+                album_trackers_list = [
+                    tracker
+                    for tracker in album_trackers_list
+                    if _matches_music_range_filters(
+                        tracker,
+                        range_filters,
+                        release_value=getattr(tracker, "first_release_date", None),
+                    )
+                ]
+
             album_paginator = Paginator(album_trackers_list, 32)
             album_page = album_paginator.get_page(page)
 
@@ -3708,6 +3787,7 @@ def media_list(request, media_type):
                     layout=layout,
                     page=page,
                     is_pagination_req=page > 1,
+                    range_filters=range_filters,
                 )
             )
 

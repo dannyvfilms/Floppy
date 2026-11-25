@@ -69,6 +69,11 @@ MIGRATION_PATH = re.compile(r"^src/[^/]+/migrations/")
 COMPARE_FILE_LIMIT = 300  # GitHub's compare API lists at most this many files
 DEFAULT_DEPTH = 3
 NORMAL, MIGRATION = "normal", "migration"
+UI = "ui"
+UI_INPUTS = ("frontend/", "src/static/ui/", "package.json", "package-lock.json", "scripts/build_ui.mjs", ".npmrc")
+UI_MARKER = re.compile(r"<!-- merge-train-ui:([0-9a-f]{40}):([0-9a-f]{40}):(started|failed) -->")
+UI_ATTEMPT_TIMEOUT = timedelta(minutes=30)  # a "started" refresh this old counts as failed
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 QUERY = """
 query($owner: String!, $name: String!) {
@@ -88,6 +93,7 @@ query($owner: String!, $name: String!) {
         mergeable
         mergeStateStatus
         headRefOid
+        comments(last: 20) { nodes { body createdAt author { login } } }
         autoMergeRequest { enabledAt }
         commits(last: 1) { nodes { commit { committedDate statusCheckRollup { contexts(first: 100) {
           nodes { ... on CheckRun { name status conclusion startedAt completedAt } }
@@ -180,7 +186,13 @@ def _up_to_date_verdict(pr: dict, now: datetime) -> tuple[str, str]:
 
 def judge(pr: dict, behind: int | None, now: datetime) -> tuple[str, str]:
     """Return (verdict, reason) for one queued PR: 'update', 'wait' or 'skip'."""
-    if pr["mergeStateStatus"] == "DIRTY" or pr["mergeable"] == "CONFLICTING":
+    conflicted = pr["mergeStateStatus"] == "DIRTY" or pr["mergeable"] == "CONFLICTING"
+    if pr.get("_ui_state") == "started" and behind != 0:
+        return "wait", "UI bundle refresh is running"
+    if conflicted and pr.get("_ui_candidate"):
+        pr["_route"] = UI
+        return "update", "merge conflict with latest; trying a UI bundle rebuild"
+    if conflicted:
         return "skip", "merge conflict with latest; its author has to resolve it"
     if any(
         c.get("name") == "migration-order" and c.get("conclusion") in FAILED
@@ -197,6 +209,8 @@ def judge(pr: dict, behind: int | None, now: datetime) -> tuple[str, str]:
         # happened, so it does not use up the one retry for this base.
         if marker and marker[0] == latest_oid and marker[1] != "refused":
             return "skip", "branch refresh already attempted for this base; failed checks still need attention"
+        if pr.get("_ui_candidate"):
+            pr["_route"] = UI
         return "update", f"required check failed before latest advanced; refreshing {behind} commits"
     reason = _failure_reason(pr, now)
     if reason:
@@ -209,6 +223,9 @@ def judge(pr: dict, behind: int | None, now: datetime) -> tuple[str, str]:
             "may not update; the contributor has to merge latest into it or "
             "enable 'Allow edits from maintainers'"
         )
+    if pr.get("_ui_candidate"):
+        pr["_route"] = UI
+        return "update", f"{behind} commits behind latest; UI bundles need a rebuild"
     return "update", f"{behind} commits behind latest"
 
 
@@ -403,6 +420,93 @@ def _report(lines: list[str], problem: bool) -> None:
 
 
 
+def _touches_ui(paths: list[str]) -> bool:
+    return any(path == i or (i.endswith("/") and path.startswith(i)) for path in paths for i in UI_INPUTS)
+
+
+def _changed_files(owner: str, name: str, base: str, head: str) -> list[str] | None:
+    """Files changed from base to head (renames count both names); None if unknown.
+
+    A diff GitHub truncates is treated as touching everything, which only costs a
+    rebuild that finds nothing to do.
+    """
+    try:
+        data = json.loads(
+            _gh(
+                "api",
+                f"repos/{owner}/{name}/compare/{base}...{head}",
+                "--jq",
+                "{files: [.files[]? | .filename, (.previous_filename // empty)], count: (.files | length)}",
+            )
+        )
+    except (subprocess.CalledProcessError, ValueError, KeyError, TypeError):
+        return None
+    if data.get("count", 0) >= COMPARE_FILE_LIMIT:
+        return [UI_INPUTS[0]]
+    return data.get("files") or []
+
+
+def _ui_state(pr: dict, owner: str, now: datetime) -> str | None:
+    """Return "started" or "failed" for a refresh already tried on this head and latest.
+
+    Only the owner's own comments count, so nobody else can pause a refresh.
+    A "started" refresh that outlives UI_ATTEMPT_TIMEOUT counts as failed.
+    """
+    state = None
+    for comment in (pr.get("comments") or {}).get("nodes") or []:
+        if (comment.get("author") or {}).get("login") != owner:
+            continue
+        match = UI_MARKER.search(comment.get("body") or "")
+        if not match or (match.group(1), match.group(2)) != (pr["headRefOid"], pr["_latest_oid"]):
+            continue
+        if match.group(3) == "failed":
+            return "failed"
+        if now - _time(comment["createdAt"]) < UI_ATTEMPT_TIMEOUT:
+            state = "started"
+        else:
+            return "failed"
+    return state
+
+
+def _ui_candidate(owner: str, name: str, latest: str, pr: dict, behind: int | None) -> bool:
+    """Whether this PR should be refreshed by the UI bundle rebuild instead of the API."""
+    if (
+        pr["isDraft"]
+        or pr["isCrossRepository"]
+        or (pr.get("author") or {}).get("login") != owner
+        or pr.get("_ui_state") == "failed"
+        or not behind
+    ):
+        return False
+    own = _changed_files(owner, name, latest, pr["headRefOid"])
+    if own is None or not _touches_ui(own):
+        return False
+    if pr["mergeStateStatus"] == "DIRTY" or pr["mergeable"] == "CONFLICTING":
+        return True
+    theirs = _changed_files(owner, name, pr["headRefOid"], latest)
+    return theirs is None or _touches_ui(theirs)
+
+
+def _post_started(owner: str, name: str, pr: dict) -> str:
+    """Record that a refresh was requested; return the comment id for the publisher."""
+    body = (
+        f"<!-- merge-train-ui:{pr['headRefOid']}:{pr['_latest_oid']}:started -->\n"
+        "The merge train is rebuilding the UI bundles for this branch."
+    )
+    try:
+        return str(json.loads(_gh("api", f"repos/{owner}/{name}/issues/{pr['number']}/comments", "-f", f"body={body}"))["id"])
+    except (subprocess.CalledProcessError, ValueError, KeyError):
+        return ""
+
+
+def _write_ui_output(requests: list[dict]) -> None:
+    """Hand the refresh requests to the build and publish jobs (workflow output)."""
+    path = os.environ.get("GITHUB_OUTPUT")
+    if path:
+        with Path(path).open("a", encoding="utf-8") as handle:
+            handle.write(f"ui_refresh={json.dumps(requests, separators=(',', ':'))}\n")
+
+
 def _depth() -> int:
     try:
         return max(1, min(10, int(os.environ.get("MERGE_TRAIN_DEPTH") or DEFAULT_DEPTH)))
@@ -461,10 +565,17 @@ def main(argv: list[str]) -> int:
             behind[p["number"]], migrating[p["number"]] = _compare(
                 owner, name, latest, p["headRefOid"]
             )
-    result = plan(prs, behind, migrating, datetime.now(UTC), _depth())
+    now = datetime.now(UTC)
+    if os.environ.get("MERGE_TRAIN_REBUILD_UI") == "true":
+        for p in prs:
+            if not p["isDraft"] and p["autoMergeRequest"]:
+                p["_ui_state"] = _ui_state(p, owner, now)
+                p["_ui_candidate"] = _ui_candidate(owner, name, latest, p, behind[p["number"]])
+    result = plan(prs, behind, migrating, now, _depth())
     lines = list(result.notes)
     updated = 0
     errors = False
+    ui_requests: list[dict] = []
     for lane in (NORMAL, MIGRATION):
         free = result.free[lane]
         for pr in result.ranked[lane]:
@@ -472,8 +583,30 @@ def main(argv: list[str]) -> int:
             if free == 0:
                 lines.append(f"#{number} waiting for a free {lane} slot ({pr['_reason']})")
                 continue
+            if dry_run and pr.get("_route") == UI:
+                lines.append(f"dry run: would rebuild UI bundles for #{number} ({lane} lane): {pr['_reason']}")
+                free -= 1
+                updated += 1
+                continue
             if dry_run:
                 lines.append(f"dry run: would update #{number} ({lane} lane): {pr['_reason']}")
+                free -= 1
+                updated += 1
+                continue
+            if pr.get("_route") == UI:
+                if not SHA_RE.match(pr["headRefOid"]) or not SHA_RE.match(latest):
+                    lines.append(f"#{number} skipped: unexpected commit ids for a UI refresh")
+                    continue
+                ui_requests.append(
+                    {
+                        "number": number,
+                        "branch": pr["headRefName"],
+                        "head": pr["headRefOid"],
+                        "base": latest,
+                        "started_comment": _post_started(owner, name, pr),
+                    }
+                )
+                lines.append(f"#{number} UI bundle rebuild requested ({lane} lane): {pr['_reason']}")
                 free -= 1
                 updated += 1
                 continue
@@ -489,6 +622,7 @@ def main(argv: list[str]) -> int:
             lines.append(f"#{number} updated ({lane} lane): merged latest into its branch; {pr['_reason']}")
             free -= 1
             updated += 1
+    _write_ui_output(ui_requests)
     advancing = bool(updated or result.in_flight)
     stuck = bool(result.queued) and not advancing and not result.manual_only
     problem = errors or stuck

@@ -1,0 +1,21 @@
+{% comment %}People saved on a list: the shared ListPeople island, with this markup as its server fallback.{% endcomment %}
+{% load i18n %}
+{% load app_tags %}
+{{ list_people_props|json_script:"list-people-props" }}
+<div data-people-hero-root data-props-id="list-people-props">
+      <section class="mt-10" data-list-people aria-labelledby="list-people-heading">
+        <h2 id="list-people-heading" class="text-xl font-semibold mb-4">{% translate "People" %}</h2>
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+          {% for person in list_people %}
+            <div class="group relative" data-list-person>
+              <a href="{{ person.url }}" class="block">
+                <img src="{{ person.image|default:IMG_NONE|image_url }}" alt="{{ person.name }}" loading="lazy"
+                     class="w-full aspect-[2/3] rounded-lg object-cover bg-[var(--color-surface)]">
+                <p class="mt-2 text-sm font-medium text-[var(--color-text)] truncate">{{ person.name }}</p>
+                {% if person.department %}<p class="text-xs text-[var(--color-text-muted)] truncate">{{ person.department }}</p>{% endif %}
+              </a>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+</div>

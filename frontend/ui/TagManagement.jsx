@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { BulkActionDialog, BulkOptionRow } from './BulkActions';
 import { Button } from './Button';
+import { Title } from './Title';
 import { Icon } from './Icon';
 import { TextField } from './TextField';
 import { Chip } from '../settings/Chip';
@@ -351,7 +352,7 @@ export function TagAssignmentDialog({
   const panel = plain ? plainPanel : <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <View style={styles.dialogHead}>
       <View style={styles.dialogHeading}>
-        <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>Tags</Text>
+        <Title size="sheet" color={colors.text}>Tags</Title>
         {item ? <Text numberOfLines={2} style={[styles.dialogCopy, { color: colors.textMuted }]}>
           {item.title}{item.subtitle ? ` · ${item.subtitle}` : ''}
         </Text> : null}
@@ -503,8 +504,7 @@ const styles = StyleSheet.create({
   dialog: { width: '100%', maxWidth: 560, maxHeight: '88%', borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
   dialogHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   dialogHeading: { flex: 1, gap: 2 },
-  dialogTitle: { fontSize: 20, fontWeight: '700' },
-  dialogCopy: { fontSize: 12, lineHeight: 17 },
+    dialogCopy: { fontSize: 12, lineHeight: 17 },
   plainPanel: { gap: 12 },
 plainRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, padding: 12, borderRadius: 6 },
 plainName: { flexShrink: 1, fontSize: 16 },

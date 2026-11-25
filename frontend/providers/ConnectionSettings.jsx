@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
 import { TextField } from '../ui/TextField';
+import { isLightTheme, toneText } from '../settings/statusTones';
 
 const defaultPalette = {
   background: '#18181b',
@@ -62,9 +63,9 @@ const defaultLabels = {
 };
 
 function statusPalette(colors, tone) {
-  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
-  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
-  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
+  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: toneText(colors, 'success') };
+  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: toneText(colors, 'warning') };
+  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: toneText(colors, 'info') };
   return { ...colors, badgeBackground: colors.surface };
 }
 
@@ -123,7 +124,8 @@ export function ConnectionSettings({
   palette = {},
   buttonPalette = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const light = isLightTheme(palette, useColorScheme());
+  const colors = { ...defaultPalette, ...palette, isLight: light };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const labels = { ...defaultLabels, ...(model.labels || {}) };
   const [instanceValues, setInstanceValues] = useState(() => Object.fromEntries(

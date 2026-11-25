@@ -77,8 +77,11 @@ class _DummyPodcastWrapper:
         return False
 
 
-def _bulk_episode_form_initial_data(return_url, domain):
-    """Return initial form values for the bulk episode-play tab."""
+def bulk_episode_form_initial_data(return_url, domain):
+    """Return initial form values for the bulk episode-play tab.
+
+    Shared with music_views for the artist and album track modals.
+    """
     now = timezone.localtime(timezone.now()).replace(second=0, microsecond=0)
     date_initial = now if settings.TRACK_TIME else now.date()
 
@@ -103,8 +106,11 @@ def _bulk_episode_form_initial_data(return_url, domain):
     }
 
 
-def _episode_domain_template_payload(domain):
-    """Return the JSON-friendly episode selector payload for Alpine."""
+def episode_domain_template_payload(domain):
+    """Return the JSON-friendly episode selector payload for Alpine.
+
+    Shared with music_views for the artist and album track modals.
+    """
     if not domain:
         return None
 
@@ -312,7 +318,7 @@ def _bulk_episode_presentation(
         "trackTime": track_time,
         "hidden": hidden,
         "values": values,
-        "domain": _episode_domain_template_payload(domain) or {},
+        "domain": episode_domain_template_payload(domain) or {},
         "seasonOptions": [
             {
                 "value": str(season["season_number"]),
@@ -335,8 +341,11 @@ def _bulk_episode_presentation(
     }
 
 
-def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=None):
-    """Split a track form into hidden, general, and metadata field groups."""
+def track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=None):
+    """Split a track form into hidden, general, and metadata field groups.
+
+    Shared with music_views for the artist and album track modals.
+    """
     metadata_field_names = metadata_field_names or set()
     ordered_general_field_names = [
         field_name
@@ -473,8 +482,11 @@ def _track_form_labels():
     }
 
 
-def _track_tab_labels(context):
-    """Return labels only for the tabs this modal actually offers."""
+def track_tab_labels(context):
+    """Return labels only for the tabs this modal actually offers.
+
+    Shared with music_views for the artist and album track modals.
+    """
     labels = {}
     if context.get("tags_tab_available"):
         labels.update({
@@ -538,8 +550,11 @@ def _track_tab_labels(context):
     return labels
 
 
-def _track_tabs_presentation(context):
-    """Serialize the available Track tabs for the shared dialog."""
+def track_tabs_presentation(context):
+    """Serialize the available Track tabs for the shared dialog.
+
+    Shared with music_views for the artist and album track modals.
+    """
     tabs = [{
         "id": "general",
         "label": str(gettext("General")),
@@ -619,7 +634,7 @@ def _track_tabs_presentation(context):
     return tabs
 
 
-def _track_form_presentation(
+def track_form_presentation(
     request,
     form,
     *,
@@ -637,7 +652,10 @@ def _track_form_presentation(
     save_as_new,
     date_suggestion=None,
 ):
-    """Serialize the General tab into the shared TrackForm model."""
+    """Serialize the General tab into the shared TrackForm model.
+
+    Shared with music_views for the artist and album track modals.
+    """
     track_time = bool(settings.TRACK_TIME)
     hidden = {
         field.name: _track_form_field_value(field, track_time)
@@ -660,6 +678,9 @@ def _track_form_presentation(
     ]
     suggestion = date_suggestion or {}
     for field in fields:
+        if field["name"] == "score":
+            # The score is picked from 1 to the viewer's scale, like Expo's; the value stays 0-10.
+            field["scaleMax"] = getattr(request.user, "rating_scale_max", 10) or 10
         if field["name"] not in {"start_date", "end_date"}:
             continue
         is_start = field["name"] == "start_date"
@@ -808,10 +829,12 @@ def _track_modal_release_runtime_minutes(media_type, *candidates):
     return ""
 
 
-def _track_modal_date_suggestion(label, iso_date, runtime_minutes="", extras=()):
+def track_modal_date_suggestion(label, iso_date, runtime_minutes="", extras=()):
     """Normalize a labeled date suggestion for the shared date/time picker.
 
     ``extras`` are further ``{"label", "date"}`` quick dates offered next to it.
+
+    Shared with music_views for the artist and album track modals.
     """
     return {
         "label": label,
@@ -1239,7 +1262,7 @@ def _render_standard_track_modal(
         "start_date_cleared",
     }
     metadata_field_names = {"image_url"}
-    field_groups = _track_modal_field_groups(
+    field_groups = track_modal_field_groups(
         form,
         hidden_field_names=hidden_field_names,
         metadata_field_names=metadata_field_names,
@@ -1443,7 +1466,7 @@ def _render_standard_track_modal(
         if bulk_form_override is not None:
             episode_plays_form = bulk_form_override
         else:
-            bulk_initial = _bulk_episode_form_initial_data(
+            bulk_initial = bulk_episode_form_initial_data(
                 return_url, episode_plays_domain
             )
             bulk_initial["instance_id"] = instance_id or ""
@@ -1479,7 +1502,7 @@ def _render_standard_track_modal(
         metadata_item,
         request.user,
     )
-    date_suggestion = _track_modal_date_suggestion(
+    date_suggestion = track_modal_date_suggestion(
         # Name the theatrical date once a digital or physical one sits beside it.
         gettext_noop("Theatrical release") if other_release_dates else "Release Date",
         release_date_shortcut,
@@ -1585,7 +1608,7 @@ def _render_standard_track_modal(
         "episode_plays_formaction": reverse("episode_bulk_save"),
         "episode_plays_tab_label": "Episode Plays",
         "episode_plays_submit_label": "Save plays",
-        "episode_plays_domain": _episode_domain_template_payload(episode_plays_domain),
+        "episode_plays_domain": episode_domain_template_payload(episode_plays_domain),
         "episode_plays_mode_notice": (
             episode_plays_domain.get("mode_notice", "") if episode_plays_domain else ""
         ),
@@ -1653,7 +1676,7 @@ def _render_standard_track_modal(
         submit_label=context["episode_plays_submit_label"],
     )
     context["track_form_props_id"] = f"{track_form_id}-shared-form"
-    presentation = _track_form_presentation(
+    presentation = track_form_presentation(
         request,
         form,
         track_form_id=track_form_id,
@@ -1670,8 +1693,8 @@ def _render_standard_track_modal(
         save_as_new=bool(media_type == MediaTypes.EPISODE.value and media),
         date_suggestion=date_suggestion,
     )
-    presentation["tabs"] = _track_tabs_presentation(context)
-    presentation["model"]["labels"].update(_track_tab_labels(context))
+    presentation["tabs"] = track_tabs_presentation(context)
+    presentation["model"]["labels"].update(track_tab_labels(context))
     context["track_form_presentation"] = presentation
     response = render(
         request,
@@ -1720,7 +1743,7 @@ def _render_podcast_show_track_modal(
             user=request.user,
         )
 
-    field_groups = _track_modal_field_groups(
+    field_groups = track_modal_field_groups(
         form,
         hidden_field_names={"show_id"},
         metadata_field_names=set(),
@@ -1737,7 +1760,7 @@ def _render_podcast_show_track_modal(
         if bulk_form_override is not None:
             episode_plays_form = bulk_form_override
         else:
-            bulk_initial = _bulk_episode_form_initial_data(
+            bulk_initial = bulk_episode_form_initial_data(
                 return_url,
                 episode_plays_domain,
             )
@@ -1750,7 +1773,7 @@ def _render_podcast_show_track_modal(
         episode_plays_form = None
 
     track_form_id = track_form_id or f"track-form-{uuid4().hex}"
-    date_suggestion = _track_modal_date_suggestion("Release Date", "")
+    date_suggestion = track_modal_date_suggestion("Release Date", "")
     context = {
         "user": request.user,
         "title": show.title,
@@ -1781,7 +1804,7 @@ def _render_podcast_show_track_modal(
         "episode_plays_formaction": reverse("episode_bulk_save"),
         "episode_plays_tab_label": "Episode Plays",
         "episode_plays_submit_label": "Save plays",
-        "episode_plays_domain": _episode_domain_template_payload(
+        "episode_plays_domain": episode_domain_template_payload(
             episode_plays_domain,
         ),
         "episode_plays_mode_notice": (
@@ -1792,7 +1815,7 @@ def _render_podcast_show_track_modal(
         "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
     }
     context["track_form_props_id"] = f"{track_form_id}-shared-form"
-    presentation = _track_form_presentation(
+    presentation = track_form_presentation(
         request,
         form,
         track_form_id=track_form_id,
@@ -1809,8 +1832,8 @@ def _render_podcast_show_track_modal(
         save_as_new=False,
         date_suggestion=date_suggestion,
     )
-    presentation["tabs"] = _track_tabs_presentation(context)
-    presentation["model"]["labels"].update(_track_tab_labels(context))
+    presentation["tabs"] = track_tabs_presentation(context)
+    presentation["model"]["labels"].update(track_tab_labels(context))
     context["track_form_presentation"] = presentation
     response = render(
         request,
@@ -1919,7 +1942,7 @@ def track_modal(
                     self.title = episode.title
                     self.track_number = episode.episode_number
                     self.duration_formatted = (
-                        self._format_duration(episode.duration)
+                        helpers.seconds_to_clock(episode.duration)
                         if episode.duration
                         else None
                     )
@@ -1932,15 +1955,6 @@ def track_modal(
                     self.episode_uuid = (
                         episode.episode_uuid
                     )  # For form submission when music is None
-
-                def _format_duration(self, seconds):
-                    """Format duration in seconds to MM:SS or H:MM:SS."""
-                    hours = seconds // 3600
-                    minutes = (seconds % 3600) // 60
-                    secs = seconds % 60
-                    if hours > 0:
-                        return f"{hours}:{minutes:02d}:{secs:02d}"
-                    return f"{minutes}:{secs:02d}"
 
             class PodcastShowAdapter:
                 """Adapter to make PodcastShow work like Album in template."""

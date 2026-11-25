@@ -1,5 +1,6 @@
 import { actionIcons } from './actionIcons';
 import { Icon } from './Icon';
+import { Title } from './Title';
 import { Modal } from './Modal';
 import { DropdownMenu } from './DropdownMenu';
 import { toggleDropdownSelection } from './dropdownMetrics';
@@ -46,6 +47,7 @@ export function SelectField({
   name,
   options = [],
   value,
+  displayValue,
   onChange,
   disabled = false,
   help,
@@ -56,6 +58,7 @@ export function SelectField({
   filter = false,
   leadingIcon,
   iconChevron = false,
+  indicator,
   testID,
   triggerStyle,
   triggerTextStyle,
@@ -119,11 +122,11 @@ export function SelectField({
         triggerStyle,
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
-      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selectedLabel || placeholder}</Text>
-      {filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
+      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{displayValue ?? (selectedLabel || placeholder)}</Text>
+      {indicator || (filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
         : iconChevron
           ? <View style={styles.chevron}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
-          : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>}
+          : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>)}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     {popover ? <DropdownMenu open={open} anchor={anchor} palette={colors} closeLabel={defaultLabels.close}
@@ -134,7 +137,7 @@ export function SelectField({
         <Pressable accessibilityRole="button" accessibilityLabel={defaultLabels.close} onPress={() => setOpen(false)} style={styles.backdrop} />
         <View accessibilityViewIsModal style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.dialogHeader}>
-            <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{label}</Text>
+            <Title size="compact" color={colors.text} style={styles.dialogTitle}>{label}</Title>
             <Pressable accessibilityRole="button" accessibilityLabel={`${defaultLabels.closeAction}: ${label}`}
               onPress={() => setOpen(false)} style={({ pressed }) => [styles.close, pressed && { opacity: 0.7 }]}>
               <Text style={[styles.closeText, { color: colors.accent }]}>{defaultLabels.closeAction}</Text>
@@ -174,7 +177,7 @@ const styles = StyleSheet.create({
   dialog: { width: '100%', maxWidth: 300, alignSelf: 'center', maxHeight: '80%',
     borderWidth: 1, borderRadius: 12, paddingVertical: 8 },
   dialogHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
-  dialogTitle: { flexShrink: 1, fontSize: 16, fontWeight: '600' },
+  dialogTitle: { flexShrink: 1 },
   close: { paddingVertical: 4, paddingHorizontal: 4 },
   closeText: { fontSize: 13, fontWeight: '600' },
   options: { maxHeight: 420 },

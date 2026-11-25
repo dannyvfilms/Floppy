@@ -28,9 +28,16 @@ START_ROUTES = {
     "tmdb": "tmdb_connect",
     "storyteller": "storyteller_connect",
     "wetrakr": "wetrakr_connect",
+    # SIMKL's import signs in through the browser under "simkl"; the login that
+    # lets Floppy send plays is a device code, so it has its own key here.
+    "simkl-send": "simkl_connect",
 }
-CANCEL_ROUTES = {"storyteller": "storyteller_cancel", "wetrakr": "wetrakr_cancel"}
-DEVICE_PROVIDERS = frozenset({"trakt", "storyteller", "wetrakr"})
+CANCEL_ROUTES = {
+    "storyteller": "storyteller_cancel",
+    "wetrakr": "wetrakr_cancel",
+    "simkl-send": "simkl_cancel",
+}
+DEVICE_PROVIDERS = frozenset({"trakt", "storyteller", "wetrakr", "simkl-send"})
 IMPORT_MODES = ("new", "overwrite")
 
 
@@ -88,10 +95,18 @@ def _storyteller_device(user):
     )
 
 
-def _wetrakr_device(user):
-    from integrations.models import WeTrakrAccount
+def _push_device(model_name):
+    """Read the pending device code of one send-to-service account."""
 
-    account = WeTrakrAccount.objects.filter(user=user).first()
+    def read(user):
+        from integrations import models
+
+        return _pending_device(getattr(models, model_name).objects.filter(user=user).first())
+
+    return read
+
+
+def _pending_device(account):
     if account is None or not account.is_pending:
         return None
     expires = account.device_expires_at.isoformat() if account.device_expires_at else None
@@ -107,7 +122,8 @@ def _wetrakr_device(user):
 DEVICE_READERS = {
     "trakt": _trakt_device,
     "storyteller": _storyteller_device,
-    "wetrakr": _wetrakr_device,
+    "wetrakr": _push_device("WeTrakrAccount"),
+    "simkl-send": _push_device("SimklAccount"),
 }
 
 
@@ -125,7 +141,7 @@ class ProviderConnectStartView(drf_views.APIView):
         same-origin path; anything else is refused.
         """
         route = START_ROUTES.get(slug)
-        if route is None or _catalog_item(slug) is None:
+        if route is None or _catalog_item(slug.removesuffix("-send")) is None:
             return Response({"detail": "This provider has no sign-in flow."}, status=HTTP.NOT_FOUND)
         body = _json_body(request)
         return_to = body.get("returnTo")
@@ -195,6 +211,10 @@ class ProviderConnectPollView(drf_views.APIView):
             from integrations.views import storyteller_poll
 
             result = _delegate(request, storyteller_poll, method="GET")
+        elif slug == "simkl-send":
+            from integrations.simkl_views import simkl_poll
+
+            result = _delegate(request, simkl_poll)
         else:
             from integrations.wetrakr_views import wetrakr_poll
 

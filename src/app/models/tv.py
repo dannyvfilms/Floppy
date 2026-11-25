@@ -29,6 +29,17 @@ from integrations.import_scope import ImportScopedManager
 
 logger = logging.getLogger(__name__)
 
+
+def _announce_status_write(user_id, media_type, reason):
+    """Tell the library pages and Statistics about a status bulk_update wrote.
+
+    ``bulk_update_with_history`` sends no save signal, so these helpers run
+    the same refresh a save would (docs/architecture/view-caches.md).
+    """
+    from app import signals
+
+    signals._handle_media_cache_change(user_id, media_type, reason=reason)
+
 # Sentinel distinguishing "no explicit end_date supplied" (fall back to the
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
@@ -190,31 +201,7 @@ class TV(Media):
         if (
             not is_create and self.tracker.has_changed("status")
         ) or completed_on_create:
-            if self.status == Status.COMPLETED.value:
-                try:
-                    self._completed()
-                except (
-                    providers.services.ProviderAPIError,
-                    RequestException,
-                    KeyError,
-                    TypeError,
-                    ValueError,
-                ) as error:
-                    logger.warning(
-                        "Skipping completion fan-out due to missing metadata"
-                        " for %s: %s",
-                        self.tracking_media_id,
-                        error,
-                    )
-
-            elif self.status == Status.DROPPED.value:
-                self._mark_in_progress_seasons_as_dropped()
-
-            elif (
-                self.status == Status.IN_PROGRESS.value
-                and not self.seasons.filter(status=Status.IN_PROGRESS.value).exists()
-            ):
-                self._start_next_available_season()
+            self._propagate_status_to_seasons(self.tracker.previous("status"))
 
             self.item.fetch_releases(delay=True)
         elif (
@@ -376,6 +363,7 @@ class TV(Media):
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
 
+        _announce_status_write(self.user_id, MediaTypes.TV.value, "rewatch_started")
         return skipped
 
     def stop_rewatch(self, max_progress=None):
@@ -408,6 +396,7 @@ class TV(Media):
         if self.status != Status.IN_PROGRESS.value:
             self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
+            _announce_status_write(self.user_id, MediaTypes.TV.value, "rewatch_stopped")
 
     @property
     def progress_percentage(self):
@@ -733,6 +722,62 @@ class TV(Media):
                 self.user_id, episodes_to_create, reason="tv_completed_fan_out"
             )
         return None
+
+    def _propagate_status_to_seasons(self, previous_status):
+        """Apply a show's status change to its seasons (the one dispatcher).
+
+        Show to season rules live here. Season to show rules are in
+        `Season.save`. Rules must stay narrow: only the transitions below
+        touch seasons, never episodes, plays or rewatch boundaries.
+        """
+        if self.status == Status.COMPLETED.value:
+            try:
+                self._completed()
+            except (
+                providers.services.ProviderAPIError,
+                RequestException,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                logger.warning(
+                    "Skipping completion fan-out due to missing metadata"
+                    " for %s: %s",
+                    self.tracking_media_id,
+                    error,
+                )
+
+        elif self.status == Status.DROPPED.value:
+            self._mark_in_progress_seasons_as_dropped()
+
+        elif (
+            self.status == Status.PAUSED.value
+            and previous_status == Status.IN_PROGRESS.value
+        ):
+            self._pause_in_progress_seasons()
+
+        elif (
+            self.status == Status.IN_PROGRESS.value
+            and not self.seasons.filter(status=Status.IN_PROGRESS.value).exists()
+        ):
+            self._start_next_available_season()
+
+    def _pause_in_progress_seasons(self):
+        """Pause the show's in-progress seasons; other seasons keep their status."""
+        in_progress_seasons = list(
+            self.seasons.filter(status=Status.IN_PROGRESS.value),
+        )
+
+        for season in in_progress_seasons:
+            season.status = Status.PAUSED.value
+
+        if in_progress_seasons:
+            bulk_update_with_history(
+                in_progress_seasons,
+                Season,
+                fields=["status"],
+                default_change_reason="Show paused",
+            )
 
     def _mark_in_progress_seasons_as_dropped(self):
         """Mark all in-progress seasons as dropped."""
@@ -1509,6 +1554,7 @@ class Season(Media):
             self._invalidate_episode_stats()
             update_fields.append("rewatch_started_at")
         bulk_update_with_history([self], Season, fields=update_fields)
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "season_completed")
         self.related_tv._handle_completed_season(self.item.season_number)
         return True
 
@@ -1613,6 +1659,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_started")
 
     def stop_rewatch(self, max_progress=None):
         """Abandon the current pass; the full history decides the status again.
@@ -1638,6 +1685,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_stopped")
 
     def finish_rewatch_if_complete(self, max_progress=None):
         """Close the pass and complete the season once every episode is replayed.
@@ -1663,6 +1711,7 @@ class Season(Media):
             Season,
             fields=["rewatch_started_at", "status"],
         )
+        _announce_status_write(self.user_id, MediaTypes.SEASON.value, "rewatch_finished")
         return True
 
     def _get_episode_stats(self):
@@ -1953,6 +2002,11 @@ class Season(Media):
         # Align the parent TV unless it was dropped explicitly
         tv = getattr(self, "related_tv", None)
         if not tv or tv.status == Status.DROPPED.value or not desired_status:
+            return
+        if self.item.season_number == 0:
+            # Specials never decide the show's status: a show whose main
+            # seasons are watched is complete whether or not Specials are
+            # (#1949), and watching a special must not reopen it.
             return
         if desired_status == Status.COMPLETED.value and (
             became_completed

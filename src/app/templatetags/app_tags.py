@@ -8,6 +8,7 @@ from uuid import uuid4
 from django import template
 from django.conf import settings
 from django.templatetags.static import static
+from django.urls import get_script_prefix
 from django.urls import reverse as _django_reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
@@ -65,6 +66,16 @@ COUNTRY_CODE_LENGTH = 2
 COUNTRY_CODE_BY_NAME = {
     name.casefold(): code for code, name in COUNTRY_NAME_MAP.items()
 }
+
+
+@register.simple_tag
+def script_prefix():
+    """Mount path of the app ("" at the root, "/track" under BASE_URL).
+
+    Islands prepend it to root-absolute API paths, which Django's own URL
+    helpers cannot do for URLs built in JavaScript.
+    """
+    return get_script_prefix().rstrip("/")
 
 
 @register.simple_tag
@@ -1765,6 +1776,23 @@ def lists_modal_click(media, return_url=""):
     )
 
 
+@register.simple_tag(takes_context=True)
+def person_lists_click(context):
+    """Return the onclick attribute that opens Add-to-lists for the person page."""
+    import json
+
+    from users.templatetags.ui_tags import person_lists_modal_spec
+
+    spec = person_lists_modal_spec(context)
+    if spec is None:
+        return ""
+    return format_html(
+        "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
+        '{{detail: {}}}))"',
+        json.dumps(spec),
+    )
+
+
 @register.simple_tag
 def component_id(component_type, media, instance_id=None):
     """Return the component ID for both metadata and model object cases."""
@@ -2414,6 +2442,72 @@ def history_card_react(context, entry, card_class, history_mode):
                 "altTitle": str(_("Show alternative title")),
                 "nextEpisode": str(_("Jump to next episode")),
             },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def statistics_highlight_cards(context, highlights):
+    """Return the Statistics highlight tiles (first play, last play, today) for the first-paint shell."""
+    from app.statistics_views import _statistics_highlights_model
+
+    return _statistics_highlights_model(highlights, context.get("user"))
+
+
+@register.simple_tag(takes_context=True)
+def list_card_react(context, custom_list, profile_username=None):
+    """Return the shared React card's props for one custom list."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import list_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": list_card_model(
+                custom_list, context.get("user"), context.get("request"), profile_username,
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def filmography_card_react(context, entry, source=None):
+    """Return the shared React card's props for one person-filmography entry."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import filmography_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": filmography_card_model(entry, context.get("user"), source),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def music_tracker_card_react(context, kind, tracker):
+    """Return the shared React card's props for one library artist or album."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import music_tracker_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": music_tracker_card_model(
+                kind, tracker, context.get("user"), context.get("request"),
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
         },
     }
 
@@ -3087,6 +3181,14 @@ def collection_field_input_props(groups, values, form_id=None):
         "values": values or {},
         "formId": form_id or "",
     }
+
+
+@register.simple_tag(takes_context=True)
+def detail_sidebar_props(context, kind, title=""):
+    """Return the data the shared React sidebar cards read on the media page."""
+    from app.detail_secondary_props import web_sidebar_payload
+
+    return web_sidebar_payload(context, kind, title)
 
 
 @register.simple_tag

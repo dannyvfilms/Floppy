@@ -16,7 +16,7 @@ from app.providers import tvmaze
 from app.providers.services import ProviderAPIError
 from app.services.completion import select_preferred_activity_entry
 from integrations import episode_remap
-from integrations.matching import split_title_year, title_matches
+from integrations.matching import split_title_country, split_title_year, title_matches
 from integrations.webhooks import anime_mappings, write_policy
 
 logger = logging.getLogger(__name__)
@@ -78,6 +78,25 @@ class BaseWebhookProcessor:
     def _set_outcome(self, outcome):
         """Record this run's structured outcome for the worker's log line."""
         self.outcome = outcome
+
+    def _event_now(self):
+        """Return when this event happened, to the minute, for a new play.
+
+        Inside the worker that is the HTTP receipt time, not the processing
+        time: a redelivered or backlogged event runs late, and dating its play
+        by the clock would put it outside the duplicate-play window of the
+        original and save a second play (see webhook-delivery.md,
+        "Redelivery"). Outside the worker there is no receipt time.
+        """
+        event_ts = getattr(self, "_event_ts", None)
+        if event_ts is not None:
+            try:
+                moment = datetime.fromtimestamp(event_ts, tz=UTC)
+            except (OverflowError, OSError, TypeError, ValueError):
+                moment = None
+            if moment is not None:
+                return moment.replace(second=0, microsecond=0)
+        return timezone.now().replace(second=0, microsecond=0)
 
     def _get_played_at(self, payload):
         """Extract played-at timestamp if provided by the payload."""
@@ -1468,13 +1487,16 @@ class BaseWebhookProcessor:
 
         This is the one title-search path for TV webhooks. ``year`` is the
         show's first-air year; a trailing "(YYYY)" in the title supplies it
-        when absent, and the provider is searched with the bare title. When
+        when absent, and a trailing country qualifier such as "(US)" keeps
+        only shows from that origin country. The provider is searched with
+        the bare title. When
         several shows share the title, the played season breaks the tie: a
         show that has no such season cannot be the one being watched. A miss
         or a remaining tie is remembered so the caller can queue the event
         for review instead of dropping it silently (issue #1279).
         """
         title, title_year = split_title_year(series_title)
+        title, country = split_title_country(title)
         if not title:
             return None
         search_results = app.providers.tmdb.search(
@@ -1482,14 +1504,21 @@ class BaseWebhookProcessor:
             title,
             page=1,
         )
+        matches = title_matches(
+            (search_results or {}).get("results") or [],
+            title,
+            year=year or title_year,
+        )
+        if country:
+            # A show with no listed origin country stays a candidate.
+            matches = [
+                result
+                for result in matches
+                if not result.get("origin_country")
+                or country in result["origin_country"]
+            ]
         candidate_ids = [
-            str(result["media_id"])
-            for result in title_matches(
-                (search_results or {}).get("results") or [],
-                title,
-                year=year or title_year,
-            )
-            if result.get("media_id")
+            str(result["media_id"]) for result in matches if result.get("media_id")
         ]
         if (
             len(candidate_ids) > 1
@@ -1642,10 +1671,7 @@ class BaseWebhookProcessor:
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
-        now = self._get_played_at(payload) or timezone.now().replace(
-            second=0,
-            microsecond=0,
-        )
+        now = self._get_played_at(payload) or self._event_now()
 
         # Play never writes, so the row is created at stop/scrobble. Now Playing
         # saw the play start; use that as the start date (#1482).
@@ -2140,9 +2166,7 @@ class BaseWebhookProcessor:
                 user,
                 targets,
                 watched_at=(
-                    self._get_played_at(payload) or timezone.now().replace(
-                        second=0, microsecond=0,
-                    )
+                    self._get_played_at(payload) or self._event_now()
                 ) if self._is_played(payload) else None,
                 unplayed=self._is_unplayed(payload),
             )
@@ -2639,10 +2663,7 @@ class BaseWebhookProcessor:
         )
 
         if self._is_played(payload):
-            now = self._get_played_at(payload) or timezone.now().replace(
-                second=0,
-                microsecond=0,
-            )
+            now = self._get_played_at(payload) or self._event_now()
             # Check for duplicate episode records: webhooks are sometimes
             # triggered multiple times (#689), and the same play may already
             # have been recorded by a Trakt or Plex history import (#642).
@@ -2829,7 +2850,7 @@ class BaseWebhookProcessor:
                 return True
             episode_number = max(episode_number, current_instance.progress or 0)
 
-        now = timezone.now().replace(second=0, microsecond=0)
+        now = self._event_now()
         is_completed = episode_number == anime_metadata["max_progress"]
         status = Status.COMPLETED.value if is_completed else Status.IN_PROGRESS.value
 

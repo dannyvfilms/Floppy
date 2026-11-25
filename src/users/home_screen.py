@@ -1408,7 +1408,9 @@ def _all_media_type_selection(user, filters: dict | None) -> list[str]:
 def _serialize_settings_row(user, row: HomeScreenRow, media_type: str) -> dict:
     """Return one Home Screen settings row for the client."""
     raw_filters = {
-        key: value for key, value in (row.filters or {}).items() if key != "recent_show"
+        key: value
+        for key, value in (row.filters or {}).items()
+        if key not in {"recent_show", "hide_caught_up"}
     }
     filters = _normalized_filter_payload(raw_filters, media_type)
     if media_type == HOME_ALL_MEDIA_TYPE:
@@ -1430,6 +1432,7 @@ def _serialize_settings_row(user, row: HomeScreenRow, media_type: str) -> dict:
         "direction": row.direction,
         "filters": filters,
         "recent_show": recent_show,
+        "hide_caught_up": hides_caught_up(row),
         "title": row_title(row, user),
         "custom_title": row.title or "",
         "summary": row_summary(row, user),
@@ -1472,6 +1475,8 @@ def _row_payload_to_model(
             raise HomeScreenValidationError(msg)
         sort_choices = get_allowed_sort_choices(media_type, row_type)
     elif row_type == HomeScreenRowTypeChoices.UP_NEXT:
+        if row_payload.get("hide_caught_up") is True:
+            filters = {"hide_caught_up": True}
         sort_choices = get_allowed_sort_choices(media_type, row_type)
     elif row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         sort_choices = []
@@ -1796,6 +1801,7 @@ def _music_shell_items_bulk(
                     media_id=mid,
                     source=Sources.MANUAL.value,
                     media_type=MediaTypes.MUSIC.value,
+                    library_media_type=MediaTypes.MUSIC.value,
                     title=specs_map[mid][1],
                     image=specs_map[mid][2] or settings.IMG_NONE,
                 )
@@ -1815,6 +1821,7 @@ def _music_shell_items_bulk(
                 media_id=mid,
                 source=Sources.MANUAL.value,
                 media_type=MediaTypes.MUSIC.value,
+                library_media_type=MediaTypes.MUSIC.value,
                 title=specs_map[mid][1],
                 image=specs_map[mid][2] or settings.IMG_NONE,
             )
@@ -1892,6 +1899,14 @@ def recent_show_mode(row: HomeScreenRow) -> str:
     if raw not in RECENT_SHOW_MODES:
         return RECENT_SHOW_ALBUM
     return raw
+
+
+def hides_caught_up(row: HomeScreenRow) -> bool:
+    """Return whether an Up Next row leaves out shows with nothing released to watch."""
+    return (
+        row.row_type == HomeScreenRowTypeChoices.UP_NEXT
+        and (row.filters or {}).get("hide_caught_up") is True
+    )
 
 
 def _clean_recent_show(raw) -> str:
@@ -2178,6 +2193,7 @@ def _podcast_show_shell_items_bulk(
             media_id=show.podcast_uuid,
             source=show.source,
             media_type=MediaTypes.PODCAST.value,
+            library_media_type=MediaTypes.PODCAST.value,
             title=show.title,
             image=show.image or settings.IMG_NONE,
         )
@@ -3714,16 +3730,19 @@ def _episode_feed_row_window(user, row, offset, limit, seed):
     released_ids = _cached_released_ids(
         user, query.with_sort(MediaSortChoices.TITLE, DirectionChoices.ASC),
     )
-    continuing = Item.objects.annotate(
-        production_status=Lower(Replace(Trim("status"), Value("_"), Value(" "))),
-    ).exclude(production_status__in=TERMINAL_PRODUCTION_STATUSES)
+    within = Q(pk__in=released_ids)
+    # By default a caught-up show that is still airing stays, counting down to
+    # its next episode; the row's option leaves it out until one is released.
+    if not hides_caught_up(row):
+        continuing = Item.objects.annotate(
+            production_status=Lower(Replace(Trim("status"), Value("_"), Value(" "))),
+        ).exclude(production_status__in=TERMINAL_PRODUCTION_STATUSES)
+        within |= Q(pk__in=continuing.values("pk"))
     query = replace(
         query,
         filters=replace(query.filters, progress="all"),
         include_collection_only=False,
-        within=Item.objects.filter(
-            Q(pk__in=released_ids) | Q(pk__in=continuing.values("pk")),
-        ).values("pk"),
+        within=Item.objects.filter(within).values("pk"),
     )
     items, total = _row_items(
         user,

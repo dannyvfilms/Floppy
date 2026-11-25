@@ -790,6 +790,7 @@ def _people_labels():
         "showLess": str(_("Show less")),
         "viewReads": str(_("View Reads in History")),
         "viewPlays": str(_("View Plays in History")),
+        "addToLists": str(_("Add to lists")),
         "visitWebsite": str(_("Visit Website")),
         "source": str(_("Source")),
         "born": str(_("Born")),
@@ -807,10 +808,13 @@ def _people_labels():
         "previous": str(_("Previous")),
         "next": str(_("Next")),
         "close": str(_("Close")),
+        "time": str(_("Time")),
+        "timePlayed": str(_("Time Played")),
+        "timeWatched": str(_("Time Watched")),
         "timeToBeat": str(_("Time to Beat")),
         "submissions": str(_("submissions")),
-        "timeToBeatPending": str(_("Fetching cached time-to-beat data in the background.")),
-        "timeToBeatEmpty": str(_("Time-to-beat data is not available yet.")),
+        "timeToBeatPending": str(_("Fetching")),
+        "timeToBeatEmpty": str(_("Not available")),
         "watchedOnYouTube": str(_("Watched on YouTube")),
         "started": str(_("Started")),
         "youtubeEstimate": str(
@@ -950,6 +954,7 @@ def _people_youtube_props(youtube_watch):
         "seconds": youtube_watch.get("seconds"),
         "hoursLabel": youtube_watch.get("hours_label") or "",
         "videos": youtube_watch.get("videos") or 0,
+        "channels": youtube_watch.get("channels") or [],
     }
 
 
@@ -1035,7 +1040,37 @@ def _person_hero_props(context):
         "canViewHistory": True,
         "showBiography": _people_section_visible(context, "person", "hero", "biography"),
         "labels": _people_labels(),
+        "listsModal": person_lists_modal_spec(context),
     }
+
+
+def person_lists_modal_spec(context):
+    """Return the Add-to-lists popup spec for a saved person, else None."""
+    from django.urls import reverse
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import lists_modal_spec
+
+    user = context.get("user")
+    person = context.get("person") or {}
+    if (
+        not getattr(user, "is_authenticated", False)
+        or not context.get("person_saved")
+        or not person.get("source")
+    ):
+        return None
+    return lists_modal_spec(
+        None,
+        "#person-hero",
+        url=reverse(
+            "person_lists_modal",
+            args=[person["source"], str(person["person_id"])],
+        ),
+        label_overrides={
+            "addTo": _("Add person to %s"),
+            "removeFrom": _("Remove person from %s"),
+        },
+    )
 
 
 def _studio_hero_props(context):
@@ -1175,13 +1210,22 @@ class PeopleCastNode(template.Node):
             str(self.options["collapse_key"].resolve(context))
             if "collapse_key" in self.options else ""
         )
+        media = context.get("media")
+        media_source = media.get("source") if isinstance(media, dict) else getattr(media, "source", None)
         props = _people_cast_props(context, row, source, collapse_key)
         # The server cards shown before React mounts read the same props, so a
         # person link is built in one place for both (#1953).
-        with context.push(people_cast_cards=[
-            {"person": person, "card": card}
-            for person, card in zip(row.get("items") or [], props["items"], strict=True)
-        ]):
+        pushed = {
+            "people_cast_cards": [
+                {"person": person, "card": card}
+                for person, card in zip(row.get("items") or [], props["items"], strict=True)
+            ],
+        }
+        # Episode pages have a route source but no media object for the legacy
+        # person-card fallback. Keep that fallback on the same provider as the rail.
+        if source and not media_source:
+            pushed["media"] = {"source": source}
+        with context.push(**pushed):
             body = self.body.render(context)
         return _people_island(context, "cast", props, body)
 
@@ -1191,8 +1235,8 @@ def people_extras(parser, token):
     """Wrap one medium-extras section in the shared extras mount."""
     bits = token.split_contents()
     part = bits[1].strip("\"'") if len(bits) > 1 else ""
-    if part not in {"game_lengths", "youtube"}:
-        message = 'people_extras requires "game_lengths" or "youtube"'
+    if part not in {"game_lengths", "youtube", "time"}:
+        message = 'people_extras requires "game_lengths", "youtube" or "time"'
         raise template.TemplateSyntaxError(message)
     body = parser.parse(("endpeople_extras",))
     parser.delete_first_token()
@@ -1209,6 +1253,25 @@ class PeopleExtrasNode(template.Node):
 
     def render(self, context):
         """Render the shared extras view when this section has data."""
+        if self.part == "time":
+            # One Time card: played, watched on YouTube and time to beat.
+            if not _people_section_visible(context, "game", "content", "game_lengths"):
+                return self.body.render(context)
+            game_lengths = context.get("game_lengths")
+            youtube_watch = _people_youtube_props(context.get("youtube_watch"))
+            played = (context.get("activity_subtitle") or {}).get("duration_text") or ""
+            props = {
+                "kind": "extras",
+                "gameLengths": _people_game_lengths_props(
+                    game_lengths, context.get("game_lengths_pending"),
+                ) if game_lengths else None,
+                "youtubeWatch": youtube_watch,
+                "playedLabel": played.removesuffix(" played"),
+                "labels": _people_labels(),
+            }
+            if not (game_lengths or youtube_watch or played):
+                return self.body.render(context)
+            return _people_island(context, "extras", props, self.body.render(context))
         if self.part == "game_lengths":
             if not _people_section_visible(context, "game", "content", "game_lengths"):
                 return self.body.render(context)

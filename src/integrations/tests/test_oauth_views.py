@@ -98,7 +98,7 @@ class OAuthStateViewTests(TestCase):
             self.assertEqual(response.url, reverse("import_data"))
             self.assertNotIn(state_token, self.client.session)
 
-            with self.assertLogs("integrations.views", level="WARNING") as logs:
+            with self.assertLogs("integrations.view_helpers", level="WARNING") as logs:
                 replay = self.client.get(callback_url, follow=True)
 
             get_token.assert_called_once()
@@ -282,7 +282,7 @@ class OAuthStateViewTests(TestCase):
             self.assertEqual(response.url, reverse("import_data"))
             self.assertNotIn(state_token, self.client.session)
 
-            with self.assertLogs("integrations.views", level="WARNING") as logs:
+            with self.assertLogs("integrations.view_helpers", level="WARNING") as logs:
                 replay = self.client.get(callback_url, follow=True)
 
             handle_callback.assert_called_once()
@@ -408,7 +408,7 @@ class OAuthStateViewTests(TestCase):
             self.assertEqual(response.url, reverse("import_data"))
             self.assertNotIn(state_token, self.client.session)
 
-            with self.assertLogs("integrations.views", level="WARNING") as logs:
+            with self.assertLogs("integrations.view_helpers", level="WARNING") as logs:
                 replay = self.client.get(callback_url, follow=True)
 
             get_token.assert_called_once()

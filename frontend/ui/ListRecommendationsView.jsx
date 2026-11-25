@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Title } from './Title';
 import { FormError, FormStatus } from './MediaCardFormControls';
 import { MediaCard } from './MediaCard';
 
@@ -72,7 +73,7 @@ export function ListRecommendations({
       <View style={styles.screen}>
         <View style={styles.header}>
           <View style={styles.headingCopy}>
-            <Text role="heading" aria-level={1} style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
+            <Title size="heading" level={1} color={colors.text}>{copy.title}</Title>
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>{listName}</Text>
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>{copy.subtitle}</Text>
           </View>
@@ -120,7 +121,6 @@ const styles = StyleSheet.create({
   screen: { flex: 1, paddingTop: 12 },
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
   headingCopy: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: 24, fontWeight: '700' },
   subtitle: { fontSize: 12, lineHeight: 17 },
   body: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
   card: { borderRadius: 8, padding: 12, gap: 10 },
