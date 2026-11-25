@@ -20,7 +20,7 @@ import { libraryGridLayout } from '../../../frontend/ui/mediaCardSizing';
 import { mediaCardPalette, palette, spacing } from '../theme';
 import { renderSelectRowPicker } from './SelectRowPicker';
 import { brightAccent } from './brightAccent';
-import { renderMonthYearWheels, renderTimeWheels } from './TrackDatePanels';
+import { renderMonthYearWheels, renderNumberWheel, renderTimeWheels } from './TrackDatePanels';
 import { AdaptivePresentationSheet } from '../components/AdaptivePresentationSheet';
 import { trackRailItems } from './TrackPresentation';
 import { emitMediaCardChange, subscribeMediaCardChange } from './mediaCardEvents';
@@ -388,6 +388,7 @@ function TrackAction({ action, onClose, railTabs = false, activeTab, onTabChange
     renderSelectPicker={renderSelectRowPicker}
       renderMonthYearWheels={renderMonthYearWheels}
       renderTimeWheels={renderTimeWheels}
+      renderNumberWheel={renderNumberWheel}
     railTabs={railTabs}
     activeTab={activeTab}
     onTabChange={onTabChange}

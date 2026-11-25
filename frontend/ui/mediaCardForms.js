@@ -1,3 +1,5 @@
+import { ratingFormValues } from './ratingScaleModel.js';
+
 export const ALL_LISTS = '';
 
 function asString(value) {
@@ -67,6 +69,8 @@ function normalizeField(field) {
     unit: field.unit || '',
     // The rating scale (5 or 10) a score picker offers; the value stays on the stored 0-10 scale.
     scaleMax: field.scaleMax || null,
+    // A custom rating scale: {id, name, criteria, values, computed, manual}. The score row becomes a button.
+    ratingScale: field.ratingScale || null,
     placeholder: field.placeholder || '',
     // Date fields carry their shortcuts (Just Finished, Start Now, Release
     // Date) and copy-from-the-other-date wiring; dropping them hides those
@@ -127,7 +131,9 @@ export function normalizeTrackForm(payload) {
 }
 
 export function initialTrackValues(model) {
-  return Object.fromEntries((model?.fields || []).map(field => [field.name, field.value ?? '']));
+  const values = Object.fromEntries((model?.fields || []).map(field => [field.name, field.value ?? '']));
+  const scored = (model?.fields || []).find(field => field.ratingScale);
+  return scored ? { ...values, ...ratingFormValues(scored.ratingScale) } : values;
 }
 
 export function validateTrackValues(model, values, labels = {}) {

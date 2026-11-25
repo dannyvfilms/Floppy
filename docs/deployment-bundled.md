@@ -16,7 +16,9 @@ same quality gates, and is published only after they pass.
 
 ## Install
 
-Unraid: install **Floppy (Bundled)** from `templates/floppy-bundled.xml`.
+Unraid: install **Floppy (Bundled, Stable)** from `templates/floppy-bundled-stable.xml`
+(tested releases) or **Floppy (Bundled, Latest)** from `templates/floppy-bundled.xml`
+(the newest changes).
 
 Docker:
 
@@ -26,7 +28,7 @@ docker run -d --name floppy --restart unless-stopped --stop-timeout 150 \
   -v /srv/floppy/db:/floppy/db \
   -v /srv/floppy/pgdata:/floppy/pgdata \
   -v /srv/floppy/backups:/floppy/backups \
-  ghcr.io/dannyvfilms/floppy:release-bundled
+  ghcr.io/dannyvfilms/floppy:latest-bundled
 ```
 
 `SECRET` is optional. When it is not set Floppy generates one on first start and

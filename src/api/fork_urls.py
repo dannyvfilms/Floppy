@@ -790,6 +790,16 @@ urlpatterns = [
         name="api_user_preferences",
     ),
     re_path(
+        r"^user/rating-scales/?$",
+        fork_views_users.RatingScalesView.as_view(),
+        name="api_user_rating_scales",
+    ),
+    re_path(
+        r"^user/rating-scales/(?P<scale_id>[0-9a-f-]{36})/?$",
+        fork_views_users.RatingScaleDetailView.as_view(),
+        name="api_user_rating_scale_detail",
+    ),
+    re_path(
         r"^user/navigation/?$",
         fork_views_users.UserNavigationView.as_view(),
         name="api_user_navigation",

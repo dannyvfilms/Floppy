@@ -672,8 +672,10 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 return None
             return local_item
 
+        # A Jellyfin episode's TMDB id names the episode, not the show, so
+        # `_find_tv_media_id` must not return it as a show id (TMDB 404, #2168).
         media_id, _, _ = self._find_tv_media_id(
-            ids,
+            {**ids, "tmdb_id": None},
             series_title=self._extract_series_title(payload),
             allow_title_fallback=True,
             episode_ids=True,
@@ -985,11 +987,13 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         if local_item:
             return local_item
 
+        is_episode = (payload.get("Item") or {}).get("Type") == "Episode"
         media_id, _, _ = self._find_tv_media_id(
-            ids,
+            # An episode's TMDB id is not a show id (#2168).
+            {**ids, "tmdb_id": None} if is_episode else ids,
             series_title=self._extract_series_title(payload),
             allow_title_fallback=True,
-            episode_ids=(payload.get("Item") or {}).get("Type") == "Episode",
+            episode_ids=is_episode,
         )
         if not media_id:
             logger.warning("Could not resolve Jellyfin TV rating to a TMDB ID")

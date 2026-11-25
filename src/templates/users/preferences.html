@@ -807,10 +807,12 @@
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex flex-col items-start gap-1 mb-2">
             <label class="text-[var(--color-text-secondary)] text-sm font-medium">{% translate "Rating Scale" %}</label>
-            <span class="text-[var(--color-text-muted)] text-xs">{% translate "Choose a rating scale, or turn ratings off." %}</span>
+            <span class="text-[var(--color-text-muted)] text-xs">{% translate "Choose a rating scale, create your own, or turn ratings off." %}</span>
           </div>
+          {{ rating_scales|json_script:"rating-scales-data" }}
           <div class="relative w-full"
-               x-data="{ open: false, selectedValue: '{{ user.rating_scale }}', selectedLabel: '', options: [ { value: '10', label: gettext('1-10 stars') }, { value: '5', label: gettext('1-5 stars') }, { value: '0', label: gettext('Disabled') } ], init() { const match = this.options.find(o => o.value === this.selectedValue); this.selectedLabel = match ? match.label : this.options[0]?.label ?? ''; } }"
+               x-data="{ open: false, selectedValue: '{{ rating_scale_selected }}', selectedLabel: '', custom: JSON.parse(document.getElementById('rating-scales-data').textContent), builtin: [ { value: '10', label: gettext('1-10 stars') }, { value: '5', label: gettext('1-5 stars') }, { value: '0', label: gettext('Disabled') } ], get options() { return [...this.builtin, ...this.custom.map(s => ({ value: 'custom:' + s.id, label: s.name, id: s.id }))]; }, init() { this.sync(); }, sync() { const match = this.options.find(o => o.value === this.selectedValue); this.selectedLabel = match ? match.label : this.options[0]?.label ?? ''; }, openEditor(id) { this.open = false; window.dispatchEvent(new CustomEvent('floppy:rating-scale-editor', { detail: { id } })); } }"
+               @floppy:rating-scales.window="custom = $event.detail.scales; if ($event.detail.select) { selectedValue = 'custom:' + $event.detail.select; } else if (!custom.some(s => 'custom:' + s.id === selectedValue) && selectedValue.startsWith('custom:')) { selectedValue = '10'; } sync()"
                x-init="init()">
             <button type="button"
                     @click="open = !open"
@@ -839,14 +841,27 @@
                  x-transition:leave-end="transform opacity-0 scale-95"
                  class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
               <template x-for="option in options" :key="option.value">
-                <button type="button"
-                        @click="selectedValue = option.value; selectedLabel = option.label; open = false"
-                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
-                        :class="{ 'text-[var(--color-text)] bg-[var(--color-surface-strong)]': selectedValue === option.value }">
-                  <span x-text="option.label"></span>
-                </button>
+                <div class="flex items-center">
+                  <button type="button"
+                          @click="selectedValue = option.value; selectedLabel = option.label; open = false"
+                          class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
+                          :class="{ 'text-[var(--color-text)] bg-[var(--color-surface-strong)]': selectedValue === option.value }">
+                    <span x-text="option.label"></span>
+                  </button>
+                  <button type="button" x-show="option.id" x-cloak
+                          @click="openEditor(option.id)"
+                          class="px-3 py-2 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                          :aria-label="gettext('Edit rating scale') + ': ' + option.label">{% translate "Edit" %}</button>
+                </div>
               </template>
+              <button type="button"
+                      @click="openEditor(null)"
+                      class="block w-full px-3 py-2 text-left text-sm border-t border-gray-600 text-[var(--color-link)] hover:bg-[var(--color-surface-strong)] cursor-pointer">
+                {% translate "Create Rating Scale" %}
+              </button>
             </div>
+            {{ rating_scale_editor_props|json_script:"rating-scale-editor-props" }}
+            <div data-rating-scale-editor-root data-props-id="rating-scale-editor-props"></div>
             <input type="hidden"
                    name="rating_scale"
                    x-bind:value="selectedValue">

@@ -37,6 +37,7 @@ from app.models import (
 from app.providers import hardcover, services, tmdb
 from app.services import bulk_episode_tracking, library_migration, metadata_resolution
 from app.services.metadata_fallback import stored_metadata_fallback
+from users import rating_scales
 from users.templatetags.user_tags import user_datetime_format
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
@@ -681,6 +682,10 @@ def track_form_presentation(
         if field["name"] == "score":
             # The score is picked from 1 to the viewer's scale, like Expo's; the value stays 0-10.
             field["scaleMax"] = getattr(request.user, "rating_scale_max", 10) or 10
+            # A custom scale swaps the picker for a button that opens the criteria modal.
+            custom = rating_scales.entry_payload(request.user, media)
+            if custom is not None:
+                field["ratingScale"] = custom
         if field["name"] not in {"start_date", "end_date"}:
             continue
         is_start = field["name"] == "start_date"
