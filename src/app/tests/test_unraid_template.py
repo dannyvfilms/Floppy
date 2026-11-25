@@ -57,6 +57,10 @@ class UnraidTemplateSizingTests(SimpleTestCase):
                 self.assertEqual(config.get("Required"), reference.get("Required"))
 
 
+BUNDLED_TEMPLATES = {
+    "floppy-bundled.xml": "latest-bundled",
+    "floppy-bundled-stable.xml": "release-bundled",
+}
 BUNDLED_TEMPLATE = TEMPLATE.with_name("floppy-bundled.xml")
 
 
@@ -73,6 +77,16 @@ class UnraidBundledTemplateTests(SimpleTestCase):
     def test_uses_the_bundled_image(self):
         """A bundled template pointing at the standard tag would find no services."""
         self.assertTrue(self.root.findtext("Repository").endswith("-bundled"))
+
+    def test_each_channel_points_at_a_published_tag(self):
+        """Latest follows the latest branch, Stable the release branch."""
+        for name, tag in BUNDLED_TEMPLATES.items():
+            with self.subTest(template=name):
+                root = ET.parse(TEMPLATE.with_name(name)).getroot()
+                self.assertEqual(
+                    root.findtext("Repository"), f"ghcr.io/dannyvfilms/floppy:{tag}"
+                )
+                self.assertIn(name, root.findtext("TemplateURL"))
 
     def test_external_service_variables_are_absent(self):
         """DB_HOST or REDIS_URL, even blank, must not reach the container."""
