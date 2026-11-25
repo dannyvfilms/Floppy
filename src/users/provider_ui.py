@@ -509,7 +509,14 @@ def anilist_activity(user, page=1, *, all_sources=False, activity=None):
             "lastRun": user_datetime_format(row["last_run"], user),
             "nextRun": user_datetime_format(row["next_run"], user),
             "action": reverse("delete_import_schedule"),
+            "editable": row.get("editable", False),
+            "edit": ({
+                "action": reverse("edit_import_schedule"),
+                "frequency": row.get("edit_frequency") or "",
+                "time": row.get("edit_time") or "",
+            } if row.get("editable") else None),
         } for row in activity["schedules"]],
+        "scheduleFrequencies": activity.get("schedule_frequencies", []),
         "results": [{
             "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
             "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),

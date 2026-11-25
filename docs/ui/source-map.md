@@ -1148,7 +1148,7 @@ Status: `Partial / coexisting`
 - `src/templates/users/provider_activity.html`
 - `src/templates/users/providers/integration_activity.html`
 - `frontend/pages/SettingsActivityView.jsx`, `expo/app/surfaces/ActivitySettingsSlot.jsx` (native central Activity: real MAL mapping tabs/dialog and outbound counts/results; opt-in page-card frames/icons/typography plus accessible panel/headings. Final Django/Expo populated receipt framing matched; all four empty tabs and Undo/Delete confirmation cancellation exercised. Disposable receipt/history/provenance cleaned after verification. Connected flows not exercised, iOS/Android unverified)
-- `frontend/providers/ProviderActivityView.jsx` (shared by AniList WEB Activity and native central Activity; opt-in source identities/pageCards, rounded run/date/count layout, text actions and exact cleanup plural labels. Existing web defaults/details/copy/pagination remain; Django central/non-AniList consumers retire only after full browser port/acceptance.)
+- `frontend/providers/ProviderActivityView.jsx` (shared by AniList WEB Activity and native central Activity; opt-in source identities/pageCards, rounded run/date/count layout, text actions, exact cleanup plural labels and the schedule-frequency edit dialog posting `edit_import_schedule`. Existing web defaults/details/copy/pagination remain; Django central/non-AniList consumers retire only after full browser port/acceptance.)
 - `expo/app/data/activityTransportCore.test.mjs` (authenticated paging/action transport regression)
 
 ## SET-SIDEBAR
@@ -1624,6 +1624,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/serviceWorkerStatus.native.js`
 - `frontend/ui/serviceWorkerStatus.web.js`
 - `frontend/ui/statistics-fallback.css`
+- `frontend/ui/useDeferredYoutubeWatch.js`
 - `frontend/users/UsersManagement.jsx`
 - `src/static/js/searchParentFallback.js`
 - `src/templates/app/components/date_time_picker_legacy.html`

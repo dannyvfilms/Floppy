@@ -2324,6 +2324,7 @@ class User(AbstractUser):
 
             schedule_info = helpers.get_next_run_info(periodic_task)
             if schedule_info:
+                edit_frequency, edit_time = helpers.schedule_edit_state(periodic_task)
                 schedules.append(
                     {
                         "task": periodic_task,
@@ -2333,6 +2334,9 @@ class User(AbstractUser):
                         "next_run": schedule_info["next_run"],
                         "schedule": schedule_info["frequency"],
                         "mode": schedule_info["mode"],
+                        "editable": True,
+                        "edit_frequency": edit_frequency,
+                        "edit_time": edit_time,
                     },
                 )
 
@@ -2376,12 +2380,21 @@ class User(AbstractUser):
                         "next_run": next_run,
                         "schedule": f"Every {interval_minutes} minutes",
                         "mode": "Only New Items",
+                        # The poll task is shared by every connected user, so
+                        # per-user cadence edits are not allowed.
+                        "editable": False,
+                        "edit_frequency": "",
+                        "edit_time": "",
                     },
                 )
 
         return {
             "results": results,
             "schedules": schedules,
+            "schedule_frequencies": [
+                {"value": value, "label": label}
+                for value, label, _minutes in helpers.SCHEDULE_FREQUENCY_OPTIONS
+            ],
         }
 
     def get_export_tasks(self):
