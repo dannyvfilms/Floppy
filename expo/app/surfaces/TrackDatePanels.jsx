@@ -8,3 +8,5 @@ import { TrackTimeSteppers } from '../../../frontend/ui/trackDatePanels';
 export const renderTimeWheels = args => <TrackTimeSteppers {...args} />;
 // No month and year wheels here: the calendar's arrows step by month.
 export const renderMonthYearWheels = undefined;
+// The rating scale rows fall back to the shared stepper where there is no native wheel.
+export const renderNumberWheel = undefined;
