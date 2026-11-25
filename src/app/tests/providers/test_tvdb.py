@@ -1138,3 +1138,16 @@ class TVDBProviderTests(TestCase):
         result = tvdb.person("291115")
 
         self.assertEqual(result["biography"], "")
+
+    def test_remote_ids_keep_only_numeric_part_of_tmdb_slug(self):
+        """TVDB may store TMDB's "<id>-<slug>" form; only the number is an ID (#2152)."""
+        row = {
+            "id": 439327,
+            "remoteIds": [
+                {"id": "234613-the-traitors-canada", "sourceName": "TheMovieDB.com"},
+            ],
+        }
+        self.assertEqual(tvdb._get_remote_ids_map(row)["tmdb_id"], "234613")
+
+        row["remoteIds"][0]["id"] = "not-a-number"
+        self.assertNotIn("tmdb_id", tvdb._get_remote_ids_map(row))
