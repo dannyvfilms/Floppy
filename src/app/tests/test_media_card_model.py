@@ -200,14 +200,14 @@ class UpNextEpisodeActionsTest(TestCase):
         self.assertEqual(
             [i["title"] for i in items],
             [
-                "Open episode details",
+                "Open series details",
                 "Mark episode watched",
                 "Add to tracker",
                 "Add to custom lists",
                 "View your activity history",
             ],
         )
-        self.assertIn("/season/2/episode/5", items[0]["href"])
+        self.assertNotIn("/season/", items[0]["href"])
         watched = items[1]
         self.assertEqual(watched["modal"], "track")
         self.assertEqual(watched["vals"]["episode_number"], "5")
@@ -216,10 +216,10 @@ class UpNextEpisodeActionsTest(TestCase):
         self.assertNotEqual(watched["target"], items[2]["target"])
 
     def test_unreleased_episode_can_be_opened_but_not_marked_watched(self):
-        """A countdown card still links to the episode page."""
+        """A countdown card still links to the series."""
         self.queue["released"] = False
         titles = [i["title"] for i in self._actions()]
-        self.assertEqual(titles[0], "Open episode details")
+        self.assertEqual(titles[0], "Open series details")
         self.assertNotIn("Mark episode watched", titles)
 
     def test_plain_home_card_keeps_series_actions_only(self):
@@ -240,3 +240,14 @@ class UpNextEpisodeActionsTest(TestCase):
                 "episodeNumber": 5,
             },
         )
+
+    def test_click_opens_the_queued_episode_except_on_public_pages(self):
+        """Up Next click goes to the episode; other Home cards and public views keep the series."""
+        self.tv.next_episode_queue = self.queue
+        up = card_model(card_context({"user": self.user}, "up_next", {"item": self.item, "media": self.tv}))
+        self.assertIn("/season/2/episode/5", up["href"])
+        self.assertIn("/season/2/episode/5", up["actions"]["href"])
+        home = card_model(card_context({"user": self.user}, "home", {"item": self.item, "media": self.tv}))
+        self.assertNotIn("/season/", home["href"])
+        public = card_model(card_context({"user": self.user, "public_view": True}, "up_next", {"item": self.item, "media": self.tv}))
+        self.assertNotIn("/season/", public["href"])

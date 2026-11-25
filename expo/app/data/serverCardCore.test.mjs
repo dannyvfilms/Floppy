@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { enrichServerCard, musicCreateFromHref, routeCardHref } from './serverCardCore.js';
+import { enrichServerCard, musicCreateFromHref, routeCardHref, withActionIdentity } from './serverCardCore.js';
 import { adjustProgressRequest, progressFromResponse } from './homeProgressCore.js';
 
 const card = {
@@ -59,4 +59,16 @@ test('musicCreateFromHref reads the provider id from the create route', () => {
   assert.deepEqual(musicCreateFromHref('/dw/music/artist/create/abc-123/'), { kind: 'artist', id: 'abc-123' });
   assert.deepEqual(musicCreateFromHref('/music/album/create/r1/'), { kind: 'album', id: 'r1' });
   assert.equal(musicCreateFromHref('/details/music/artist/4/x'), null);
+});
+
+test('withActionIdentity keeps an action that names its own item', () => {
+  const show = { mediaType: 'tv', source: 'tmdb', mediaId: '9001' };
+  const episode = { mediaType: 'episode', source: 'tmdb', mediaId: '9001', seasonNumber: 2, episodeNumber: 5 };
+  const out = withActionIdentity({
+    title: 'Queue Show',
+    actions: { items: [{ modal: 'track', media: episode }, { modal: 'track' }, { modal: 'lists' }] },
+  }, show);
+  assert.deepEqual(out.actions.items.map(action => action.media), [episode, show, show]);
+  assert.equal(out.identity, show);
+  assert.equal(withActionIdentity({ title: 'x' }, show).actions, undefined);
 });
