@@ -18,7 +18,7 @@
     "check:ui-architecture": "node scripts/check_ui_architecture.mjs",
     "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs",
     "test:js": "python3 scripts/check_js_tests.py && npm run test:ui-architecture && npm run test:js-logic && npm run test:ui-render && npm --prefix expo run test:transport",
-    "test:js-logic": "node --test scripts/mediaTagFit.test.mjs scripts/detailHeroLayout.test.mjs scripts/detailSecondaryModel.test.mjs scripts/fetchGate.test.mjs scripts/homeRowLoading.test.mjs scripts/homeWebTransport.test.mjs scripts/mediaCardQuickStatus.test.mjs scripts/npm_audit_gate.test.mjs scripts/rootStyle.test.mjs",
+    "test:js-logic": "node --test scripts/mediaTagFit.test.mjs scripts/detailHeroLayout.test.mjs scripts/detailSecondaryModel.test.mjs scripts/fetchGate.test.mjs scripts/gamepadNavigation.test.mjs scripts/homeRowLoading.test.mjs scripts/homeWebTransport.test.mjs scripts/mediaCardQuickStatus.test.mjs scripts/npm_audit_gate.test.mjs scripts/rootStyle.test.mjs",
     "test:ui-render": "node --test --test-force-exit scripts/cardRenderCost.test.mjs scripts/globalSearchSuggestions.test.mjs scripts/historyFirstView.test.mjs",
     "check:page-parity": "node scripts/check_page_parity.mjs",
     "check:page-parity:strict": "node scripts/check_page_parity.mjs --strict",

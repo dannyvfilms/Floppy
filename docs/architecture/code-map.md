@@ -133,6 +133,7 @@ See `docs/deployment-bundled.md`.
 | A new media type | Follow the playbook | `docs/agents/media_type_integration.md` |
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
+| Browser-only input behaviour on every page (keyboard shortcut, game controller) | A plain script in `src/static/js/`, loaded from `src/templates/base.html`, with a `scripts/*.test.mjs` for its pure logic | `src/static/js/gamepadNavigation.js`; listed in `docs/ui/component-register.md` (SEARCH) |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
 **Recorded server answers for the Expo app.** `expo/app/data/__recorded__/`
