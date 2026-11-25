@@ -10,6 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
+from app.providers import services
 from integrations import import_progress
 from integrations.imports import netflix
 from integrations.imports.helpers import MediaImportError
@@ -337,6 +338,190 @@ class ResolveRowTests(TestCase):
         )
 
     @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unlabelled_colon_row_disambiguates_shows_by_unique_episode(
+        self, mock_meta, mock_search
+    ):
+        """Two same-title shows resolve when the episode names one of them."""
+        mock_search.side_effect = [
+            {"results": []},
+            {
+                "results": [
+                    {"media_id": 46533, "name": "The Americans"},
+                    {"media_id": 33383, "name": "The Americans"},
+                ]
+            },
+        ]
+        mock_meta.side_effect = [
+            self._show_meta([(1, 10)]),
+            {
+                "episodes": [
+                    {"episode_number": 1, "name": "Pilot"},
+                    {"episode_number": 9, "name": "Safe House"},
+                ]
+            },
+            self._show_meta([(1, 10)]),
+            {
+                "episodes": [
+                    {"episode_number": 1, "name": "Pilot"},
+                    {"episode_number": 3, "name": "Closer to the Edge"},
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "The Americans: Safe House",
+                "The Americans: Safe House",
+                "movie",
+                None,
+                None,
+            ),
+            ("46533", "tv", 1, 9),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_unlabelled_colon_row_shared_episode_stays_pending(
+        self, mock_meta, mock_search
+    ):
+        mock_search.side_effect = [
+            {"results": []},
+            {
+                "results": [
+                    {"media_id": 46533, "name": "The Americans"},
+                    {"media_id": 33383, "name": "The Americans"},
+                ]
+            },
+        ]
+        mock_meta.side_effect = [
+            self._show_meta([(1, 10)]),
+            {"episodes": [{"episode_number": 9, "name": "Safe House"}]},
+            self._show_meta([(1, 10)]),
+            {"episodes": [{"episode_number": 3, "name": "Safe House"}]},
+        ]
+
+        self.assertIsNone(
+            self.resolver.resolve_row(
+                "The Americans: Safe House",
+                "The Americans: Safe House",
+                "movie",
+                None,
+                None,
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_numbered_season_missing_from_provider_matches_whole_show(
+        self, mock_meta, mock_search
+    ):
+        """A part number Netflix invented is no TMDB season: the unique
+        exact episode name across the whole show fixes the real season.
+        """
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 31911, "name": "Fullmetal Alchemist: Brotherhood"},
+            ]
+        }
+        mock_meta.side_effect = [
+            self._show_meta([(1, 64)]),
+            {
+                "episodes": [
+                    {"episode_number": 5, "name": "Rain of Sorrows"},
+                    {
+                        "episode_number": 18,
+                        "name": "The Arrogant Palm of a Small Human",
+                    },
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Fullmetal Alchemist: Brotherhood: Part 2: "
+                "The Arrogant Palm of a Small Human",
+                "Fullmetal Alchemist: Brotherhood",
+                "tv",
+                2,
+                None,
+            ),
+            ("31911", "tv", 1, 18),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_numbered_season_missing_with_shared_episode_keeps_numbered(
+        self, mock_meta, mock_search
+    ):
+        mock_search.return_value = {
+            "results": [
+                {"media_id": 31911, "name": "Fullmetal Alchemist: Brotherhood"},
+            ]
+        }
+        mock_meta.side_effect = [
+            self._show_meta([(1, 64)]),
+            {
+                "episodes": [
+                    {
+                        "episode_number": 18,
+                        "name": "The Arrogant Palm of a Small Human",
+                    },
+                    {
+                        "episode_number": 20,
+                        "name": "The Arrogant Palm of a Small Human",
+                    },
+                ]
+            },
+        ]
+
+        self.assertEqual(
+            self.resolver.resolve_row(
+                "Fullmetal Alchemist: Brotherhood: Part 2: "
+                "The Arrogant Palm of a Small Human",
+                "Fullmetal Alchemist: Brotherhood",
+                "tv",
+                2,
+                None,
+            ),
+            ("31911", "tv", 2, None),
+        )
+
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_match_episode_number_accepts_clearly_best_fuzzy(self, mock_meta):
+        mock_meta.return_value = {
+            "episodes": [
+                {"episode_number": 1, "name": "Herr Becker"},
+                {"episode_number": 3, "name": "Der Kurs"},
+                {"episode_number": 5, "name": "Männerfreundschaft"},
+            ]
+        }
+
+        self.assertEqual(
+            self.resolver.match_episode_number(
+                6202, "Stromberg", 2, "Männerfreundschaften",
+            ),
+            5,
+        )
+
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_match_episode_number_stays_pending_without_clear_winner(
+        self, mock_meta
+    ):
+        mock_meta.return_value = {
+            "episodes": [
+                {"episode_number": 5, "name": "Männerfreundschaft"},
+                {"episode_number": 6, "name": "Männerfreundschaften 2"},
+            ]
+        }
+
+        self.assertIsNone(
+            self.resolver.match_episode_number(
+                6202, "Stromberg", 2, "Männerfreundschaften",
+            ),
+        )
+
+    @patch("integrations.imports.trakt.services.search")
     def test_tv_row_without_coordinates_never_searches(self, mock_search):
         mock_search.return_value = {"results": [{"media_id": 1, "name": "Show"}]}
 
@@ -647,6 +832,21 @@ class NetflixImporterTests(TestCase):
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_transient_tmdb_error_parks_row_for_review(self, mock_meta,
+                                                       mock_search):
+        """A downed TMDB parks the row instead of crashing the import."""
+        mock_search.return_value = {
+            "results": [{"media_id": 555, "title": "Arrival", "year": 2016}],
+        }
+        mock_meta.side_effect = services.ProviderAPIError("tmdb", "tmdb down")
+
+        counts, _ = _run(_csv("Title,Date", "Arrival,11/20/26"), self.user)
+
+        self.assertEqual(counts.get(MediaTypes.MOVIE.value), 0)
+        self.assertEqual(NetflixPendingRow.objects.get().title, "Arrival")
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
     def test_movie_row_creates_completed_movie(self, mock_meta, mock_search):
         mock_search.return_value = {
             "results": [{"media_id": 555, "title": "Arrival", "year": 2016}],
@@ -727,9 +927,17 @@ class NetflixImporterTests(TestCase):
                 {"episode_number": 5, "name": "It's Time"},
             ],
         }
-        # The title match reads the season first; record_play then repeats
-        # the TV and season lookups (the mock bypasses the real memo).
+        # resolve_row reads the show's seasons (the missing-number
+        # shortcut); record_play then repeats the TV and season lookups
+        # (the mock bypasses the real memo).
         mock_meta.side_effect = [
+            {
+                "title": "Weeds",
+                "image": "t.jpg",
+                "related": {
+                    "seasons": [{"season_number": 8, "episode_count": 6}],
+                },
+            },
             season_meta,
             {"title": "Weeds", "image": "t.jpg"},
             season_meta,
@@ -812,7 +1020,17 @@ class NetflixImporterTests(TestCase):
             "image": "s.jpg",
             "episodes": [{"episode_number": 8, "title": "Goodbye Bean"}],
         }
+        # resolve_row reads the show's seasons (the missing-number
+        # shortcut); record_play then repeats the lookups (the mock
+        # bypasses the real memo).
         mock_meta.side_effect = [
+            {
+                "title": "Disenchantment",
+                "image": "t.jpg",
+                "related": {
+                    "seasons": [{"season_number": 5, "episode_count": 8}],
+                },
+            },
             season_meta,
             {"title": "Disenchantment", "image": "t.jpg"},
             season_meta,
@@ -1525,6 +1743,68 @@ class NetflixRetryTests(TestCase):
         episode = Episode.objects.get(import_run_id=self.run.id)
         self.assertEqual(episode.item.season_number, 2)
         self.assertEqual(episode.item.episode_number, 13)
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_retry_returns_readable_summary(self, mock_meta, mock_search):
+        from integrations import tasks
+
+        self._mocks(mock_search, mock_meta)
+
+        self.assertEqual(
+            tasks.retry_netflix_pending(self.user.id),
+            "Removed 1 of 2 pending row(s).",
+        )
+
+    @patch("integrations.imports.trakt.services.search")
+    @patch.object(netflix.NetflixResolver, "_get_metadata")
+    def test_retry_survives_transient_tmdb_error(self, mock_meta,
+                                                 mock_search):
+        """One row's TMDB outage must not abort the whole retry run."""
+        self.unresolvable.delete()
+        self.replay = NetflixPendingRow.objects.create(
+            user=self.user,
+            title=self.resolvable.title,
+            watched_at=date(2019, 7, 29),
+            raw_date="7/29/19",
+            media_type=MediaTypes.MOVIE.value,
+            import_run_id=self.run.id,
+        )
+        found = {
+            "results": [
+                {"media_id": 62273, "name": "Food Wars! Shokugeki no Soma"},
+            ]
+        }
+        mock_search.side_effect = [
+            {"results": []}, {"results": []}, found,
+            {"results": []}, {"results": []}, found,
+        ]
+        show_meta = _named_show_meta(
+            [(1, 24, "Season 1"), (2, 13, "The Second Plate")],
+        )
+        season_meta = {
+            "title": "Season 2",
+            "image": "s.jpg",
+            "max_progress": 13,
+            "episodes": [{"episode_number": 13, "title": "Pomp & Circumstance"}],
+        }
+        mock_meta.side_effect = [
+            services.ProviderAPIError("tmdb", "tmdb down"),
+            show_meta, season_meta, show_meta, season_meta,
+        ]
+
+        from integrations import tasks
+
+        self.assertEqual(
+            tasks.retry_netflix_pending(self.user.id),
+            "Removed 1 of 2 pending row(s).",
+        )
+        remaining = NetflixPendingRow.objects.all()
+        self.assertEqual(remaining.count(), 1)
+        self.assertEqual(remaining.first().id, self.resolvable.id)
+        self.assertEqual(
+            Episode.objects.filter(import_run_id=self.run.id).count(), 1,
+        )
 
     @patch("integrations.imports.trakt.services.search")
     @patch.object(netflix.NetflixResolver, "_get_metadata")

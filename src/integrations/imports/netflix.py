@@ -469,39 +469,56 @@ class NetflixResolver(TraktMetadataResolverMixin):
                     break
         return matches
 
+    def _unique_episode_across(self, show_ids, target):
+        """Return the one episode named ``target`` across whole shows.
+
+        Returns ``(show_id, season_number, episode_number)`` when exactly
+        one episode of any of the shows carries the exact name in the
+        configured language, or the fallback; anything else is None.
+        """
+        found = []
+        for language in self._match_languages():
+            found = [
+                (show_id, season_number, episode_number)
+                for show_id in show_ids
+                for season_number in sorted(self._show_seasons(show_id))
+                for episode_number, name in self._season_episode_names(
+                    show_id, season_number, "", language,
+                ).items()
+                if name == target
+            ]
+            if found:
+                break
+        if len(found) != 1:
+            return None
+        return found[0]
+
     def _match_unlabelled_episode(self, query):
         """Match a colon-titled row that no movie search can find.
 
         Anthology docuseries export their parts as "Show: Part title"
         without season or episode labels.  The show is found by the title
         before the last segment; the dropped segment must name a unique
-        episode across all of the show's seasons, so a movie whose name
+        episode across the candidates' seasons, so a movie whose name
         happens to contain a colon can only ever become a play if the
-        episode name is an exact, unambiguous match.
+        episode name is an exact, unambiguous match.  When several shows
+        share the title, that unique episode is what tells them apart.
         """
         parts = [part.strip() for part in query.split(":")]
         prefix, dropped = ": ".join(parts[:-1]), parts[-1]
         matches = title_matches(
             self._search_results(prefix, MediaTypes.TV.value), prefix,
         )
-        if len(matches) != 1:
+        if not matches:
             return None
-        tmdb_id = _result_id_str(matches[0])
-        target = _normalize_match(dropped)
-        found = []
-        for language in self._match_languages():
-            found = []
-            for season_number in sorted(self._show_seasons(tmdb_id)):
-                for episode_number, name in self._season_episode_names(
-                    tmdb_id, season_number, "", language,
-                ).items():
-                    if name == target:
-                        found.append((season_number, episode_number))
-            if found:
-                break
-        if len(found) != 1:
+        found = self._unique_episode_across(
+            [_result_id_str(match) for match in matches],
+            _normalize_match(dropped),
+        )
+        if found is None:
             return None
-        return tmdb_id, MediaTypes.TV.value, *found[0]
+        show_id, season_number, episode_number = found
+        return show_id, MediaTypes.TV.value, season_number, episode_number
 
     def _match_named_season_episode(self, query):
         """Match a "Show: SeasonName: EpisodeTitle" row without markers.
@@ -546,20 +563,8 @@ class NetflixResolver(TraktMetadataResolverMixin):
             return tmdb_id, MediaTypes.TV.value, season_number, episode_number
         return None
 
-    def _fuzzy_episode_number(self, tmdb_id, season_number, episode_title):
-        """Match one episode title inside one season, exact or clearly best."""
-        if not episode_title:
-            return None
-        target = _normalize_match(episode_title)
-        names = None
-        for names in self._season_names_candidates(
-            tmdb_id, season_number, target,
-        ):
-            exact = {
-                number for number, name in names.items() if name == target
-            }
-            if exact:
-                return exact.pop() if len(exact) == 1 else None
+    def _best_fuzzy_episode(self, names, target):
+        """Return the clearly best fuzzy episode number within one season."""
         if not names:
             return None
         scored = sorted(
@@ -578,19 +583,37 @@ class NetflixResolver(TraktMetadataResolverMixin):
             return best_number
         return None
 
+    def _fuzzy_episode_number(self, tmdb_id, season_number, episode_title):
+        """Match one episode title inside one season, exact or clearly best."""
+        if not episode_title:
+            return None
+        target = _normalize_match(episode_title)
+        names = None
+        for names in self._season_names_candidates(
+            tmdb_id, season_number, target,
+        ):
+            exact = {
+                number for number, name in names.items() if name == target
+            }
+            if exact:
+                return exact.pop() if len(exact) == 1 else None
+        return self._best_fuzzy_episode(names, target)
+
     def resolve_row(self, title, query, media_type, season_number,
                     episode_number):
         """Resolve one row to a TMDB work with safe, narrow shortcuts.
 
         Returns ``(tmdb_id, media_type, season_number, episode_number)``
         or None.  A unique exact title match is always used.  Otherwise
-        four non-guessing shortcuts apply: a known season disambiguates
+        five non-guessing shortcuts apply: a known season disambiguates
         same-title shows (a show without that season cannot hold the
         row), a movie title missing only its part suffix matches the
         unique result that continues it, a series row with an episode
         number but no season is matched to the single season that
-        carries it, and a colon-titled row no movie search can find may
-        be an unlabelled anthology episode.
+        carries it, a numbered season the provider does not carry is
+        replaced by the season holding the row's unique exact episode
+        name, and a colon-titled row no movie search can find may be an
+        unlabelled anthology episode.
         """
         if (
             media_type == MediaTypes.TV.value
@@ -653,6 +676,25 @@ class NetflixResolver(TraktMetadataResolverMixin):
             if len(seasons) != 1:
                 return None
             return tmdb_id, MediaTypes.TV.value, seasons[0], episode_number
+        if (
+            media_type == MediaTypes.TV.value
+            and season_number is not None
+            and episode_number is None
+            and season_number not in self._show_seasons(tmdb_id)
+        ):
+            # Netflix invents season numbers ("Part 2") that TMDB does not
+            # carry; when the number is unknown there, the unique exact
+            # episode name across the whole show fixes the real season.
+            target = self._episode_match_target(title, query)
+            if target is not None:
+                found = self._unique_episode_across([tmdb_id], target)
+                if found is not None:
+                    return (
+                        tmdb_id,
+                        MediaTypes.TV.value,
+                        found[1],
+                        found[2],
+                    )
         return tmdb_id, media_type, season_number, episode_number
 
     def _episode_match_target(self, title, query):
@@ -678,13 +720,16 @@ class NetflixResolver(TraktMetadataResolverMixin):
 
         Netflix rows often carry the season and the episode title but no
         number.  A unique normalized match against the season's episode
-        names is safe to record; anything ambiguous is left for review.
+        names is safe to record; when no exact name fits, the clearly
+        best fuzzy match (same gate as the named-season fallback) is
+        recorded too.  Anything ambiguous is left for review.
         The fallback language may name the episode when the configured
         one does not (an English row against TMDB_LANG=de).
         """
         if not episode_title:
             return None
         target = _normalize_match(episode_title)
+        names = None
         for names in self._season_names_candidates(
             tmdb_id, season_number, target, series_title,
         ):
@@ -695,7 +740,7 @@ class NetflixResolver(TraktMetadataResolverMixin):
             }
             if matches:
                 return matches.pop() if len(matches) == 1 else None
-        return None
+        return self._best_fuzzy_episode(names, target)
 
     def _attempt_record(self, title, watched_at):
         """Run one row through the resolve + record pipeline.
@@ -703,43 +748,54 @@ class NetflixResolver(TraktMetadataResolverMixin):
         Returns ``(True, media_type)`` when a play was recorded, or
         ``(False, (media_type, season_number, episode_number))`` with the
         fields to park for review.  Shared by the import and the pending
-        row retry so both run the exact same matching.
+        row retry so both run the exact same matching.  A transient TMDB
+        outage parks the row like an unresolvable one instead of
+        crashing the whole run.
         """
         query, media_type, season_number, episode_number = _split_title(title)
-        # resolve_row adds safe shortcuts on top of the unique exact match
-        # (a known season filters same-title shows, a missing part suffix,
-        # a single season carrying the episode, an unlabelled anthology
-        # episode, a named season chain); None means the row must go to
-        # the review page.
-        resolved = self.resolve_row(
-            title, query, media_type, season_number, episode_number,
-        )
-        if (
-            resolved is None
-            or (
-                media_type == MediaTypes.TV.value
-                and resolved[2] is None
+        try:
+            # resolve_row adds safe shortcuts on top of the unique exact
+            # match (a known season filters same-title shows, a missing
+            # part suffix, a single season carrying the episode, an
+            # unlabelled anthology episode, a named season chain); None
+            # means the row must go to the review page.
+            resolved = self.resolve_row(
+                title, query, media_type, season_number, episode_number,
             )
-        ):
-            return False, (media_type, season_number, episode_number)
-        tmdb_id, media_type, season_number, episode_number = resolved
-
-        # Many rows carry the season and the episode title but no number
-        # ("Weeds: Season 8: It's Time"); the number comes from matching
-        # the title within the season.
-        if media_type == MediaTypes.TV.value and episode_number is None:
-            episode_number = self.match_episode_number(
-                tmdb_id, query, season_number, _episode_title(title, query),
-            )
-            if episode_number is None:
+            if (
+                resolved is None
+                or (
+                    media_type == MediaTypes.TV.value
+                    and resolved[2] is None
+                )
+            ):
                 return False, (media_type, season_number, episode_number)
+            tmdb_id, media_type, season_number, episode_number = resolved
 
-        _item, error = self.record_play(
-            query, watched_at, media_type, tmdb_id,
-            season_number=season_number, episode_number=episode_number,
-        )
-        if error:
-            logger.info("Netflix row %r needs review: %s", title, error)
+            # Many rows carry the season and the episode title but no
+            # number ("Weeds: Season 8: It's Time"); the number comes
+            # from matching the title within the season.
+            if media_type == MediaTypes.TV.value and episode_number is None:
+                episode_number = self.match_episode_number(
+                    tmdb_id, query, season_number,
+                    _episode_title(title, query),
+                )
+                if episode_number is None:
+                    return False, (media_type, season_number, episode_number)
+
+            _item, error = self.record_play(
+                query, watched_at, media_type, tmdb_id,
+                season_number=season_number, episode_number=episode_number,
+            )
+            if error:
+                logger.info("Netflix row %r needs review: %s", title, error)
+                return False, (media_type, season_number, episode_number)
+        except services.ProviderAPIError as error:
+            logger.warning(
+                "Netflix row %r: TMDB unavailable (%s); left for review",
+                title,
+                error,
+            )
             return False, (media_type, season_number, episode_number)
         return True, media_type
 

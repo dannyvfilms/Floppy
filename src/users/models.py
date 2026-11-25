@@ -2085,6 +2085,10 @@ class User(AbstractUser):
             "kitsu": ["Import from Kitsu"],
             "mangabaka": ["Import from MangaBaka"],
             "yamtrack": ["Import from Yamtrack"],
+            "netflix": [
+                "Import from Netflix",
+                "Retry Netflix auto-matching",
+            ],
             "hltb": ["Import from HowLongToBeat"],
             "grouvee": ["Import from Grouvee"],
             "steam": ["Import from Steam"],

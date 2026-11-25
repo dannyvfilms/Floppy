@@ -524,7 +524,7 @@ def retry_netflix_pending(user_id):
         removed,
         len(rows),
     )
-    return removed
+    return f"Removed {removed} of {len(rows)} pending row(s)."
 
 
 @shared_task(

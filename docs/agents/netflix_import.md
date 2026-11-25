@@ -92,7 +92,7 @@ and it adds `search_results` (the review page's pick list), `resolve_row`
 and `record_play`.
 
 A row resolves when the title search has exactly one exact normalized-title
-match. Otherwise five non-guessing shortcuts apply, each requiring a unique
+match. Otherwise six non-guessing shortcuts apply, each requiring a unique
 hit; anything ambiguous stays pending:
 
 - **Known season filters same-title shows.** Netflix exports several shows
@@ -109,11 +109,19 @@ hit; anything ambiguous stays pending:
   the show's seasons carries that many episodes; with several candidates the
   row's episode title (when it has one) must additionally match exactly one
   season's episode name.
+- **Number the provider does not carry.** Netflix invents season numbers
+  that TMDB does not list (`Fullmetal Alchemist: Brotherhood: Part 2: …`
+  against a single-season TMDB show). When the row's numbered season is
+  absent from the show's `related.seasons`, the episode title must name
+  exactly one episode across the whole show, and the row takes that
+  episode's real season.
 - **Unlabelled anthology episode.** Anthology docuseries export their parts
   as `Show: Part title` without season or episode labels. A colon-titled row
   no movie search can find may resolve when the title before the last
-  segment is a unique TV show and the last segment names exactly one
-  episode across all of the show's seasons.
+  segment matches TV show(s) exactly and the last segment names exactly one
+  episode across all of the candidates' seasons — which is what also
+  disambiguates shows that share a name (two shows named `The Americans`,
+  one of which has the episode).
 - **Named-season chain.** Anime and docuseries name their seasons instead
   of numbering them (`Food Wars!: Shokugeki no Soma: The Second Plate:
   Pomp & Circumstance`), which the title split reads as a movie and no
@@ -147,7 +155,10 @@ Season 8: It's Time`). For those, `match_episode_number` compares the row's
 trailing episode title (labels and a trailing `: Part N`/`: Teil N`
 stripped by `_episode_title`) against the season's episode names from the
 same TMDB season lookup — normalized to alphanumerics, so case and
-punctuation never block a match. A unique hit is recorded; zero or
+punctuation never block a match. A unique hit is recorded; when no name
+fits exactly, the clearly best fuzzy match (the same `SequenceMatcher`
+gate as the named-season chain) is recorded too — `Stromberg: Staffel 2:
+Männerfreundschaften` matches TMDB's `Männerfreundschaft`. Zero or
 ambiguous hits stay pending with the season pre-filled.
 
 Netflix exports mix languages while `TMDB_LANG` is one language per
@@ -249,17 +260,21 @@ the button can be pressed again.
   land on the review page instead of being parsed.
 - `Teil N`/`Part N` is never an episode number; as a standalone segment it
   is a season only when it follows the series name and another segment.
-- Localized episode titles that do not match the season's TMDB names stay
-  pending; the shortcuts above only ever resolve a row that exactly one
-  candidate can hold — the importer never guesses between candidates, and
-  never uses the watch date or the release year to break a title tie
-  (rewatches make the date a guess). The one calibrated exception is the
-  named-season chain's fuzzy episode match, bounded to a season its show
-  and season-name steps already pinned down exactly.
+- Localized episode titles that have no exact TMDB name get the clearly
+  best fuzzy match (the named-season chain's gate) inside the row's
+  season; anything below that bar stays pending. The shortcuts above
+  otherwise only ever resolve a row that exactly one candidate can hold —
+  the importer never guesses between candidates, and never uses the watch
+  date or the release year to break a title tie (rewatches make the date
+  a guess).
 - A title with no unique TMDB match stays pending until a human picks one.
-- Rows whose TMDB season genuinely does not exist (`season_missing`) or
-  whose episode name TMDB does not know stay pending; those are provider
-  data gaps, not importer failures.
+- Rows whose episode TMDB does not know stay pending; those are provider
+  data gaps, not importer failures. A numbered season TMDB does not carry
+  resolves only when the episode name names exactly one episode across the
+  whole show (the part-number shortcut above) — e.g. under
+  `TMDB_LANG=de`, `Neon Genesis Evangelion: Seele, the Seat of the Soul`
+  stays pending because TMDB's names (`Seele – Thron der Seelen`, English
+  `Weaving a Story 1`) are no close match.
 
 ## Tests
 
@@ -268,8 +283,9 @@ heuristics (including the English markers, `Part`/`Teil`/`Volume`
 semantics, colon show names, `_episode_title`), movie and episode
 recording (including title matching and `Part`-as-season rows), the
 `resolve_row` shortcuts (season narrowing, part continuation, season-by-
-episode, unlabelled anthology episode, named-season chain, and the
-ambiguity cases that must stay pending), the pending paths, re-import
+episode, missing-number fallback, unlabelled anthology episode including
+same-title show disambiguation, named-season chain, and the ambiguity
+cases that must stay pending), the pending paths, re-import
 idempotency, the review views
 (server search, the island's JSON search, the island props, resolve,
 dismiss, user scoping, 100-row paging, the `?filter=` narrowing, and
@@ -282,4 +298,7 @@ live in `src/users/tests/views/test_rollback_import_run.py` (the Netflix
 branch: plays under pre-existing shows, the cascade of run-created shows,
 other sources keeping episode history) and
 `src/users/tests/views/test_bulk_delete_by_import_source.py` (tagged rows
-listed under their source, TV delete cascading to episode plays).
+listed under their source, TV delete cascading to episode plays). The
+retry run's activity-feed visibility lives in
+`src/users/tests/test_import_task_visibility.py` (Netflix import and retry
+rows on the Netflix provider tab and in the general activity feed).
