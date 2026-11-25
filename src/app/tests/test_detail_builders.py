@@ -269,7 +269,7 @@ class DetailLinkSectionsRottenTomatoesTests(TestCase):
             {"title": "Dune", "url": "https://www.rottentomatoes.com/m/dune_2021", "exact": True},
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {
                 "media_type": MediaTypes.MOVIE.value,
                 "title": "Dune",
@@ -291,7 +291,7 @@ class DetailLinkSectionsRottenTomatoesTests(TestCase):
         )
 
     def test_no_rt_link_without_cached_match(self):
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {
                 "media_type": MediaTypes.MOVIE.value,
                 "title": "Dune",
@@ -313,7 +313,7 @@ class DetailLinkSectionsRottenTomatoesTests(TestCase):
             {"title": "Dune: Prophecy", "url": "https://www.rottentomatoes.com/tv/dune_prophecy", "exact": True},
         )
 
-        sections = _build_detail_link_sections(
+        sections = build_detail_link_sections(
             {
                 "media_type": MediaTypes.SEASON.value,
                 "title": "Dune: Prophecy",

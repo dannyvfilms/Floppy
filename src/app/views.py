@@ -807,7 +807,7 @@ def rt_extras(
     rottentomatoes.com; results cache for a week. Returns out-of-band
     Tomatometer/Popcornmeter score cards plus an external-links chip for
     movie/TV/anime/season pages (which warms the match cache
-    `_build_detail_link_sections` reads on later renders).
+    `build_detail_link_sections` reads on later renders).
     """
     rt_link = None
     rt_scores = None
