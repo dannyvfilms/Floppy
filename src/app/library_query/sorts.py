@@ -2,7 +2,7 @@
 
 A ``SortDef`` has a SQL expression, or is computed in Python from the
 hydrated candidate (reusing the media list's value function). Every surface
-orders the same way: the value with nulls last, then the lower-cased title,
+orders the same way: the value with nulls last, then the lower-cased title without a leading article (``app.title_sort``),
 season and episode numbers, then the item id, all following the requested
 direction (``executor.tie_breakers``). Equal values therefore cannot move
 between pages.
@@ -44,6 +44,7 @@ from app.library_query.filters import (
     latest_value,
 )
 from app.models.choices import Status
+from app.title_sort import title_sort_expr
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -402,7 +403,7 @@ _MEDIA = frozenset({NEEDS_MEDIA})
 _MEDIA_RUNTIME = frozenset({NEEDS_MEDIA, NEEDS_MAX_PROGRESS, NEEDS_RUNTIME})
 
 SORTS: tuple[SortDef, ...] = (
-    SortDef(("title", ""), sql=lambda ctx, seed: Lower("title")),
+    SortDef(("title", ""), sql=lambda ctx, seed: title_sort_expr("title")),
     SortDef(("release_date", "release_datetime"), sql=_field("release_datetime")),
     SortDef(("critic_rating",), sql=_field("provider_rating")),
     SortDef(("popularity",), sql=_field("trakt_popularity_rank")),

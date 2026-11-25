@@ -33,6 +33,7 @@ from app.services.episode_coordinates import (
     resolve_episode_coordinate,
 )
 from app.services.episode_scores import rate_episode
+from app.title_sort import title_sort_key
 from lists.models import CustomListItem
 from users.models import MediaStatusChoices
 
@@ -989,7 +990,7 @@ def _sort_title(media):
     """Return lowercased title key from both media and item objects."""
     item = _item_from_result(media)
     title = getattr(item, "title", "")
-    return title.lower() if isinstance(title, str) else ""
+    return title_sort_key(title) if isinstance(title, str) else ""
 
 
 def _sort_type(media):
