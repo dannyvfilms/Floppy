@@ -72,6 +72,7 @@ from lists.views_helpers import (
     _get_list_last_watched_dates,
 )
 from lists.views_people import list_people_for_display
+from users import rating_scales
 
 from . import fork_helpers  # FORK: history sorting overlay
 from .changes_history_processor import (
@@ -1683,6 +1684,13 @@ class MediaDetailView(drf_views.APIView):
 
         media = user_medias[0]
 
+        pending_rating, rating_error = rating_scales.criteria_from_body(user, body, media)
+        if rating_error:
+            return Response(
+                {"detail": rating_error, "code": "INVALID_CRITERIA"},
+                status=HTTP.BAD_REQUEST,
+            )
+
         if body or image_url is None:
             validated_body, error = validate_body(body, media_type)
 
@@ -1698,6 +1706,7 @@ class MediaDetailView(drf_views.APIView):
         for field, value in validated_body.items():
             if hasattr(media, field):
                 setattr(media, field, value)
+        media._pending_entry_rating = pending_rating
 
         try:
             media.save()
@@ -2080,7 +2089,18 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        body = request.data or {}
+        raw_body = request.data or {}
+        body = raw_body.dict() if hasattr(raw_body, "dict") else dict(raw_body)
+        pending_rating, rating_error = rating_scales.criteria_from_body(
+            request.user,
+            body,
+            consumption,
+        )
+        if rating_error:
+            return Response(
+                {"detail": rating_error, "code": "INVALID_CRITERIA"},
+                status=HTTP.BAD_REQUEST,
+            )
 
         validated_body, error = validate_body(body, media_type)
 
@@ -2109,6 +2129,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         for field, value in validated_body.items():
             if hasattr(consumption, field):
                 setattr(consumption, field, value)
+        consumption._pending_entry_rating = pending_rating
 
         try:
             consumption.save()

@@ -314,6 +314,14 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "GET": "user:read",
         "PATCH": "user:write",
     },
+    "api.fork_views_users.RatingScalesView": {
+        "GET": "user:read",
+        "POST": "user:write",
+    },
+    "api.fork_views_users.RatingScaleDetailView": {
+        "PUT": "user:write",
+        "DELETE": "user:write",
+    },
     "api.fork_views_onboarding.UserOnboardingView": {
         "GET": "user:read",
         "POST": "user:write",

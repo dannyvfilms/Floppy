@@ -1,4 +1,5 @@
 import { getActiveAuthSession } from '../data/authSession.js';
+import { criteriaBody } from '../../../frontend/ui/ratingScaleModel.js';
 
 const DEFAULT_CONFIG = {
   baseUrl: (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FLOPPY_BASE_URL) || '',
@@ -160,10 +161,25 @@ function field(name, label, type, value, extra = {}) {
   return { name, label, type, value: value == null ? '' : String(value), ...extra };
 }
 
-// The viewer's rating scale: 5 or 10 stars, 0 when ratings are turned off, 10 when it cannot be read.
+// The viewer's rating scale: 5 or 10 stars, 0 when ratings are turned off, 10 when it cannot be read or a custom scale is active.
 function ratingScaleMax(prefs) {
+  // An active custom scale is always scored out of 10, whatever built-in value (even Disabled) is kept beside it.
+  if (prefs?.preferences?.custom_rating_scale) return 10;
   const scale = Number(prefs?.preferences?.rating_scale);
   return scale === 0 || scale === 5 || scale === 10 ? scale : 10;
+}
+
+// The viewer's custom rating scale for a form: the scale from preferences, with this entry's saved values
+// (the API's `criteria` breakdown) and whether its score is a manual override. Null on a built-in scale.
+function customRatingScale(prefs, consumption) {
+  const id = prefs?.preferences?.custom_rating_scale;
+  const scale = id ? (prefs.preferences.rating_scales || []).find(item => item.id === id) : null;
+  if (!scale) return null;
+  const saved = consumption?.criteria;
+  const same = saved && saved.scale && saved.scale.id === scale.id;
+  const values = {};
+  if (same) saved.criteria.forEach(item => { if (item.value != null) values[item.key] = item.value; });
+  return { ...scale, values, computed: same ? saved.computed_score : null, manual: Boolean(same && saved.score_is_manual) };
 }
 
 // A runtime as minutes: 135, "135" or "2h 15m"; 0 when it cannot be read.
@@ -176,7 +192,7 @@ function runtimeMinutes(value) {
   return /^\d+$/.test(text.trim()) ? Number(text) : 0;
 }
 
-function trackFields(identity, detail, consumption, withTime = false, scaleMax = 10) {
+function trackFields(identity, detail, consumption, withTime = false, scaleMax = 10, ratingScale = null) {
   const mediaType = identity.mediaType;
   const fields = [
     {
@@ -188,7 +204,8 @@ function trackFields(identity, detail, consumption, withTime = false, scaleMax =
       options: mediaType === 'comicissue' ? [{ value: '', label: 'No Status' }, ...STATUS_OPTIONS] : STATUS_OPTIONS,
     },
     // The value stays on the stored 0-10 scale; `scaleMax` (5 or 10, the viewer's preference) is what the picker offers.
-    ...(scaleMax ? [field('score', 'Score', 'number', consumption && consumption.score, { min: 0, max: 10, scaleMax })] : []),
+    // A custom rating scale (`ratingScale`) swaps the picker for a button that opens the criteria sheet.
+    ...(scaleMax ? [field('score', 'Score', 'number', consumption && consumption.score, { min: 0, max: 10, scaleMax, ...(ratingScale ? { ratingScale } : {}) })] : []),
   ];
   if (PROGRESS_TYPES.has(mediaType)) {
     // A game's progress is stored in minutes; `unit` lets the form show it as hrs and min.
@@ -423,7 +440,7 @@ export async function loadTrack(identity, { trackTime = false, fresh = false } =
       action: `${mediaPath(identity)}/`,
       deleteAction: tracked ? `${mediaPath(identity)}/` : '',
       csrfToken: config.csrfToken,
-      fields: trackFields(identity, detail, consumption, trackTime, ratingScaleMax(prefs)),
+      fields: trackFields(identity, detail, consumption, trackTime, ratingScaleMax(prefs), customRatingScale(prefs, consumption)),
       notes: { value: (consumption && consumption.notes) || '', label: 'Notes' },
       submitLabel: tracked ? 'Update' : 'Add',
       deleteLabel: 'Delete',
@@ -529,6 +546,14 @@ function trackBody(model, values) {
   const body = {};
   for (const fieldDefinition of model.fields || []) {
     const value = values[fieldDefinition.name];
+    if (fieldDefinition.name === 'score' && fieldDefinition.ratingScale) {
+      // The score follows the criteria unless it was typed over (a manual override).
+      const { criteria, score_is_manual: manual } = criteriaBody(fieldDefinition.ratingScale, values);
+      body.criteria = criteria;
+      body.score_is_manual = manual;
+      if (manual && value !== '' && value !== undefined) body.score = Number(value);
+      continue;
+    }
     if (value === undefined) continue;
     if (value === '') {
       body[fieldDefinition.name] = fieldDefinition.name === 'entry_source' ? '' : null;
@@ -580,15 +605,20 @@ export async function saveTrack(identity, model, values, tracked) {
     await request(path, { method: 'PATCH', body });
     return { tracked: true };
   }
+  // A new entry is created first; its criteria are then saved onto it (the create route takes a flat score).
+  const { criteria, score_is_manual: manual, ...created } = body;
+  const hasCriteria = criteria && (manual || Object.values(criteria).some(value => value !== null));
+  if (hasCriteria && manual) created.score = body.score;
   await request(`/api/v1/media/${encodeURIComponent(identity.mediaType)}/`, {
     method: 'POST',
     body: {
       source: identity.source,
       media_id: identity.mediaId,
       ...(identity.seasonNumber != null ? { season_number: identity.seasonNumber } : {}),
-      ...body,
+      ...created,
     },
   });
+  if (hasCriteria) await request(`${mediaPath(identity)}/`, { method: 'PATCH', body: { criteria, score_is_manual: manual, ...(manual ? { score: body.score } : {}) } });
   return { tracked: true };
 }
 
@@ -632,6 +662,12 @@ export async function createTag(name) {
 
 export async function saveArtwork(identity, imageUrl) {
   await request(`${mediaPath(identity)}/`, { method: 'PATCH', body: { image_url: imageUrl } });
+}
+
+/** Saves a custom rating scale's criterion values (and manual override) onto an entry. */
+export async function saveCriteria(identity, body) {
+  await request(`${mediaPath(identity)}/`, { method: 'PATCH', body });
+  return body;
 }
 
 export async function saveScore(identity, score) {
