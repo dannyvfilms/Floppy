@@ -178,7 +178,8 @@ const styles = StyleSheet.create({
   titleCompact: { fontSize: 16, lineHeight: 21.6 },
   back: { fontSize: 14, lineHeight: 20 },
   grid: { gap: 16, minWidth: 0 },
-  gridCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  // 12 is the gap shelfCardWidth reserves, so the Comfortable two-across width fits.
+  gridCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   loadMore: { alignSelf: 'center', minWidth: 140, alignItems: 'center' },
   note: { fontSize: 14, lineHeight: 20 },
   searching: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
