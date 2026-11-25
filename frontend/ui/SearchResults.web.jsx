@@ -72,6 +72,14 @@ export function SearchResults({ props }) {
   const onOpenCard = useCallback(item => navigate(item?.card?.href), []);
   const onOpenLink = useCallback(href => navigate(href), []);
 
+  // A row title opens the same search with only that row, as a grid. It is a normal page
+  // load, so the browser's Back returns to the full results.
+  const onFocusRow = useCallback(row => {
+    const params = new URLSearchParams({ q: props.query || '', media_type: props.mediaType || '' });
+    if (row) params.set('grid', String(row.rowId));
+    navigate(`${withBasePath('/search')}?${params}`);
+  }, [props.query, props.mediaType]);
+
   // Home's cards render themselves on the web: links, tracking modals and htmx posts.
   const renderCard = useCallback(item => <MediaCard model={item.card} labels={props.labels}
     standalone variant={item.card?.shape === 'square' ? 'grid-square' : 'grid'} />, [props.labels]);
@@ -117,5 +125,6 @@ export function SearchResults({ props }) {
     onOpenLink={onOpenLink}
     onLoadMore={onLoadMore}
     onLoadOnlineRow={onLoadOnlineRow}
+    onFocusRow={onFocusRow}
   />;
 }
