@@ -34,6 +34,7 @@ from app.models import (
     Status,
     Tag,
 )
+from app.title_sort import title_sort_key
 
 MOVIE = MediaTypes.MOVIE.value
 SQL_SORT_KEYS = [d.keys[0] for d in SORTS if d.sql is not None]
@@ -863,3 +864,34 @@ class SeasonScanShowBlobTests(LibraryQueryTestCase):
             self.assertEqual(
                 filter_registry.season_effective_status(candidate.media), Status.COMPLETED.value,
             )
+
+
+class TitleSortIgnoresLeadingArticleTests(LibraryQueryTestCase):
+    """A title sort orders "The Bear" under B; the displayed title is untouched."""
+
+    TITLES = ("The Bear", "Andor", "A Few Good Men", "An Education", "Therapy", "Blade")
+
+    def test_title_sort_skips_a_leading_article_in_sql_and_scan(self):
+        """Both paths agree; "Therapy" and "Andor" keep their own letter."""
+        for index, title in enumerate(self.TITLES, start=1):
+            self.make_movie(index, title=title)
+        ascending = [
+            "Andor",
+            "The Bear",
+            "Blade",
+            "An Education",
+            "A Few Good Men",
+            "Therapy",
+        ]
+        for direction, titles in (("asc", ascending), ("desc", ascending[::-1])):
+            with self.subTest(direction=direction):
+                executor = LibraryQueryExecutor(
+                    self.user, _query(sort=SortSpec("title", direction))
+                )
+                page = executor.page(0, 100).items
+                self.assertEqual([item.title for item in page], titles)
+                scan = {row[-1]: row[1] for row in executor._scan_ranked}
+                self.assertEqual(
+                    [scan[item.pk] for item in page],
+                    [title_sort_key(title) for title in titles],
+                )
