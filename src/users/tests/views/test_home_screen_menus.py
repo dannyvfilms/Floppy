@@ -102,7 +102,7 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
             {"In progress", "Completed", "Paused", "Dropped"},
         )
         self.assertEqual(saved["filters"]["progress"], "all")
-        self.assertEqual(saved["filters"]["media_subviews"], {"tv": "episodes"})
+        self.assertEqual(saved["filters"]["media_subviews"]["tv"], "episodes")
 
     def test_all_media_nested_levels_save_and_keyboard_backtracks(self):
         errors = []

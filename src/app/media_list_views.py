@@ -72,6 +72,7 @@ from app.services import metadata_resolution
 from app.stats_music import _country_name_from_code
 from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
+from app.title_sort import title_sort_expr, title_sort_key
 from app.tv_sort import (
     _sort_tv_media_by_time_left,
     build_time_left_records,
@@ -1460,8 +1461,10 @@ def _build_artist_list_context(
 
     # Apply sorting (limited to what makes sense for artists)
     if sort_filter == "title":
-        order = "artist__name" if direction == "asc" else "-artist__name"
-        artist_trackers = artist_trackers.order_by(order)
+        expr = title_sort_expr("artist__name")
+        artist_trackers = artist_trackers.order_by(
+            expr.asc() if direction == "asc" else expr.desc()
+        )
     elif sort_filter == "score":
         order = "score" if direction == "asc" else "-score"
         artist_trackers = artist_trackers.order_by(order, "artist__name")
@@ -2929,7 +2932,7 @@ def media_list(request, media_type):
                         media, "next_episode_air_date", None
                     )
                     return (_sortable_dt(next_episode_air_date), title.lower())
-                return title.lower()
+                return title_sort_key(title)
 
             _sort_reverse = direction == "desc"
             media_list = sorted(media_list, key=_mixed_sort_key, reverse=_sort_reverse)
@@ -3420,8 +3423,10 @@ def media_list(request, media_type):
 
         # Apply sorting
         if sort_filter == "title":
-            order = "show__title" if direction == "asc" else "-show__title"
-            show_trackers = show_trackers.order_by(order)
+            expr = title_sort_expr("show__title")
+            show_trackers = show_trackers.order_by(
+                expr.asc() if direction == "asc" else expr.desc()
+            )
         elif sort_filter == "score":
             order = "score" if direction == "asc" else "-score"
             show_trackers = show_trackers.order_by(order, "show__title")
@@ -3665,8 +3670,10 @@ def media_list(request, media_type):
                 )
 
             if sort_filter == "title":
-                order = "album__title" if direction == "asc" else "-album__title"
-                album_trackers = album_trackers.order_by(order)
+                expr = title_sort_expr("album__title")
+                album_trackers = album_trackers.order_by(
+                    expr.asc() if direction == "asc" else expr.desc()
+                )
             elif sort_filter == "score":
                 order = "score" if direction == "asc" else "-score"
                 album_trackers = album_trackers.order_by(order, "album__title")

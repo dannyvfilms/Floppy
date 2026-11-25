@@ -59,6 +59,9 @@ export function Rail({
   collapseLabel = 'Toggle section',
   scrollLeftLabel = 'Scroll left',
   scrollRightLabel = 'Scroll right',
+  // Removed, not hidden, when false so the header keeps no empty space. The native app
+  // passes false (see WindowedRail): touch devices swipe the row; web keeps mouse arrows.
+  showArrows = true,
   accessibilityLabel,
   palette: paletteOverrides,
   scrollRef,
@@ -199,6 +202,7 @@ export function Rail({
         {summary ? <Text style={[styles.summary, { color: palette.textMuted }]}>{summary}</Text> : null}
       </View>
       <View style={styles.controls}>
+        {showArrows ? <>
         <Pressable accessibilityRole="button" accessibilityLabel={scrollLeftLabel}
           accessibilityState={{ disabled: !canScrollPrev }} disabled={!canScrollPrev}
           onPress={() => scrollByPage(-1)} style={[styles.iconButton, !canScrollPrev && styles.hiddenControl]}>
@@ -209,6 +213,7 @@ export function Rail({
           onPress={() => scrollByPage(1)} style={[styles.iconButton, !canScrollNext && styles.hiddenControl]}>
           <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>›</Text>
         </Pressable>
+        </> : null}
         {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel={collapseLabel}
           accessibilityState={{ expanded: !isCollapsed }} onPress={toggleCollapsed}
           style={[styles.iconButton, styles.toggleButton]}>
