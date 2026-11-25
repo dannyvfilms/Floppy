@@ -169,7 +169,8 @@ jobs:
   # Has the token. Runs only the script from latest; never runs artifact content.
   ui-publish:
     needs: [merge-train, ui-build]
-    if: always() && needs.merge-train.outputs.ui_refresh != '[]'
+    # A failed merge-train job leaves ui_refresh empty, so require a real plan.
+    if: always() && needs.merge-train.outputs.ui_refresh != '' && needs.merge-train.outputs.ui_refresh != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
