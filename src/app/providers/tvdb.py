@@ -745,7 +745,10 @@ def _get_remote_ids_map(row: dict | None) -> dict[str, str]:
         if "imdb" in source_name:
             remote_ids["imdb_id"] = value
         elif "tmdb" in source_name or "themoviedb" in source_name:
-            remote_ids["tmdb_id"] = value
+            # TVDB sometimes stores TMDB's URL form "<id>-<slug>"; keep the number.
+            tmdb_match = re.match(r"\d+", value)
+            if tmdb_match:
+                remote_ids["tmdb_id"] = tmdb_match.group()
         elif "tvdb" in source_name:
             remote_ids["tvdb_id"] = value
         elif "mal" in source_name or "myanimelist" in source_name:
