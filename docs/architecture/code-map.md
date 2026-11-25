@@ -71,6 +71,12 @@ Django apps live under `src/`. Paths below are repository-relative.
   `collection_helpers.py` (collection metadata), `cache_utils.py` (view-cache
   keys and clearing). `src/app/helpers.py` takes small value and request
   helpers with no narrower subject. Do not add a new `utils` module.
+- **YouTube game watch time.** `src/app/services/youtube_game.py` reads and
+  backfills the tag and published runtime from the watch page.
+  `src/app/services/youtube_game_watch.py` matches that tag to a game and
+  totals the viewer's recorded positions or completed video runtimes.
+  The PWA and Expo use `frontend/ui/useDeferredYoutubeWatch.js` to request the
+  private summary after the detail renders.
 
 ### Helper homes
 
@@ -135,6 +141,7 @@ See `docs/deployment-bundled.md`.
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
 | A user-defined rating scale (named criteria, ranges, weight tiers) and how an entry's criteria become its 0-10 score | `src/users/rating_scales.py` (rules, saving, API payloads); models in `src/users/rating_scale_models.py`; tests `users.tests.test_rating_scales`; UI rules in `frontend/ui/ratingScaleModel.js` | `docs/architecture/rating-sync.md` (final score only leaves Floppy) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
+| Browser-only input behaviour on every page (keyboard shortcut, game controller) | A plain script in `src/static/js/`, loaded from `src/templates/base.html`, with a `scripts/*.test.mjs` for its pure logic | `src/static/js/gamepadNavigation.js`; listed in `docs/ui/component-register.md` (SEARCH) |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 
 **Recorded server answers for the Expo app.** `expo/app/data/__recorded__/`

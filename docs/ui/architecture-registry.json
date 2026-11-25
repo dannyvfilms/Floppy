@@ -1937,15 +1937,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards."
+          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards. Desktop and mobile Chromium exercised and expanded the MediumExtras game Time card, verifying duration-first channel rows."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The expanded MediumExtras game Time card showed duration-first channel rows on the iOS Simulator using a seeded detail API response."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The expanded MediumExtras game Time card showed duration-first channel rows on the Android Emulator using a seeded detail API response."
         }
       }
     },
@@ -4557,7 +4557,8 @@
     "frontend/ui/detailSecondaryModel.js": {
       "components": [
         "detailSecondaryModel",
-        "detailSecondaryOrder"
+        "detailSecondaryOrder",
+        "detailYoutubeWatchModel"
       ],
       "register": "DETAIL",
       "verification": {
@@ -4572,6 +4573,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/useDeferredYoutubeWatch.js": {
+      "components": [
+        "useDeferredYoutubeWatch"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium rendered the game detail before the deferred watch-time request completed, then expanded the returned channel breakdown without another request on desktop and phone."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "The iOS Simulator preview rendered the shared calculating spinner and replaced it with the delayed fixture total."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "The Android emulator preview rendered the shared calculating spinner and replaced it with the delayed fixture total."
         }
       }
     },

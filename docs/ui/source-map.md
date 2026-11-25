@@ -56,6 +56,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
+- `frontend/ui/useDeferredYoutubeWatch.js`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `frontend/ui/dropdownMetrics.js`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
 - `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; on a phone (no rail) the shared `TopBar` (menu button, then search) sits in flow above the page and a left-edge drag goes back, while a rail device keeps the floating search and toolbar buttons; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
@@ -432,6 +433,8 @@ Status: `Partial / coexisting`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
 - `src/static/js/searchAutocomplete.js`
+- `src/static/js/gamepadNavigation.js` (game controller focus navigation; browser only, listed under SEARCH with the other global keyboard script)
+- `scripts/gamepadNavigation.test.mjs`
 - `src/static/js/searchShortcut.js`
 - `src/templates/app/components/search_local_album_cards.html`
 - `src/templates/app/components/search_parent_season.html`
@@ -506,6 +509,20 @@ Status: `Legacy`
 - `src/templates/app/discover.html`
 
 ## DETAIL
+
+The game Time card is shared through `frontend/ui/People.jsx` (`MediumExtras`).
+The expandable breakdown shows each channel's duration, a middle dot and its share.
+Web uses `src/users/templatetags/ui_tags.py` and `frontend/ui/mountPeople.jsx`,
+with `game_lengths_section.html` as the Time to Beat server fallback.
+iOS and Android use `DetailMediumExtras` with the same data via
+`expo/app/surfaces/DetailSlot.jsx` and `frontend/ui/detailSecondaryModel.js`.
+`frontend/ui/useDeferredYoutubeWatch.js` loads just the watch-time summary
+after either surface displays its detail, independently of the rest of the card.
+`src/app/services/youtube_game_watch.py` supplies game matching and watch time.
+`src/app/services/youtube_game.py` stores published
+runtime in the shared YouTube tag lookup so completed imports can contribute
+time even without a recorded playback position. Ownership
+coexists until the PWA detail shell can retire the server-rendered Time content.
 
 Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
 `DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
@@ -782,7 +799,6 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
-- `src/templates/app/components/youtube_watch_section.html`
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
@@ -1002,7 +1018,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `src/templates/users/home_screen.html`
-`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified.
+`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified. Last Watched preset now starts TV on Episodes (shared `addRow` and the Django `addRow`), and the shared summary lists each chosen family with its display level, as the Django editor does. Browser: Django editor and Expo Web compared before and after at 375x812. iOS: Expo Go on an iPhone 16 simulator showed `TV Shows: Episodes` on a preset row (no before frame). Android: not verified. Django editor stays coexisting under the retirement conditions above.
 
 ## SET-PROVIDERS
 

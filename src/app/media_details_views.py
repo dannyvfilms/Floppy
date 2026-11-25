@@ -75,7 +75,7 @@ from app.models import (
 )
 from app.models.episode_runtimes import build_season_runtime_index
 from app.providers import rottentomatoes, services, tmdb
-from app.services import metadata_resolution, opencritic_scores, youtube_game_watch
+from app.services import metadata_resolution, opencritic_scores
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
     _detail_request_url,
@@ -2166,14 +2166,17 @@ def media_details(
         "mal_score": mal_score,
         "opencritic_score": opencritic_score,
         "game_lengths": game_lengths,
-        "youtube_watch": (
-            youtube_game_watch.watched_for_game(request.user, detail_item)
+        "youtube_watch_url": (
+            reverse(
+                "api_media_detail_page",
+                kwargs={"media_type": media_type, "source": detail_item.source, "media_id": detail_item.media_id},
+            )
             if render_secondary_only
             and media_type == MediaTypes.GAME.value
             and detail_item
             and request.user.is_authenticated
             and not public_view
-            else None
+            else ""
         ),
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),

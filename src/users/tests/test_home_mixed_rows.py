@@ -285,6 +285,44 @@ class MixedDisplayLevelTests(TestCase):
                 self.assertEqual(total, 1)
                 self.assertEqual(entries[0].item.title, title)
 
+    def test_last_watched_preset_lists_each_binged_episode_separately(self):
+        """A binge of one show is three cards, newest first, not one show card."""
+        Episode.objects.filter(pk=self.episode.pk).delete()
+        Episode.objects.bulk_create(
+            [
+                Episode(
+                    related_season=self.season,
+                    item=self.item(
+                        f"Binge {number}",
+                        "episode",
+                        season_number=1,
+                        episode_number=number,
+                    ),
+                    status=Status.COMPLETED,
+                    end_date=self.now - timedelta(days=days_ago, hours=1),
+                )
+                for number, days_ago in ((1, 3), (2, 2), (3, 1))
+            ]
+        )
+        row = self.row(
+            {"tv": "episodes"},
+            families=["movie", "tv"],
+            sort="end_date",
+            direction="desc",
+            status=[
+                Status.IN_PROGRESS,
+                Status.COMPLETED,
+                Status.PAUSED,
+                Status.DROPPED,
+            ],
+        )
+        entries, total = self.window(row)
+        self.assertEqual(total, 4)
+        self.assertEqual(
+            [entry.item.title for entry in entries],
+            ["Binge 3", "Binge 2", "Binge 1", "Movie G"],
+        )
+
     def test_episode_scope_deduplication_archives_and_other_owners(self):
         Episode.objects.bulk_create(
             [

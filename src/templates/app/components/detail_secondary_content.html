@@ -568,7 +568,6 @@
         {% if media_type == MediaTypes.GAME.value %}
           <div {% detail_section_attrs user detail_family "content" "game_lengths" %}>
             {% people_extras "time" %}
-              {% if youtube_watch %}{% include "app/components/youtube_watch_section.html" %}{% endif %}
               {% include "app/components/game_lengths_section.html" %}
             {% endpeople_extras %}
           </div>

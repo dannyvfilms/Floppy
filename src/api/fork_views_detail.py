@@ -430,6 +430,10 @@ class DetailPageView(drf_views.APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter("public_view", bool, required=False),
+            OpenApiParameter(
+                "youtube_watch", str, enum=["deferred", "only"], required=False,
+                description="Defer game watch time or return just the viewer's watch summary.",
+            ),
             OpenApiParameter("detail_type", str, required=False),
             OpenApiParameter("season_number", int, required=False),
             OpenApiParameter("episode_number", int, required=False),
@@ -501,6 +505,17 @@ class DetailPageView(drf_views.APIView):
         item = item_query.first()
         viewer = request.user if getattr(request.user, "is_authenticated", False) else None
         public_view = request.query_params.get("public_view") == "1" or viewer is None
+        watch_mode = request.query_params.get("youtube_watch")
+        can_show_youtube_watch = (
+            detail_type == app_models.MediaTypes.GAME.value and item is not None and not public_view
+        )
+        if watch_mode == "only":
+            response = Response({
+                "youtube_watch": youtube_game_watch.cached_watched_for_game(viewer, item)
+                if can_show_youtube_watch else None,
+            })
+            response["Cache-Control"] = "private, no-store"
+            return response
         tracked = None if public_view else _owned_media(viewer, item)
 
         try:
@@ -736,7 +751,7 @@ class DetailPageView(drf_views.APIView):
         _apply_cached_hltb_link(metadata, item)
         game_lengths = _build_game_lengths_context(item) if media_type == app_models.MediaTypes.GAME.value else None
         youtube_watch = None
-        if media_type == app_models.MediaTypes.GAME.value and tracked is not None and not public_view:
+        if can_show_youtube_watch and watch_mode != "deferred":
             try:
                 youtube_watch = youtube_game_watch.watched_for_game(viewer, item)
             except Exception:
@@ -872,6 +887,7 @@ class DetailPageView(drf_views.APIView):
             "link_sections": _primitive(links),
             "game_lengths": _primitive(game_lengths),
             "youtube_watch": _primitive(youtube_watch),
+            "youtube_watch_pending": can_show_youtube_watch and watch_mode == "deferred",
             "book_formats": _primitive(book_formats),
             "detail_links": _primitive(person_rows),
             "media_details": _primitive(details),

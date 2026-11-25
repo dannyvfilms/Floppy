@@ -3,10 +3,10 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import TestCase, override_settings, tag
 from django.utils import timezone
 
-from app.models import Item, MediaTypes, Sources, VideoGameTag
+from app.models import Item, MediaTypes, Sources, Status, VideoGameTag
 from app.services import youtube_game
 
 
@@ -76,14 +76,23 @@ class RefreshGameTagTests(TestCase):
         )
 
     def _refresh(self, data=None, error=None):
-        target = "app.services.youtube_game.fetch_initial_data"
-        with patch(target, side_effect=error, return_value=data):
+        target = "app.services.youtube_game.fetch_watch_page"
+        with patch(target, side_effect=error, return_value=(data, 600)):
             return youtube_game.refresh_game_tag(self.item.pk)
 
     def test_found(self):
         self.assertEqual(self._refresh(_page(MINECRAFT)), "found")
         tag_row = VideoGameTag.objects.get(item=self.item)
         self.assertEqual((tag_row.game_title, tag_row.game_id), ("Minecraft", MINECRAFT[2]))
+        self.assertEqual(tag_row.runtime_seconds, 600)
+
+    def test_runtime_is_read_from_the_requested_video(self):
+        html = (
+            'var ytInitialPlayerResponse = {"videoDetails":'
+            '{"videoId":"HQp_b8VHtgI","lengthSeconds":"1394"}};'
+        )
+        self.assertEqual(youtube_game._runtime_seconds(html, self.item.media_id), 1394)
+        self.assertEqual(youtube_game._runtime_seconds(html, "dQw4w9WgXcQ"), 0)
 
     def test_untagged_video_is_not_found_not_guessed(self):
         self.assertEqual(self._refresh({"contents": []}), "not_found")
@@ -109,7 +118,7 @@ class RefreshGameTagTests(TestCase):
 
     def test_bad_video_id_never_reaches_the_network(self):
         with self.assertRaises(youtube_game.WatchPageUnavailableError):
-            youtube_game.fetch_initial_data("../etc/passwd")
+            youtube_game.fetch_watch_page("../etc/passwd")
 
 
 class LookupDueTests(TestCase):
@@ -121,19 +130,37 @@ class LookupDueTests(TestCase):
             title="A video",
         )
 
-    def _tag(self, status, age, failures=0):
+    def _tag(self, status, age, failures=0, runtime_seconds=None):
         VideoGameTag.objects.create(
             item=self.item,
             status=status,
             checked_at=timezone.now() - age,
             failures=failures,
+            runtime_seconds=runtime_seconds,
         )
 
     def test_new_item_is_due(self):
         self.assertTrue(youtube_game.lookup_due(self.item))
 
     def test_found_is_never_due_again(self):
-        self._tag("found", timedelta(days=400))
+        self._tag("found", timedelta(days=400), runtime_seconds=600)
+        self.assertFalse(youtube_game.lookup_due(self.item))
+
+    def test_backfill_adds_runtime_without_losing_known_game(self):
+        self._tag("found", timedelta(days=8))
+        VideoGameTag.objects.update(game_title=MINECRAFT[0], game_id=MINECRAFT[2])
+        self.assertTrue(youtube_game.lookup_due(self.item))
+        with patch.object(youtube_game, "fetch_watch_page", side_effect=youtube_game.WatchPageUnavailableError("offline")):
+            self.assertEqual(youtube_game.backfill_due_items(), 1)
+        row = VideoGameTag.objects.get(item=self.item)
+        self.assertEqual(row.status, "found")
+        self.assertIsNone(row.runtime_seconds)
+        self.assertFalse(youtube_game.lookup_due(self.item))
+        VideoGameTag.objects.update(checked_at=timezone.now() - timedelta(days=1))
+        with patch.object(youtube_game, "fetch_watch_page", return_value=({}, 1394)):
+            self.assertEqual(youtube_game.backfill_due_items(), 1)
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.game_title, row.runtime_seconds), ("found", "Minecraft", 1394))
         self.assertFalse(youtube_game.lookup_due(self.item))
 
     def _play(self, ago):
@@ -159,7 +186,7 @@ class LookupDueTests(TestCase):
         self._play(timedelta(days=45))
         self._tag("not_found", timedelta(days=8))
         self.assertFalse(youtube_game.lookup_due(self.item))
-        with patch("app.services.youtube_game.fetch_initial_data") as fetch:
+        with patch("app.services.youtube_game.fetch_watch_page") as fetch:
             self.assertEqual(youtube_game.backfill_due_items(), 0)
         fetch.assert_not_called()
 
@@ -167,7 +194,7 @@ class LookupDueTests(TestCase):
         self._play(timedelta(days=3))
         self._tag("not_found", timedelta(days=8))
         with patch(
-            "app.services.youtube_game.fetch_initial_data", return_value={}
+            "app.services.youtube_game.fetch_watch_page", return_value=({}, 0)
         ) as fetch:
             self.assertEqual(youtube_game.backfill_due_items(), 1)
         fetch.assert_called_once_with(self.item.media_id)
@@ -187,14 +214,14 @@ class LiveWatchPageTests(TestCase):
 
     def test_sample_video_is_tagged_minecraft(self):
         games = youtube_game.extract_games(
-            youtube_game.fetch_initial_data("HQp_b8VHtgI")
+            youtube_game.fetch_watch_page("HQp_b8VHtgI")[0]
         )
         self.assertEqual(games[0]["title"], "Minecraft")
         self.assertEqual(games[0]["game_id"], MINECRAFT[2])
 
     def test_untagged_video_has_no_game(self):
         self.assertEqual(
-            youtube_game.extract_games(youtube_game.fetch_initial_data("dQw4w9WgXcQ")),
+            youtube_game.extract_games(youtube_game.fetch_watch_page("dQw4w9WgXcQ")[0]),
             [],
         )
 
@@ -248,7 +275,10 @@ class WatchedForGameTests(TestCase):
         self._video(self.other, "v4", self.game.title, "2023", 900, 900)
         self.assertEqual(
             watch.watched_for_game(self.user, self.game),
-            {"videos": 2, "seconds": 1600, "hours_label": "26m", "channels": [], "estimated": True},
+            {
+                "videos": 2, "videos_without_time": 0, "seconds": 1600,
+                "hours_label": "26m", "channels": [], "estimated": True,
+            },
         )
 
     def test_splits_watch_time_by_channel(self):
@@ -269,6 +299,75 @@ class WatchedForGameTests(TestCase):
             ],
         )
 
+    def test_missing_positions_on_incomplete_videos_do_not_add_time(self):
+        from app.services import youtube_game_watch as watch
+
+        history = self._video(self.user, "history", self.game.title, "2023", 0, 1800)
+        history.channel = "History"
+        history.save(update_fields=["channel"])
+        summary = watch.watched_for_game(self.user, self.game)
+        self.assertEqual(summary["seconds"], 0)
+        self.assertEqual(summary["videos_without_time"], 1)
+        self.assertEqual(
+            summary["channels"],
+            [{"name": "History", "seconds": 0, "percent": 0}],
+        )
+
+        tracked = self._video(self.user, "tracked", self.game.title, "2023", 30, 0)
+        tracked.channel = "Tracked"
+        tracked.save(update_fields=["channel"])
+        summary = watch.watched_for_game(self.user, self.game)
+        self.assertEqual(summary["seconds"], 30)
+        self.assertEqual(summary["hours_label"], "30s")
+        self.assertEqual(summary["videos_without_time"], 1)
+        self.assertEqual(
+            summary["channels"],
+            [
+                {"name": "Tracked", "seconds": 30, "percent": 100},
+                {"name": "History", "seconds": 0, "percent": 0},
+            ],
+        )
+
+    def test_completed_history_uses_published_runtime_when_position_is_missing(self):
+        from app.services import youtube_game_watch as watch
+
+        history = self._video(self.user, "imported", self.game.title, "2023", 0, 0)
+        history.status = Status.COMPLETED.value
+        history.save(update_fields=["status"])
+        VideoGameTag.objects.filter(item=history.item).update(runtime_seconds=1394)
+
+        summary = watch.watched_for_game(self.user, self.game)
+        self.assertEqual(summary["seconds"], 1394)
+        self.assertEqual(summary["videos_without_time"], 0)
+        self.assertFalse(summary["estimated"])
+
+    def test_minecraft_youtube_identity_maps_to_java_edition_once(self):
+        from app.services import youtube_game_watch as watch
+
+        java = Item.objects.create(
+            media_id="121", source=Sources.IGDB.value, media_type=MediaTypes.GAME.value,
+            title="Minecraft: Java Edition", release_datetime=timezone.now().replace(year=2011),
+        )
+        other_edition = Item.objects.create(
+            media_id="135400", source=Sources.IGDB.value, media_type=MediaTypes.GAME.value,
+            title="Minecraft", release_datetime=timezone.now().replace(year=2016),
+        )
+        video = self._video(self.user, "minecraft", "Minecraft", "2009", 600, 1000)
+        VideoGameTag.objects.filter(item=video.item).update(game_id=MINECRAFT[2])
+        self.assertEqual(watch.watched_for_game(self.user, java)["seconds"], 600)
+        self.assertIsNone(watch.watched_for_game(self.user, other_edition))
+
+        for vid, title, year, game_id in (
+            ("bedrock", "Minecraft: Bedrock Edition", "", "UCqLDGOjU4oxhd9M5hFPjwfw"),
+            ("mobile", "Minecraft: Dream it, Build it!", "2011", "UCQLJP2NLGXxEosSEW5vaohQ"),
+        ):
+            video = self._video(self.user, vid, title, year, 500, 1000)
+            VideoGameTag.objects.filter(item=video.item).update(game_id=game_id)
+        self.assertEqual(watch.watched_for_game(self.user, other_edition)["seconds"], 1000)
+
+        self._video(self.user, "spinoff", "Minecraft Dungeons", "2020", 900, 1000)
+        self.assertEqual(watch.watched_for_game(self.user, java)["videos"], 1)
+
     def test_wrong_year_and_missing_tags_do_not_match(self):
         from app.services import youtube_game_watch as watch
 
@@ -285,6 +384,44 @@ class WatchedForGameTests(TestCase):
         )
 
 
+    @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "game-watch-test"}})
+    def test_cached_summary_keeps_channels_and_refreshes_after_writes(self):
+        from app.models import VideoGameLink
+        from app.services import youtube_game_watch as watch
+
+        with self.captureOnCommitCallbacks(execute=True):
+            video = self._video(self.user, "cached", self.game.title, "2023", 0, 0)
+            video.channel = "Original"
+            video.status = Status.COMPLETED.value
+            video.save(update_fields=["channel", "status"])
+
+        with patch.object(watch, "watched_for_game", wraps=watch.watched_for_game) as calculate:
+            self.assertEqual(watch.cached_watched_for_game(self.user, self.game)["seconds"], 0)
+            self.assertEqual(watch.cached_watched_for_game(self.user, self.game)["seconds"], 0)
+            self.assertIsNone(watch.cached_watched_for_game(self.other, self.game))
+            self.assertIsNone(watch.cached_watched_for_game(self.other, self.game))
+            self.assertEqual(calculate.call_count, 2)
+
+            with self.captureOnCommitCallbacks(execute=True):
+                tag = VideoGameTag.objects.get(item=video.item)
+                tag.runtime_seconds = 1800
+                tag.save(update_fields=["runtime_seconds"])
+            self.assertEqual(watch.cached_watched_for_game(self.user, self.game)["seconds"], 1800)
+
+            with self.captureOnCommitCallbacks(execute=True):
+                video.channel = "Updated"
+                video.save(update_fields=["channel"])
+            summary = watch.cached_watched_for_game(self.user, self.game)
+            self.assertEqual(summary["channels"], [{"name": "Updated", "seconds": 1800, "percent": 100}])
+            self.assertEqual(watch.cached_watched_for_game(self.user, self.game), summary)
+            self.assertEqual(calculate.call_count, 4)
+
+            with self.captureOnCommitCallbacks(execute=True):
+                VideoGameLink.objects.create(video=video, game_item=None)
+            self.assertIsNone(watch.cached_watched_for_game(self.user, self.game))
+            self.assertEqual(calculate.call_count, 5)
+
+
 class BackfillTests(TestCase):
     def test_looks_up_untagged_videos_within_the_limit(self):
         for n in range(3):
@@ -294,8 +431,8 @@ class BackfillTests(TestCase):
                 media_type=MediaTypes.VIDEO.value,
                 title=f"v{n}",
             )
-        target = "app.services.youtube_game.fetch_initial_data"
-        with patch(target, return_value=_page(MINECRAFT)):
+        target = "app.services.youtube_game.fetch_watch_page"
+        with patch(target, return_value=(_page(MINECRAFT), 600)):
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 2)
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 1)
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 0)
