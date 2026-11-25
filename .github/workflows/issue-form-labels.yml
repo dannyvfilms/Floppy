@@ -1,0 +1,47 @@
+name: Issue form labels
+
+# Adds starting labels from the issue form's dropdown answers. Runs only when an
+# issue is opened, so a maintainer's later label changes are never overwritten.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      # Checks out the default branch only; the issue body is never executed.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Add labels from form answers
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const { classifyIssueBody } = require("./.github/scripts/issue-labels.cjs");
+            const issue = context.payload.issue;
+            const { type, labels } = classifyIssueBody(issue.body);
+            const { owner, repo } = context.repo;
+            // addLabels is additive: existing labels are kept.
+            if (labels.length) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels });
+            }
+            // The form sets Type itself; this covers issues made without the form.
+            // Never override a Type that is already set.
+            if (type && !issue.type) {
+              const { repository } = await github.graphql(
+                `query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) { issueTypes(first: 20) { nodes { id name } } }
+                }`, { owner, repo });
+              const match = repository.issueTypes.nodes.find((t) => t.name === type);
+              if (match) {
+                await github.graphql(
+                  `mutation($id: ID!, $type: ID!) { updateIssue(input: {id: $id, issueTypeId: $type}) { issue { id } } }`,
+                  { id: issue.node_id, type: match.id });
+              }
+            }
