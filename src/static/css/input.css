@@ -1799,8 +1799,12 @@ html.light .theme-toggle-icon-moon {
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
 
+  /* The synopsis joins them: the hero is absolutely positioned and taller
+     than the header on tall phones, so an unpositioned synopsis paints
+     underneath it and its text is lost against the backdrop. */
   .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__chips,
-  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions,
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__synopsis {
     position: relative;
     z-index: 1;
   }
