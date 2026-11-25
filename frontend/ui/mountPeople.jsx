@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { ListPeople } from './ListPeople';
+import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
 import { shelfCardWidth } from './HomeShelves';
 import { rootStyle } from './rootStyle.web';
@@ -104,10 +106,7 @@ function CastRail({ props, palette }) {
     palette={palette}
     web
     castWidth={width}
-    renderPersonCard={person => <MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
-      shape: 'poster', image: { src: person.imageUrl || person.imageFallback },
-      lines: person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
-        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })) }} />}
+    renderPersonCard={person => <MediaCard variant="grid" model={personCardModel(person)} />}
     viewAll={viewAll}
     collapsible={Boolean(props.collapseKey)}
     collapsed={props.collapseKey ? collapsed : undefined}
@@ -130,6 +129,14 @@ function Adapter({ props }) {
     };
   }, []);
 
+  if (props.kind === 'listPeople') {
+    return <ListPeople
+      people={props.people}
+      title={props.title}
+      palette={palette}
+      onOpen={person => window.location.assign(person.url)} />;
+  }
+
   if (props.kind === 'cast') {
     return <CastRail props={props} palette={palette} />;
   }
@@ -137,8 +144,10 @@ function Adapter({ props }) {
   if (props.kind === 'extras') {
     return <PeopleView
       part="extras"
+      variant="web"
       gameLengths={props.gameLengths}
       youtubeWatch={props.youtubeWatch}
+      playedLabel={props.playedLabel}
       labels={props.labels}
       palette={palette}
       onOpenSource={openExternal} />;
@@ -170,7 +179,10 @@ function Adapter({ props }) {
     canViewHistory={props.canViewHistory}
     actionPalette={personActionPalette}
     onOpenSource={openExternal}
-    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined} />;
+    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined}
+    onAddToLists={props.listsModal
+      ? () => window.dispatchEvent(new CustomEvent('floppy-open-modal', { detail: props.listsModal }))
+      : undefined} />;
 }
 
 export function mountPeople(host, props) {

@@ -5,6 +5,7 @@ from collections import defaultdict
 from functools import partial
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 
@@ -23,6 +24,7 @@ from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import (
     prune_collection_source_states,
     remove_collection_source_state,
+    replace_source_pages,
     sync_collection_source_state,
 )
 
@@ -149,38 +151,71 @@ class SonarrImporter:
             )
             raise
 
+        # Every series Sonarr manages links from its detail page, by TMDB and
+        # TVDB id, downloaded or not.
+        pages = {}
+        for row in series_rows:
+            if not row.get("titleSlug"):
+                continue
+            for provider, field in (
+                (Sources.TMDB.value, "tmdbId"),
+                (Sources.TVDB.value, "tvdbId"),
+            ):
+                if row.get(field):
+                    key = (provider, MediaTypes.TV.value, str(row[field]))
+                    pages[key] = f"series/{row['titleSlug']}"
+        replace_source_pages(
+            user=self.user,
+            source="sonarr",
+            source_instance_id=self.instance.pk,
+            pages=pages,
+        )
+
         total = len(series_rows)
         for i, row in enumerate(series_rows, start=1):
             import_progress.report(i, total, "Sonarr")
-            stats = row.get("statistics") or {}
-            episode_file_count = int(stats.get("episodeFileCount") or 0)
-            if episode_file_count <= 0:
-                item = self._find_series_item(row)
-                if item:
-                    self._prune_series_collection_state(item)
-                continue
+            try:
+                stats = row.get("statistics") or {}
+                episode_file_count = int(stats.get("episodeFileCount") or 0)
+                if episode_file_count <= 0:
+                    item = self._find_series_item(row)
+                    if item:
+                        self._prune_series_collection_state(item)
+                    continue
 
-            item = self._resolve_series_item(row)
-            if not item:
-                imported_counts["skipped_missing_ids"] += 1
-                continue
+                item = self._resolve_series_item(row)
+                if not item:
+                    imported_counts["skipped_missing_ids"] += 1
+                    continue
 
-            self._series_changed = False
-            synced_item_ids = self._sync_series_episode_collection(item, row)
-            if synced_item_ids is None:
-                # A failed episode fetch must not make the whole series look
-                # deleted, so skip the reconciliation for this run.
-                complete = False
-                continue
-            owned_item_ids.update(synced_item_ids)
-            # A series Sonarr reports exactly as before is not an import:
-            # counting it would start a calendar reload and a Statistics
-            # rebuild every scheduled run.
-            if self._series_changed:
-                imported_counts["collection"] += 1
-                imported_counts["updated"] += 1
-            else:
-                imported_counts["unchanged"] += 1
+                self._series_changed = False
+                synced_item_ids = self._sync_series_episode_collection(item, row)
+                if synced_item_ids is None:
+                    # A failed episode fetch must not make the whole series look
+                    # deleted, so skip the reconciliation for this run.
+                    complete = False
+                    continue
+                owned_item_ids.update(synced_item_ids)
+                # A series Sonarr reports exactly as before is not an import:
+                # counting it would start a calendar reload and a Statistics
+                # rebuild every scheduled run.
+                if self._series_changed:
+                    imported_counts["collection"] += 1
+                    imported_counts["updated"] += 1
+                else:
+                    imported_counts["unchanged"] += 1
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Sonarr import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining series.",
+                )
+                break
 
         if complete:
             removed = prune_collection_source_states(

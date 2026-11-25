@@ -36,7 +36,7 @@ whether a status is true; the register header says how to check that, and
 
 Restored adapter evidence: **web — Runtime**, PWA Home and Sidebar inspected beside Expo; browser source is unchanged. **iOS — Runtime**, Home, Sidebar, Search and populated library/provider Search Results inspected in Expo Go on the Duo. **Android — Runtime for Search preview only**, screenshot inspected; full Home, Sidebar and Search Results rendering remains unverified, with platform bundle and transport checks only. These checks do not establish complete interaction, theme or accessibility parity.
 
-`native-proof/app/surfaces/ShellSlot.jsx` → shared `Sidebar` and native drawer; direct flex layout, guided setup separate from navigation. The Expo adapter mounts the shared `Sidebar` directly in the drawer, preserving its full-height flex layout and the reviewed navigation spacing. Guided setup remains separate from the drawer; no setup banner is inserted above its rows. Account-backed pins, loading/retry, sign-out errors and onboarding remain adapter-owned. Shared Sidebar ownership stays fully React-owned with the existing coexisting web fallback and retirement conditions.
+`expo/app/surfaces/ShellSlot.jsx` → shared `Sidebar` and native drawer; direct flex layout, guided setup separate from navigation. The Expo adapter mounts the shared `Sidebar` directly in the drawer, preserving its full-height flex layout and the reviewed navigation spacing. Guided setup remains separate from the drawer; no setup banner is inserted above its rows. Account-backed pins, loading/retry, sign-out errors and onboarding remain adapter-owned. Shared Sidebar ownership stays fully React-owned with the existing coexisting web fallback and retirement conditions.
 
 Sidebar retains the accepted text metrics and anchored menu presentation while platform keyboard/menu-layer behavior stays in adapters. Account-backed pins and the legacy local-storage adoption path remain. Ownership and fallback retirement conditions are unchanged; the integration does not establish new iOS or Android runtime acceptance.
 
@@ -58,14 +58,14 @@ Status: `Partial / coexisting`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `frontend/ui/dropdownMetrics.js`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
-- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/safeAreaSpacing.mjs`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
+- `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
 
-- `native-proof/app/components/NativeStatusBar.jsx`, `native-proof/app/themeColor.js`, `native-proof/app/theme.js`, `native-proof/app/systemColor.ios.js`, `native-proof/app/systemColor.js` (iOS system semantic colors; other hosts retain the existing proof palette)
-- `native-proof/app/components/Screen.jsx`, `native-proof/app/components/Screen.ios.jsx` (shared screen presentation; iOS applies the remaining 22-point page margin after the shell's safe-area inset on each side)
+- `expo/app/components/NativeStatusBar.jsx`, `expo/app/themeColor.js`, `expo/app/theme.js`, `expo/app/systemColor.ios.js`, `expo/app/systemColor.js` (iOS system semantic colors; other hosts retain the existing proof palette)
+- `expo/app/components/Screen.jsx`, `expo/app/components/Screen.ios.jsx` (shared screen presentation; iOS applies the remaining 22-point page margin after the shell's safe-area inset on each side)
 
 ## SETTINGS-CARD
 
@@ -77,6 +77,7 @@ Status: `Web Migrated`
 - `frontend/settings/index.js`
 - `frontend/settings/mount.jsx`
 - `frontend/settings/root.web.js`
+- `frontend/settings/statusTones.js`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
 - `src/templates/app/components/ui_asset_refresh.html`
@@ -94,12 +95,14 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
 - `frontend/ui/DropdownMenu.jsx` (`FORM-CONTROLS` shared anchored presentation, consumed by Sidebar and the opt-in SelectField popover; web and Android runtime regression unverified)
-- `native-proof/app/components/AdaptivePresentationSheet.jsx`, `native-proof/app/components/SheetCloseButton.jsx`, `native-proof/app/components/SheetCloseButton.ios.jsx`, `native-proof/app/components/SheetHost.jsx`, `native-proof/app/components/SheetHost.ios.jsx`, `native-proof/app/components/useSheetInsets.js`, `native-proof/app/components/useSheetInsets.ios.js` (Expo UI sheet adapter and platform close controls; iOS applies a reduced horizontal safe-area inset to content while the close control can occupy the Duo rail; Detail actions consume it, while other modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
+- `frontend/ui/Title.jsx` (`FORM-CONTROLS` shared title for sheets, dialogs, form bars and pages: 16, 18, 20 and 24 pt at 600, and 24 and 28 pt at 700; consumers: `AdaptivePresentationSheet`, `Screen`, `BarcodeScannerModal`, `ListDetailScreen`, `MusicParts`, `controls/Dialog`, `SelectField`, `MediaCardFormControls`, `HistoryFeed`, `PeopleToolbar`, `BulkActions`, `TagManagement`, `TrackForm`, `SmartRules`, `StatisticsSections`, `ListHeader`, `ListRecommendationsView`, `DeviceConnect`; universal react-native, web and native; `DeviceApproval`, hero and detail headings and Home row titles keep their own)
+- `expo/app/components/AdaptivePresentationSheet.jsx`, `expo/app/components/SheetCloseButton.jsx`, `expo/app/components/SheetCloseButton.ios.jsx`, `expo/app/components/SheetHost.jsx`, `expo/app/components/SheetHost.ios.jsx`, `expo/app/components/useSheetInsets.js`, `expo/app/components/useSheetInsets.ios.js` (Expo UI sheet adapter and platform close controls; iOS applies a reduced horizontal safe-area inset to content while the close control can occupy the Duo rail; Detail actions consume it, while other modal surfaces remain on `Modal` until individually migrated). The preview rendered on a physical Duo; browser and Android rendering remain unverified.
 - Detail Collection uses the shared embedded `CollectionCopyDialog` inside `AdaptivePresentationSheet`; Collection screen and web dialog consumers remain. `DropdownMenu` supplies the sidebar and optional `SelectField` popover; multi-select is opt-in. The native modal host isolates registration from active-entry updates and sheets host nested dialogs locally. These remain partial/coexisting until remaining consumers migrate; Duo opened the Collection sheet and selected Format, while browser, Android and multi-select runtime remain unverified.
 - `SheetCloseButton.ios.jsx` sizes the glass control to the Duo rail; the Android and web control retains its existing size. The revised iOS alignment was inspected on a physical Duo; Android and web appearance is unchanged.
 - `AdaptivePresentationSheet.jsx` supplies the shared header and delegates rail close placement to its iOS host. The Duo sheet was inspected on device; Android and web rendering remain unverified.
 - On an iOS vertical rail, `SheetHost.ios.jsx` uses a native navigation toolbar cancellation action to place the shared sheet's close button below system status controls; the body retains its prior edge spacing. Duo runtime inspection covered the Lists sheet at half and full height and dismissal. Expo web and Android keep their existing presentation and were not runtime inspected for this change.
-- `native-proof/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
+- `SheetHost.ios.jsx` also takes `railItems` from `AdaptivePresentationSheet` and shows them as grouped `primaryAction` toggles under Close; `expo/app/surfaces/TrackPresentation.jsx` (`TrackPresentation`, `trackRailItems`) supplies the Tracking sections for `DetailFeatures` and `MediaCardSlot`, and the form drops its Section row while they are on the rail. The item list stays fixed while the sheet is open and the native stack is keyed on the item count, or the body loses its touch handler or goes blank (`docs/architecture/device-poses.md`). `SheetHost.jsx` (Android, web) ignores the items, so those platforms keep the Section row. iOS runtime on the closed iPhone Duo simulator; a rail-less iPhone, Android and web were not run.
+- `expo/app/surfaces/DetailFeatures.jsx` (Expo detail action-row dialogs use the shared adaptive sheet with the sidebar background token and existing embedded tracking/tag/forms, including grouped source and external links from `DetailSlot`; web Detail remains on its existing dialogs; progress, collection and other consumers remain on `Modal`). Links, tracking, notes, tags, lists and More to Cover were inspected on a physical Duo; other actions, browser and Android runtime verification remain pending.
 
 Status: `Partial / coexisting`
 
@@ -215,22 +218,28 @@ Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The 
 
 The iOS `NativeCardMenu.ios.jsx` defines the full rounded `MediaCard` as the system context-menu preview shape for Home, Library, Search and other MediaCardSlot consumers. Android's Material menu and the Expo web dropdown have no corresponding lifted preview; browser card ownership, remaining consumers and retirement conditions are unchanged. Browser, iOS and Android runtime verification are recorded separately in the component register.
 
-`native-proof/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` for card tracking and list actions, matching Detail on Expo iOS, Android and web. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
+`expo/app/surfaces/MediaCardSlot.jsx` composes `AdaptivePresentationSheet` with the shared `TrackDialog` and `ListsForm` (with inline Create list) for card tracking and list actions, matching Detail on Expo iOS, Android and web. The browser card adapter and other modal hosts remain; their retirement conditions are unchanged. Browser, iOS and Android runtime verification is pending independently.
 
 Quick status uses the shared MediaCard and MediaCardActions, the browser card adapter and the Expo MediaCardSlot on Home, Library and Search. Existing fallback consumers and retirement conditions are unchanged. Manual untracked items and non-generic tracking retain their existing flow. Browser search and iOS library rendered; interaction verification and Android runtime verification remain pending separately.
 
 - `frontend/ui/mediaCardQuickStatus.web.js` (browser quick-status transport for the media card)
 
-`frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `native-proof/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
+`frontend/ui/mediaCardQuickStatus.web.js` owns browser status transport; Expo uses `expo/app/surfaces/mediaCardTransport.js`. Native long presses use system context menus and iOS system feedback or Android vibration; Expo web retains the shared dropdown because system menus are native-only.
+
+- `frontend/ui/cardModels.js` (one adapter per kind of data the card shows: highlights, people, credits, DLC, related titles, ranked rows, music, lists)
+- `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js` (the press-and-hold menu, built once and installed by the native app)
+- `frontend/ui/sidebarPins.web.js` (browser sidebar pins for the list card's pin action; Expo has no sidebar)
+- `expo/app/mediaCardReuse.test.mjs` (guard: only the card may draw a card gradient), `src/templates/app/icons/pin.svg` (the list card's pin icon)
+- `src/templates/app/components/music_tracker_card.html`, `src/templates/app/components/card_shell.html` (first-paint shells for cards React draws; `card_shell.html` is the shared poster-and-title shell used by `album_grid.html`, `artist_relation_grid.html`, `person_card_inline.html`, `person_filmography_card.html`, `active_playback_card.html` and `statistics/highlight_set.html`)
 
 `MediaCard` consumes long presses on its artwork and title, while `MediaCardSlot` supplies the native menu and its “Update status” submenu on Home, Library, Search and other slot consumers. The Expo web adapter uses a shared dropdown submenu. Existing fallback ownership and retirement conditions remain unchanged; browser, iOS and Android interaction verification is pending separately.
 
-`native-proof/app/surfaces/NativeCardMenu.ios.jsx` renders the iOS context menu and its menu-style Picker; `NativeCardMenu.android.jsx` supplies the Android Material menu and haptic, while `NativeCardMenu.jsx` supplies the shared dropdown on Expo web. The Picker changes the native submenu control; its iOS runtime appearance is not yet verified.
+`expo/app/surfaces/NativeCardMenu.ios.jsx` renders the iOS context menu and its menu-style Picker; `NativeCardMenu.android.jsx` supplies the Android Material menu and haptic, while `NativeCardMenu.jsx` supplies the shared dropdown on Expo web. The Picker changes the native submenu control; its iOS runtime appearance is not yet verified.
 
 Custom-list grid and table adapters supply podcast show status and score to the existing card and table components; native list detail receives those fields through the list API, and smart-list rules resolve show trackers by provider identity. Presentation ownership and remaining consumers are unchanged. Browser: before/after grid and table captures at desktop and phone widths. iOS and Android runtime verification is pending.
 
 Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
-- Render cost: `frontend/ui/MediaCard.jsx` and `MediaCard.web.jsx` are memoized; `native-proof/app/surfaces/MediaCardSlot.jsx` (`SlotCard`, optional windowed `virtualized` mode); test `scripts/cardRenderCost.test.mjs` with `scripts/test-support/`.
+- Render cost: `frontend/ui/MediaCard.jsx` and `MediaCard.web.jsx` are memoized; `expo/app/surfaces/MediaCardSlot.jsx` (`SlotCard`, optional windowed `virtualized` mode); test `scripts/cardRenderCost.test.mjs` with `scripts/test-support/`.
 
 Status: `Web Migrated`
 
@@ -274,20 +283,20 @@ Status: `Partial / coexisting`
 ## LIBRARY
 
 Status: `Partial / coexisting`
-- Native windowing: `native-proof/app/surfaces/LibraryGrid.jsx` and `MediaCardSlot.jsx` render the grid as a `FlatList` with the page as header/footer from `frontend/pages/LibraryPageView.jsx` (`renderScroll`); web paging unchanged.
+- Native windowing: `expo/app/surfaces/LibraryGrid.jsx` and `MediaCardSlot.jsx` render the grid as a `FlatList` with the page as header/footer from `frontend/pages/LibraryPageView.jsx` (`renderScroll`); web paging unchanged.
 
-- `native-proof/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
-- `native-proof/app/surfaces/LibrarySettings.jsx`, `native-proof/app/surfaces/LibrarySettings.ios.jsx`, `native-proof/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
-- `native-proof/app/surfaces/LibraryGrid.jsx`
-- `native-proof/app/surfaces/LibraryBulkActions.jsx`
-- `native-proof/app/data/libraryTransport.js`
-- `native-proof/app/data/libraryTransportCore.js`
+- `expo/app/screens/LibraryScreen.jsx`; its three toolbar filter dropdowns are the `FilterBar` toolbar variant on `DropdownMenu`/`DropdownItem`)
+- `expo/app/surfaces/LibrarySettings.jsx`, `expo/app/surfaces/LibrarySettings.ios.jsx`, `expo/app/surfaces/LibrarySettingsGear.jsx` (the media list settings menu: header gear everywhere, a system Liquid Glass bottom-toolbar menu on the iOS side rail)
+- `expo/app/surfaces/LibraryGrid.jsx`
+- `expo/app/surfaces/LibraryBulkActions.jsx`
+- `expo/app/data/libraryTransport.js`
+- `expo/app/data/libraryTransportCore.js`
 - `src/api/fork_views_library.py`
 - `src/api/fork_views_lists.py`
 
 - Native `LibraryPageView` passes optional `PageHeading` title/count styles for library typography and mobile badge padding; other page compositions preserve defaults. Shared presentation remains `Partial / coexisting`, `Primitives`; final browser spacing comparison and iOS/Android runtime verification remain outstanding.
 
-- Shared/native ownership: `native-proof/app/screens/LibraryScreen.jsx`, `frontend/pages/LibraryPageView.jsx`, `native-proof/app/data/libraryTransportCore.js`; `Partial / coexisting`, `Primitives`. Groups use server card props and group-specific ordering; entry mode preserves distinct tracking keys and item-based selection. Web templates below remain until page composition, filters and pagination migrate. Browser: group overview/drilldown/return and separate-entry preference persistence exercised at 375x812; final visual parity incomplete. iOS and Android runtime not verified.
+- Shared/native ownership: `expo/app/screens/LibraryScreen.jsx`, `frontend/pages/LibraryPageView.jsx`, `expo/app/data/libraryTransportCore.js`; `Partial / coexisting`, `Primitives`. Groups use server card props and group-specific ordering; entry mode preserves distinct tracking keys and item-based selection. Web templates below remain until page composition, filters and pagination migrate. Browser: group overview/drilldown/return and separate-entry preference persistence exercised at 375x812; final visual parity incomplete. iOS and Android runtime not verified.
 
 - `src/templates/app/components/_release_year_fetch_js.html`
 - `src/templates/app/components/game_grouped_items.html`
@@ -315,9 +324,9 @@ Status: `Partial / coexisting`
 - `frontend/ui/FilterBar.jsx`
 - `frontend/ui/SettingsMenu.jsx`
 - `frontend/ui/keyboardOverlapContext.js`
-- `frontend/ui/devicePose.js`, `frontend/settings/pose.web.js`, `native-proof/app/data/useDevicePose.js`, `native-proof/app/components/PoseBadge.jsx` (device poses; see `docs/architecture/device-poses.md`)
-- `native-proof/app/screens/LibraryScreen.jsx`
-- `native-proof/app/data/libraryTransportCore.js`
+- `frontend/ui/devicePose.js`, `frontend/settings/pose.web.js`, `expo/app/data/useDevicePose.js`, `expo/app/components/PoseBadge.jsx` (device poses; see `docs/architecture/device-poses.md`)
+- `expo/app/screens/LibraryScreen.jsx`
+- `expo/app/data/libraryTransportCore.js`
 
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
@@ -333,8 +342,8 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/MediaTable.jsx`
-- `native-proof/app/screens/LibraryScreen.jsx`
-- `native-proof/app/surfaces/TableSlot.jsx`
+- `expo/app/screens/LibraryScreen.jsx`
+- `expo/app/surfaces/TableSlot.jsx`
 
 - Shared `frontend/ui/MediaTable.jsx` distinguishes item/entry React keys while keeping item-based bulk selection. Consumer: native `LibraryScreen` through `TableSlot`; `Partial / coexisting`, `Primitives`. Legacy server tables below retire with their page migrations. Browser duplicate-entry table comparison not yet verified; iOS and Android runtime not verified.
 
@@ -389,8 +398,8 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/BulkActions.jsx`
-- `native-proof/app/surfaces/LibraryBulkActions.jsx`
-- `native-proof/app/data/libraryTransportCore.js`
+- `expo/app/surfaces/LibraryBulkActions.jsx`
+- `expo/app/data/libraryTransportCore.js`
 
 - `src/static/js/bulkSelection.js`
 - `src/templates/app/components/bulk_selection_toolbar.html`
@@ -401,7 +410,7 @@ Status: `Partial / coexisting`
 
 ## SEARCH
 
-`native-proof/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `native-proof/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `native-proof/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` supplies MediaCardSlot to each shared shelf card for in-place actions; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Native shelf actions use the MediaCardSlot host; unsupported media retain their existing detail flow.
+`expo/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `expo/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `expo/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` supplies MediaCardSlot to each shared shelf card for in-place actions; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Native shelf actions use the MediaCardSlot host; unsupported media retain their existing detail flow.
 
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
@@ -413,7 +422,7 @@ ParentPicker's native manual-entry consumer opts into an unframed search field. 
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; suggestion identity and destination are retained when opening detail; the shared `GlobalSearch` is mapped under SHELL)
+- `expo/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; suggestion identity and destination are retained when opening detail; the shared `GlobalSearch` is mapped under SHELL)
 - `src/app/search_views.py` (`_all_scope_barcode_groups`: All-scope ISBN fan-out and saved Barcode matches)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
@@ -444,7 +453,7 @@ Status: `Legacy`
 
 ## HOME
 
-`native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
+`expo/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
 - Render cost: `frontend/ui/HomeShelves.jsx` (`ShelfCard`, stable labels/palette/loadMore).
 
 Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
@@ -459,21 +468,23 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/home_groups.html`
 - `src/templates/app/home.html`
 - Web parity pass against v26.10.29: `frontend/pages/HomeView.jsx` forwards `renderCard` and `renderProgress`; `frontend/ui/HomeShelves.jsx` keeps the accepted common shelf width; `frontend/ui/Rail.jsx` retains optional per-item sizing for other consumers.
-- Home row title links (#1899): `frontend/ui/HomeShelves.jsx` (`onOpenRowTitle`, `canOpenRowTitle`), `frontend/ui/mountHome.jsx`, `native-proof/app/screens/HomeScreen.jsx`, `native-proof/app/screens/LibraryScreen.jsx` (`filtersFromQuery`, `params.query`) and `native-proof/app/data/homeRowDestinationCore.js`.
+- Home row title links (#1899): `frontend/ui/HomeShelves.jsx` (`onOpenRowTitle`, `canOpenRowTitle`), `frontend/ui/mountHome.jsx`, `expo/app/screens/HomeScreen.jsx`, `expo/app/screens/LibraryScreen.jsx` (`filtersFromQuery`, `params.query`) and `expo/app/data/homeRowDestinationCore.js`.
 
 - `frontend/ui/fetchGate.js` (shared Home row request concurrency).
 - `frontend/ui/homeRowLoading.js` (shared Home lazy-row decision: which waiting rows are visible, near or far, and in what order they start).
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
-- `native-proof/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
-- `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `native-proof/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `expo/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
+- `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `expo/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/basePath.web.js` (web-only `withBasePath`: prefixes root-absolute API paths with the BASE_URL mount path from the `floppy-base-path` meta tag; used by `webRequest.web.js`, `SearchResults.web.jsx`, `mountProgressPage.jsx` and `mediaCardQuickStatus.web.js`).
 - `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK
 
 Status: `Partial / coexisting`
 
+- `frontend/ui/IconButton.jsx`, `frontend/ui/RailTitle.jsx` (new shared round icon button and Home row heading; consumers: `PlaybackCard`, and `Rail` for `RailTitle`; universal react-native, web and native).
 - `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it, using the standard MediaCard indigo for both playing and paused/stale progress fills)
-- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing follows the server's web detail destination; cards span up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
+- `expo/app/surfaces/PlaybackSlot.jsx`, `expo/app/data/playbackTransport.js`, `expo/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing follows the server's web detail destination; cards span up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
 - `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)
 - `src/templates/app/components/_scrollable_row_js.html` (browser playback width measures an ordinary Home media-grid card and spans three on compact mobile, two on comfortable mobile, or two on desktop)
 - `src/templates/app/components/active_playback_card.html`
@@ -520,8 +531,8 @@ behind it; the PWA has a separate header and needs no equivalent offset.
 For mobile clearlogos, `DetailBackdrop` reports the fade endpoint to the shared
 hero or browser adapter, placing the logo bottom and subtitle top equally around that line.
 Desktop remains on its separate carousel layout.
-`native-proof/app/data/prepareDetailArtwork.mjs`, `native-proof/app/data/loadDetailHeader.mjs`, `native-proof/app/screens/DetailScreen.jsx`
-and `native-proof/app/surfaces/DetailFeatures.jsx` start native header requests
+`expo/app/data/prepareDetailArtwork.mjs`, `expo/app/data/loadDetailHeader.mjs`, `expo/app/screens/DetailScreen.jsx`
+and `expo/app/surfaces/DetailFeatures.jsx` start native header requests
 alongside detail, prepare gallery artwork as soon as it arrives, and coordinate the initial reveal; the web hero adapter waits for its images and keeps a bounded
 fallback. The PWA's cold gallery request starts immediately. The server detail
 shell and deferred secondary sections remain partial/coexisting.
@@ -535,9 +546,9 @@ Duo compared before and after; desktop comparison pending. iOS — runtime, Expo
 iPhone Duo compared before and after. Android — unverified; runtime comparison
 pending. These checks do not establish complete page parity.
 
-- `native-proof/app/surfaces/detailActions.mjs`, `native-proof/app/surfaces/detailLoads.mjs` (Expo detail action state: the result of a rating or episode watched shows before the server answers, failed writes are put back, and only the changed parts reload; album, track and podcast show payloads load in parallel). Consumed by `native-proof/app/screens/DetailScreen.jsx`, `native-proof/app/surfaces/DetailFeatures.jsx` and `native-proof/app/surfaces/DetailSlot.jsx`; no shared presentation changed. Web Detail keeps its server fragments, which already update in place from the write response. Evidence: web runtime; iOS runtime (simulator); Android runtime (emulator, rating only).
+- `expo/app/surfaces/detailActions.mjs`, `expo/app/surfaces/detailLoads.mjs` (Expo detail action state: the result of a rating or episode watched shows before the server answers, failed writes are put back, and only the changed parts reload; album, track and podcast show payloads load in parallel). Consumed by `expo/app/screens/DetailScreen.jsx`, `expo/app/surfaces/DetailFeatures.jsx` and `expo/app/surfaces/DetailSlot.jsx`; no shared presentation changed. Web Detail keeps its server fragments, which already update in place from the write response. Evidence: web runtime; iOS runtime (simulator); Android runtime (emulator, rating only).
 - `frontend/ui/DetailBackdrop.jsx`, `frontend/ui/DetailBackdrop.native.jsx`, `frontend/ui/DetailBackdrop.web.jsx`, `frontend/ui/detailHeroLayout.js` (inner-area hero geometry and platform image gradients).
-- `frontend/ui/DetailActivitySubtitle.jsx`, `frontend/ui/mountDetailActivitySubtitle.jsx`, `src/templates/app/components/detail_activity_subtitle.html` (shared activity subtitle, browser history-button adapter and server fallback); Expo receives formatted text from `native-proof/app/data/detailTransportCore.js`. The subtitle is shared React-owned; the surrounding detail page remains partial/coexisting.
+- `frontend/ui/DetailActivitySubtitle.jsx`, `frontend/ui/mountDetailActivitySubtitle.jsx`, `src/templates/app/components/detail_activity_subtitle.html` (shared activity subtitle, browser history-button adapter and server fallback); Expo receives formatted text from `expo/app/data/detailTransportCore.js`. The subtitle is shared React-owned; the surrounding detail page remains partial/coexisting.
 - `frontend/ui/mountDetailBackdrop.jsx` mounts the shared mobile backdrop in the PWA; the server image remains its loading and no-JavaScript fallback. The surrounding hero and desktop carousel remain server-owned, so ownership is partial/coexisting.
 - `frontend/ui/ProviderLogo.jsx`, `frontend/ui/ProviderLogo.native.jsx`, `frontend/ui/ProviderLogo.web.jsx` (provider logo presentation).
 - `frontend/ui/DetailSecondary.jsx`, `frontend/ui/detailSecondaryModel.js` (ordered metadata and secondary-section composition).
@@ -545,9 +556,9 @@ pending. These checks do not establish complete page parity.
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
-- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
+- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`, `onOpenTitle`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
-- `src/templates/app/components/detail_action_buttons.html`
+- `src/templates/app/components/detail_action_buttons.html` (links menu also lists the viewer's Plex/Jellyfin, Seerr and Radarr/Sonarr pages as "Players"/"Requests"/"Downloads" groups; data from `integrations/arr_library.server_link_groups`, see INTEGRATION-PANELS; template unchanged)
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
@@ -559,17 +570,18 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
-- `native-proof/app/screens/DetailScreen.jsx`
-- `native-proof/app/surfaces/DetailSlot.jsx`
-- `native-proof/app/surfaces/DetailFeatures.jsx`
-- `native-proof/app/data/detailTransport.js`
-- `native-proof/app/surfaces/detailIdentity.mjs`
+- External-link producers: `src/app/providers/igdb.py`, `src/app/providers/tmdb.py`, and `src/app/detail_builders.py`. Steam links are game-only; IMDb Parent's Guide applies to TMDB movies/TV and any detail item with a stored `imdb_id`. Local chip marks: `src/static/img/steamdb-logo.svg`, `protondb-logo.png`, and `pcgamingwiki-logo.svg`; the guide reuses `imdb-logo.png`.
+- `expo/app/screens/DetailScreen.jsx`
+- `expo/app/surfaces/DetailSlot.jsx`
+- `expo/app/surfaces/DetailFeatures.jsx`
+- `expo/app/data/detailTransport.js`
+- `expo/app/surfaces/detailIdentity.mjs`
 - `src/api/fork_views_detail.py`
 - `src/api/fork_urls.py`
 - `frontend/pages/DetailView.jsx`
 - `frontend/ui/DetailComposition.jsx`
-- `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
-- `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
+- `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
+- `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
 
 ## CHILDREN
 
@@ -710,7 +722,9 @@ The artist relation and album grids are React islands over server-rendered fallb
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
 - `src/templates/app/components/artist_discography_container.html`
-- `src/templates/app/components/artist_discography_groups.html`
+- `src/templates/app/components/artist_discography_groups.html` (each release-type group shows its first 24 albums; the heading counts every album in the group)
+- `src/templates/app/components/artist_discography_more.html` (a group's "Show more" button, the shared React `button`, and the hidden length the cover poller sends back so an expanded group stays expanded)
+- `src/templates/app/components/artist_discography_group_albums.html` (a group's album grid island and its button; `artist_discography_more` returns it one page longer, as one grid from the first album so rows stay aligned)
 - `src/templates/app/components/artist_grid_items.html`
 - `src/templates/app/components/artist_relation_grid.html`
 - `src/templates/app/components/artist_relations_container.html`
@@ -748,13 +762,17 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 
 The `people_cast` web adapter supplies the episode route's provider to its legacy cast fallback when no media source is present; the shared React rail and fallback continue to coexist. Browser rendering is regression-tested; runtime verification is pending. Expo uses its native detail model and does not render the Django fallback; iOS and Android runtime verification is pending.
 
-- `src/templates/app/components/detail_carousel_fragment.html`
+- `src/templates/app/components/detail_carousel_fragment.html` (also the detail-page title logo; on a season page it links to the show because it hides the title link; `Legacy` until the web detail hero migrates)
 - `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
 - `src/templates/app/components/person_filmography_fragment.html`
+- `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
+- `src/lists/views_people.py` (person Add-to-lists JSON and toggle) with `src/templates/lists/list_detail.html` People section (saved people on a list)
+- `src/templates/lists/components/list_people.html` (People section server fallback for the shared `ListPeople` island on list pages)
+- `frontend/ui/ListPeople.jsx` (people on a list, Expo list detail and the web list page via `mountPeople.jsx`; read-only, people come off a list from the person page like media), `expo/app/screens/PeopleScreen.jsx` Add to lists sheet, `src/api/fork_views_people.py` (`PersonListsView`, `PersonListDetailView`)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
@@ -804,9 +822,10 @@ Status: `Legacy`
 - `src/templates/app/components/session_history_modal.html`
 - `src/templates/app/components/session_history_row.html` (also the audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/history.html`
-- `native-proof/app/screens/HistoryScreen.jsx`, `native-proof/app/data/historyTransportCore.js` (+ `historyTransportCore.test.mjs`) (native History screen and transport; release-date mode pages by day through `limit`/`offset` on `/api/v1/history/release/`, like the activity feed)
+- `src/templates/app/progress.html`, `src/app/progress_page.py`, `src/api/fork_views_progress_page.py` (Progress page heading and mount root; the list read for web and native), `expo/app/screens/ProgressScreen.jsx`
+- `expo/app/screens/HistoryScreen.jsx`, `expo/app/data/historyTransportCore.js` (+ `historyTransportCore.test.mjs`) (native History screen and transport; release-date mode pages by day through `limit`/`offset` on `/api/v1/history/release/`, like the activity feed)
 - `frontend/ui/historyScrollAnchor.web.js` (browser adapter: Back or reload returns History to the day the reader left; loads the waiting days down to it first).
-- `frontend/ui/historyFirstView.js` (shared first-view rule: about two screens of entries, whole days; `scripts/historyFirstView.test.mjs`). The server mirrors it in `src/app/history_views.py` (`HISTORY_FIRST_VIEW_ENTRIES`, `_first_view_day_count`). Waiting days load as they come near the screen through `HistoryFeed.web.jsx`'s own observer (1.5-screen look-ahead from `homeRowLoading.js`) on web and the Home watcher `native-proof/app/data/homeRowWatcherCore.js` in `HistoryScreen.jsx` on Expo. `frontend/ui/historyScrollAnchor.web.js` (browser only) returns Back to the day the reader left.
+- `frontend/ui/historyFirstView.js` (shared first-view rule: about two screens of entries, whole days; `scripts/historyFirstView.test.mjs`). The server mirrors it in `src/app/history_views.py` (`HISTORY_FIRST_VIEW_ENTRIES`, `_first_view_day_count`). Waiting days load as they come near the screen through `HistoryFeed.web.jsx`'s own observer (1.5-screen look-ahead from `homeRowLoading.js`) on web and the Home watcher `expo/app/data/homeRowWatcherCore.js` in `HistoryScreen.jsx` on Expo. `frontend/ui/historyScrollAnchor.web.js` (browser only) returns Back to the day the reader left.
 
 ## STATISTICS
 
@@ -852,13 +871,17 @@ Status: `Partial / coexisting` — shared React islands and native presentation 
 - Month navigation retains the visible shared `ReleaseCalendar` while `mountReleaseCalendar` fetches server props or `CalendarScreen` fetches Expo data, then swaps the month; the compact agenda divider uses the surface-border theme token. Expo omits the page heading and reduces top spacing, while web keeps its heading. The server-rendered calendar remains the no-JavaScript fallback. Browser: light and dark month swaps inspected; iOS: isolated Expo preview inspected; Android: native bundle built, latest runtime unavailable.
 - Expo `CalendarScreen` presents an empty shared grid while its initial data loads, and `calendarTransportCore` overlaps event and status requests with calendar preferences. `accountDisplay` exposes the session-cached week start to avoid rearranging the grid when available. Web keeps its server-rendered first load. iOS: isolated loading and loaded previews inspected; Android: latest runtime unavailable.
 
-- `ReleaseCalendar` and `DropdownItem`: shared mobile date/count grid header, attached agenda, available media chips and two-level media/status filter; web mount and `native-proof/app/surfaces/CalendarSlot.jsx` consume them. Saved per-media statuses merge into one selection and release-date restrictions retire. The server grid is the no-JavaScript fallback. Expo retains the mobile layout at wide sizes; `CalendarRailControls.ios.jsx` supplies grouped system filter and settings menus and a separate weekday/date Today control when the rail is present; `AdaptivePresentationSheet` hosts actions on other Expo devices. Latest layout was inspected in a browser with an empty calendar; iOS and Android verification is pending.
+- `ReleaseCalendar` and `DropdownItem`: shared mobile date/count grid header, attached agenda, available media chips and two-level media/status filter; web mount and `expo/app/surfaces/CalendarSlot.jsx` consume them. Saved per-media statuses merge into one selection and release-date restrictions retire. The server grid is the no-JavaScript fallback. Expo retains the mobile layout at wide sizes; `CalendarRailControls.ios.jsx` supplies grouped system filter and settings menus and a separate weekday/date Today control when the rail is present; `AdaptivePresentationSheet` hosts actions on other Expo devices. Latest layout was inspected in a browser with an empty calendar; iOS and Android verification is pending.
 
-CalendarLinks renders grouped Collection cards (Calendar Links, Media Types, Status, Release Dates, Copy/Download Calendar) on Expo and mobile web, and its original tabbed card on desktop web. `native-proof/app/surfaces/CalendarFeedPicker.ios.jsx` is a SwiftUI Menu with a short closed label and a Liquid Glass menu of full names for the Calendar Type; Android and web use SelectField. The final Copy/Download card carries an ICS heading; mobile web shows the groups directly on the page because the Django links wrapper is a card only from md up. Runtime verification for this change is pending on web, iOS and Android.
+CalendarLinks renders grouped Collection cards (Calendar Links, Media Types, Status, Release Dates, Copy/Download Calendar) on Expo and mobile web, and its original tabbed card on desktop web. `expo/app/surfaces/SelectRowPicker.ios.jsx` is a SwiftUI Menu with a short closed label and a Liquid Glass menu of full names for the Calendar Type; Android and web use SelectField. The final Copy/Download card carries an ICS heading; mobile web shows the groups directly on the page because the Django links wrapper is a card only from md up. Runtime verification for this change is pending on web, iOS and Android.
 
 Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified.
 
-- `native-proof/app/surfaces/CalendarSlot.jsx`: passes `surfaceMutedSoft` to shared `ReleaseCalendar`; current 375x812 browser pair verifies blank-day fill, with subtitle wrapping still Partial. iOS/Android not verified, Primitives; browser ownership unchanged.
+Add Copy fields (`CollectionCopyEditor`, mounted on web by `mountCollectionCopyFields.jsx` and on Expo by `CollectionCopyDialog`) render through the grouped rows extracted from CalendarLinks (`CollectionGroup`, `CollectionRow`, `CollectionSwitchRow`, `CollectionSelectRow`, `CollectionTextRow` in `CollectionCopies.jsx`).
+
+The Media Details sidebar cards render through the grouped rows (see the component register): web mounts `frontend/ui/mountDetailSidebarCard.jsx` over the Django cards in `src/templates/app/components/detail_secondary_content.html`, using `{% detail_sidebar_props %}` from `src/app/detail_secondary_props.py`; Expo reaches the same `DetailSecondary` and `MediumExtras` through `DetailView`. Platforms and Genres share `CollectionExpandRow` and `CollectionBreakdownRow` (`CollectionCopies.jsx`, the latter also drawn by the Collection Summary; counts include the viewer's current item and zeros are hidden; Time Watched and Time to Beat open into it too, and `CollectionExpandRow` takes an `info` link, drawn right after the row label via `CollectionRow after`, for the Time to Beat source); the Time card (played, watched, time to beat) is `MediumExtras` in `People.jsx`, mounted on web by `people_extras "time"` in `src/users/templatetags/ui_tags.py`; Studio and author rows deep-link through `DetailView` `onOpenStudio`/`onOpenPerson` set in `expo/app/screens/DetailScreen.jsx`; the iOS Collection add row is `DetailCollectionBlock actionRow` in `DetailPage.jsx`, set from `expo/app/surfaces/DetailFeatures.jsx`.
+
+- `expo/app/surfaces/CalendarSlot.jsx`: passes `surfaceMutedSoft` to shared `ReleaseCalendar`; current 375x812 browser pair verifies blank-day fill, with subtitle wrapping still Partial. iOS/Android not verified, Primitives; browser ownership unchanged.
 
 Status: `Partial / coexisting`
 
@@ -874,13 +897,12 @@ Status: `Legacy`
 Native ListsPageView/ListCard hide metadata through an opt-in prop, and ListDetailScreen offers desktop selection and its existing bulk bar in tier mode. The native import dialog consumes MdblistConnect with server-provided scheduling choices; Sidebar consumes per-server/user pins. Server list, import and tier consumers remain until shared adoption. Browser recheck pending; iOS and Android not verified.
 
 - `frontend/ui/MdblistConnect.jsx`
-- `native-proof/app/components/ListImportDialog.jsx`
-- `native-proof/app/data/sidebarListPins.js`
-- `native-proof/app/data/sidebarListPins.web.js`
-- `native-proof/app/data/sidebarListPinsCore.js`
+- `expo/app/components/ListImportDialog.jsx`
+- `expo/app/data/sidebarListPins.js`
+- `expo/app/data/sidebarListPins.web.js`
+- `expo/app/data/sidebarListPinsCore.js`
 
 - `src/templates/lists/components/fill_lists.html`
-- `src/templates/lists/components/list_cover_image.html`
 - `src/templates/lists/components/list_form.html`
 - `src/templates/lists/components/list_grid.html`
 - `src/templates/lists/components/list_item_button.html`
@@ -931,7 +953,7 @@ Status: `Legacy`
 
 - `frontend/ui/ReorderList.jsx`
 
-`frontend/pages/SettingsSidebarView.jsx`, `native-proof/app/surfaces/SidebarSettingsSlot.jsx`: native measured-layout drag handles and accessibility move actions; shared also by `HomeScreenEditor`. Sidebar drag saved/restored and web confirmed at 375x812; Home drag pending; Django Sidebar remains until full parity. Native readiness Primitives; iOS/Android not verified.
+`frontend/pages/SettingsSidebarView.jsx`, `expo/app/surfaces/SidebarSettingsSlot.jsx`: native measured-layout drag handles and accessibility move actions; shared also by `HomeScreenEditor`. Sidebar drag saved/restored and web confirmed at 375x812; Home drag pending; Django Sidebar remains until full parity. Native readiness Primitives; iOS/Android not verified.
 
 Native `SettingsScreen` consumes shared `SettingsView`, `SettingsNav` and `SettingsPage`, including the shared chevron and Data-only page spacing. These are React-owned presentation; web navigation and retained server content keep their existing ownership. Browser Data geometry checked at 375x812. iOS: Not verified. Android: Not verified. Native readiness: Primitives. Remaining consumers and retirement conditions are unchanged.
 
@@ -948,9 +970,9 @@ SelectField exposes optional trigger, text and label styles for the native manua
 
 Status: `Partial / coexisting`
 
-Expo consumes `frontend/ui/PreferencesForm.jsx`, `frontend/ui/SelectField.jsx`, `frontend/pages/SettingsPreferencesView.jsx` through `native-proof/app/surfaces/PreferencesSlot.jsx`. Native section frames, icons, dropdowns and card link remain partial parity. Currency saved/restored in browser; iOS and Android not verified. Django/Alpine remains until complete parity.
+Expo consumes `frontend/ui/PreferencesForm.jsx`, `frontend/ui/SelectField.jsx`, `frontend/pages/SettingsPreferencesView.jsx` through `expo/app/surfaces/PreferencesSlot.jsx`. Native section frames, icons, dropdowns and card link remain partial parity. Currency saved/restored in browser; iOS and Android not verified. Django/Alpine remains until complete parity.
 
-- `native-proof/app/surfaces/SettingsSaveBar.jsx` adapts shared `FormSaveBar` to the Settings viewport; consumed by `SettingsScreen`, `PreferencesSlot`, `AppearanceSettingsSlot`. Home Screen uses an inline save action. Props-only shared presentation; native readiness Primitives.
+- `expo/app/surfaces/SettingsSaveBar.jsx` adapts shared `FormSaveBar` to the Settings viewport; consumed by `SettingsScreen`, `PreferencesSlot`, `AppearanceSettingsSlot`. Home Screen uses an inline save action. Props-only shared presentation; native readiness Primitives.
 
 - `src/templates/users/preferences.html`
 
@@ -961,7 +983,7 @@ Native custom opacity and runtime radius tokens are consumed by settings palette
 Status: `Partial / coexisting`
 
 - `src/templates/users/appearance.html`
-`frontend/settings/AppearanceEditor.jsx`, `frontend/pages/SettingsAppearanceView.jsx`, `native-proof/app/surfaces/AppearanceSettingsSlot.jsx`: opt-in docked save adapter and single page heading. Browser compared; full-size swatches and footer; Light saved and System default restored with web confirmation; custom effects/scrolled editor still partial. Django editor remains until parity; iOS/Android not verified, Primitives.
+`frontend/settings/AppearanceEditor.jsx`, `frontend/pages/SettingsAppearanceView.jsx`, `expo/app/surfaces/AppearanceSettingsSlot.jsx`: opt-in docked save adapter and single page heading. Browser compared; full-size swatches and footer; Light saved and System default restored with web confirmation; custom effects/scrolled editor still partial. Django editor remains until parity; iOS/Android not verified, Primitives.
 
 ## SET-CARDS
 
@@ -969,14 +991,14 @@ Status: `Partial / coexisting`
 
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`
-- `frontend/pages/SettingsCardsView.jsx`, `frontend/settings/CardsEditor.jsx`, `native-proof/app/surfaces/CardsSettingsSlot.jsx`, `native-proof/app/data/settingsTransport.js` (native touch action setting uses the account preference API; per-type native profiles remain local demo state)
+- `frontend/pages/SettingsCardsView.jsx`, `frontend/settings/CardsEditor.jsx`, `expo/app/surfaces/CardsSettingsSlot.jsx`, `expo/app/data/settingsTransport.js` (native touch action setting uses the account preference API; per-type native profiles remain local demo state)
 
 ## SET-HOME
 
 Status: `Partial / coexisting`
 
 - `src/templates/users/home_screen.html`
-`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `native-proof/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives.
+`frontend/settings/HomeScreenEditor.jsx`, `frontend/pages/SettingsHomeScreenView.jsx`, `expo/app/surfaces/HomeSettingsSlot.jsx`: shared drag handles, parsed icons, filter summaries, color dialog, native page-card framing, inline save and Label appearance dropdown. Browser compared; Outline saved and Soft restored with web confirmation; expanded rows/drag parity incomplete. Django editor remains until parity; iOS/Android not verified, Primitives. Up Next rows carry a hide-caught-up option in both the shared `ToggleChip` (Expo) and the Django chip (browser); browser saved and reloaded at 1280x800 and 375x812, Expo structural only, iOS/Android not verified.
 
 ## SET-PROVIDERS
 
@@ -993,6 +1015,7 @@ Status: `Partial / coexisting`
 - `frontend/providers/mountImportPreferences.jsx`
 - `frontend/providers/ProviderMetadataView.jsx`
 - `frontend/providers/ProviderPageView.jsx`
+- `frontend/providers/mediaTagFit.js`
 - `frontend/providers/mount.jsx`
 - `frontend/providers/provider-page.css`
 - `frontend/providers/transport.web.js`
@@ -1013,10 +1036,12 @@ Status: `Partial / coexisting`
 - `frontend/pages/ProviderDetailView.jsx`
 - `frontend/providers/ProviderImportPanel.jsx`
 - `frontend/providers/ProviderLinkCard.jsx`
-- `native-proof/app/screens/ProvidersScreen.jsx`, `native-proof/app/screens/ProviderDetailScreen.jsx`, `native-proof/app/screens/integrationPalette.js` (native SettingsSurface consumers; directory/frame/account-order fixes, medium themed controls; browser comparison remains partial)
-- `native-proof/app/data/providersTransportCore.js` (retains browser account status and binary import payloads; current iOS/Android paths unverified)
+- `expo/app/screens/ProvidersScreen.jsx`, `expo/app/screens/ProviderDetailScreen.jsx`, `expo/app/screens/integrationPalette.js` (native SettingsSurface consumers; directory/frame/account-order fixes, medium themed controls; browser comparison remains partial)
+- `expo/app/data/providersTransportCore.js` (retains browser account status and binary import payloads; current iOS/Android paths unverified)
 
 Provider account state and bundled keys: `provider_ui._connection_card` and `provider_catalog.provider_state` (`account_linkable`) split a linked account from credentials; `credentials.ProviderCredentialSpec.bundled_only` (WeTrakr) hides every key surface. `mountAccountConnection` mounts the shared `ProviderLinkCard` device-code flow for WeTrakr through `transport.web.linkRequest` (replacing the Alpine connect box in `wetrakr_sync.html`), `ProviderLinkCard.initialDevice` resumes a pending code on web and via `ProviderDetailView` on native, and `ProviderSettingsView`/`readThemePalette` give the key chip and neutral badges real colors. Web verified in Chromium; iOS and Android unverified.
+
+Multiple Jellyfin connections (#2111): `provider_views` builds one `instances` row per `JellyfinAccount` (`editable`, no keys); the Sync and Import tabs use per-connection `provider_forms` models (`jellyfin_sync_<id>`, `jellyfin_push_<id>`, `jellyfin_history_<id>`, `jellyfin_pull_<id>`) and `fileImports` through `ProviderSettingsFormView` and `ProviderFileImportView`; `AccountSettings` renders Edit/Disconnect side by side per row (light-theme styling and chip text colours come from `frontend/settings/statusTones.js`); views, API routes and tasks address a connection by `instance_id`/`account_id`; `src/templates/users/providers/integrations/jellyfin.html` is the server fallback.
 
 ProviderDetailView consumes portable AccountSettings/ProviderSettingsView, native-only active sign-in slots and CatalogGrantsCard on Stremio Tracking. Existing Django/web adapter bodies coexist until full browser parity and migration acceptance; no platform classification is changed by these native composition edits.
 
@@ -1027,14 +1052,14 @@ Shared ConnectionsView.DeviceApproval accepts a session-required state from Conn
 Status: `Partial / coexisting`
 
 - `frontend/pages/ConnectionsView.jsx`
-- `native-proof/app/screens/ConnectionsScreen.jsx` (shared SettingsSurface plus explicit Save, Pause/Resume, complete capability states and server date labels; post-fix browser controls remain pending, iOS/Android unverified)
+- `expo/app/screens/ConnectionsScreen.jsx` (shared SettingsSurface plus explicit Save, Pause/Resume, complete capability states and server date labels; post-fix browser controls remain pending, iOS/Android unverified)
 
 ## REVIEW-QUEUE
 
 Status: `Partial / coexisting`
 
 - `frontend/pages/MetadataReviewView.jsx`
-- `native-proof/app/screens/MetadataReviewScreen.jsx` (shared Activity settings shell; queue/preview ownership preserved; browser acceptance and current iOS/Android runtime verification pending)
+- `expo/app/screens/MetadataReviewScreen.jsx` (shared Activity settings shell; queue/preview ownership preserved; browser acceptance and current iOS/Android runtime verification pending)
 
 ## SET-METADATA
 
@@ -1093,25 +1118,27 @@ PR #1878: The browser file-import mount now supplies a DOM chooser to the univer
 - `src/templates/users/components/file_import_island.html`
 - `src/templates/users/components/settings_form_island.html`
 
+YouTube Takeout accepts `.tgz`/`.tar.gz` in the shared `ProviderFileImportView.jsx` upload model and the retained Django fallback. A focused Chromium browser check verifies the React-mounted provider picker accept list and description; React owns the provider-page import card, while the server fallback serves legacy import surfaces. Retire the fallback when those surfaces are removed. iOS/Android remain unverified.
+
 ## SET-ACTIVITY
 
 Status: `Partial / coexisting`
 
 - `src/templates/users/components/import_activity.html`
 - `src/templates/users/components/import_activity_loader.html`
-- `src/templates/users/components/import_source_cleanup.html`
+- `src/templates/users/components/import_source_cleanup.html` (Delete all returns to the provider Activity tab and shows a pending state, #1968)
 - `src/templates/users/components/outbound_service_activity.html`
 - `src/templates/users/provider_activity.html`
 - `src/templates/users/providers/integration_activity.html`
-- `frontend/pages/SettingsActivityView.jsx`, `native-proof/app/surfaces/ActivitySettingsSlot.jsx` (native central Activity: real MAL mapping tabs/dialog and outbound counts/results; opt-in page-card frames/icons/typography plus accessible panel/headings. Final Django/Expo populated receipt framing matched; all four empty tabs and Undo/Delete confirmation cancellation exercised. Disposable receipt/history/provenance cleaned after verification. Connected flows not exercised, iOS/Android unverified)
+- `frontend/pages/SettingsActivityView.jsx`, `expo/app/surfaces/ActivitySettingsSlot.jsx` (native central Activity: real MAL mapping tabs/dialog and outbound counts/results; opt-in page-card frames/icons/typography plus accessible panel/headings. Final Django/Expo populated receipt framing matched; all four empty tabs and Undo/Delete confirmation cancellation exercised. Disposable receipt/history/provenance cleaned after verification. Connected flows not exercised, iOS/Android unverified)
 - `frontend/providers/ProviderActivityView.jsx` (shared by AniList WEB Activity and native central Activity; opt-in source identities/pageCards, rounded run/date/count layout, text actions, exact cleanup plural labels and the schedule-frequency edit dialog posting `edit_import_schedule`. Existing web defaults/details/copy/pagination remain; Django central/non-AniList consumers retire only after full browser port/acceptance.)
-- `native-proof/app/data/activityTransportCore.test.mjs` (authenticated paging/action transport regression)
+- `expo/app/data/activityTransportCore.test.mjs` (authenticated paging/action transport regression)
 
 ## SET-SIDEBAR
 
 Status: `Partial / coexisting`
 
-- `frontend/pages/SettingsSidebarView.jsx`, `native-proof/app/surfaces/SidebarSettingsSlot.jsx` (native page; up/down reorder)
+- `frontend/pages/SettingsSidebarView.jsx`, `expo/app/surfaces/SidebarSettingsSlot.jsx` (native page; up/down reorder)
 
 ## ACTION-ICONS
 
@@ -1132,6 +1159,18 @@ Status: `Partial / coexisting`
 - `src/templates/users/components/tmdb_proxy.html`
 - `src/templates/users/components/tmdb_rating_sync.html`
 - `src/templates/users/components/wetrakr_sync.html`
+- `src/templates/users/components/push_destination/simkl_export.html`
+- `src/templates/users/components/push_destination/simkl_export_confirm.html`
+- `src/templates/users/components/push_destination/simkl_intro.html`
+- `src/templates/users/components/push_destination/simkl_no_key.html`
+- `src/templates/users/components/push_destination/simkl_options.html`
+- `src/templates/users/components/push_destination/wetrakr_export.html`
+- `src/templates/users/components/push_destination/wetrakr_export_confirm.html`
+- `src/templates/users/components/push_destination/wetrakr_intro.html`
+- `src/templates/users/components/push_destination/wetrakr_no_key.html`
+- `src/templates/users/components/push_destination/wetrakr_options.html`
+- `src/templates/users/components/push_destination_sync.html`
+- `src/templates/users/components/simkl_sync.html`
 - `src/templates/users/integrations.html`
 - `src/templates/users/mal_export.html`
 - `src/templates/users/providers/integration_content.html`
@@ -1168,7 +1207,7 @@ Shared AccessTokenCard, AppTokensCard and CatalogGrantsCard receive a session-re
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/surfaces/CatalogGrantsSlot.jsx` (CatalogGrantsCard adapter consumed by Stremio Tracking; Access no longer consumes grants. Ref-held one-time secret survives copy failure/cancel and clears on revocation/unmount. Test-DB lifecycle covered; no live credential created/revoked. Browser final placement and iOS/Android unverified.)
+- `expo/app/surfaces/CatalogGrantsSlot.jsx` (CatalogGrantsCard adapter consumed by Stremio Tracking; Access no longer consumes grants. Ref-held one-time secret survives copy failure/cancel and clears on revocation/unmount. Test-DB lifecycle covered; no live credential created/revoked. Browser final placement and iOS/Android unverified.)
 
 Native `AccessSettingsSlot` consumes shared `AccessSettings.jsx` / `SettingsAccessView`: Access frame, collapsed token form, checkbox scopes, adapter credential slots and Authorized applications navigation. Name/expiry/scope validation browser-verified; creation awaits action-time approval. Install-placement/application geometry incomplete. Browser Access templates remain; `DeviceApproval` owns the approval island with server fallback. iOS/Android not verified, Primitives.
 
@@ -1189,7 +1228,7 @@ Status: `Partial / coexisting`
 
 Native `AuthEntrance` separates server selection from credentials, keeps manual entry, changes its suggested address with Local/Remote mode, and explains briefly that discovery is unavailable in Expo Go; browser authentication remains server-rendered.
 
-Native device sign-in uses the first-party Floppy app client and a full-access token (`native-proof/app/data/authTransportCore.js`); account security calls `/api/v1/user/account/` for token sign-ins (`native-proof/app/data/authAccountCore.js`). Transport only, no presentation change.
+Native device sign-in uses the first-party Floppy app client and a full-access token (`expo/app/data/authTransportCore.js`); account security calls `/api/v1/user/account/` for token sign-ins (`expo/app/data/authAccountCore.js`). Transport only, no presentation change.
 
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
@@ -1216,20 +1255,20 @@ Native device sign-in uses the first-party Floppy app client and a full-access t
 - `src/templates/users/account.html`
 - `src/templates/users/password_recover.html`
 - `frontend/auth/AuthEntrance.jsx`
-- `native-proof/app/screens/ListDetailScreen.jsx` (native list detail with the media type breakdown popover; consumers of `FilterBar`, `ListResults`, `BulkActionBar`, `ListMembership`)
-- `native-proof/app/screens/LibraryScreen.jsx`, `native-proof/app/surfaces/LibraryBulkActions.jsx` (native Library header, settings gear `ActionMenu` and `FilterBar variant="toolbar" showClear={false}`; `showClear` is the new `FilterBar` prop that hides the inline Clear button, whose reset stays in the Filters sheet)
-- `native-proof/app/surfaces/shellContext.js` (open page's media type for the header search), `native-proof/app/data/userDate.js` (+ `userDate.test.mjs`) (server time zone and user date format), `native-proof/app/data/accountDisplay.js` (display preferences from `/api/v1/user/preferences/`)
-- `native-proof/app/screens/AuthScreen.jsx`
-- `native-proof/app/data/serverDiscovery.native.js`
-- `native-proof/app/data/serverDiscovery.web.js`
-- `native-proof/app/data/serverDiscoveryCore.js`
-- `native-proof/app/data/authTransportCore.js`
+- `expo/app/screens/ListDetailScreen.jsx` (native list detail with the media type breakdown popover; consumers of `FilterBar`, `ListResults`, `BulkActionBar`, `ListMembership`)
+- `expo/app/screens/LibraryScreen.jsx`, `expo/app/surfaces/LibraryBulkActions.jsx` (native Library header, settings gear `ActionMenu` and `FilterBar variant="toolbar" showClear={false}`; `showClear` is the new `FilterBar` prop that hides the inline Clear button, whose reset stays in the Filters sheet)
+- `expo/app/surfaces/shellContext.js` (open page's media type for the header search), `expo/app/data/userDate.js` (+ `userDate.test.mjs`) (server time zone and user date format), `expo/app/data/accountDisplay.js` (display preferences from `/api/v1/user/preferences/`)
+- `expo/app/screens/AuthScreen.jsx`
+- `expo/app/data/serverDiscovery.native.js`
+- `expo/app/data/serverDiscovery.web.js`
+- `expo/app/data/serverDiscoveryCore.js`
+- `expo/app/data/authTransportCore.js`
 
 ## SET-NOTIFICATIONS
 
 Status: `Partial / coexisting`
 
-Expo consumes shared `frontend/settings/NotificationSettings.jsx` cards, `frontend/ui/TextField.jsx` trailing help and `frontend/pages/SettingsNotificationsView.jsx` through `native-proof/app/surfaces/NotificationsSettingsSlot.jsx`. Native page framing, title icons, help order and save actions; Django/HTMX remains until full parity. Daily Digest saved/restored in browser; help panel opened/closed and The Matrix excluded/reincluded with web confirmation; artwork/row icons and detailed spacing still need final verification. iOS/Android not verified, Primitives.
+Expo consumes shared `frontend/settings/NotificationSettings.jsx` cards, `frontend/ui/TextField.jsx` trailing help and `frontend/pages/SettingsNotificationsView.jsx` through `expo/app/surfaces/NotificationsSettingsSlot.jsx`. Native page framing, title icons, help order and save actions; Django/HTMX remains until full parity. Daily Digest saved/restored in browser; help panel opened/closed and The Matrix excluded/reincluded with web confirmation; artwork/row icons and detailed spacing still need final verification. iOS/Android not verified, Primitives.
 
 - `src/templates/users/components/excluded_items.html`
 - `src/templates/users/components/search_results.html`
@@ -1243,7 +1282,7 @@ The browser wizard remains server-owned. Native shared presentation coexists thr
 
 - `frontend/onboarding/OnboardingWizard.jsx`
 - `frontend/pages/OnboardingView.jsx`
-- `native-proof/app/screens/OnboardingScreen.jsx` (standalone App/ShellSlot consumer; source icons/hero, local reorder/toggles, inline forms/uploads and provider sign-in adapter)
+- `expo/app/screens/OnboardingScreen.jsx` (standalone App/ShellSlot consumer; source icons/hero, local reorder/toggles, inline forms/uploads and provider sign-in adapter)
 
 - `src/templates/users/onboarding/_layout.html`
 - `src/templates/users/onboarding/components/connect_form.html`
@@ -1284,9 +1323,11 @@ Status: `Legacy`
 
 ## INTEGRATION-PANELS
 
-Status: `Legacy`
+Status: `Partial / coexisting` (library panel React-owned on the web; Seerr request dialog/status legacy)
 
-- `src/templates/integrations/library_panel.html`
+- `frontend/ui/IntegrationPanels.jsx`
+- `frontend/ui/mountIntegrationPanels.jsx`
+- `src/templates/integrations/library_panel.html` (server fallback + props)
 - `src/templates/integrations/seerr_request.html`
 - `src/templates/integrations/seerr_status.html`
 
@@ -1328,6 +1369,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/ListsPageView.jsx`
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
+- `frontend/pages/ProgressPageView.jsx`, `frontend/pages/useProgressPage.js` (the Progress page composition and its loading state)
 - `frontend/pages/ProvidersView.jsx`
 - `frontend/pages/SearchPageView.jsx`
 - `frontend/pages/SettingsAboutView.jsx`
@@ -1342,7 +1384,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/SettingsNotificationsView.jsx`
 - `frontend/pages/SettingsPreferencesView.jsx`
 - `frontend/pages/SettingsUsersView.jsx`
-- `frontend/pages/SettingsView.jsx`
+- `frontend/pages/SettingsView.jsx` (optional `navColumnStyle`; the web adapter passes a sticky, self-scrolling menu column for #1525; pinned only when the columns fit side by side, 672px and up; native unchanged; browser verified, iOS/Android unverified)
 - `frontend/pages/StatisticsView.jsx`
 - `frontend/pages/TagsPageView.jsx`
 - `frontend/pages/UtilitiesView.jsx` (native About > Open Utilities > Copy Server URL exercised in Expo; exact connected address copied and prior clipboard restored. WEB About static-cache utilities have a different platform scope; Partial browser parity, iOS/Android unverified.)
@@ -1367,7 +1409,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
-- `frontend/settings/mountSettingsView.jsx`
+- `frontend/settings/mountSettingsView.jsx` (passes the web-only sticky menu style with a 32px bottom gap, #1525)
 - `frontend/ui/ArtworkImage.jsx`
 - `frontend/ui/ArtworkImage.native.jsx`
 - `frontend/ui/ArtworkImage.web.jsx`
@@ -1405,7 +1447,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
-- `frontend/ui/IntegrationPanels.jsx`
 - `frontend/ui/ListCard.jsx`
 - `frontend/ui/ListFormView.jsx`
 - `frontend/ui/ListHeader.jsx`
@@ -1440,8 +1481,9 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ProgressChangerTheme.web.jsx`
 - `frontend/ui/ProgressDetailTheme.web.jsx`
 - `frontend/ui/ProgressDialog.jsx`
+- `frontend/ui/ProgressShowCard.jsx`
 - `frontend/ui/Rail.jsx`
-- `frontend/ui/Rail.web.jsx`
+- `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
@@ -1450,18 +1492,18 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Reveal.jsx`
 - `frontend/ui/Reveal.native.jsx`
 - `frontend/ui/Reveal.web.jsx`
-- Sidebar's web Reveal clips a transform-animated panel, while its native counterpart keeps the measured-height animation. The shared Sidebar and its web and Expo consumers retain their existing ownership and fallback retirement conditions; browser regression and native runtime evidence are recorded separately in the component register.
+- Sidebar's web Reveal clips a transform-animated panel, while its native counterpart keeps the measured-height animation. The web clip is `visibility: hidden` while closed so the panel's load-time measurement records no layout shift (web-only; `frontend/ui/sidebar.css`). The shared Sidebar and its web and Expo consumers retain their existing ownership and fallback retirement conditions; browser regression and native runtime evidence are recorded separately in the component register.
 - `frontend/ui/SearchResultCard.jsx`
 - `frontend/ui/SearchResultCard.native.jsx`
 - `frontend/ui/SearchResultCard.web.jsx`
 - `frontend/ui/SearchResults.jsx`
-- `native-proof/app/data/useMobileGridLayout.js`
+- `expo/app/data/useMobileGridLayout.js`
 - `frontend/ui/SearchResults.web.jsx`
 - `frontend/ui/searchRows.js`
 - `frontend/ui/shelfWidth.web.js`
 - `frontend/ui/keyboardOverlap.web.js`
-- `native-proof/app/data/useKeyboardOverlap.js`
-- `native-proof/app/surfaces/WindowedRail.jsx`
+- `expo/app/data/useKeyboardOverlap.js`
+- `expo/app/surfaces/WindowedRail.jsx`
 - `frontend/ui/SelectField.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/Shell.jsx`
@@ -1481,6 +1523,14 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackDialog.jsx`
 - `frontend/ui/TrackForm.jsx`
 - `frontend/ui/TrackFormTabs.jsx`
+- `frontend/ui/TrackTabsGrouped.jsx`
+- `frontend/ui/TrackDateRow.jsx`
+- `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/trackDatePanels.jsx`
+- `frontend/ui/separatorColor.js`
+- `frontend/ui/separatorColor.web.js`
+- `frontend/ui/separatorColor.native.js`
+- `frontend/ui/trackDuration.js`
 - `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/barcodeEntry.web.js`
 - `frontend/ui/clipboard.native.js`
@@ -1507,6 +1557,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountCheckInState.jsx`
 - `frontend/ui/mountCollectionBrowser.jsx`
 - `frontend/ui/mountCollectionCopyFields.jsx`
+- `frontend/ui/mountDetailSidebarCard.jsx`
 - `frontend/ui/mountCollectionFields.jsx`
 - `frontend/ui/mountCopyField.jsx`
 - `frontend/ui/mountDateTimePicker.jsx`
@@ -1531,6 +1582,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressDetail.jsx`
+- `frontend/ui/mountProgressPage.jsx`
 - `frontend/ui/mountRails.jsx`
 - `frontend/ui/mountRatingChip.jsx`
 - `frontend/ui/mountReleaseCalendar.jsx`
@@ -1589,3 +1641,17 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 - Episode label formatting: `ProgressBreakdown` serves the web progress mount and Expo `ProgressDialog`; history, media cards, and tracking dialogs receive their labels from their existing server adapters. Shared presentation remains React-owned, with existing legacy web history consumers coexisting; retirement conditions are unchanged. EpisodeOrdering uses shared React presentation on web with a coexisting server fallback; native metadata review remains unported. Retirement of the fallback requires preserving its no-JavaScript behavior. Browser, iOS, and Android verification are recorded separately in the component register.
 
 - Calculated play duration flows through the existing History, Statistics, and Detail adapters to their shared presentation and coexisting web fallbacks. Shared `StatisticsCharts` keeps its responsive hook in every loading state; the native Detail adapter resolves structured History items lacking web URLs. Component ownership and retirement conditions remain unchanged; platform evidence is recorded in the component register.
+
+- 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
+- MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+
+- Track dialog short-window fix (issue #2134): `TrackForm.jsx` caps the sidebar shell height to `min(92% of the window, window - 4rem)` and `TrackFormTabs.jsx` caps the 576 px General-pane floor to the space under the header, so the footer is never clipped.
+- 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
+- 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
+- 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
+- 2026-11-23 `frontend/ui/TrackDateRow.jsx`: Clear button in the open date panel; `expo/app/surfaces/MediaCardSlot.jsx`: tabs effect moved below the `status` state.
+
+
+Track modal on web (2026-11-24): `TrackForm` takes `groupedContent`, which under 1024 px (phones and an open iPhone Duo; desktop is unchanged) uses the Expo grouped rows (Details and Dates groups, date rows with calendar and time steppers, Presets) and `TrackTabsGrouped` tab bodies (Discover, Status history) inside the web tab navigation and footer; `trackDatePanels.jsx` (`TrackTimeSteppers`) is the shared time panel for web and Android. Web runtime verified (375 px phone; desktop confirmed unchanged); iOS unchanged; Android not verified. Left server-rendered or on the existing tag dialog: Metadata, Collection, Episode plays (richer than the Expo bodies) and Tags (tag deletion has no grouped equivalent yet).
+
+Track modal follow-up (2026-11-24): Score uses the Status picker, rows follow Expo's order, date rows clear with an X button, `MarkdownNotes` has a `grouped` design (Write/Preview and tools on one row, borderless text area in a card, hint behind an info icon), and the grouped form takes Expo's Delete row and Cancel / Update footer used by the grouped Track form, and Expo's `trackFields` offers Source for every type that accepts it.

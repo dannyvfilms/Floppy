@@ -45,6 +45,9 @@ systems: [Catppuccin](https://python.catppuccin.com/docs/catppuccin/palette.html
 [Gruvbox](https://github.com/morhetz/gruvbox). `html.glass` adds a fixed translucent cinema treatment.
 `html.custom` inherits the dark defaults; `base.html` adds the seven validated
 colours plus bounded radius, blur and surface-opacity values as inline variables.
+Glass and custom blur every `bg-[var(--color-surface)]` element, and a blurred element becomes the
+containing block for `position: fixed` children (#1205, #1443). A track modal inside a card, row or
+table must therefore `x-teleport="body"` (as the episode and table-cell modals do) rather than sit inline.
 `users.appearance` is the allowlist and validation boundary for those values.
 
 `--color-accent-contrast` is the foreground for controls filled with
@@ -138,7 +141,7 @@ validates the whole payload before saving any part.
 
 ## The native app
 
-`native-proof/app/themeState.js` resolves the same states (system, light, dark,
+`expo/app/themeState.js` resolves the same states (system, light, dark,
 the presets from `html.<preset>`, custom) into native colour tokens and
 `app/theme.js` exposes them as the `palette` getters. `ThemeRoot` applies the
 user's theme: CSS variables on the web, dynamic colours on iOS for system, light

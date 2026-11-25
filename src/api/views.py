@@ -63,6 +63,7 @@ from events import tasks
 from events.models import Event
 from integrations.oauth_scope_info import has_full_account_access
 from integrations.state.ratings import rating_edit
+from lists import tasks as list_tasks
 from lists.forms import CustomListForm, validate_public_slug
 from lists.models import CustomList, CustomListItem
 from lists.views_helpers import (
@@ -70,6 +71,7 @@ from lists.views_helpers import (
     _get_list_completed_counts,
     _get_list_last_watched_dates,
 )
+from lists.views_people import list_people_for_display
 
 from . import fork_helpers  # FORK: history sorting overlay
 from .changes_history_processor import (
@@ -656,6 +658,8 @@ class ListDetailView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
         media_user = user if user_list.user_can_edit(user) else user_list.owner
         paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:
@@ -677,6 +681,8 @@ class ListDetailView(drf_views.APIView):
             },
         )
 
+        # People saved beside the media (cast, crew, authors).
+        serialized_list["people"] = list_people_for_display(user_list)
         return Response(serialized_list, status=HTTP.OK)
 
     def patch(self, request, list_id):
@@ -861,6 +867,8 @@ class ListItemsView(drf_views.APIView):
                 status=HTTP.FORBIDDEN,
             )
 
+        # Answer from the stored rows; refresh a smart list in the background.
+        list_tasks.schedule_smart_list_sync(user_list)
         media_user = user if user_list.user_can_edit(user) else user_list.owner
         paginated_data, err = paginate_list_items(request, media_user, user_list)
         if err:

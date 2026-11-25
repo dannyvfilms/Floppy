@@ -5,6 +5,7 @@ import { actionIcons } from './actionIcons';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
+import { Title } from './Title';
 import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
 import { libraryGridLayout } from './mediaCardSizing';
@@ -337,7 +338,7 @@ function DayGrid({ entries, layout, ...cardProps }) {
 
 // A waiting day loads itself once the platform reports it on or near the
 // screen. `watchDay(key, node, onChange)` is the same contract Home uses for
-// its rows (frontend/ui/homeRowWatcher.web.js, native-proof homeRowWatcherCore):
+// its rows (frontend/ui/homeRowWatcher.web.js, expo homeRowWatcherCore):
 // it calls `onChange('visible' | 'near' | 'far')` and returns a stop function.
 // One automatic request per day; a failed day keeps its Retry button.
 function useWaitingDayRef(day, watchDay, onLoadDay) {
@@ -618,7 +619,7 @@ function DialogShell({ title, closeLabel, onClose, colors, sheet = false, childr
       <View accessibilityViewIsModal role="dialog" accessibilityLabel={title}
         style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }, sheet && styles.sheet]}>
         <View style={styles.dialogHeader}>
-          <Text accessibilityRole="header" style={[styles.dialogTitle, { color: colors.text }]}>{title}</Text>
+          <Title color={colors.text} style={styles.dialogTitle}>{title}</Title>
           <ModalCloseButton accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
             style={styles.dialogClose}>
             <Icon spec={actionIcons.x} size={18} color={colors.textMuted} />
@@ -1009,7 +1010,7 @@ const styles = StyleSheet.create({
   sheetBackdrop: { padding: 0, justifyContent: 'flex-end', alignItems: 'stretch' },
   sheet: { maxWidth: '100%', borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 0, padding: 24, gap: 20 },
   dialogHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dialogTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
+  dialogTitle: { flex: 1 },
   dialogClose: { padding: 4 },
   dialogCloseText: { fontSize: 16, fontWeight: '700' },
   dialogScroll: { flexGrow: 0 },

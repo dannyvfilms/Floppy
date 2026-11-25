@@ -201,31 +201,7 @@ class TV(Media):
         if (
             not is_create and self.tracker.has_changed("status")
         ) or completed_on_create:
-            if self.status == Status.COMPLETED.value:
-                try:
-                    self._completed()
-                except (
-                    providers.services.ProviderAPIError,
-                    RequestException,
-                    KeyError,
-                    TypeError,
-                    ValueError,
-                ) as error:
-                    logger.warning(
-                        "Skipping completion fan-out due to missing metadata"
-                        " for %s: %s",
-                        self.tracking_media_id,
-                        error,
-                    )
-
-            elif self.status == Status.DROPPED.value:
-                self._mark_in_progress_seasons_as_dropped()
-
-            elif (
-                self.status == Status.IN_PROGRESS.value
-                and not self.seasons.filter(status=Status.IN_PROGRESS.value).exists()
-            ):
-                self._start_next_available_season()
+            self._propagate_status_to_seasons(self.tracker.previous("status"))
 
             self.item.fetch_releases(delay=True)
         elif (
@@ -746,6 +722,62 @@ class TV(Media):
                 self.user_id, episodes_to_create, reason="tv_completed_fan_out"
             )
         return None
+
+    def _propagate_status_to_seasons(self, previous_status):
+        """Apply a show's status change to its seasons (the one dispatcher).
+
+        Show to season rules live here. Season to show rules are in
+        `Season.save`. Rules must stay narrow: only the transitions below
+        touch seasons, never episodes, plays or rewatch boundaries.
+        """
+        if self.status == Status.COMPLETED.value:
+            try:
+                self._completed()
+            except (
+                providers.services.ProviderAPIError,
+                RequestException,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                logger.warning(
+                    "Skipping completion fan-out due to missing metadata"
+                    " for %s: %s",
+                    self.tracking_media_id,
+                    error,
+                )
+
+        elif self.status == Status.DROPPED.value:
+            self._mark_in_progress_seasons_as_dropped()
+
+        elif (
+            self.status == Status.PAUSED.value
+            and previous_status == Status.IN_PROGRESS.value
+        ):
+            self._pause_in_progress_seasons()
+
+        elif (
+            self.status == Status.IN_PROGRESS.value
+            and not self.seasons.filter(status=Status.IN_PROGRESS.value).exists()
+        ):
+            self._start_next_available_season()
+
+    def _pause_in_progress_seasons(self):
+        """Pause the show's in-progress seasons; other seasons keep their status."""
+        in_progress_seasons = list(
+            self.seasons.filter(status=Status.IN_PROGRESS.value),
+        )
+
+        for season in in_progress_seasons:
+            season.status = Status.PAUSED.value
+
+        if in_progress_seasons:
+            bulk_update_with_history(
+                in_progress_seasons,
+                Season,
+                fields=["status"],
+                default_change_reason="Show paused",
+            )
 
     def _mark_in_progress_seasons_as_dropped(self):
         """Mark all in-progress seasons as dropped."""
@@ -1970,6 +2002,11 @@ class Season(Media):
         # Align the parent TV unless it was dropped explicitly
         tv = getattr(self, "related_tv", None)
         if not tv or tv.status == Status.DROPPED.value or not desired_status:
+            return
+        if self.item.season_number == 0:
+            # Specials never decide the show's status: a show whose main
+            # seasons are watched is complete whether or not Specials are
+            # (#1949), and watching a special must not reopen it.
             return
         if desired_status == Status.COMPLETED.value and (
             became_completed

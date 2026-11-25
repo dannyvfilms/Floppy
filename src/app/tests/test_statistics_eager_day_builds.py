@@ -96,6 +96,24 @@ def _per_day_build():
     return patch.object(statistics_cache, "_eager_day_builder", lambda _user: None)
 
 
+def _without_sampled_cards(payload):
+    """Drop the "today in history" cards, which are random by design.
+
+    They pick a random year, entry and release-or-play card, so two builds
+    differ whenever today's month and day match a fixture day (for example
+    20 November).
+    """
+    payload = dict(payload)
+    highlights = dict(payload.get("history_highlights") or {})
+    highlights.pop("today_card", None)
+    payload["history_highlights"] = highlights
+    payload["history_highlights_by_type"] = {
+        media_type: {k: v for k, v in card.items() if k != "today_card"}
+        for media_type, card in (payload.get("history_highlights_by_type") or {}).items()
+    }
+    return payload
+
+
 def _range_dt(day, *, end=False):
     return _local(day, 23, 59) if end else _local(day, 0)
 
@@ -274,9 +292,13 @@ class EagerDayBuildEquivalenceTests(TestCase):
                     expected = self._custom_range(user)
                 cache.clear()
                 actual = self._custom_range(user)
-                self.assertEqual(expected[0].keys(), actual[0].keys())
-                for key in expected[0]:
-                    self.assertEqual(expected[0][key], actual[0][key], key)
+                expected_payload = _without_sampled_cards(expected[0])
+                actual_payload = _without_sampled_cards(actual[0])
+                self.assertEqual(expected_payload.keys(), actual_payload.keys())
+                for key in expected_payload:
+                    self.assertEqual(
+                        expected_payload[key], actual_payload[key], key,
+                    )
                 self.assertEqual(expected[1], actual[1])
                 # Same stored day rows, the empty ones included.
                 self.assertEqual(

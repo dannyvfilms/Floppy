@@ -1,4 +1,4 @@
-"""The watched-episodes breakdown opened from a show or season progress card."""
+"""The Progress page, and the watched-episodes breakdown opened from a progress card."""
 
 import json
 from uuid import uuid4
@@ -197,3 +197,10 @@ def cancel_progress_rewatch(request):
             instance.stop_rewatch()
     fresh = build_progress_breakdown(**({"tv": tv} if media_type == "tv" else {"season": instance}))
     return _response(request, fresh, instance.pk, media_type)
+
+
+@never_cache
+@require_GET
+def progress_page(request):
+    """Show every show with episodes left; the list loads from /api/v1/progress/."""
+    return render(request, "app/progress.html", {"progress_props": {}})

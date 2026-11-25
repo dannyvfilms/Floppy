@@ -59,6 +59,15 @@ function seasonRewatchText(season, labels) {
  * Presentation only: the caller owns navigation, cancellation, the theme and
  * whether a rewatch is open. Expansion is local interaction state.
  */
+/** The season expand/collapse chevron, shared by the breakdown and the Progress page card. */
+export function DisclosureChevron({ open, label, palette, onPress, size = 12 }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ expanded: open }} onPress={onPress} hitSlop={12}
+    style={({ focused }) => [styles.chevronButton, focused && palette?.focusStyle]}>
+    <Text style={[styles.chevron, { color: palette?.textMuted, fontSize: size }]}>{open ? '▾' : '▸'}</Text>
+  </Pressable>;
+}
+
 export function ProgressBreakdown({ model, palette, status = 'ready', cancelling = false, onOpenSeason, onOpenEpisode, onCancelRewatch }) {
   const colors = { ...progressFallbackPalette, ...palette };
   const labels = { ...defaultLabels, ...(model?.labels || {}) };
@@ -134,13 +143,8 @@ export function ProgressBreakdown({ model, palette, status = 'ready', cancelling
           const rewatchWidth = season.rewatchPercent || 0;
           return <View key={season.number} style={[styles.season, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
             <View style={styles.seasonHeader}>
-              <Pressable accessibilityRole="button"
-                accessibilityLabel={`${labels.toggleSeason} ${season.title}`}
-                accessibilityState={{ expanded: isOpen }}
-                onPress={() => toggle(season)}
-                style={({ focused }) => [styles.chevronButton, focused && colors.focusStyle]}>
-                <Text style={[styles.chevron, { color: colors.textMuted }]}>{isOpen ? '▾' : '▸'}</Text>
-              </Pressable>
+              <DisclosureChevron open={isOpen} label={`${labels.toggleSeason} ${season.title}`}
+                palette={colors} onPress={() => toggle(season)} />
               <Pressable accessibilityRole={onOpenSeason ? 'link' : undefined}
                 onPress={() => onOpenSeason?.(season.url)}
                 style={({ focused }) => [styles.seasonTitleButton, focused && colors.focusStyle]}>

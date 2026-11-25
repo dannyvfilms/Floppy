@@ -10,6 +10,7 @@ import time
 from collections import OrderedDict, defaultdict
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import DatabaseError, OperationalError, connection
@@ -1222,6 +1223,22 @@ class TraktImporter(TraktMetadataResolverMixin):
                     # not report a successful import with missing watches.
                     msg = "Trakt history database write failed. Retry the import after background writes finish."
                     raise MediaImportError(msg) from error
+                except SoftTimeLimitExceeded:
+                    # Rate-limited Trakt API lookups can sleep long enough to
+                    # trip the task's soft time limit. Stop here rather than
+                    # losing every entry already staged - "new" mode skips
+                    # them on re-run.
+                    logger.warning(
+                        "Trakt history import for %s hit the time limit at entry %s/%s",
+                        self.username,
+                        i,
+                        total,
+                    )
+                    self.warnings.append(
+                        "Import stopped partway through because it was taking too "
+                        "long. Run the import again to pick up the remaining entries.",
+                    )
+                    break
                 except Exception as e:
                     # A single malformed/unexpected entry should not abort the whole
                     # import; record it as a warning and continue with the rest.
@@ -1590,6 +1607,22 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
+            except SoftTimeLimitExceeded:
+                # Rate-limited Trakt API lookups can sleep long enough to
+                # trip the task's soft time limit. Stop here rather than
+                # losing every entry already staged - "new" mode skips
+                # them on re-run.
+                logger.warning(
+                    "Trakt watchlist import for %s hit the time limit at entry %s/%s",
+                    self.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 msg = f"Error processing watchlist entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
@@ -1615,6 +1648,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Trakt ratings import for %s hit the time limit at entry %s/%s",
+                    self.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 msg = f"Error processing rating entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
@@ -1636,6 +1681,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Trakt notes import for %s hit the time limit at entry %s/%s",
+                    self.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 msg = f"Error processing note entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
@@ -1658,6 +1715,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             except MediaImportError:
                 # Fatal, importer-level problems (auth, etc.) must still abort.
                 raise
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Trakt comments import for %s hit the time limit at entry %s/%s",
+                    self.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 msg = f"Error processing comment entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from e
@@ -1677,6 +1746,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             import_progress.report(i, movies_total, "Trakt: collection (movies)")
             try:
                 self._process_collected_movie(entry, trakt_collection)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Trakt collection import for %s hit the time limit at movie entry %s/%s",
+                    self.username,
+                    i,
+                    movies_total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 logger.exception("Skipping Trakt collection movie entry")
                 title = entry.get("movie", {}).get("title", "Unknown title")
@@ -1692,6 +1773,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             import_progress.report(i, shows_total, "Trakt: collection (shows)")
             try:
                 self._process_collected_show(entry, trakt_collection)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Trakt collection import for %s hit the time limit at show entry %s/%s",
+                    self.username,
+                    i,
+                    shows_total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining entries.",
+                )
+                break
             except Exception as e:
                 logger.exception("Skipping Trakt collection show entry")
                 title = entry.get("show", {}).get("title", "Unknown title")
@@ -1865,7 +1958,9 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
         logger.info("Importing dropped shows for user %s", self.username)
         for section in ("progress_watched", "progress_watched_reset"):
-            endpoint = f"{self.user_base_url}/hidden/{section}"
+            # Hidden items are only exposed for the authenticated user, at
+            # /users/hidden/{section}; /users/me/hidden/{section} returns 404.
+            endpoint = f"{TRAKT_API_BASE_URL}/users/hidden/{section}"
             hidden_data = self._get_paginated_data(endpoint)
             for entry in hidden_data:
                 if entry.get("type") != "show":

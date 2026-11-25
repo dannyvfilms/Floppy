@@ -6,6 +6,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { MediaCard } from './MediaCard';
+import { Rail } from './Rail';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -316,30 +317,26 @@ function RowView({ items, groups, labels, palette, onOpenCopy, onOpenItem, onLoa
       const rows = group.items || [];
       const loaded = group.loadedCount ?? rows.length;
       const countLabel = group.total == null ? loaded : `${loaded}/${group.total}`;
+      // The shared Rail draws the heading, arrows and drag/scroll behaviour, and asks for the next
+      // page as the row nears its end, so a collection row scrolls like every Home row.
       return <View key={group.key || group.type} style={styles.rowGroup}>
-        <View style={styles.rowHeadingRow}>
-          <Text style={[styles.rowHeading, { color: palette.textSecondary }]}>
-            {group.label || group.type} · {countLabel}
-          </Text>
-          {group.hasMore || group.loadingMore ? <Button
-            label={labels.loadMore}
-            tone="surface"
-            palette={palette}
-            busy={group.loadingMore}
-            disabled={group.loadingMore}
-            onPress={() => onLoadMoreGroup?.(group)} /> : null}
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.rowScroll}>
-          {rows.map(item => <View key={item.id} style={styles.rowCard}>
-            {renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
-              ...palette,
-              card: palette.surface,
-              link: '#818cf8',
-              star: '#facc15',
-            }} labels={labels} {...cardHandlers(item, labels, onOpenCopy, onOpenItem)} />}
-          </View>)}
-        </ScrollView>
+        <Rail
+          title={group.label || group.type}
+          summaryInline={String(countLabel)}
+          items={rows}
+          itemWidth={164}
+          itemGap={12}
+          hasMore={Boolean(group.hasMore)}
+          loadingMore={Boolean(group.loadingMore)}
+          onLoadMore={onLoadMoreGroup ? () => onLoadMoreGroup(group) : undefined}
+          loadingLabel={labels.loadingMore}
+          palette={{ ...palette, arrow: palette.textSecondary }}
+          renderItem={item => (renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
+            ...palette,
+            card: palette.surface,
+            link: '#818cf8',
+            star: '#facc15',
+          }} labels={labels} {...cardHandlers(item, labels, onOpenCopy, onOpenItem)} />)} />
       </View>;
     })}
   </View>;
@@ -544,10 +541,6 @@ const styles = StyleSheet.create({
   gridItem: { width: 164 },
   rows: { gap: 18 },
   rowGroup: { gap: 8 },
-  rowHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  rowHeading: { fontSize: 14, fontWeight: '700' },
-  rowScroll: { flexDirection: 'row', gap: 12, paddingBottom: 4 },
-  rowCard: { width: 164 },
   table: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1 },
   tableHeaderText: { flex: 1, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },

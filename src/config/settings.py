@@ -47,6 +47,22 @@ RUNTIME_GUNICORN_THREADS = gunicorn_threads()
 RUNTIME_WEB_CONCURRENCY = web_concurrency()
 
 BASE_URL = config("BASE_URL", default=None)
+
+
+def prefix_base_url(url, base):
+    """Put the BASE_URL mount path in front of a site-relative URL.
+
+    urljoin("/track", "/accounts/login/") drops the base, so root-absolute
+    paths are prefixed by hand, once. Full URLs and values that already carry
+    the base are returned unchanged.
+    """
+    prefix = base.rstrip("/")
+    if urlparse(url).netloc or url == prefix or url.startswith(f"{prefix}/"):
+        return url
+    if url.startswith("/"):
+        return f"{prefix}{url}"
+    return urljoin(f"{prefix}/", url)
+
 if BASE_URL:
     FORCE_SCRIPT_NAME = BASE_URL
 
@@ -505,7 +521,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
 
-DB_HOST = config("DB_HOST", default=None)
+# Floppy (Bundled) image: its entrypoint exports these for the services it
+# starts, but a shell opened with `docker exec` does not inherit that, and would
+# silently use a new SQLite file instead of the embedded PostgreSQL. The image
+# sets FLOPPY_BUNDLED, so the same defaults apply there. An operator's own
+# DB_HOST / REDIS_URL always wins (docs/deployment-bundled.md).
+FLOPPY_BUNDLED = config("FLOPPY_BUNDLED", default=False, cast=bool)
+_BUNDLED_PG = FLOPPY_BUNDLED and not config("DB_HOST", default=None)
+DB_HOST = config("DB_HOST", default=None) or (
+    config("FLOPPY_BUNDLED_PGSOCKET", default="/run/floppy-pg") if _BUNDLED_PG else None
+)
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 
 if DB_HOST:
@@ -536,16 +561,23 @@ if DB_HOST:
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "HOST": DB_HOST,
-            "NAME": config("DB_NAME", default=secret("DB_NAME_FILE")),
-            "USER": config("DB_USER", default=secret("DB_USER_FILE")),
-            "PASSWORD": config("DB_PASSWORD", default=secret("DB_PASSWORD_FILE")),
-            "PORT": config("DB_PORT"),
+            "NAME": config(
+                "DB_NAME", default="floppy" if _BUNDLED_PG else secret("DB_NAME_FILE")
+            ),
+            "USER": config(
+                "DB_USER", default="floppy" if _BUNDLED_PG else secret("DB_USER_FILE")
+            ),
+            "PASSWORD": config(
+                "DB_PASSWORD",
+                default="" if _BUNDLED_PG else secret("DB_PASSWORD_FILE"),
+            ),
+            "PORT": config("DB_PORT", default="5432" if _BUNDLED_PG else undefined),
             "OPTIONS": db_options,
             "CONN_HEALTH_CHECKS": True,
         },
     }
 
-    sslmode = config("DB_SSL_MODE", default=None)
+    sslmode = config("DB_SSL_MODE", default="disable" if _BUNDLED_PG else None)
     if sslmode:
         DATABASES["default"]["OPTIONS"]["sslmode"] = sslmode
 
@@ -658,7 +690,10 @@ else:
 # Cache
 # https://docs.djangoproject.com/en/stable/topics/cache/
 CACHE_TIMEOUT = 86400  # 24 hours
-REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+REDIS_URL = config(
+    "REDIS_URL",
+    default="redis://127.0.0.1:6379" if FLOPPY_BUNDLED else "redis://localhost:6379",
+)
 REDIS_CACHE_URL = config("REDIS_CACHE_URL", default=None) or REDIS_URL
 REDIS_ADMIN_URL = config("REDIS_ADMIN_URL", default=None) or REDIS_CACHE_URL
 # Byte count or a redis.conf-style size ("256mb"). Unset means "derive one from
@@ -1645,20 +1680,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "retry_on_timeout": True,
     "health_check_interval": 30,
 }
-if _CELERY_PROCESS:
-    # Seconds an idle worker's BRPOP blocks before Kombu issues the next one. A
-    # task still arrives the moment it is queued (BRPOP returns as soon as a
-    # message lands); this only sets how often an idle worker re-asks. Kombu's
-    # 1 s made each worker wake 60 times a minute for nothing. Must stay below
-    # socket_timeout. Set CELERY_BROKER_POLLING_INTERVAL=1 for the old pace.
-    #
-    # Workers only. A short-lived caller such as the health check's ping leaves
-    # its last BRPOP on the reply queue blocking; at 10 s that stale read
-    # swallowed the next ping's replies, so web and shell processes keep
-    # Kombu's own pace.
-    CELERY_BROKER_TRANSPORT_OPTIONS["polling_interval"] = config(
-        "CELERY_BROKER_POLLING_INTERVAL", default=10, cast=float
-    )
 if REDIS_PREFIX:
     CELERY_BROKER_TRANSPORT_OPTIONS.update(
         {
@@ -1704,6 +1725,7 @@ else:
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
         "integrations.tasks._wetrakr_export",
+        "integrations.tasks._simkl_export",
     )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
@@ -1757,14 +1779,6 @@ CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
 if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
     CELERY_WORKER_MAX_MEMORY_PER_CHILD = None
 CELERY_BEAT_SYNC_EVERY = 10
-# Longest Beat sleeps between looks at the schedule. Beat still wakes exactly
-# when an entry is due; this only bounds how late it notices a schedule
-# changed in the database (a new import schedule starts up to a minute later).
-# django-celery-beat's 5 s woke Beat 12 times a minute to re-read the table.
-# Set CELERY_BEAT_MAX_LOOP_INTERVAL=5 for the old pace.
-CELERY_BEAT_MAX_LOOP_INTERVAL = config(
-    "CELERY_BEAT_MAX_LOOP_INTERVAL", default=60, cast=float
-)
 
 CELERY_TASK_TRACK_STARTED = True
 # A wedged task holds its worker for the whole limit, and with concurrency 1
@@ -2126,6 +2140,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Sweep pending watched state deliveries",
         "schedule": 60,
     },
+    # The start-up warm is not enough on a host whose other workloads churn the
+    # OS page cache: the database file drops out and a Home row or game page then
+    # costs seconds of random reads (the stall in a 16 s game detail request).
+    # Re-reading what is already cached is cheap, and touching it again keeps it
+    # in the active list so streaming I/O from other containers does not evict it.
+    "warm_database_page_cache": {
+        "task": "Warm database page cache",
+        "schedule": 60 * 10,
+        "options": {"expire_seconds": 60 * 10},
+    },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,
@@ -2154,10 +2178,6 @@ CELERY_BEAT_SCHEDULE = {
     "optimize_database_statistics": {
         "task": "Optimize database planner statistics",
         "schedule": 60 * 60 * 24,
-    },
-    "warm_database_page_cache": {
-        "task": "Warm database page cache",
-        "schedule": 60 * 60,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
@@ -2321,8 +2341,7 @@ SOCIALACCOUNT_FORMS = {
 
 if BASE_URL:
     # Join base only if relative URL
-    if not urlparse(ACCOUNT_LOGOUT_REDIRECT_URL).netloc:
-        ACCOUNT_LOGOUT_REDIRECT_URL = urljoin(BASE_URL, ACCOUNT_LOGOUT_REDIRECT_URL)
+    ACCOUNT_LOGOUT_REDIRECT_URL = prefix_base_url(ACCOUNT_LOGOUT_REDIRECT_URL, BASE_URL)
     # Cookie paths must match FORCE_SCRIPT_NAME exactly to ensure browsers
     # send session cookies with all requests under the base URL prefix
     SESSION_COOKIE_PATH = BASE_URL

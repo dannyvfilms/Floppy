@@ -1140,12 +1140,32 @@ class MDBListAccount(models.Model):
 
 
 class JellyfinAccount(models.Model):
-    """Store Jellyfin connection settings and push-sync state for a user."""
+    """Store Jellyfin connection settings and push-sync state for one server.
 
-    user = models.OneToOneField(
+    A user may connect several Jellyfin servers, so this is a ForeignKey. Every
+    pull, push, health check, schedule and cursor is scoped to one row.
+    """
+
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="jellyfin_account",
+        related_name="jellyfin_accounts",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to tell servers apart, e.g. 'Living room'",
+    )
+    identity_scope = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Prefix for this connection's Playback Reporting row identities. "
+            "Empty for the first connection, whose rows predate scoping; set "
+            "for later ones so equal rowids on two servers never collide."
+        ),
     )
     base_url = models.URLField(help_text="Jellyfin server URL")
     api_key = models.TextField(help_text="Encrypted Jellyfin API key")
@@ -1205,10 +1225,22 @@ class JellyfinAccount(models.Model):
 
         verbose_name = "Jellyfin account"
         verbose_name_plural = "Jellyfin accounts"
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url", "jellyfin_user_id"],
+                name="integrations_jellyfinaccount_unique_user_server_profile",
+            ),
+        ]
 
     def __str__(self):
         """Readable representation."""
-        return f"JellyfinAccount({self.user.username})"
+        return f"JellyfinAccount({self.user.username}, {self.display_name})"
+
+    @property
+    def display_name(self):
+        """Return the label, falling back to the server address."""
+        return self.name or self.base_url or "Jellyfin"
 
     @property
     def is_connected(self):
@@ -1274,6 +1306,66 @@ class CollectionSourceState(models.Model):
     def __str__(self):
         """Return a readable label for this collection source state."""
         return f"{self.user}"
+
+
+class SourcePage(models.Model):
+    """Where a title lives in one of a user's servers, for the detail links menu.
+
+    Radarr/Sonarr imports record every title they manage, downloaded or not,
+    and the Jellyfin webhook records the items it reports. Keyed by provider
+    id rather than by Item, so a title Floppy has never stored still links.
+    ``path`` is relative to the server address, which is read when the link
+    is built, so changing that address does not leave stale links.
+    """
+
+    SOURCE_CHOICES = [
+        ("radarr", "Radarr"),
+        ("sonarr", "Sonarr"),
+        ("jellyfin", "Jellyfin"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="source_pages",
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    source_instance_id = models.PositiveIntegerField(
+        default=0,
+        help_text="PK of the Radarr/Sonarr instance; 0 for single-account sources",
+    )
+    provider = models.CharField(max_length=20, help_text="e.g. 'tmdb' or 'tvdb'")
+    media_type = models.CharField(max_length=20, help_text="'movie' or 'tv'")
+    media_id = models.CharField(max_length=50)
+    path = models.CharField(
+        max_length=255,
+        help_text="The title's page relative to the server, e.g. 'series/ted-lasso'",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "source",
+                    "source_instance_id",
+                    "provider",
+                    "media_type",
+                    "media_id",
+                ],
+                name="integrations_sourcepage_unique_title",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "provider", "media_type", "media_id"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this page."""
+        return f"{self.source}:{self.provider}/{self.media_id}"
 
 
 class StorytellerAccount(models.Model):
@@ -2052,6 +2144,7 @@ class SyncClientKind(models.TextChoices):
     GENERIC = "generic", "Generic client"
     TMDB = "tmdb", "TMDb"
     WETRAKR = "wetrakr", "WeTrakr"
+    SIMKL = "simkl", "SIMKL"
 
 
 class SyncDirection(models.TextChoices):
@@ -2670,23 +2763,19 @@ class TMDbAccount(models.Model):
         return f"TMDbAccount({self.username})"
 
 
-class WeTrakrAccount(models.Model):
-    """A WeTrakr login made with the user's own application key.
+class DeviceLoginAccount(models.Model):
+    """A login made with a device code, for a service Floppy sends state to.
 
     The tokens are only valid for the application key they were issued to, so
     the key is kept alongside them: changing the key in Settings must not break
     a connection that is already working. A connection starts as a pending
-    device-flow approval (``device_code`` set) and becomes usable once WeTrakr
-    returns tokens.
+    device-flow approval (``device_code`` set) and becomes usable once the
+    service returns tokens. Each destination adds its own ``user`` link and
+    anything particular to that service.
     """
 
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="wetrakr_account",
-    )
-    # Names this connection's binding. WeTrakr is not asked who the user is, so
-    # a reconnect mints a new one and the old binding is stopped.
+    # Names this connection's binding. A reconnect mints a new one and the old
+    # binding is stopped.
     profile_key = models.CharField(max_length=64)
     client_id = models.CharField(max_length=255)
     username = models.CharField(max_length=255, blank=True, default="")
@@ -2708,19 +2797,54 @@ class WeTrakrAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        """Model options."""
+
+        abstract = True
+
     def __str__(self):
         """Readable identity without exposing a credential."""
-        return f"WeTrakrAccount({self.user_id})"
+        return f"{type(self).__name__}({self.user_id})"
 
     @property
     def is_connected(self):
-        """Return whether tokens exist and WeTrakr has not rejected them."""
+        """Return whether tokens exist and the service has not rejected them."""
         return bool(self.refresh_token and not self.connection_broken)
 
     @property
     def is_pending(self):
         """Return whether a device-flow approval is waiting on the user."""
         return bool(self.device_code and not self.refresh_token)
+
+
+class WeTrakrAccount(DeviceLoginAccount):
+    """A WeTrakr login made with the user's own application key."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wetrakr_account",
+    )
+
+
+class SimklAccount(DeviceLoginAccount):
+    """A SIMKL login that lets Floppy send plays to the user's SIMKL history.
+
+    This is separate from the import connection, which only reads. A device
+    login asks for ``media:read media:write`` and needs no client secret.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="simkl_account",
+    )
+    # The scope SIMKL actually granted. An unrecognised scope is quietly
+    # downgraded to read-only, so this is checked before anything is sent.
+    scope = models.CharField(max_length=255, blank=True, default="")
+    # SIMKL has no "no date". When on, a play without a date is sent with its
+    # "I don't remember" date instead of being left out.
+    send_undated = models.BooleanField(default=False)
 
 
 class EmbyAccount(models.Model):

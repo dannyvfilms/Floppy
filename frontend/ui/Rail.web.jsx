@@ -131,8 +131,96 @@ function useRailWebBehavior(ref) {
   }, [ref]);
 }
 
+// Native mounts the cards near the window and expo-image caches them, so a fast flick lands on
+// artwork that is already there. The browser's own lazy loading only starts a poster when it is
+// about to scroll into view, which a fast scroll outruns. So once a row is near the screen, its
+// next few screens of posters start loading in order. This waits until every poster on screen has
+// loaded first: image loading is first-come, and an early request must never queue ahead of a
+// cover a person is waiting for (the first screen measured 1.5 to 2 seconds slower without it).
+const WARM_MARGIN = '1200px 0px';
+const WARM_SCREENS = 3;
+const WARM_LIMIT = 24;
+const WARM_POLL_MS = 250;
+const WARM_SCROLL_DELAY_MS = 120;
+
+const waiting = new Set();
+let pollTimer = null;
+
+function screenSettled() {
+  const images = document.querySelectorAll('img.media-card-poster');
+  for (let index = 0; index < images.length; index += 1) {
+    const image = images[index];
+    if (image.complete) continue;
+    const box = image.getBoundingClientRect();
+    if (box.width > 20 && box.bottom > 0 && box.top < window.innerHeight && box.right > 0 && box.left < window.innerWidth) return false;
+  }
+  return true;
+}
+
+function warmRow(node) {
+  const row = node.getBoundingClientRect();
+  const reach = row.left + node.clientWidth * (1 + WARM_SCREENS);
+  const from = row.left - node.clientWidth;
+  let started = 0;
+  node.querySelectorAll('img[loading="lazy"]').forEach(image => {
+    if (started >= WARM_LIMIT) return;
+    const box = image.getBoundingClientRect();
+    if (box.left > reach || box.right < from) return;
+    started += 1;
+    image.loading = 'eager';
+  });
+}
+
+function flushWarmups() {
+  pollTimer = null;
+  if (!waiting.size) return;
+  if (!screenSettled()) {
+    pollTimer = setTimeout(flushWarmups, WARM_POLL_MS);
+    return;
+  }
+  const nodes = [...waiting];
+  waiting.clear();
+  nodes.forEach(node => { if (node.isConnected) warmRow(node); });
+}
+
+function requestWarmup(node) {
+  waiting.add(node);
+  if (!pollTimer) pollTimer = setTimeout(flushWarmups, 0);
+}
+
+function useArtworkWarmup(ref, count) {
+  const near = useRef(false);
+  useEffect(() => {
+    const node = scrollNode(ref);
+    if (!node || typeof IntersectionObserver === 'undefined') return undefined;
+    let scrollTimer = null;
+    const observer = new IntersectionObserver(entries => {
+      near.current = entries.some(entry => entry.isIntersecting);
+      if (near.current) requestWarmup(node);
+    }, { rootMargin: WARM_MARGIN });
+    observer.observe(node);
+    const onScroll = () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => { if (near.current) requestWarmup(node); }, WARM_SCROLL_DELAY_MS);
+    };
+    node.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      node.removeEventListener('scroll', onScroll);
+      clearTimeout(scrollTimer);
+      waiting.delete(node);
+    };
+  }, [ref]);
+  // Cards added by load-more are warmed too once the row is already near.
+  useEffect(() => {
+    const node = scrollNode(ref);
+    if (node && near.current) requestWarmup(node);
+  }, [ref, count]);
+}
+
 export function Rail(props) {
   const scrollRef = useRef(null);
   useRailWebBehavior(scrollRef);
+  useArtworkWarmup(scrollRef, props.items?.length || 0);
   return <SharedRail {...props} scrollRef={scrollRef} />;
 }

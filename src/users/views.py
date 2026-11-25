@@ -67,6 +67,7 @@ from app.models import (
     Tag,
 )
 from app.providers import credentials, tmdb
+from app.signals import bulk_media_delete
 from app.templatetags import app_tags
 from config import run_state
 from integrations import (
@@ -2200,7 +2201,7 @@ def integrations_context(
             option["value"] for option in plex_library_options
         ]
 
-    jellyfin_account = getattr(user, "jellyfin_account", None)
+    jellyfin_accounts = list(user.jellyfin_accounts.order_by("id"))
     jellyfin_playback_reporting_import = (
         ImportRun.objects.filter(
             user=user,
@@ -2270,7 +2271,8 @@ def integrations_context(
         "match_saved_references": match_saved_references,
         "plex_share_recipients": plex_share_recipients,
         "plex_connected": bool(plex_account and plex_account.plex_token),
-        "jellyfin_account": jellyfin_account,
+        "jellyfin_accounts": jellyfin_accounts,
+        "jellyfin_any_connected": any(row.is_connected for row in jellyfin_accounts),
         "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
         "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
         "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
@@ -2655,6 +2657,12 @@ def import_data_activity(request):
         "import_runs": import_runs,
         "import_source_media": source_media,
         "provider_navigation": bool(sources),
+        # Delete all / Undo return here, not to the all-providers page.
+        "return_url": (
+            reverse("provider_detail", args=[source]) + "?tab=activity"
+            if sources
+            else ""
+        ),
     }
     response = render(request, "users/components/import_activity.html", context)
     if not is_active:
@@ -2927,6 +2935,7 @@ def _outbound_state(account):
 
 def mal_export_context(request, slug=None):
     """Return existing outbound settings, scoped to a provider when requested."""
+    from integrations.simkl_views import simkl_status
     from integrations.tmdb_views import rating_sync_status
     from integrations.wetrakr_views import wetrakr_status
 
@@ -2991,12 +3000,23 @@ def mal_export_context(request, slug=None):
                 "body": "users/components/wetrakr_sync.html",
             }
         )
+    if slug in (None, "simkl"):
+        simkl_sync = simkl_status(user)
+        context["simkl_sync"] = simkl_sync
+        context["outbound_services"].append(
+            {
+                "slug": "simkl",
+                "description": gettext("Plays"),
+                "state": _outbound_state(simkl_sync["account"]),
+                "body": "users/components/simkl_sync.html",
+            }
+        )
     return context
 
 
 @require_GET
 def mal_export(request):
-    """Render the Sync to Trackers page: MyAnimeList, TMDb and WeTrakr."""
+    """Render the Sync to Trackers page: MyAnimeList, TMDb, WeTrakr and SIMKL."""
     return render(request, "users/mal_export.html", mal_export_context(request))
 
 
@@ -3593,13 +3613,22 @@ def bulk_delete_by_import_source(request, media_type, source):
         else None
     )
 
-    deleted_count, _ = doomed.delete()
+    item_ids = list(doomed.values_list("item_id", flat=True))
+    with bulk_media_delete(request.user, media_type, item_ids):
+        deleted_count, _ = doomed.delete()
 
     if music_catalog_ids is not None:
         deleted_count += _sweep_untracked_music_containers(
             request.user,
             *music_catalog_ids,
         )
+
+    # A finished run with no rows left has nothing to undo; do not offer it.
+    if not _import_source_media_summary(request.user, sources={source}):
+        ImportRun.objects.filter(user=request.user, source=source).exclude(
+            status=ImportRun.Status.RUNNING,
+        ).delete()
+    cache.delete(f"import_source_media:{request.user.pk}")
 
     if deleted_count:
         messages.success(request, f"Permanently deleted {deleted_count} item(s).")

@@ -72,11 +72,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -92,11 +92,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -112,11 +112,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -132,11 +132,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+          "evidence": "expo/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
         }
       }
     },
@@ -641,6 +641,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Android runtime has not been exercised."
+        }
+      }
+    },
+    "frontend/ui/Title.jsx": {
+      "components": [
+        "Title"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; the web dialogs that now mount it (Dialog, history, people, bulk, tags, forms) were not re-rendered in Chromium for this change."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone Duo and iPhone 16 simulators rendered the presentation sheet title and an on-device old-versus-new comparison of every migrated title through Title (comparison route not kept). The dialog consumers were not opened one by one."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
         }
       }
     },
@@ -1303,6 +1323,66 @@
         }
       }
     },
+    "frontend/ui/TrackCalendar.jsx": {
+      "components": [
+        "TrackCalendar"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at 375 px phone width inside the Track modal's General tab through TrackForm groupedContent; throwaway database and test login. Calendar opens and the date picks."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Seen on the iPhone Duo simulator inside the Tracking sheet; spacing compared with an iOS Calendar reference. No device pass for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/TrackDateRow.jsx": {
+      "components": [
+        "TrackDateRow"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered in Chromium at 375 px phone width inside the Track modal's General tab through TrackForm groupedContent; throwaway database and test login. Calendar opens and the date picks."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; not yet seen on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Tracking sheets; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/TrackTabsGrouped.jsx": {
+      "components": [
+        "GroupedTabBody"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered on web: the browser keeps the TrackFormTabs bodies because grouped is native only. Structural: the shared UI bundle builds with the import."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the Media Details and card Tracking sheets; no runtime pass yet."
+        }
+      }
+    },
     "frontend/ui/TrackFormTabs.jsx": {
       "components": [
         "TrackTabs"
@@ -1705,16 +1785,16 @@
       "register": "INTEGRATION-PANELS",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the existing server-rendered library_panel, seerr_request and seerr_status templates keep the browser path and progressive fallback."
+          "status": "verified",
+          "evidence": "Built-in browser and Chrome (Playwright) against local Radarr/Sonarr/Seerr stubs: ArrLibraryPanels mounts in the track modal Collection tab through mountIntegrationPanels; movie, show and not-in-Radarr states compared with the server fallback in dark and light at 1100px and 390px (heights within 1px); Open in Radarr/Sonarr/Seerr anchors open in a new tab; Search now posts and the swapped panel remounts. SeerrRequestDialog and SeerrStatusBadge are still not mounted on the web (seerr_request.html and seerr_status.html remain server-rendered)."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no simulator run, request interaction, copy feedback or VoiceOver pass."
+          "evidence": "No native screen imports these components yet and there is no API endpoint for the panel data; the shared file compiles in the UI build only. No simulator run, VoiceOver or link-opening pass."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no emulator run, request interaction, copy feedback or TalkBack pass."
+          "evidence": "No native screen imports these components yet and there is no API endpoint for the panel data; the shared file compiles in the UI build only. No emulator run, TalkBack or link-opening pass."
         }
       }
     },
@@ -2030,12 +2110,12 @@
       "register": "PLAYBACK",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "PlaybackCard uses the standard MediaCard indigo fill for playing and paused/stale progress states; browser runtime verification remains pending."
+          "status": "verified",
+          "evidence": "Now Playing mounts the grid MediaCard, RailTitle and IconButton; before/after rendered in Chromium (manual and session check-ins)."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "The earlier Now Playing layout was checked on Device Hub iPhone Duo (iOS 27.2); the latest playing and paused/stale color change has not been verified in a reloaded bundle."
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
         },
         "android": {
           "status": "unverified",
@@ -3815,10 +3895,151 @@
           "evidence": "Shared Collection and calendar row; runtime verification pending."
         }
       }
+    },
+    "frontend/ui/IconButton.jsx": {
+      "components": [
+        "IconButton"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing Pause, Stop and Cancel buttons in Chromium beside the previous controls."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
+    "frontend/ui/RailTitle.jsx": {
+      "components": [
+        "RailTitle"
+      ],
+      "register": "RAILS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered as the Now Playing heading in Chromium at the Home row heading size; Rail draws its row titles with it."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on the iPhone 16 simulator rendered the Now Playing card with the new heading and IconButton (manual and session check-ins) using fixture data; actions were not tapped."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared react-native component; no Android runtime pass."
+        }
+      }
+    },
+    "frontend/pages/ProgressPageView.jsx": {
+      "components": [
+        "ProgressPageView"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
+    },
+    "frontend/ui/ProgressShowCard.jsx": {
+      "components": [
+        "ProgressShowCard"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chrome at 1440x900 and 390x844 on a seeded local library: heading count, Status and Sort toolbar; wide row with a 110 pt 2:3 poster and a horizontal media-card episode of equal height; phone layout with the horizontal card alone, bottom progress bar and a tap opening the progress dialog. Screens inspected."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Real shared components in Expo Go on an iPhone 16 Pro simulator with API payloads captured from the local server (preview route, since removed): phone layout inspected. The wide row, signed-in transport, card tap and dialog were not run on device."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Same preview on an Android emulator in Expo Go with the app's light theme and page background: heading, toolbar and the card title, subtitle and progress bar are readable (the card text stays light on its dark scrim in every theme). The wide row, card tap and dialog were not run there."
+        }
+      }
+    },
+    "frontend/ui/trackDatePanels.jsx": {
+      "components": [
+        "TrackTimeSteppers"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Time steppers not opened in this pass: the test game has no time tracking. Date rows themselves render in Chromium."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "iOS uses system wheels (TrackDatePanels.ios.jsx); this fallback is not used there."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass."
+        }
+      }
+    },
+    "frontend/ui/ListPeople.jsx": {
+      "components": [
+        "ListPeople"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted on the Django list page through the people island adapter (mountPeople.jsx, kind listPeople) with the server markup as fallback; checked in the browser, see the review artifact."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo Go on an iPhone 16 simulator loaded the app and Metro bundled the new screens, but the app was signed out and the person and list pages with saved people were not reached. Structural only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run on an emulator."
+        }
+      }
     }
   },
   "legacy": {},
   "logic": {
+    "frontend/settings/statusTones.js": {
+      "components": [
+        "isLightTheme",
+        "toneText"
+      ],
+      "register": "SETTINGS-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Built-in browser with the light colour scheme emulated at 430px: Jellyfin Connection tab chips read dark green on a pale green fill, Edit and Disconnect share one row."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iPhone 16 simulator, Expo Go: Jellyfin Overview and Connection tabs in light mode (dark amber, indigo and green chip text, white bordered Edit beside Disconnect) and Connection in dark mode (pale chip text, unchanged). Native theme colours are dynamic objects, so the app colour scheme decides there."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified; the Android emulator hung in this session. Same shared logic as iOS."
+        }
+      }
+    },
     "frontend/ui/actionIcons.js": {
       "components": [
         "actionIcons"
@@ -3878,6 +4099,27 @@
         "android": {
           "status": "verified",
           "evidence": "Imported by the date-time field rendered on the Android Calendar screen; no picker interaction or timezone pass."
+        }
+      }
+    },
+    "frontend/ui/trackDuration.js": {
+      "components": [
+        "parseTrackDurationMinutes",
+        "formatTrackDuration"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure parse and format functions; the parser moved unchanged from TrackDialog, which still re-exports it. No browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export; the hrs and min display has not been seen on a device yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export; no runtime pass."
         }
       }
     },
@@ -4080,6 +4322,27 @@
         "android": {
           "status": "unverified",
           "evidence": "Shared-state unit tests pass; Android filter interaction remains unverified."
+        }
+      }
+    },
+    "frontend/ui/separatorColor.js": {
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Returns no colour; web keeps its divider. No browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "The native variant supplies the system separator colour; seen on the iPhone Duo simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Returns no colour; the grouped dividers use the literal fallback. No runtime pass."
         }
       }
     },
@@ -4308,11 +4571,124 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Pure JavaScript with no platform API, moved from native-proof/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
+          "evidence": "Pure JavaScript with no platform API, moved from expo/app/data (which re-exports it unchanged); native transport tests pass. Not run on a simulator or device in this change."
         },
         "android": {
           "status": "unverified",
           "evidence": "Pure JavaScript with no platform API; native transport tests pass. Not run on an emulator or device in this change."
+        }
+      }
+    },
+    "frontend/ui/cardModels.js": {
+      "components": [
+        "highlightCardModel",
+        "personCardModel",
+        "creditCardModel",
+        "dlcCardModel",
+        "relatedCardModel",
+        "rankedRowModel",
+        "musicAlbumCardModel",
+        "musicRelationCardModel",
+        "musicTrackRowModel",
+        "podcastEpisodeRowModel"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure adapters from other data to the media card model. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenu.js": {
+      "components": [
+        "buildCardMenu",
+        "menuActionLabel",
+        "CARD_STATUSES"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure builder of the card's press-and-hold menu items. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/ui/cardMenuHost.js": {
+      "components": [
+        "setCardMenu",
+        "getCardMenu"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Browser bundle builds; browser runtime pass pending for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. iOS simulator pass pending for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Installs the platform press-and-hold menu for the shared card. Android runtime not exercised."
+        }
+      }
+    },
+    "frontend/pages/useProgressPage.js": {
+      "components": [
+        "useProgressPage",
+        "progressSorts"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Loading and view state imported by the web adapter; no browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Imported by the native Progress screen; no runtime exercised."
+        }
+      }
+    },
+    "frontend/providers/mediaTagFit.js": {
+      "components": [
+        "visibleTagCount"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Pure function; scripts/mediaTagFit.test.mjs covers fit, the +N reservation, and the unmeasured case."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Rendered in the Expo app (Expo Go, iPhone 16 Pro simulator) against a local server: the Jellyfin provider header shows Movies, TV Shows and a +2 chip on one line. The merge-base (before) frame was not captured."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run on an Android emulator."
         }
       }
     }
@@ -5382,6 +5758,52 @@
         }
       }
     },
+    "frontend/ui/separatorColor.web.js": {
+      "kind": "adapter",
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Web has no system list separator colour, so grouped-list dividers keep the web divider.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Returns no colour; no browser pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not used on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not used on Android."
+        }
+      }
+    },
+    "frontend/ui/separatorColor.native.js": {
+      "kind": "adapter",
+      "components": [
+        "systemSeparatorColor",
+        "systemFillColor"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "The iOS system separator colour for grouped-list dividers.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not used on web."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "PlatformColor('separator') on the iPhone Duo simulator; light appearance only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Returns no colour on Android; the literal fallback applies."
+        }
+      }
+    },
     "frontend/ui/Modal.native.jsx": {
       "kind": "presentation",
       "components": [
@@ -5660,7 +6082,7 @@
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
-      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail, and warm the next screens of posters once the on-screen ones have loaded."
     },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",
@@ -5945,15 +6367,35 @@
     },
     "frontend/ui/homeRowWatcher.web.js": {
       "register": "HOME",
-      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: native-proof/app/data/homeRowWatcherCore.js."
+      "purpose": "Browser adapter that reports where each waiting Home row sits (on screen, within one and a half screens, or further) with IntersectionObserver, so shared HomeShelves requests only rows near the viewport. Native counterpart: expo/app/data/homeRowWatcherCore.js."
     },
     "frontend/ui/rootStyle.web.js": {
       "register": "TOKENS",
       "purpose": "Browser adapter that reads the theme's CSS variables on <html> for the web palette readers (every mount adapter and *Theme.web file). One getComputedStyle snapshot per task, dropped when <html> attributes, <head> stylesheets or the colour scheme change, so islands mounting together do not each force a full-page style recalculation. Web-only: native palettes are JavaScript tokens and never read computed styles."
     },
+    "frontend/ui/basePath.web.js": {
+      "register": "HOME",
+      "purpose": "Web-only helper that prefixes root-absolute API paths with the BASE_URL mount path published in base.html's floppy-base-path meta tag, so web adapters keep working behind a path prefix. Web-only because native owns its server address in authTransportCore.js."
+    },
     "frontend/ui/webRequest.web.js": {
       "register": "HOME",
       "purpose": "Web-only request for adapters that drive a shared transport core: same-origin JSON over Django's cookie session with the CSRF token on unsafe methods, query encoding identical to the native transport, errors carrying the HTTP status, optional AbortSignal pass-through, in-flight sharing of identical GETs (no cache, no retry) and an optional onTiming hook. Web-only because the browser signs in with the session cookie; native supplies its own request from authTransportCore.js."
+    },
+    "frontend/ui/mountIntegrationPanels.jsx": {
+      "register": "INTEGRATION-PANELS",
+      "purpose": "Mount the shared ArrLibraryPanels over the server-rendered track modal library panel: resolve theme tokens, render Open in Radarr/Sonarr/Seerr as real anchors, copy paths through the browser clipboard adapter and send Search now through the existing HTMX POST that swaps the panel; the server markup stays the fallback."
+    },
+    "frontend/ui/sidebarPins.web.js": {
+      "register": "MEDIA-CARD",
+      "purpose": "Browser transport for the account's sidebar pins, used by the list card's Pin to sidebar button. Expo has no sidebar to pin to."
+    },
+    "frontend/ui/mountDetailSidebarCard.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter that renders the shared Details, Streaming, Genres and Studios cards (and the grouped section headings for Your History and Collection) from the page's server-projected data, replacing the server-rendered card in place. The Django wrapper keeps layout ordering, permissions and the no-JS fallback; the adapter mirrors the legacy carousel rule that hides promoted facts and genres."
+    },
+    "frontend/ui/mountProgressPage.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount ProgressPageView on /progress over the Django heading, loading the list and season breakdowns from same-origin /api/v1 and opening shows by their detail URL."
     }
   }
 }

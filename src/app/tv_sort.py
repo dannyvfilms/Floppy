@@ -75,6 +75,8 @@ class TimeLeftRecord:
     time_left_display: str | None = None
     episodes_left_display: int = 0
     effective_max: int | None = None
+    # Minutes left, where the order worked it out (None for a caught-up show).
+    minutes_left: int | None = None
 
     @property
     def show_key(self):
@@ -396,7 +398,8 @@ def sort_time_left_records(records, direction="asc"):
       4) Dropped, by least time left first
       5) Everything else (nothing released, unknown, untracked), input order
 
-    ``desc`` is the exact reverse of that list.
+    ``desc`` reverses groups 1 to 4. Group 5 stays last in both
+    directions, as an unknown value does in every other order.
     """
     group_active = []
     group_inprog_zero = []
@@ -447,6 +450,7 @@ def sort_time_left_records(records, direction="asc"):
     for record, (episodes_left, progress, breakdown) in group_active:
         total = runtime_totals.minutes_left(record, episodes_left, breakdown, progress)
         record.episodes_left_display = episodes_left
+        record.minutes_left = total
         record.time_left_display = (
             helpers.minutes_to_hm(total) if total > 0 else f"{episodes_left} ep"
         )
@@ -500,7 +504,6 @@ def sort_time_left_records(records, direction="asc"):
         + group_inprog_zero_sorted
         + group_completed_sorted
         + group_dropped_sorted
-        + group_tail
     )
     logger.debug(
         "time_left groups -> active: %d, caught up: %d, completed: %d, "
@@ -514,7 +517,7 @@ def sort_time_left_records(records, direction="asc"):
 
     if direction == "desc":
         sorted_records.reverse()
-    return sorted_records
+    return sorted_records + group_tail
 
 
 def _sort_tv_media_by_time_left(media_list, direction="asc"):

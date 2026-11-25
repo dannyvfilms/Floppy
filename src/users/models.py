@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -8,7 +9,7 @@ from celery import states
 from celery.result import AsyncResult
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as DjangoUserManager
-from django.db import models
+from django.db import OperationalError, models
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
@@ -16,9 +17,12 @@ from django.utils.translation import gettext_lazy as _
 from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
+from app import db_retry
 from app.models import Item, MediaTypes, Sources, Status
 from integrations import import_progress
 from users import currency, helpers
+
+logger = logging.getLogger(__name__)
 
 # Longest playback webhook secret accepted on input. The column itself is
 # unbounded because it holds ciphertext, so the cap has to be enforced where
@@ -1756,6 +1760,31 @@ class User(AbstractUser):
             ),
         ]
 
+    def _save_preference(self, field_name):
+        """Save one preference; on a page load, after the response is sent.
+
+        The page already renders from the in-memory value, so nobody waits for
+        SQLite's writer. If the writer is still busy afterwards the choice is
+        not remembered and a warning is logged.
+        """
+        if not db_retry.in_read_request():
+            self.save(update_fields=[field_name])
+            return
+        value = getattr(self, field_name)
+
+        def save_later():
+            try:
+                setattr(self, field_name, value)
+                self.save(update_fields=[field_name])
+            except OperationalError as error:
+                if not db_retry.is_lock_error(error):
+                    raise
+                logger.warning(
+                    "preference_save_dropped field=%s error=%s", field_name, error
+                )
+
+        db_retry.after_response(save_later)
+
     def update_preference(self, field_name, new_value):
         """
         Update user preference if the new value is valid and different from current.
@@ -1785,7 +1814,7 @@ class User(AbstractUser):
             current_value = getattr(self, field_name)
             if new_value != current_value:
                 setattr(self, field_name, new_value)
-                self.save(update_fields=[field_name])
+                self._save_preference(field_name)
             return new_value
 
         field = self._meta.get_field(field_name)
@@ -1804,7 +1833,7 @@ class User(AbstractUser):
         # Update if different
         if new_value != current_value:
             setattr(self, field_name, new_value)
-            self.save(update_fields=[field_name])
+            self._save_preference(field_name)
 
         return new_value
 

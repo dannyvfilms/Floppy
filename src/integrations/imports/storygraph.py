@@ -14,6 +14,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import NamedTuple
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.conf import settings
 from django.utils import timezone
@@ -488,6 +489,18 @@ class StoryGraphImporter:
                 title = (row.get("Title") or "").strip() or str(row)
                 self.warnings.append(f"Error processing entry: {title} - {error}")
                 continue
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "StoryGraph import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining books.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error

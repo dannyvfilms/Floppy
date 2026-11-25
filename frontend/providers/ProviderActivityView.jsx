@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { ActivityList } from '../ui/controls/ActivityList';
 import { Button } from '../ui/Button';
 import { Chip } from '../settings/Chip';
@@ -9,6 +9,7 @@ import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
 import { TextField } from '../ui/TextField';
 import { Icon } from '../ui/Icon';
+import { isLightTheme, toneText } from '../settings/statusTones';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -94,10 +95,10 @@ function resolveLabels(defaults, model, labels, t) {
 }
 
 function chipPalette(colors, tone) {
-  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
-  if (tone === 'danger') return { ...colors, badgeBorder: colors.danger, badgeBackground: 'rgba(239, 68, 68, 0.15)', badgeText: '#fecaca' };
-  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
-  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
+  if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: toneText(colors, 'success') };
+  if (tone === 'danger') return { ...colors, badgeBorder: colors.danger, badgeBackground: 'rgba(239, 68, 68, 0.15)', badgeText: toneText(colors, 'danger') };
+  if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: toneText(colors, 'warning') };
+  if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: toneText(colors, 'info') };
   return colors;
 }
 
@@ -212,7 +213,8 @@ export function ProviderActivityView({
   headingLevel,
   icons = {},
 }) {
-  const colors = { ...DEFAULT_PALETTE, ...palette };
+  const light = isLightTheme(palette, useColorScheme());
+  const colors = { ...DEFAULT_PALETTE, ...palette, isLight: light };
   const buttons = { ...DEFAULT_BUTTON_PALETTE, ...buttonPalette };
   const copy = resolveLabels(DEFAULT_LABELS, model, labels, t);
   const [data, setData] = useState(initialData);

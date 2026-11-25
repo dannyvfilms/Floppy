@@ -11,8 +11,8 @@ from urllib.parse import urlsplit
 
 from django.core.cache import cache
 
-# The native app's registered URL scheme (native-proof/app.json "scheme").
-NATIVE_APP_SCHEME = "floppy-native-proof"
+# The native app's registered URL scheme (expo/app.json "scheme").
+NATIVE_APP_SCHEME = "floppy-expo"
 STATE_TTL_SECONDS = 15 * 60
 
 

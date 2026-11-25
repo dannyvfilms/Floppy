@@ -1,4 +1,4 @@
 {
   "compilerOptions": {},
-  "extends": "./native-proof/tsconfig.json"
+  "extends": "./expo/tsconfig.json"
 }

@@ -79,7 +79,7 @@ why the platforms differ (for example "native mounts only nearby cards; web alre
 lazy-loads images"). A reader who is asked or challenged later should find the reason
 next to the code, not only in a PR. Also list the carve-out in the register entry.
 
-- Before editing, trace which component each surface (web adapter, `native-proof/`,
+- Before editing, trace which component each surface (web adapter, `expo/`,
   and any platform-specific file) actually imports. Do not assume a shared component is
   active everywhere. `npm run check:page-parity` shows the registry state.
 - Platform-specific appearance is fine. Platform-specific feature loss is not, unless
@@ -96,6 +96,10 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
   Open the images, fix regressions and recapture as needed. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
+- A review artifact for a user-facing change includes at least one Expo simulator frame
+  (iOS Simulator or Android emulator, whichever is available) showing the real feature, next to
+  the web shots; web-only shots are an incomplete artifact. If no simulator can be loaded,
+  record the blocker and attempts.
 - Provide the user a review artifact for every user-facing change: a clearly labeled
   before/after comparison that shows the affected state and is linked or displayed in
   the completion message (and in the PR description when preparing a PR). A script,
@@ -467,6 +471,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/integrations/nuvio-client-guide.md`: what a third-party tracking client implements, with `api.tests.test_nuvio_conformance` as its runnable half.
 - `docs/integrations/flexget.md`: how a download tool (FlexGet's `floppy_list`, or `curl`) reads lists and reports owned media by provider id, with `api.tests.test_fork_media_collection` as its runnable half.
 - `docs/integrations/wetrakr.md`: sending plays, statuses and ratings out to WeTrakr — what is verified, what is only transcribed from its docs, and how to check it against a real account.
+- `docs/integrations/simkl.md`: sending plays out to SIMKL, and which pieces are shared with WeTrakr so the next destination is a description plus an adapter.
 - `docs/integrations/recommendations-api.md`: the recommendations endpoint for media-server plugins, with `api.tests.test_fork_discover.RecommendationsTests` as its runnable half.
 
 
@@ -479,7 +484,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Generate the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary`
 - Check the domain guide: `PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check`
 - Regenerate the verified OpenAPI artifact: `SECRET=test-only uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml`
-- Run Celery (two workers in one command, mirrors production):
+- Run Celery (two workers in one command, mirrors production). On macOS first `export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`, or a forked worker child that imports `psutil` is killed by the Objective-C runtime ("crashed on child side of fork pre-exec"):
   ```bash
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG &
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
@@ -506,6 +511,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   Report browser, iOS and Android evidence independently; builds do not establish
   runtime verification. An unresolved external blocker leaves the task incomplete.
 - Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
+- Expo build progress per page and component (React Native vs DOM, shared vs unique, owner sign-off): `python3 scripts/expo_dashboard.py --serve`; how to read it and how a sign-off is recorded: `docs/ui/expo-dashboard.md`. Never add or edit a `- Sign-off:` line in the register yourself; it is the owner's.
 - Provider pages use the shared provider model and page components; see
   `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
   use its behavior as a migration source, not a universal dependency. See
@@ -517,6 +523,9 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   `npm run build:ui` and `npm run check:ui`. Commit the regenerated
   `src/static/ui/` files with the source. Never hand-edit hashed bundles or
   claim completion if the verification fails.
+  The merge train may later refresh an approved PR's bundles automatically when
+  `latest` changed them too (`docs/architecture/merge-train-throughput.md`); that
+  does not relax committing verified bundles with your change.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.
@@ -535,7 +544,7 @@ Notes:
 - **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
 - **Saved test database:** a local real-migration run replays migrations once, then restores the saved result from `.floppy/` until any migration, the lockfile, settings or the runner changes. The run prints one `[test-db]` line saying which happened. `FLOPPY_TEST_DB_TEMPLATE=0` forces a replay. CI builds the file once per run and its shards restore it; the upgrade, PostgreSQL, image and coverage jobs still replay. See `docs/architecture/test-suite-cost.md`.
 - **Shards:** `scripts/test.sh --shards N [label ...]` runs N separate serial processes, each with `FLOPPY_TEST_SHARD=i/N`, split by test module (`src/config/test_sharding.py`). It waits for all of them, prints each exit status with a bounded summary, keeps full logs in `.floppy/shards/`, and fails if any shard failed. No labels means the fast suite. Never use Django's `--parallel` pool for this; it loses results (`docs/architecture/test-suite-cost.md`, "Cause 3"). CI runs a browser shard plus five unit shards and fails `test (3.12)` unless every required test ran exactly once; see "Balanced shards" in that document.
-- JavaScript logic tests: `npm run test:js`, seconds, run after any change under `frontend/` or `native-proof/`. It runs every `*.test.mjs` once (lint CI runs it too) and fails if a new test file is in none of its lists.
+- JavaScript logic tests: `npm run test:js`, seconds, run after any change under `frontend/` or `expo/`. It runs every `*.test.mjs` once (lint CI runs it too) and fails if a new test file is in none of its lists.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a

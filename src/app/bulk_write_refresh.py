@@ -217,10 +217,10 @@ BULK_WRITE_SITES = {
     ("integrations/mal_sync.py", "reconcile_stale_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
-    ("integrations/views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
+    ("integrations/mal_sync_views.py", "mal_full_sync_retry_failed", UNKNOWN): _not_tracking(
         "a MyAnimeList account's sync status"
     ),
     ("integrations/oauth_models.py", "OAuthClient.revoke", UNKNOWN): _not_tracking(
@@ -232,8 +232,23 @@ BULK_WRITE_SITES = {
     ("integrations/tmdb_views.py", "_stop_bindings", UNKNOWN): _not_tracking(
         "outbound sync deliveries"
     ),
-    ("integrations/wetrakr_views.py", "_stop_bindings", UNKNOWN): _not_tracking(
+    ("integrations/state/destinations.py", "PushDestination.stop_bindings", UNKNOWN): _not_tracking(
         "outbound sync deliveries"
+    ),
+    ("integrations/state/destinations.py", "PushDestination._clear_device_flow", UNKNOWN): _not_tracking(
+        "a destination account's login state"
+    ),
+    ("integrations/state/destinations.py", "PushDestination._finish_connection", UNKNOWN): _not_tracking(
+        "a destination account's login state"
+    ),
+    ("integrations/state/destinations.py", "PushDestination.poll", UNKNOWN): _not_tracking(
+        "a destination account's login state"
+    ),
+    ("app/models/item.py", "ItemQuerySet.bulk_create", UNKNOWN): _not_tracking(
+        "items (it only fills each item's library bucket, then defers)"
+    ),
+    ("app/models/item.py", "ItemQuerySet.bulk_update", UNKNOWN): _not_tracking(
+        "items (it only fills each item's library bucket, then defers)"
     ),
     ("lists/models.py", "CustomListItemManager.bulk_create", UNKNOWN): _not_tracking(
         "list items (list views read them live)"
@@ -358,6 +373,14 @@ BULK_WRITE_SITES = {
         changes="Drops a show's in-progress seasons when the show is dropped.",
         view_caches="Run by TV.save, which ends in clear_library_view_caches; "
         "the Trakt importer's call is covered by the import task (IMPORTER).",
+        statistics=INSIDE_SHOW_SAVE.statistics,
+        history=_NO_HISTORY_STATUS,
+        watch_state=_WS_SCOPED,
+    ),
+    ("app/models/tv.py", "TV._pause_in_progress_seasons", SEASON): Refresh(
+        changes="Pauses a show's in-progress seasons when the show goes from "
+        "in progress to paused.",
+        view_caches=INSIDE_SHOW_SAVE.view_caches,
         statistics=INSIDE_SHOW_SAVE.statistics,
         history=_NO_HISTORY_STATUS,
         watch_state=_WS_SCOPED,
@@ -517,6 +540,11 @@ BULK_WRITE_SITES = {
     (
         "integrations/imports/helpers.py",
         "bulk_create_media.create_media",
+        UNKNOWN,
+    ): IMPORTER,
+    (
+        "integrations/imports/helpers.py",
+        "bulk_update_media.update",
         UNKNOWN,
     ): IMPORTER,
     (

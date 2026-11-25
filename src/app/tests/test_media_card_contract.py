@@ -424,30 +424,21 @@ class MediaCardTemplateUsageTest(TestCase):
 # Templates that carry `media-card` markup without going through the shared
 # media item card. Each is a different kind of card (see docs/architecture/
 # media-card.md, "Not this card"), listed here so a new one is a decision.
-DOCUMENTED_EXCEPTIONS = {
-    "app/components/person_card_inline.html": "person card, not a media item",
-    "app/components/person_filmography_card.html": "Statistics repeat-player strip",
-    "app/components/statistics/highlight_set.html": "Statistics highlight tiles",
-    "app/statistics.html": "Statistics page styles for its highlight tiles",
-    "app/components/active_playback_card.html": "server-rendered fallback for the shared Now Playing MediaCard",
-    "app/components/album_grid.html": "music album card: needs an Album, not an Item",
-    "app/components/album_list_grid_items.html": "music library albums, no Item row",
-    "app/components/artist_grid_items.html": "music library artists, no Item row",
-    "app/components/artist_relation_grid.html": "music artist page albums",
-    "app/components/search_local_album_cards.html": "music search albums, no Item row",
-    "lists/components/list_grid.html": "list index cards, a list is not a media item",
-    "lists/components/list_cover_image.html": "list cover artwork",
-}
+# Every card is the shared card, so there are no exceptions. Add one only by decision, with its reason.
+DOCUMENTED_EXCEPTIONS = {}
 # Parts of the card itself, or places that only name its CSS classes.
 CARD_PARTS = {
     CARD_TEMPLATE,
     "app/components/media_card_rate_button.html",
     "app/components/media_card_rating_oob.html",
     "app/components/card_lines.html",
+    "app/components/card_shell.html",
     "base.html",
 }
 # Cards React renders from a model: the surface tag, History and the Search row.
-REACT_ENTRY = re.compile(r"\{%\s*(media_card\s|history_card_react|media_row_react)")
+REACT_ENTRY = re.compile(
+    r"\{%\s*(media_card\s|history_card_react|music_tracker_card_react|filmography_card_react|list_card_react|media_row_react)",
+)
 
 
 class MediaCardInventoryTest(TestCase):
@@ -525,11 +516,11 @@ class MusicGridRatingTest(TestCase):
         """An unrated artist card offers the empty star and posts to the artist."""
         tracker = ArtistTracker.objects.create(user=self.user, artist=self.artist)
         content = self.render_grid("app/components/artist_grid_items.html", tracker)
-        self.assertIn("media-card-rate-button", content)
         self.assertIn(
-            f'"postUrl": "{reverse("update_artist_score", args=[self.artist.id])}"',
+            f'"rateUrl": "{reverse("update_artist_score", args=[self.artist.id])}"',
             content,
         )
+        self.assertIn('"ratingEditable": true', content)
 
     def test_album_card_rates_the_album(self):
         """A rated album card shows its score and posts to the album."""
@@ -539,28 +530,20 @@ class MusicGridRatingTest(TestCase):
             score=6,
         )
         content = self.render_grid("app/components/album_list_grid_items.html", tracker)
-        self.assertIn("rating: 6", content)
+        self.assertIn('"label": "6', content)
         self.assertIn(
-            f'"postUrl": "{reverse("update_album_score", args=[self.album.id])}"',
+            f'"rateUrl": "{reverse("update_album_score", args=[self.album.id])}"',
             content,
         )
 
 
 # Hand-rolled cards that are not the shared card. Each one has to call the
-# profile tag. list_grid is a list index, not a media card.
+# profile tag. list_grid is a list index, not a media card. Everything else draws
+# through the shared card, whose model reads the profile.
 PROFILE_CARDS = (
     "app/components/history_card.html",
-    "app/components/artist_grid_items.html",
-    "app/components/album_list_grid_items.html",
-    "app/components/album_grid.html",
-    "app/components/artist_relation_grid.html",
     "app/components/media_card_list.html",
     "app/components/episode_row.html",
-    "app/components/person_card_inline.html",
-    "app/components/person_filmography_card.html",
-    "app/components/statistics/highlight_set.html",
-    # The Now Playing fallback has one fixed episode/progress subtitle, not
-    # profile-controlled metadata lines, matching the shared PlaybackCard.
     "events/components/calendar_list.html",
     "events/components/calendar_grid.html",
 )
@@ -577,12 +560,6 @@ class CardProfileContractTest(TestCase):
             if "card_lines" not in (TEMPLATES_DIR / name).read_text()
         ]
         self.assertEqual(missing, [])
-
-    def test_lists_index_has_no_hover_class(self):
-        """Item count stays visible. The index is not a media card."""
-        source = (TEMPLATES_DIR / "lists/components/list_grid.html").read_text()
-        self.assertNotIn("media-card-subtitle-always", source)
-        self.assertNotIn("card_lines", source)
 
     def test_custom_movie_fields_render_on_the_shared_card(self):
         """A saved field list replaces the default year line."""
@@ -627,3 +604,107 @@ class CardProfileContractTest(TestCase):
         )
         self.assertIn("Drama", content)
         self.assertIn("120 min", content)
+
+
+class FilmographyCardTest(TestCase):
+    """A person's filmography strip is the shared React card, not hand-written markup."""
+
+    def setUp(self):
+        """Create a viewer."""
+        self.user = get_user_model().objects.create_user(username="strip", password="12345")
+
+    def render(self, entry):
+        from django.template import Context, Template
+
+        return Template(
+            '{% include "app/components/person_filmography_card.html" with entry=entry source="tmdb" %}',
+        ).render(Context({"entry": entry, "user": self.user}))
+
+    def test_entry_renders_the_react_shell_and_model(self):
+        html = self.render(
+            {
+                "title": "Alien",
+                "media_type": "movie",
+                "media_id": "348",
+                "source": "tmdb",
+                "image": "https://image.tmdb.org/t/p/w500/a.jpg",
+                "vote_average": 8.1,
+            },
+        )
+        self.assertIn("data-media-card-root", html)
+        self.assertIn("/details/tmdb/movie/348/alien", html)
+        self.assertIn("\\u2605 8.1", html)
+        self.assertNotIn("hover:ring-2", html)
+
+    def test_watched_runtime_replaces_the_rating_chip(self):
+        html = self.render(
+            {
+                "title": "Alien",
+                "media_type": "movie",
+                "media_id": "348",
+                "source": "tmdb",
+                "vote_average": 8.1,
+                "watched_person_runtime_display": "2h 0m",
+            },
+        )
+        self.assertIn("2h 0m", html)
+        self.assertNotIn("\\u2605 8.1", html)
+
+
+class StatisticsHighlightShellTest(TestCase):
+    """The Statistics hero draws its highlights from the card model, one tile per entry."""
+
+    def test_shell_lists_one_tile_per_highlight(self):
+        from django.template import Context, Template
+
+        user = get_user_model().objects.create_user(username="hero", password="12345")
+        html = Template(
+            '{% include "app/components/statistics/highlight_set.html" %}',
+        ).render(Context({"user": user, "highlights": {}}))
+        self.assertNotIn("media-card", html)
+        self.assertEqual(html.count("media-card-title"), 0)
+
+
+class ListCardModelTest(TestCase):
+    """A custom list is the shared card, with its own buttons only on the owner's page."""
+
+    def setUp(self):
+        """Create an owner and a list that has items."""
+        from lists.models import CustomList
+
+        self.user = get_user_model().objects.create_user(username="lister", password="12345")
+        self.list = CustomList.objects.create(name="Favourites", owner=self.user)
+        self.list.items_count = 3
+        self.list.completion_percent = 50
+        self.list.role = "Owner"
+        self.list.can_edit = True
+
+    def model(self, **kwargs):
+        from app.media_card_model import list_card_model
+
+        return list_card_model(self.list, self.user, **kwargs)
+
+    def test_count_line_shows_on_hover_like_the_old_card(self):
+        model = self.model()
+        line = model["lines"][0]
+        self.assertFalse(line["dormant"])
+        self.assertEqual(line["parts"][0]["text"], "3 items · 50% completed")
+
+    def test_owner_page_gets_pin_and_settings(self):
+        kinds = [item["kind"] for item in self.model()["actions"]["items"]]
+        self.assertEqual(kinds, ["pin", "modal"])
+
+    def test_profile_page_has_no_buttons_and_no_role_line(self):
+        self.list.role = "Viewer"
+        model = self.model(profile_username=self.user.username)
+        self.assertEqual(model["actions"]["items"], [])
+        self.assertEqual(len(model["lines"]), 1)
+
+    def test_shared_role_is_a_second_line(self):
+        self.list.role = "Collaborator"
+        self.assertEqual(self.model()["lines"][1]["parts"][0]["text"], "Shared with you · can edit")
+
+    def test_cold_cover_is_fetched_by_the_card(self):
+        image = self.model()["image"]
+        self.assertEqual(image["src"], "")
+        self.assertIn("/cover", image["coverUrl"])

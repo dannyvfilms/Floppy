@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Title } from './Title';
 import { Spinner } from './Spinner';
 
 const DEFAULT_PALETTE = {
@@ -109,7 +110,7 @@ export function DeviceConnectCard({
   const statusColor = failed ? colors.danger : expired ? colors.warning : approved ? colors.success : colors.textMuted;
 
   return <View style={styles.card}>
-    <Text role="heading" aria-level={1} style={[styles.title, { color: colors.text }]}>{title}</Text>
+    <Title size="heading" level={1} color={colors.text} style={styles.title}>{title}</Title>
     {description ? <Text style={[styles.description, { color: colors.textMuted }]}>{description}</Text> : null}
 
     <View style={[styles.codeBox, { backgroundColor: colors.codeBackground }]}>
@@ -141,7 +142,7 @@ export function DeviceConnectCard({
 
 const styles = StyleSheet.create({
   card: { gap: 12, borderRadius: 8, padding: 24, alignItems: 'stretch' },
-  title: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
+  title: { textAlign: 'center' },
   description: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
   codeBox: { borderRadius: 6, paddingVertical: 16, paddingHorizontal: 12 },
   code: { fontSize: 28, fontWeight: '700', letterSpacing: 4, textAlign: 'center' },

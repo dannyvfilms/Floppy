@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { TrackForm } from './TrackForm';
+import { parseTrackDurationMinutes } from './trackDuration';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -34,36 +35,7 @@ function parseDateValue(value) {
   return new Date(year, month - 1, day, hours, minutes, 0, 0);
 }
 
-export function parseTrackDurationMinutes(value) {
-  const text = String(value || '').trim().toLowerCase();
-  if (!text) return null;
-  if (/^\d+(?:\.\d+)?$/.test(text)) {
-    const amount = Number.parseFloat(text);
-    return Number.isFinite(amount) && amount >= 0 ? Math.trunc(amount * 60) : null;
-  }
-  if (text.includes(':')) {
-    const chunks = text.split(':');
-    if (chunks.length !== 2 || !/^\d+$/.test(chunks[0]) || !/^\d+$/.test(chunks[1])) return null;
-    const minutes = Number.parseInt(chunks[1], 10);
-    if (minutes > 59) return null;
-    return Number.parseInt(chunks[0], 10) * 60 + minutes;
-  }
-  const unitPattern = /(\d+(?:\.\d+)?)\s*(hours?|hrs?|hr|h|minutes?|mins?|min)/g;
-  const matches = [];
-  let match = unitPattern.exec(text);
-  while (match) {
-    matches.push(match);
-    match = unitPattern.exec(text);
-  }
-  if (!matches.length || text.replace(unitPattern, '').trim()) return null;
-  let total = 0;
-  for (const entry of matches) {
-    const amount = Number.parseFloat(entry[1]);
-    if (!Number.isFinite(amount)) return null;
-    total += entry[2].startsWith('h') ? amount * 60 : amount;
-  }
-  return Math.trunc(total);
-}
+export { parseTrackDurationMinutes } from './trackDuration';
 
 function progressField(model) {
   return (model?.fields || []).find(field => field.name === 'progress') || null;
@@ -168,13 +140,24 @@ export function TrackDialog({
   onRewatch,
   onSecondaryAction,
   embedded = false,
+  grouped = false,
+  groupedContent = false,
+  renderSelectPicker,
+  renderMonthYearWheels,
+  renderTimeWheels,
+  activeTab: controlledTab,
+  onTabChange,
+  railTabs = false,
   maxWidth = 720,
   showHeader,
   now = () => new Date(),
 }) {
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
   const { height } = useWindowDimensions();
-  const [activeTab, setActiveTab] = useState('general');
+  const [localTab, setLocalTab] = useState('general');
+  // A host with its own tab control (the iOS rail menu) owns the tab through activeTab/onTabChange.
+  const activeTab = controlledTab ?? localTab;
+  const setActiveTab = id => { setLocalTab(id); onTabChange?.(id); };
   const coupling = useRef(createCouplingState(model, values));
 
   useEffect(() => {
@@ -255,6 +238,7 @@ export function TrackDialog({
     generalPrefix={generalPrefix}
     activeTab={activeTab}
     onTabChange={setActiveTab}
+    railTabs={railTabs}
     onChange={change}
     onSubmit={submit}
     onDelete={onDelete}
@@ -267,7 +251,12 @@ export function TrackDialog({
     onDiscoverToggle={onDiscoverToggle}
     secondaryActions={repeatActions}
     showHeader={showHeader === undefined ? !embedded : showHeader}
-    embedded={embedded} />;
+    embedded={embedded}
+    grouped={grouped}
+groupedContent={groupedContent}
+    renderSelectPicker={renderSelectPicker}
+    renderMonthYearWheels={renderMonthYearWheels}
+    renderTimeWheels={renderTimeWheels} />;
 
   if (embedded) return form;
 

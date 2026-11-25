@@ -12,7 +12,9 @@ logfile_maxbytes=10MB
 logfile_backups=3
 pidfile=@@RUN_DIR@@/supervisord.pid
 childlogdir=@@LOG_DIR@@
-environment=PATH="@@VENV_DIR@@/bin:%(ENV_PATH)s",VIRTUAL_ENV="@@VENV_DIR@@"
+# HOME stays /root for the abc programs otherwise; libpq then fails to read
+# /root/.postgresql, drops each TLS handshake and floods Postgres logs (#2051).
+environment=PATH="@@VENV_DIR@@/bin:%(ENV_PATH)s",VIRTUAL_ENV="@@VENV_DIR@@",HOME="/nonexistent"
 
 [unix_http_server]
 file=@@RUN_DIR@@/supervisor.sock
@@ -62,7 +64,7 @@ redirect_stderr=true
 ; discover (and on minimal hosts the interactive) queue, exactly as in the
 ; container. The wrapper exports the values these read.
 [program:celery]
-command=celery --app config worker --beat --scheduler django --queues "%(ENV_FLOPPY_CELERY_QUEUES)s" --hostname=celery@%%h --loglevel INFO --without-mingle --without-gossip %(ENV_FLOPPY_CELERY_HEARTBEAT_ARG)s
+command=celery --app config worker --beat --scheduler django --queues "%(ENV_FLOPPY_CELERY_QUEUES)s" --hostname=celery@%%h --loglevel INFO --without-mingle --without-gossip
 directory=@@SRC_DIR@@
 environment=FLOPPY_PROCESS_ROLE="%(ENV_FLOPPY_CELERY_ROLE)s"
 priority=15
@@ -75,7 +77,7 @@ stdout_logfile_backups=3
 redirect_stderr=true
 
 [program:celery-interactive]
-command=celery --app config worker --queues interactive --hostname=celery-interactive@%%h --loglevel INFO --without-mingle --without-gossip %(ENV_FLOPPY_CELERY_HEARTBEAT_ARG)s
+command=celery --app config worker --queues interactive --hostname=celery-interactive@%%h --loglevel INFO --without-mingle --without-gossip
 directory=@@SRC_DIR@@
 environment=FLOPPY_PROCESS_ROLE="interactive"
 autostart=%(ENV_FLOPPY_START_INTERACTIVE_WORKER)s
@@ -89,7 +91,7 @@ stdout_logfile_backups=3
 redirect_stderr=true
 
 [program:celery-discover]
-command=celery --app config worker --queues discover --hostname=celery-discover@%%h --loglevel INFO --without-mingle --without-gossip %(ENV_FLOPPY_CELERY_HEARTBEAT_ARG)s
+command=celery --app config worker --queues discover --hostname=celery-discover@%%h --loglevel INFO --without-mingle --without-gossip
 directory=@@SRC_DIR@@
 environment=FLOPPY_PROCESS_ROLE="background"
 autostart=%(ENV_FLOPPY_START_DISCOVER_WORKER)s

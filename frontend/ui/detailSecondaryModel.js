@@ -103,11 +103,13 @@ export function detailSecondaryModel(payload = {}, { formatDate = value => Strin
   return {
     layout: payload.layout,
     publicView: Boolean(payload.public_view || payload.read_only),
-    genres: (payload.tag_sections || []).find(group => group.title === 'Genres')?.entries?.map(entry => ({ label: entry.label, href: entry.url || '' }))
+    genres: (payload.tag_sections || []).find(group => group.title === 'Genres')?.entries?.map(entry => ({ label: entry.label, href: entry.url || '',
+      count: entry.count ?? (secondary.genre_counts || {})[entry.label] }))
       || (payload.sections || []).find(section => section.id === 'genres')?.items?.map(label => ({ label: String(label), href: '' })) || [],
     facts,
     promoted,
     studios,
+    platformCounts: secondary.platform_counts || {},
     watchProviders: secondary.watch_providers ?? null,
     watchProviderRegion: secondary.watch_provider_region ?? 'UNSET',
     labels,
@@ -116,7 +118,11 @@ export function detailSecondaryModel(payload = {}, { formatDate = value => Strin
       sourceLabel: lengths?.source_label || '', sourceUrl: lengths?.source_url || '',
       cards: (lengths?.cards || []).map(card => ({ label: card.label, value: card.value, count: card.count, glyph: card.glyph || '◷' })),
     } : null,
-    youtubeWatch: youtube ? { seconds: youtube.seconds, hoursLabel: youtube.hours_label || '', videos: youtube.videos || 0 } : null,
+    // "12h 3min played" arrives as the activity subtitle; the card shows the duration alone.
+    playedLabel: payload.identity?.media_type === 'game'
+      ? String(payload.activity_subtitle?.duration_text || '').replace(/ played$/, '') : '',
+    youtubeWatch: youtube ? { seconds: youtube.seconds, hoursLabel: youtube.hours_label || '', videos: youtube.videos || 0,
+      channels: (youtube.channels || []).map(channel => ({ name: channel.name, percent: channel.percent })) } : null,
   };
 }
 

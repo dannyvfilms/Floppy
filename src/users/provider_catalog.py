@@ -348,7 +348,7 @@ def catalog():
     result["jellyfin"]["import"] = True
     for slug in ("jellyfin", "emby", "kodi"):
         result[slug]["sync"] = True
-    for slug in ("mal", "tmdb", "wetrakr"):
+    for slug in ("mal", "tmdb", "wetrakr", "simkl"):
         result[slug]["sync"] = True
     # Audiobookshelf supplies metadata for imported items, rather than acting as
     # the selectable search/default provider for books or podcasts.
@@ -444,13 +444,21 @@ def provider_state(provider, user):
         provider.get("credential") and credentials.is_configured(slug, user)
     )
     account = (
-        getattr(user, f"{slug}_account", None) if slug in _ACCOUNT_PROVIDERS else None
+        getattr(user, f"{slug}_account", None)
+        if slug in _ACCOUNT_PROVIDERS and slug != "jellyfin"
+        else None
     )
     servers = (
         list(getattr(user, f"{slug}_instances").all())
         if slug in _SERVER_PROVIDERS
         else []
     )
+    # Jellyfin may hold several connections (#2111). The first stands in where
+    # one account's options are summarized; push and pull options are per
+    # connection, and attention comes from any of them.
+    if slug == "jellyfin":
+        servers = list(user.jellyfin_accounts.all())
+        account = servers[0] if servers else None
     account_saved = bool(account or servers)
     attention = bool(
         getattr(account, "connection_broken", False)
@@ -509,7 +517,13 @@ def provider_state(provider, user):
             if account
             else "Needs setup"
         )
-    if slug in {"tmdb", "wetrakr"} and provider.get("sync"):
+    if slug in {"tmdb", "wetrakr", "simkl"} and provider.get("sync"):
+        sync_saved, sync_waiting = account_saved, awaiting_authorization
+        if slug == "simkl":
+            # SIMKL's import has no saved account; this is the sending login.
+            push_login = getattr(user, "simkl_account", None)
+            sync_saved = bool(push_login)
+            sync_waiting = bool(push_login and push_login.is_pending)
         bindings = user.sync_bindings.filter(
             client_kind=slug, status="active", kill_switch=False
         )
@@ -520,7 +534,7 @@ def provider_state(provider, user):
         )
         capabilities["sync"] = (
             ("Enabled" if enabled else "Not enabled")
-            if account_saved and not awaiting_authorization
+            if sync_saved and not sync_waiting
             else "Needs setup"
         )
     return {

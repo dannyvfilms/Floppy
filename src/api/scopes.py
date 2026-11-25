@@ -90,6 +90,11 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_search.SearchMusicCreateView": {"POST": "music:write"},
     "api.fork_views_people.PersonView": {"GET": "catalog:read"},
     "api.fork_views_people.StudioView": {"GET": "catalog:read"},
+    "api.fork_views_people.PersonListsView": {"GET": "lists:read"},
+    "api.fork_views_people.PersonListDetailView": {
+        "PUT": "lists:write",
+        "DELETE": "lists:write",
+    },
     "api.fork_views_discover.DiscoverRefreshView": {"POST": "catalog:write"},
     "api.fork_views_discover.DiscoverHiddenView": {
         "GET": "catalog:read",
@@ -177,6 +182,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_music.MusicSongPlayView": {"POST": "music:write"},
     "api.fork_views_music.MusicTrackScoreView": {"PATCH": "music:write"},
     "api.fork_views_music.MusicBulkPlaysView": {"POST": "music:write"},
+    "api.fork_views_music.MusicArtistAlbumsView": {"GET": "music:read"},
     "api.fork_views_music.MusicArtistRelationsView": {"GET": "music:read"},
     "api.fork_views_music.MusicArtistMembersSyncView": {"POST": "music:write"},
     "api.fork_views_music.MusicAlbumSyncView": {"POST": "music:write"},
@@ -248,6 +254,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_consumption_batch.ConsumptionBatchDetailView": {"GET": _R},
     "api.fork_views_library.LibraryFilterOptionsView": {"GET": _R},
     "api.fork_views_library.LibraryItemIdsView": {"GET": _R},
+    "api.fork_views_progress_page.ProgressPageView": {"GET": _R},
     "api.fork_views_library.LibraryPreferencesView": {"GET": "user:read", "PATCH": "user:write"},
     "api.fork_views_library.LibraryShareView": {"POST": "lists:write"},
     "api.fork_views_library.LibraryBulkStatusView": {"POST": _W},

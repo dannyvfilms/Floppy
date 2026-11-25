@@ -157,6 +157,18 @@ class JellyfinClient:
             return None
         return items[0]
 
+    def get_series_id(self, item_id: str) -> str | None:
+        """Return the series ID of one episode, or None when it has none."""
+        payload = self._request(
+            "GET",
+            "/Items",
+            params={"Ids": item_id, "Fields": "SeriesId"},
+        ).json()
+        items = payload.get("Items") or []
+        if len(items) != 1:
+            return None
+        return items[0].get("SeriesId") or None
+
     def get_item_user_data(self, item_id: str):
         """Return one item's UserData for the connected user, or None.
 
@@ -227,7 +239,18 @@ class JellyfinClient:
             "device_name",
             "play_duration",
         )
-        return [dict(zip(columns, row, strict=True)) for row in results]
+        rows = []
+        for row in results:
+            entry = dict(zip(columns, row, strict=True))
+            # The plugin returns every column as a string. The rowid cursor
+            # needs ints, or it never advances and "999" sorts above "2000".
+            try:
+                entry["rowid"] = int(entry["rowid"])
+            except (TypeError, ValueError):
+                logger.warning("Skipping Playback Reporting row with bad rowid")
+                continue
+            rows.append(entry)
+        return rows
 
     def fetch_max_playback_activity_rowid(self) -> int:
         """Return the highest existing Playback Activity rowid, or 0 if empty."""

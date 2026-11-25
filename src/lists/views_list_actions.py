@@ -134,7 +134,12 @@ def update_list_table_columns(request, list_id):
 
 @require_POST
 def create(request):
-    """Create a new custom list."""
+    """Create a new custom list.
+
+    With ``format=json`` the modal gets a machine-readable result: a rejected
+    form is a 400 with the first error, not a redirect that looks like success.
+    """
+    wants_json = request.POST.get("format") == "json"
     form = CustomListForm(request.POST, user=request.user)
     if form.is_valid():
         custom_list = form.save(commit=False)
@@ -147,12 +152,17 @@ def create(request):
             user=request.user,
             activity_type=ListActivityType.LIST_CREATED,
         )
+        if wants_json:
+            return JsonResponse({"success": True, "id": custom_list.id})
         if custom_list.is_smart and request.POST.get("smart_create_flow"):
             return redirect(
                 f"{reverse('list_detail', args=[custom_list.public_reference])}?edit_smart_rules=1",
             )
     else:
         logger.error(form.errors.as_json())
+        if wants_json:
+            first = next(iter(form.errors.values()), [""])[0]
+            return JsonResponse({"success": False, "error": str(first)}, status=400)
         helpers.form_error_messages(form, request)
     return helpers.redirect_back(request)
 
@@ -516,6 +526,7 @@ def lists_modal(
                 "tags": unique_tags,
                 "selectedTag": selected_tag,
                 "toggleUrl": reverse("list_item_toggle"),
+                "createUrl": reverse("list_create"),
                 "csrfToken": get_token(request),
             },
         )

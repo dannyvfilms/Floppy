@@ -340,7 +340,9 @@ class VideoPlayApiTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Beyond Babish")
         self.assertContains(response, "1h 5m")
-        self.assertNotContains(response, "No details available")
+        # The "No details available" label ships in the props JSON either way;
+        # an empty details object is what means nothing was reported.
+        self.assertNotContains(response, '"details": {}')
         page = self.client.get(url)
         self.assertContains(page, "Ranking every pumpkin product.")
         self.assertContains(page, "https://www.youtube.com/watch?v=vid1")

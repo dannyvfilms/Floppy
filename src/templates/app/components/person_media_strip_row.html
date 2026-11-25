@@ -7,4 +7,4 @@
   Rendered both on full statistics page load and by the select_featured_person
   POST endpoint (as the "strip_html" fragment).
 {% endcomment %}
-{% include "app/components/_scrollable_row.html" with row=person_media_strip_row grid_template="app/components/person_media_strip_card.html" %}
+{% include "app/components/_scrollable_row.html" with row=person_media_strip_row grid_template="app/components/person_media_strip_card.html" rails_mount=True %}

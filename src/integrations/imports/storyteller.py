@@ -22,6 +22,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.utils import timezone
 
@@ -199,21 +200,33 @@ class StorytellerImporter:
 
             # The books list embeds the reading position; only fall back to the
             # per-book endpoint when it's absent.
-            if "position" in book:
-                position = book["position"]
-            else:
-                try:
+            try:
+                if "position" in book:
+                    position = book["position"]
+                else:
                     position = self.client.get_position(str(uuid))
-                except StorytellerAuthError as error:
-                    self._mark_failed(str(error), auth=True)
-                    raise MediaImportError(str(error)) from error
 
-            progression = self._extract_progression(position)
-            if progression is None or progression <= 0:
-                # Not started yet; we only track books the user is reading.
-                continue
+                progression = self._extract_progression(position)
+                if progression is None or progression <= 0:
+                    # Not started yet; we only track books the user is reading.
+                    continue
 
-            media = self._upsert_book(book, str(uuid), progression, position)
+                media = self._upsert_book(book, str(uuid), progression, position)
+            except StorytellerAuthError as error:
+                self._mark_failed(str(error), auth=True)
+                raise MediaImportError(str(error)) from error
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Storyteller import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining books.",
+                )
+                break
             if media:
                 imported_counts[MediaTypes.BOOK.value] += 1
 
@@ -571,6 +584,8 @@ class StorytellerImporter:
         """
         try:
             response = services.search(MediaTypes.BOOK.value, query, 1, provider_source)
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as error:
             logger.debug(
                 "Storyteller metadata search failed provider=%s error=%s",
@@ -592,6 +607,8 @@ class StorytellerImporter:
                     str(media_id),
                     provider_source,
                 )
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as error:
                 logger.debug(
                     "Storyteller metadata fetch failed provider=%s error=%s",

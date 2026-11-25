@@ -210,7 +210,8 @@ class ListsViewTests(TestCase):
         fetch.assert_called_once()
         self.assertContains(response, f'src="{cover}"')
         self.assertNotContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
+            response,
+            '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]),
         )
 
     def test_cover_cache_changes_with_first_item_or_artwork(self):
@@ -222,15 +223,11 @@ class ListsViewTests(TestCase):
         self.item1.image = "https://example.com/replacement.jpg"
         self.item1.save(update_fields=["image"])
         response = self.client.get(reverse("lists"))
-        self.assertContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
-        )
+        self.assertContains(response, '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]))
         self.list1.items.clear()
         self.list1.items.add(self.item2)
         response = self.client.get(reverse("lists"))
-        self.assertContains(
-            response, f'hx-get="{reverse("list_cover_image", args=[self.list1.id])}"'
-        )
+        self.assertContains(response, '"coverUrl": "' + reverse("list_cover_image", args=[self.list1.id]))
 
     def test_cached_cover_still_checks_visibility(self):
         """A resolved private cover does not make the fragment public."""
@@ -496,7 +493,7 @@ class ListsViewTests(TestCase):
         self,
         mock_update_preference,
     ):
-        """List cards expose Settings and pinning through an options menu."""
+        """List cards expose Settings and pinning as the shared card's hover buttons."""
         mock_update_preference.return_value = "name"
         self.client.login(**self.credentials)
 
@@ -509,15 +506,16 @@ class ListsViewTests(TestCase):
 
         response = self.client.get(reverse("lists"))
 
-        self.assertContains(response, 'aria-label="Options for ')
-        self.assertContains(response, "Settings")
+        self.assertNotContains(response, 'aria-label="Options for ')
+        self.assertContains(response, '"title": "Settings"')
+        self.assertContains(response, '"modal": "list"')
         self.assertNotContains(response, 'title="Edit list"')
         self.assertNotContains(response, reverse("list_add_item", args=[self.list1.id]))
         self.assertNotContains(
             response,
             f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
         )
-        self.assertContains(response, "Pin to sidebar")
+        self.assertContains(response, '"kind": "pin"')
 
     @patch.object(get_user_model(), "update_preference")
     def test_lists_view_marks_only_smart_lists_with_badge(
@@ -529,7 +527,7 @@ class ListsViewTests(TestCase):
         self.client.login(**self.credentials)
 
         response = self.client.get(reverse("lists"))
-        self.assertNotContains(response, 'aria-label="Smart List"')
+        self.assertNotContains(response, '"position": "bottom-right"')
 
         CustomList.objects.create(
             name="Smart List",
@@ -538,7 +536,7 @@ class ListsViewTests(TestCase):
         )
 
         response = self.client.get(reverse("lists"))
-        self.assertContains(response, 'aria-label="Smart List"', count=1)
+        self.assertContains(response, '"position": "bottom-right"', count=1)
 
 
 class ListDetailViewTests(TestCase):
@@ -3413,11 +3411,31 @@ class ListsModalViewTests(TestCase):
         self.assertEqual(data["title"], "Test Movie")
         self.assertEqual(data["tags"], ["Movies", "Night"])
         self.assertEqual(data["toggleUrl"], reverse("list_item_toggle"))
+        self.assertEqual(data["createUrl"], reverse("list_create"))
         self.assertTrue(data["csrfToken"])
         by_name = {entry["name"]: entry for entry in data["lists"]}
         self.assertTrue(by_name["Test List 1"]["hasItem"])
         self.assertFalse(by_name["Test List 2"]["hasItem"])
         self.assertEqual(by_name["Test List 1"]["tags"], ["Movies", "Night"])
+
+    def test_modal_create_reports_a_rejected_name_instead_of_redirecting(self):
+        """A name over the limit is a 400 with an error in JSON mode (issue #2116)."""
+        response = self.client.post(
+            reverse("list_create"),
+            {"name": "x" * 300, "format": "json"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["success"])
+        self.assertTrue(response.json()["error"])
+        ok = self.client.post(reverse("list_create"), {"name": "Fine", "format": "json"})
+        self.assertEqual(ok.status_code, 200)
+        self.assertTrue(ok.json()["success"])
+
+    def test_modal_create_url_makes_a_list_from_a_name_alone(self):
+        """The Lists modal creates a list with only a name (issue #2116)."""
+        response = self.client.post(reverse("list_create"), {"name": "From modal"})
+        self.assertIn(response.status_code, (200, 302))
+        self.assertTrue(CustomList.objects.filter(name="From modal", owner=self.user).exists())
 
     def test_lists_modal_json_omits_smart_lists(self):
         """Smart lists cannot be edited by hand, so the form never offers them."""

@@ -1,0 +1,282 @@
+{
+  "activity_subtitle": null,
+  "alt_title": "Sample Movie",
+  "artwork": {
+    "aspect": "poster",
+    "backdrop": "",
+    "gallery": {
+      "photos": [],
+      "video": null
+    },
+    "gallery_supported": true,
+    "logo": "",
+    "src": "https://example.com/movie.jpg"
+  },
+  "book_formats": [],
+  "capabilities": {
+    "can_request_seerr": false,
+    "can_track": true,
+    "can_update": false
+  },
+  "children": {
+    "episodes": [],
+    "kind": "episode",
+    "next_label": null,
+    "next_page": null,
+    "seasons": []
+  },
+  "collections": [],
+  "detail_links": {
+    "cast_row": {
+      "card_width_class": "w-44",
+      "items": [
+        {
+          "image": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
+          "name": "Sample Person",
+          "person_id": "9400101",
+          "role": "Lead"
+        }
+      ],
+      "loaded_count": 1,
+      "row_id": "detail-cast",
+      "show_played_chip": false,
+      "summary_inline": null,
+      "title": "Cast",
+      "total": 1,
+      "view_all_text": null,
+      "view_all_url": null
+    },
+    "crew_row": {
+      "card_width_class": "w-44",
+      "items": [],
+      "loaded_count": 0,
+      "row_id": "detail-crew",
+      "show_played_chip": false,
+      "summary_inline": null,
+      "title": "Crew",
+      "total": 0,
+      "view_all_text": null,
+      "view_all_url": null
+    },
+    "recommendations_row": {
+      "card_surface": "detail_recommendations",
+      "card_width_class": "w-44",
+      "items": [],
+      "loaded_count": 0,
+      "row_id": "detail-recommendations",
+      "show_played_chip": false,
+      "summary_inline": null,
+      "title": "Recommendations",
+      "total": 0,
+      "view_all_text": null,
+      "view_all_url": null
+    },
+    "seasons_row": {
+      "card_width_class": "w-44",
+      "items": [],
+      "loaded_count": 0,
+      "row_id": "detail-seasons",
+      "show_played_chip": false,
+      "summary_inline": null,
+      "title": "Seasons",
+      "total": 0,
+      "view_all_text": null,
+      "view_all_url": null
+    }
+  },
+  "facts": [
+    {
+      "label": "format",
+      "value": "Movie"
+    },
+    {
+      "label": "release_date",
+      "value": "2010-01-01"
+    }
+  ],
+  "game_lengths": null,
+  "history": [],
+  "identity": {
+    "episode_number": null,
+    "media_id": "9400201",
+    "media_type": "movie",
+    "parent_media_type": null,
+    "season_number": null,
+    "source": "tmdb"
+  },
+  "layout": {
+    "family": "media",
+    "zones": {
+      "content": [
+        "notes",
+        "related",
+        "cast",
+        "crew",
+        "recommendations"
+      ],
+      "sidebar": [
+        "history",
+        "details",
+        "genres",
+        "studios",
+        "collection"
+      ]
+    }
+  },
+  "link_sections": [
+    {
+      "entries": [
+        {
+          "accent_classes": "text-[var(--color-text)]",
+          "badge_classes": "border-emerald-400/28 bg-emerald-500/14",
+          "brand": "letterboxd",
+          "chip_classes": "border-emerald-400/18 bg-emerald-500/[0.07]",
+          "fallback_text": "LB",
+          "label": "Letterboxd",
+          "logo_src": "/static/img/letterboxd-logo.png",
+          "url": "https://letterboxd.com/tmdb/9400201"
+        }
+      ],
+      "title": "External links"
+    }
+  ],
+  "media_details": {
+    "format": "Movie",
+    "release_date": "2010-01-01"
+  },
+  "people": {
+    "cast": [
+      {
+        "cardLines": [
+          {
+            "dormant": false,
+            "text": "Lead"
+          }
+        ],
+        "href": "/person/tmdb/9400101/sample-person",
+        "id": "tmdb:9400101",
+        "imageFallback": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
+        "imageUrl": "data:image/svg+xml;base64,PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg==",
+        "lines": [],
+        "name": "Sample Person",
+        "personId": "9400101",
+        "slug": "sample-person",
+        "source": "tmdb",
+        "subtitle": "Lead",
+        "subtitleAlways": false
+      }
+    ],
+    "crew": []
+  },
+  "providers": {},
+  "public_view": false,
+  "read_only": false,
+  "related_sections": [],
+  "score_chips": [],
+  "season_options": [],
+  "season_title": "",
+  "secondary": {
+    "author_detail_keys": [
+      "author",
+      "authors",
+      "people"
+    ],
+    "authors_linked": [],
+    "book_formats_replaces": "",
+    "details": {
+      "format": "Movie",
+      "release_date": "2010-01-01"
+    },
+    "display_details": {
+      "format": "Movie",
+      "release_date": "Jan. 1, 2010"
+    },
+    "genre_counts": {
+      "Drama": 0
+    },
+    "labels": {
+      "airDates": "AIR DATES",
+      "anime": "Anime",
+      "author": "AUTHOR",
+      "authors": "AUTHORs",
+      "details": "Details",
+      "format": "Format",
+      "noDetails": "No details available",
+      "noWatchProviders": "No watch providers",
+      "runtime": "RUNTIME",
+      "streaming": "STREAMING",
+      "unknown": "Unknown"
+    },
+    "platform_counts": {},
+    "promotion": {
+      "fields": [
+        {
+          "display_value": "Movie",
+          "key": "format",
+          "label": "Format",
+          "value": "Movie"
+        },
+        {
+          "display_value": "Jan. 1, 2010",
+          "key": "release_date",
+          "label": "Release date",
+          "value": "2010-01-01"
+        }
+      ],
+      "suppressed_keys": [
+        "format",
+        "release_date"
+      ]
+    },
+    "studio_detail_keys": [
+      "studios",
+      "companies"
+    ],
+    "studios_linked": [],
+    "watch_provider_region": "UNSET",
+    "watch_providers": null
+  },
+  "sections": [
+    {
+      "id": "genres",
+      "items": [
+        "Drama"
+      ],
+      "title": "Genres"
+    }
+  ],
+  "subtitle": "",
+  "synopsis": "A sample movie.",
+  "tag_sections": [
+    {
+      "entries": [
+        {
+          "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
+          "label": "Drama",
+          "url": "/medialist/movie?genre=Drama"
+        }
+      ],
+      "title": "Genres",
+      "title_label": "Genres",
+      "tone": "violet"
+    },
+    {
+      "empty_label": "Click to add tags",
+      "entries": [],
+      "title": "Tags",
+      "title_label": "Tags",
+      "tone": "slate"
+    }
+  ],
+  "title": "Sample Movie",
+  "tracking": null,
+  "tracking_entries": [],
+  "tracking_entries_count": 0,
+  "tracking_entries_has_more": false,
+  "viewer_rating": {
+    "enabled": true,
+    "scale_max": 10,
+    "value": null
+  },
+  "youtube_watch": null
+}

@@ -58,7 +58,10 @@ class JellyfinViewTests(TestCase):
         mock_healthcheck.assert_called_once()
         # Connecting should be seamless: an automatic history import is
         # queued immediately, and the recurring schedule is armed.
-        mock_pull_delay.assert_called_once_with(user_id=self.user.id)
+        mock_pull_delay.assert_called_once_with(
+            user_id=self.user.id,
+            account_id=JellyfinAccount.objects.get(user=self.user).id,
+        )
         self.assertTrue(
             PeriodicTask.objects.filter(task=JELLYFIN_PULL_TASK_NAME).exists()
         )
@@ -90,6 +93,7 @@ class JellyfinViewTests(TestCase):
         response = self.client.post(
             reverse("jellyfin_connect"),
             {
+                "account_id": existing.id,
                 "base_url": "https://new.jellyfin.local:8096",
                 "api_key": "jf-new-key",
             },
@@ -197,7 +201,10 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(account.jellyfin_username, "danny")
         mock_healthcheck.assert_called_once()
         mock_find_user.assert_called_once_with("danny")
-        mock_pull_delay.assert_called_once_with(user_id=self.user.id)
+        mock_pull_delay.assert_called_once_with(
+            user_id=self.user.id,
+            account_id=JellyfinAccount.objects.get(user=self.user).id,
+        )
 
     @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     def test_connect_requires_username_fallback_when_me_unresolved(
@@ -328,7 +335,10 @@ class JellyfinViewTests(TestCase):
         response = self.client.post(reverse("jellyfin_pull_now"))
 
         self.assertEqual(response.status_code, 302)
-        mock_delay.assert_called_once_with(user_id=self.user.id)
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id,
+            account_id=JellyfinAccount.objects.get(user=self.user).id,
+        )
 
     @patch("integrations.views.tasks.pull_jellyfin_history.delay")
     def test_pull_now_queues_for_broken_account(self, mock_delay):
@@ -343,7 +353,10 @@ class JellyfinViewTests(TestCase):
 
         self.client.post(reverse("jellyfin_pull_now"))
 
-        mock_delay.assert_called_once_with(user_id=self.user.id)
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id,
+            account_id=JellyfinAccount.objects.get(user=self.user).id,
+        )
 
     @patch("integrations.views.tasks.push_jellyfin_watched.delay")
     def test_push_now_requires_connected_account(self, mock_delay):
@@ -366,12 +379,15 @@ class JellyfinViewTests(TestCase):
         response = self.client.post(reverse("jellyfin_push_now"))
 
         self.assertEqual(response.status_code, 302)
-        mock_delay.assert_called_once_with(user_id=self.user.id)
+        mock_delay.assert_called_once_with(
+            user_id=self.user.id,
+            account_id=JellyfinAccount.objects.get(user=self.user).id,
+        )
 
     @patch("integrations.views.tasks.import_jellyfin_playback_reporting.delay")
     def test_playback_reporting_upload_queues_history_import(self, mock_delay):
         """A connected user can queue a manual Playback Reporting upload."""
-        JellyfinAccount.objects.create(
+        account = JellyfinAccount.objects.create(
             user=self.user,
             base_url="https://jellyfin.local:8096",
             api_key="encrypted",
@@ -395,7 +411,7 @@ class JellyfinViewTests(TestCase):
         queued = mock_delay.call_args.args[0]
         self.addCleanup(discard_staged_upload, queued)
         self.assertEqual(Path(queued).read_bytes(), payload)
-        self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new"))
+        self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new", account.id))
 
     @staticmethod
     def _account_connection_props(response):

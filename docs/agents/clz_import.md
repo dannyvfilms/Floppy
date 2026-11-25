@@ -32,6 +32,9 @@ were. What is supported is the mapping behaviour, not a column list.
   becomes `Series`, `format displayname` becomes `Format`), drops CLZ's sync
   bookkeeping (`hash`, `index`, `bpcomicid`, timestamps, thumbnail sizes), and
   keeps the best cover link as `Cover URL`. Records are marked `CLZ Native`.
+  User-defined fields are stored by uuid on each record and named once in
+  `udfdefinitions`; `_take_udfs` resolves them so each becomes a column named
+  after its field (for example `Shelf Row 1`).
 
 Column identity is matched with `clz.column_key`, which folds case, Unicode
 form and separators **and then drops spaces** — the CSV header
