@@ -1161,6 +1161,14 @@ def build_detail_link_sections(
         for name, url in stored_links.items():
             append_entry(external_entries, name, url, name)
 
+        trakt_url = trakt_popularity_service.trakt_page_url(
+            item.provider_external_ids,
+            media_type,
+            season_number=item.season_number,
+        )
+        if trakt_url:
+            append_entry(external_entries, "Trakt", trakt_url, "trakt")
+
     sections = []
     if metadata_source_entries:
         if tracking_source_entries:
