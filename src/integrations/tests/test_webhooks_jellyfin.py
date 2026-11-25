@@ -2471,6 +2471,33 @@ class JellyfinWebhookTests(TestCase):
 
     @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
     @patch.object(
+        JellyfinWebhookProcessor, "_find_tv_media_id", return_value=(None, None, None)
+    )
+    def test_item_added_episode_tmdb_id_is_not_used_as_show_id(
+        self,
+        mock_find_tv_media_id,
+        mock_get_media_metadata,
+    ):
+        """An episode's TMDB id must not reach TMDB as a show id (#2168)."""
+        payload = {
+            "Event": "ItemAdded",
+            "Item": {
+                "Type": "Episode",
+                "Name": "Pilot",
+                "SeriesName": "Some Show",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tmdb": "987654"},
+            },
+        }
+
+        JellyfinWebhookProcessor().process_payload(payload, self.user)
+
+        self.assertIsNone(mock_find_tv_media_id.call_args.args[0]["tmdb_id"])
+        mock_get_media_metadata.assert_not_called()
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    @patch.object(
         JellyfinWebhookProcessor, "_find_tv_media_id", return_value=("1668", None, None)
     )
     def test_item_added_and_deleted_episode_syncs_collection_without_tracking(
