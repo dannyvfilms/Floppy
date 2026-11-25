@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { ListPeople } from './ListPeople';
 import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
 import { shelfCardWidth } from './HomeShelves';
@@ -128,6 +129,14 @@ function Adapter({ props }) {
     };
   }, []);
 
+  if (props.kind === 'listPeople') {
+    return <ListPeople
+      people={props.people}
+      title={props.title}
+      palette={palette}
+      onOpen={person => window.location.assign(person.url)} />;
+  }
+
   if (props.kind === 'cast') {
     return <CastRail props={props} palette={palette} />;
   }
@@ -170,7 +179,10 @@ function Adapter({ props }) {
     canViewHistory={props.canViewHistory}
     actionPalette={personActionPalette}
     onOpenSource={openExternal}
-    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined} />;
+    onViewHistory={props.historyUrl ? () => window.location.assign(props.historyUrl) : undefined}
+    onAddToLists={props.listsModal
+      ? () => window.dispatchEvent(new CustomEvent('floppy-open-modal', { detail: props.listsModal }))
+      : undefined} />;
 }
 
 export function mountPeople(host, props) {

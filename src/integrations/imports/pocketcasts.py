@@ -7,6 +7,7 @@ from http import HTTPStatus
 
 import jwt
 import requests
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.db import transaction
 from django.utils import timezone
 
@@ -419,8 +420,22 @@ class PocketCastsImporter:
         ):
             import_progress.report(i, shows_total, "Pocket Casts: shows")
             show_title = podcast_meta.get("title") or podcast_uuid
-            show = self._ensure_show(podcast_uuid, podcast_meta)
-            full_metadata = self._fetch_show_full_metadata(podcast_uuid)
+            try:
+                show = self._ensure_show(podcast_uuid, podcast_meta)
+                full_metadata = self._fetch_show_full_metadata(podcast_uuid)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Pocket Casts import for %s hit the time limit at show %s/%s (%s)",
+                    self.user.username,
+                    i,
+                    shows_total,
+                    show_title,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining shows.",
+                )
+                break
             if full_metadata is None:
                 self.warnings.append(f"{show_title}: failed to sync episode catalog")
                 continue
@@ -435,7 +450,21 @@ class PocketCastsImporter:
             catalog_index = self._load_catalog_index(
                 show, incoming_uuids=full_metadata.keys()
             )
-            play_states = self._fetch_show_play_states(podcast_uuid)
+            try:
+                play_states = self._fetch_show_play_states(podcast_uuid)
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Pocket Casts import for %s hit the time limit at show %s/%s (%s)",
+                    self.user.username,
+                    i,
+                    shows_total,
+                    show_title,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining shows.",
+                )
+                break
             for metadata_ep in full_metadata.values():
                 catalog_episode_data = self._build_catalog_episode_data(
                     metadata_ep,
@@ -1631,6 +1660,8 @@ class PocketCastsImporter:
                 "HTTP error fetching play states for podcast %s: %s", podcast_uuid, e
             )
             return None
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as e:
             logger.warning(
                 "Failed to fetch play states for podcast %s: %s", podcast_uuid, e
@@ -1675,6 +1706,8 @@ class PocketCastsImporter:
                     e,
                 )
                 return None
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as e:
                 logger.warning(
                     "Failed to fetch full metadata for podcast %s (page %d): %s",

@@ -57,6 +57,7 @@ CARD_FIELDS = {
     "platforms": _field("Platform", metadata="platforms"),
     "runtime": _field("Runtime", _ALL_MEDIA, metadata="runtime"),
     "progress": _field("Progress", _ALL_MEDIA),
+    "time_spent": _field("Time spent", {"game", "book"}),
     "series_position": _field("Series position", {"book"}),
     "status": _field("Status", _ALL_MEDIA, metadata="status"),
     "rating": _field("Score", _ALL_MEDIA),
@@ -561,6 +562,10 @@ def _progress(item, media, user):
             return None
         count = int(count)
         return ngettext("%(count)s play", "%(count)s plays", count) % {"count": count}
+    # A game played in several sessions shows its combined time, not the last
+    # session's. Home and the library sum duplicate entries into this value.
+    if media_type == MediaTypes.GAME.value and _from_obj(media, "aggregated_progress"):
+        return _text(_from_obj(media, "formatted_aggregated_progress"))
     formatted = _from_obj(media, "formatted_progress")
     if formatted:
         return _text(formatted)
@@ -576,6 +581,27 @@ def _progress(item, media, user):
     if progress:
         return _text(progress)
     return None
+
+
+def _time_spent(item, media, user):
+    """Total time on a game, or reading and listening time on a book.
+
+    Empty when nothing is logged, so a card never shows a zero.
+    """
+    if media is None:
+        return None
+    from app import helpers
+
+    media_type = _from_obj(item, "media_type")
+    if media_type == MediaTypes.GAME.value:
+        minutes = _from_obj(media, "aggregated_progress")
+        if minutes is None:
+            minutes = _from_obj(media, "progress")
+    elif _from_obj(item, "format") == "audiobook":
+        minutes = _from_obj(media, "progress")
+    else:
+        minutes = _from_obj(media, "reading_time")
+    return _text(helpers.minutes_to_hhmm(minutes)) if minutes else None
 
 
 def _series_position(item, media, user):
@@ -848,6 +874,7 @@ _RENDERERS = {
     "status": _status,
     "rating": _rating,
     "episode_code": _episode_code,
+    "time_spent": _time_spent,
     "last_played": _last_played,
     "date_added": _date_added,
     "start_date": _start_date,

@@ -364,6 +364,21 @@ class SimklImporter:
                         metadata,
                     )
 
+            except SoftTimeLimitExceeded:
+                # Rate-limited TMDB lookups can sleep long enough to trip the
+                # task's soft time limit. Stop here rather than losing every
+                # show already staged - "new" mode skips them on re-run.
+                logger.warning(
+                    "Simkl TV import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    self._progress_current,
+                    self._progress_total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining shows.",
+                )
+                break
             except Exception as error:
                 msg = f"Error processing entry: {tv}"
                 raise MediaImportUnexpectedError(msg) from error

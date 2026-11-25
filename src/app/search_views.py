@@ -1869,6 +1869,8 @@ def build_search_results_props(context):
         "title": gettext("Search results"),
         "query": query,
         "mediaType": media_type,
+        # A row title opens that one row as a grid (`/search?...&grid=<rowId>`).
+        "focusRowId": (request.GET.get("grid") if request else None) or None,
         "state": "ready" if rows or online_sources else "empty",
         "rows": rows,
         "onlineSources": [

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CollectionRow, separatorStyle } from './CollectionCopies';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 import { systemFillColor } from './separatorColor';
 import { TrackCalendar } from './TrackCalendar';
 import { formatDisplayText, pad2, parseDateValue, valueFromDate } from './dateTime';
@@ -10,7 +12,7 @@ import { formatDisplayText, pad2, parseDateValue, valueFromDate } from './dateTi
 // hour, minute and second wheels.
 // The calendar is TrackCalendar; the time wheels and the calendar's month and year wheels are native
 // controls a platform supplies (`renderTime`, `renderMonthYear`).
-// Native only: web keeps the compact DateTimePicker field in TrackForm.
+// There is no Clear text: while a picker is open an X button left of the date bubbles clears the date.
 
 function timeText(parts) {
   const hour = parts.hour % 12 || 12;
@@ -48,6 +50,11 @@ export function TrackDateRow({
   return <View>
     <CollectionRow icon={icon} label={label} palette={palette}>
       <View style={styles.pills}>
+        {mode && parts ? <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${labels.clear || 'Clear'}`}
+          onPress={() => { onChange('', { source: 'picker' }); onModeChange(null); }}
+          style={({ pressed }) => [styles.clearButton, { backgroundColor: systemFillColor() || palette.surfaceStrong, opacity: pressed ? 0.72 : 1 }]}>
+          <Icon spec={actionIcons.x} size={14} color={palette.textMuted} />
+        </Pressable> : null}
         {pill('date', parts ? formatDisplayText(parts, false, false) : (labels.notSet || 'Not set'), !parts)}
         {parts && trackTime ? pill('time', timeText(parts)) : null}
       </View>
@@ -55,10 +62,6 @@ export function TrackDateRow({
     {mode ? <View style={styles.panel}>
       {divider}
       {panel ? <View style={styles.centered}>{panel}</View> : null}
-      {parts ? <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${labels.clear || 'Clear'}`}
-        onPress={() => { onChange('', { source: 'picker' }); onModeChange(null); }} style={styles.clear}>
-        <Text style={[styles.clearText, { color: palette.danger }]}>{labels.clear || 'Clear'}</Text>
-      </Pressable> : null}
     </View> : null}
     {error ? <Text accessibilityLiveRegion="polite" style={[styles.error, { color: palette.danger }]}>{error}</Text> : null}
   </View>;
@@ -72,7 +75,6 @@ const styles = StyleSheet.create({
   panel: { paddingBottom: 4 },
   // Spacing measured from iOS Calendar: 44pt from the divider to the month header, 41pt from the last week to the next divider.
   centered: { alignItems: 'center', paddingTop: 20, paddingBottom: 24 },
-  clear: { alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 8 },
-  clearText: { fontSize: 17 },
+  clearButton: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   error: { fontSize: 13, lineHeight: 18, paddingHorizontal: 16, paddingBottom: 10 },
 });

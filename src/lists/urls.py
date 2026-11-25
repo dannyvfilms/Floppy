@@ -7,6 +7,7 @@ from lists import (
     views_list_actions,
     views_list_browse,
     views_mdblist,
+    views_people,
     views_recommendations,
     views_tiers,
     views_trakt,
@@ -158,6 +159,16 @@ urlpatterns = [
         "lists/import/mdblist/url",
         views_mdblist.mdblist_import_url,
         name="mdblist_import_url",
+    ),
+    path(
+        "person_lists/<source:source>/<str:person_id>",
+        views_people.person_lists_modal,
+        name="person_lists_modal",
+    ),
+    path(
+        "person_list_toggle",
+        views_people.person_list_toggle,
+        name="person_list_toggle",
     ),
     path(
         "list_item_toggle", views_list_actions.list_item_toggle, name="list_item_toggle"

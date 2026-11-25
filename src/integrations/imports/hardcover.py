@@ -3,6 +3,7 @@ from collections import defaultdict
 from csv import DictReader
 from datetime import datetime
 
+from billiard.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -85,6 +86,18 @@ class HardcoverImporter:
                 error_msg = f"Error processing entry with ID {row.get('Hardcover Book ID', '')} "
                 self.warnings.append(error_msg)
                 continue
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "Hardcover import for %s hit the time limit at entry %s/%s",
+                    self.user.username,
+                    i,
+                    total,
+                )
+                self.warnings.append(
+                    "Import stopped partway through because it was taking too "
+                    "long. Run the import again to pick up the remaining books.",
+                )
+                break
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error

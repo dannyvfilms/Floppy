@@ -72,6 +72,7 @@ cmd_start() {
     || echo "WARNING: collectstatic failed; pages will render unstyled"
 
   if [ "$with_worker" = 1 ]; then
+    OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES \
     FLOPPY_PROCESS_ROLE="${FLOPPY_CELERY_ROLE:-background}" \
       celery --app config worker --queues "${FLOPPY_CELERY_QUEUES:-celery}" \
       --hostname "local-celery@%h" --loglevel INFO \

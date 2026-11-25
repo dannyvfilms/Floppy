@@ -1,6 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { applyMarkdownAction, normalizeSelection } from './markdown';
+import { CollectionGroup, CollectionSectionHeading } from './CollectionCopies';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
+import { systemFillColor } from './separatorColor';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -66,10 +70,17 @@ export function MarkdownNotes({
   Preview,
   minHeight = 150,
   testID,
+  // Grouped-list design (the Tracking sheet and Collection modal): a titled card holding a
+  // Write / Preview segmented control with the formatting tools, then a borderless text area.
+  grouped = false,
 }) {
   const labels = { ...DEFAULT_LABELS, ...(suppliedLabels || {}) };
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
   const [tab, setTab] = useState('write');
+  // The info tip opens on hover (web) or when tapped (native); a tap pins it open until tapped again.
+  const [tipHover, setTipHover] = useState(false);
+  const [tipPinned, setTipPinned] = useState(false);
+  const tipOpen = tipHover || tipPinned;
   const [pendingSelection, setPendingSelection] = useState(null);
   const selection = useRef({ start: 0, end: 0 });
   const input = useRef(null);
@@ -126,6 +137,75 @@ export function MarkdownNotes({
     </View>
   );
 
+  const input_ = tab === 'write' ? <TextInput
+    ref={input}
+    accessibilityLabel={accessibilityLabel || label}
+    accessibilityState={{ disabled }}
+    editable={!disabled}
+    multiline
+    onChangeText={change}
+    onSelectionChange={rememberSelection}
+    placeholder={placeholder}
+    placeholderTextColor={palette.textMuted}
+    selection={pendingSelection || undefined}
+    textAlignVertical="top"
+    value={String(value ?? '')}
+    style={[grouped ? styles.groupedInput : styles.input, {
+      minHeight: grouped ? 132 : minHeight,
+      color: palette.text,
+      opacity: disabled ? 0.6 : 1,
+    }]} /> : <View style={[grouped ? styles.groupedPreview : styles.preview, { minHeight: grouped ? 132 : minHeight }]}>
+    {Preview
+      ? <Preview markdown={value} labels={labels} palette={palette} />
+      : <Text style={[grouped ? styles.groupedFallback : styles.fallback, { color: palette.textSecondary }]}>{String(value || labels.emptyPreview)}</Text>}
+  </View>;
+
+  if (grouped) {
+    // iOS: the system fill track with a raised card-coloured segment. Web: a darker track with a lighter segment.
+    const system = systemFillColor();
+    const fill = system || palette.surfaceDim || palette.surfaceStrong;
+    const raised = system ? palette.surface : palette.surfaceStrong;
+    return <View style={styles.root} testID={testID}>
+      {!labelHidden ? <View style={styles.groupedHeadingWrap}>
+        <View style={styles.groupedHeading}>
+          <CollectionSectionHeading title={label} palette={palette} />
+          <Pressable accessibilityRole="button" accessibilityLabel={hint || labels.hint} hitSlop={10}
+            accessibilityState={{ expanded: tipOpen }} onPress={() => setTipPinned(open => !open)}
+            onHoverIn={() => setTipHover(true)} onHoverOut={() => setTipHover(false)}>
+            <Icon spec={actionIcons.info} size={16} color={palette.textMuted} />
+          </Pressable>
+        </View>
+        {tipOpen ? <View accessibilityRole="alert" style={[styles.tip, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text style={[styles.tipText, { color: palette.textSecondary }]}>{hint || labels.hint}</Text>
+        </View> : null}
+      </View> : null}
+      <CollectionGroup palette={palette}>
+        <View key="controls" style={styles.groupedControls}>
+          <View style={[styles.segments, { backgroundColor: fill }]}>
+            {['write', 'preview'].map(key => {
+              const active = tab === key;
+              return <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }}
+                accessibilityLabel={labels[key]} onPress={() => setTab(key)}
+                style={({ pressed }) => [styles.segment, active && { backgroundColor: raised }, pressed && styles.pressed]}>
+                <Text style={[styles.segmentText, { color: active ? palette.text : palette.textMuted }]}>{labels[key]}</Text>
+              </Pressable>;
+            })}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.groupedToolsScroll}
+            contentContainerStyle={styles.groupedTools}>
+            {TOOLBAR.map(item => <Pressable key={item.action} accessibilityRole="button"
+              accessibilityLabel={labels[item.label]} disabled={disabled} onPress={() => runAction(item.action)}
+              style={({ pressed }) => [styles.groupedTool, pressed && { backgroundColor: fill }]}>
+              <Text style={[styles.groupedToolText, { color: disabled ? palette.textMuted : palette.textSecondary }]}>{item.glyph}</Text>
+            </Pressable>)}
+          </ScrollView>
+        </View>
+        <View key="body">{input_}</View>
+      </CollectionGroup>
+      {message ? <Text accessibilityRole="alert" style={[styles.error, { color: palette.danger }]}>{message}</Text> : null}
+    </View>;
+  }
+
   return <View style={styles.root} testID={testID}>
     {!labelHidden ? <View style={styles.labelRow}>
       <Text style={[styles.label, { color: palette.textSecondary }]}>{label}</Text>
@@ -181,4 +261,19 @@ const styles = StyleSheet.create({
   preview: { paddingHorizontal: 12, paddingVertical: 10 },
   fallback: { fontSize: 13, lineHeight: 19 },
   error: { fontSize: 12, lineHeight: 17 },
+  groupedControls: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  segments: { flexDirection: 'row', borderRadius: 9, padding: 2 },
+  segment: { borderRadius: 7, paddingHorizontal: 14, paddingVertical: 5 },
+  segmentText: { fontSize: 14, fontWeight: '600' },
+  groupedToolsScroll: { flex: 1, minWidth: 0 },
+  groupedTools: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 2 },
+  groupedTool: { minWidth: 32, alignItems: 'center', borderRadius: 7, paddingHorizontal: 6, paddingVertical: 6 },
+  groupedToolText: { fontSize: 14, fontWeight: '600' },
+  groupedInput: { paddingVertical: 12, fontSize: 17, lineHeight: 22 },
+  groupedPreview: { paddingVertical: 12 },
+  groupedFallback: { fontSize: 17, lineHeight: 22 },
+  groupedHeadingWrap: { zIndex: 10 },
+  groupedHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tip: { position: 'absolute', top: '100%', left: 0, zIndex: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginTop: 2 },
+  tipText: { fontSize: 13, lineHeight: 18 },
 });

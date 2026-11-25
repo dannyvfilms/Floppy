@@ -37,6 +37,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `expo/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
 | Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
+| Merge train (keeps approved PRs up to date) | `scripts/merge_train.py` (planning), `scripts/merge_train_ui.py` (UI bundle rebuild and publication), `.github/workflows/merge-train.yml` | `docs/architecture/merge-train-throughput.md` |
 
 ### Names that do not explain themselves
 
@@ -109,6 +110,13 @@ helpers are in `src/integrations/view_helpers.py`. Connect and import views
 for the other sources are still in `views.py`; a new view for a split subject
 goes in that subject's module.
 
+`Dockerfile.bundled` and `bundled/` are the optional Floppy (Bundled) image:
+`bundled/bundled-services.sh` (embedded PostgreSQL and Valkey lifecycle and the
+refusals that protect data, sourced by `entrypoint.sh` only when
+`FLOPPY_BUNDLED=true`), `bundled/supervisord.d/` (the supervised services) and
+`bundled/floppy-bundled-backup`. `scripts/bundled_smoke.sh` is its boot test.
+See `docs/deployment-bundled.md`.
+
 ## Where new code goes
 
 | New code | Home | The rule that matters |
@@ -116,6 +124,7 @@ goes in that subject's module.
 | A page view | The subject's `*_views.py` in its app; route in that app's `urls.py` | Authentication and public routes: `docs/agents/view_authentication.md` |
 | An API endpoint | `src/api/fork_views_<subject>.py`, route in `src/api/fork_urls.py` | Declare its scope: `docs/architecture/api-scopes.md` |
 | A filter or sort for a list-shaped page | `src/app/library_query/filters.py` or `src/app/library_query/sorts.py` | "Adding a filter or sort" in `docs/architecture/library-query.md`, which also lists the tests and surfaces to update |
+| A title sort or comparison | `src/app/title_sort.py` (`title_sort_key` in Python, `title_sort_expr` in SQL) | Orders by the title without a leading "The ", "A " or "An "; the displayed title never changes. The two must agree: keyset paging compares one with the other |
 | A cache for a page | Key builder and registration in `src/app/cache_utils.py` | Clear it through `clear_library_view_caches`: `docs/architecture/view-caches.md` |
 | A bulk write to tracking rows (`update`, `bulk_create`, `bulk_update`) | Where the write is; a row in `src/app/bulk_write_refresh.py` | Say how the library pages, Statistics and History learn about it: `app.tests.test_bulk_write_refresh` fails until you do |
 | A rule that changes seasons when a show's status changes | `TV._propagate_status_to_seasons` in `src/app/models/tv.py`, one narrow branch per transition. Season to show rules are in `Season.save` | Guard on the exact transition (`tracker.previous`), touch only seasons, add a row in `src/app/bulk_write_refresh.py` for a bulk write |

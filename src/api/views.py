@@ -71,6 +71,7 @@ from lists.views_helpers import (
     _get_list_completed_counts,
     _get_list_last_watched_dates,
 )
+from lists.views_people import list_people_for_display
 
 from . import fork_helpers  # FORK: history sorting overlay
 from .changes_history_processor import (
@@ -680,6 +681,8 @@ class ListDetailView(drf_views.APIView):
             },
         )
 
+        # People saved beside the media (cast, crew, authors).
+        serialized_list["people"] = list_people_for_display(user_list)
         return Response(serialized_list, status=HTTP.OK)
 
     def patch(self, request, list_id):

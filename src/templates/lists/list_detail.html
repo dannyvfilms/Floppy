@@ -677,7 +677,7 @@
         {% endif %}
       {% elif request.GET.initial|alphabet_initial %}
         {% alphabet_filter "filter-form" "empty" %}
-      {% else %}
+      {% elif items_count or not list_people %}
       {% if items_count %}
         {% if request.GET.q or has_media_type_filter %}
           <div class="flex flex-col items-center justify-center py-32 px-4 bg-[var(--color-surface)] rounded-lg">
@@ -750,6 +750,8 @@
       {% endif %}
     </div>
     </div>
+
+    {% if list_people %}{% include "lists/components/list_people.html" %}{% endif %}
 
     <div data-page-slot="list-detail-footer">
       <div id="loading-indicator" class="htmx-indicator text-center pt-8">

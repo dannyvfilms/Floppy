@@ -735,6 +735,16 @@ urlpatterns = [
         name="api_person",
     ),
     re_path(
+        r"^people/(?P<source>[^/]+)/(?P<person_id>[^/]+)/lists/?$",
+        fork_views_people.PersonListsView.as_view(),
+        name="api_person_lists",
+    ),
+    re_path(
+        r"^people/(?P<source>[^/]+)/(?P<person_id>[^/]+)/lists/(?P<list_id>\d+)/?$",
+        fork_views_people.PersonListDetailView.as_view(),
+        name="api_person_list_detail",
+    ),
+    re_path(
         r"^studios/(?P<source>[^/]+)/(?P<studio_id>[^/]+)/?$",
         fork_views_people.StudioView.as_view(),
         name="api_studio",

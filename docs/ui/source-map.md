@@ -58,7 +58,7 @@ Status: `Partial / coexisting`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `frontend/ui/dropdownMetrics.js`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
-- `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
+- `expo/app/surfaces/ShellSlot.jsx`, `expo/app/surfaces/NativeShell.ios.jsx`, `expo/app/surfaces/NativeShell.jsx`, `expo/app/surfaces/NativeRoot.ios.jsx`, `expo/app/surfaces/NativeRoot.jsx`, `expo/app/safeAreaSpacing.mjs`, `expo/app/surfaces/menuGeometry.mjs`, `expo/app/routes/_layout.jsx`, `expo/app/routes/index.jsx`, `expo/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; on a phone (no rail) the shared `TopBar` (menu button, then search) sits in flow above the page and a left-edge drag goes back, while a rail device keeps the floating search and toolbar buttons; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
@@ -77,6 +77,7 @@ Status: `Web Migrated`
 - `frontend/settings/index.js`
 - `frontend/settings/mount.jsx`
 - `frontend/settings/root.web.js`
+- `frontend/settings/statusTones.js`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
 - `src/templates/app/components/ui_asset_refresh.html`
@@ -410,7 +411,7 @@ Status: `Partial / coexisting`
 ## SEARCH
 
 `expo/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `expo/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `expo/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` supplies MediaCardSlot to each shared shelf card for in-place actions; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Native shelf actions use the MediaCardSlot host; unsupported media retain their existing detail flow.
-
+ A row title opens that row as a grid: `SearchResults` `RowGrid`, `focusRowId`/`onFocusRow` (web `?grid=<rowId>`, Expo `Search` `gridRow`); `Rail` omits paging arrows on native.
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
 Suggestion requests (2026-11-16): `GlobalSearch` cancels the superseded request with an `AbortController` and passes `signal` to the platform loader; web loads through `frontend/ui/webRequest.web.js`, Expo through `searchTransportCore` and `authTransportCore` `send`. Both send a per-box `sid` (made in `GlobalSearch.web.jsx`, and per transport by `searchBoxId` in `searchTransportCore`) that `search_views.suggestion_superseded_check` uses to stop older All-media requests early.
@@ -474,6 +475,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/homeRowWatcher.web.js` (browser adapter: IntersectionObserver row positions for lazy Home rows; the look-ahead is a pixel margin from the viewport height, rebuilt on resize, because a percentage margin resolves against width).
 - `expo/app/data/homeRowWatcherCore.js` (Expo adapter: measures waiting Home rows on scroll and layout for lazy loading).
 - `frontend/ui/homeTransportCore.js` (shared Home endpoints: row windows, sort, cover refresh and row-page merge, over an injected request; used by `mountHome.jsx` and, through the `expo/app/data/homeTransportCore.js` re-export, by Expo `homeTransport.js`).
+- `frontend/ui/basePath.web.js` (web-only `withBasePath`: prefixes root-absolute API paths with the BASE_URL mount path from the `floppy-base-path` meta tag; used by `webRequest.web.js`, `SearchResults.web.jsx`, `mountProgressPage.jsx` and `mediaCardQuickStatus.web.js`).
 - `frontend/ui/webRequest.web.js` (web-only request for adapters that drive a shared transport core: cookie session, CSRF on unsafe methods, in-flight sharing of identical GETs, optional AbortSignal and timing hook).
 
 ## PLAYBACK
@@ -768,6 +770,9 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_filmography_fragment.html`
 - `src/templates/app/components/person_credit_cards.html` (one page of a person credit grid; the last card loads the next page on scroll, prompt 49-A)
 - `src/templates/app/components/person_hero.html` (person hero island and its fallback, shared by the page and the talent fill-in)
+- `src/lists/views_people.py` (person Add-to-lists JSON and toggle) with `src/templates/lists/list_detail.html` People section (saved people on a list)
+- `src/templates/lists/components/list_people.html` (People section server fallback for the shared `ListPeople` island on list pages)
+- `frontend/ui/ListPeople.jsx` (people on a list, Expo list detail and the web list page via `mountPeople.jsx`; read-only, people come off a list from the person page like media), `expo/app/screens/PeopleScreen.jsx` Add to lists sheet, `src/api/fork_views_people.py` (`PersonListsView`, `PersonListDetailView`)
 - `src/templates/app/components/person_talent_poller.html` (asks every 3 s while play totals build)
 - `src/templates/app/components/person_talent_ready.html` (out-of-band hero and credits once totals are built)
 - `src/templates/app/components/person_media_strip_card.html`
@@ -1035,6 +1040,8 @@ Status: `Partial / coexisting`
 - `expo/app/data/providersTransportCore.js` (retains browser account status and binary import payloads; current iOS/Android paths unverified)
 
 Provider account state and bundled keys: `provider_ui._connection_card` and `provider_catalog.provider_state` (`account_linkable`) split a linked account from credentials; `credentials.ProviderCredentialSpec.bundled_only` (WeTrakr) hides every key surface. `mountAccountConnection` mounts the shared `ProviderLinkCard` device-code flow for WeTrakr through `transport.web.linkRequest` (replacing the Alpine connect box in `wetrakr_sync.html`), `ProviderLinkCard.initialDevice` resumes a pending code on web and via `ProviderDetailView` on native, and `ProviderSettingsView`/`readThemePalette` give the key chip and neutral badges real colors. Web verified in Chromium; iOS and Android unverified.
+
+Multiple Jellyfin connections (#2111): `provider_views` builds one `instances` row per `JellyfinAccount` (`editable`, no keys); the Sync and Import tabs use per-connection `provider_forms` models (`jellyfin_sync_<id>`, `jellyfin_push_<id>`, `jellyfin_history_<id>`, `jellyfin_pull_<id>`) and `fileImports` through `ProviderSettingsFormView` and `ProviderFileImportView`; `AccountSettings` renders Edit/Disconnect side by side per row (light-theme styling and chip text colours come from `frontend/settings/statusTones.js`); views, API routes and tasks address a connection by `instance_id`/`account_id`; `src/templates/users/providers/integrations/jellyfin.html` is the server fallback.
 
 ProviderDetailView consumes portable AccountSettings/ProviderSettingsView, native-only active sign-in slots and CatalogGrantsCard on Stremio Tracking. Existing Django/web adapter bodies coexist until full browser parity and migration acceptance; no platform classification is changed by these native composition edits.
 
@@ -1377,7 +1384,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/SettingsNotificationsView.jsx`
 - `frontend/pages/SettingsPreferencesView.jsx`
 - `frontend/pages/SettingsUsersView.jsx`
-- `frontend/pages/SettingsView.jsx`
+- `frontend/pages/SettingsView.jsx` (optional `navColumnStyle`; the web adapter passes a sticky, self-scrolling menu column for #1525; pinned only when the columns fit side by side, 672px and up; native unchanged; browser verified, iOS/Android unverified)
 - `frontend/pages/StatisticsView.jsx`
 - `frontend/pages/TagsPageView.jsx`
 - `frontend/pages/UtilitiesView.jsx` (native About > Open Utilities > Copy Server URL exercised in Expo; exact connected address copied and prior clipboard restored. WEB About static-cache utilities have a different platform scope; Partial browser parity, iOS/Android unverified.)
@@ -1402,7 +1409,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
-- `frontend/settings/mountSettingsView.jsx`
+- `frontend/settings/mountSettingsView.jsx` (passes the web-only sticky menu style with a 32px bottom gap, #1525)
 - `frontend/ui/ArtworkImage.jsx`
 - `frontend/ui/ArtworkImage.native.jsx`
 - `frontend/ui/ArtworkImage.web.jsx`
@@ -1519,6 +1526,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/TrackTabsGrouped.jsx`
 - `frontend/ui/TrackDateRow.jsx`
 - `frontend/ui/TrackCalendar.jsx`
+- `frontend/ui/trackDatePanels.jsx`
 - `frontend/ui/separatorColor.js`
 - `frontend/ui/separatorColor.web.js`
 - `frontend/ui/separatorColor.native.js`
@@ -1636,7 +1644,14 @@ DropdownMenu → DropdownMenuContent owns keyboard-driven layout inside the moda
 
 - 2026-11-18 card polish: `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.jsx` (progress bar height), `expo/app/screens/LibraryScreen.jsx` (auto-load, button only for table, grouped grids and errors), `src/app/media_card_model.py` (Next Episode wording), `src/static/css/input.css`.
 - MEDIA-CARD adapters and menu: `frontend/ui/cardModels.js`, `frontend/ui/cardMenu.js`, `frontend/ui/cardMenuHost.js`, `expo/app/surfaces/cardMenuInstall.js`.
+
+- Track dialog short-window fix (issue #2134): `TrackForm.jsx` caps the sidebar shell height to `min(92% of the window, window - 4rem)` and `TrackFormTabs.jsx` caps the 576 px General-pane floor to the space under the header, so the footer is never clipped.
 - 2026-11-23 provider header tags: `frontend/providers/ProviderPageView.jsx` clips its hidden measuring row so the `+N` tag chip cannot widen the page; fit logic stays in `frontend/providers/mediaTagFit.js`.
 - 2026-11-23 `frontend/providers/provider-page.css`: fallback media tags are one clipped line.
 - 2026-11-23 provider logos: `frontend/providers/ProviderPageView.jsx` and `frontend/ui/controls/Catalog.jsx` use `frontend/ui/ProviderLogo` (SVG-capable on native); `expo/app/data/providersTransportCore.js` makes logo paths absolute.
 - 2026-11-23 `frontend/ui/TrackDateRow.jsx`: Clear button in the open date panel; `expo/app/surfaces/MediaCardSlot.jsx`: tabs effect moved below the `status` state.
+
+
+Track modal on web (2026-11-24): `TrackForm` takes `groupedContent`, which under 1024 px (phones and an open iPhone Duo; desktop is unchanged) uses the Expo grouped rows (Details and Dates groups, date rows with calendar and time steppers, Presets) and `TrackTabsGrouped` tab bodies (Discover, Status history) inside the web tab navigation and footer; `trackDatePanels.jsx` (`TrackTimeSteppers`) is the shared time panel for web and Android. Web runtime verified (375 px phone; desktop confirmed unchanged); iOS unchanged; Android not verified. Left server-rendered or on the existing tag dialog: Metadata, Collection, Episode plays (richer than the Expo bodies) and Tags (tag deletion has no grouped equivalent yet).
+
+Track modal follow-up (2026-11-24): Score uses the Status picker, rows follow Expo's order, date rows clear with an X button, `MarkdownNotes` has a `grouped` design (Write/Preview and tools on one row, borderless text area in a card, hint behind an info icon), and the grouped form takes Expo's Delete row and Cancel / Update footer used by the grouped Track form, and Expo's `trackFields` offers Source for every type that accepts it.

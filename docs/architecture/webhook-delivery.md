@@ -219,3 +219,32 @@ Receipt timestamps are currently emitted by the Plex, Jellyfin, Emby and Kodi
 receivers. Plex, Jellyfin and Emby pass the timestamp into the Now Playing
 card and progress writer; the task accepts the same fields for any future
 receiver.
+
+## Jellyfin: more than one server
+
+The receiver URL names the Floppy user, not the server. A user may connect
+several Jellyfin servers (`JellyfinAccount`, one row each), so the processor
+reads `ServerId` from the payload (the current template sends it) and matches it
+to a connection (`integrations.webhooks.jellyfin.attribute_connection`):
+
+- one connection: every event is that server's, so old URLs and templates keep
+  working;
+- several connections: an event whose `ServerId` matches none is ambiguous. It
+  writes no collection ownership, link, or instant push, and logs a warning.
+  Playback and watch events still apply to the user, because history is
+  deduplicated per user;
+- two connections on one server (one per Jellyfin profile): `ServerId` matches
+  both, so the payload's `UserId` (the current template sends it) picks the
+  profile. With no `UserId`, or one that matches neither, the event is
+  ambiguous in the same way.
+
+Collection ownership and detail-page links are keyed per connection; the oldest
+connection keeps the unscoped keys its rows were stored under. Disconnecting a
+connection (`release_connection_sources`) removes its stored records, and when
+it was the oldest, hands the unscoped keys to the next oldest by re-keying that
+connection's records, so ownership never follows whichever row happens to be
+oldest. A lone connection's records are kept on disconnect. Instant pushes
+are debounced per connection. Scheduled push and pull tasks, health checks and
+Playback Reporting cursors all take an `account_id`; Playback Reporting row
+identities are prefixed with the connection's `identity_scope` so equal rowids
+on two servers never collide.

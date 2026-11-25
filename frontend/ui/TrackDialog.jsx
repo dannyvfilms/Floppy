@@ -141,6 +141,7 @@ export function TrackDialog({
   onSecondaryAction,
   embedded = false,
   grouped = false,
+  groupedContent = false,
   renderSelectPicker,
   renderMonthYearWheels,
   renderTimeWheels,
@@ -252,6 +253,7 @@ export function TrackDialog({
     showHeader={showHeader === undefined ? !embedded : showHeader}
     embedded={embedded}
     grouped={grouped}
+groupedContent={groupedContent}
     renderSelectPicker={renderSelectPicker}
     renderMonthYearWheels={renderMonthYearWheels}
     renderTimeWheels={renderTimeWheels} />;

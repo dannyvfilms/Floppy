@@ -8,6 +8,7 @@ from uuid import uuid4
 from django import template
 from django.conf import settings
 from django.templatetags.static import static
+from django.urls import get_script_prefix
 from django.urls import reverse as _django_reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
@@ -65,6 +66,16 @@ COUNTRY_CODE_LENGTH = 2
 COUNTRY_CODE_BY_NAME = {
     name.casefold(): code for code, name in COUNTRY_NAME_MAP.items()
 }
+
+
+@register.simple_tag
+def script_prefix():
+    """Mount path of the app ("" at the root, "/track" under BASE_URL).
+
+    Islands prepend it to root-absolute API paths, which Django's own URL
+    helpers cannot do for URLs built in JavaScript.
+    """
+    return get_script_prefix().rstrip("/")
 
 
 @register.simple_tag
@@ -1758,6 +1769,23 @@ def lists_modal_click(media, return_url=""):
         f"#{component_id('lists', media)}",
         return_url,
     )
+    return format_html(
+        "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
+        '{{detail: {}}}))"',
+        json.dumps(spec),
+    )
+
+
+@register.simple_tag(takes_context=True)
+def person_lists_click(context):
+    """Return the onclick attribute that opens Add-to-lists for the person page."""
+    import json
+
+    from users.templatetags.ui_tags import person_lists_modal_spec
+
+    spec = person_lists_modal_spec(context)
+    if spec is None:
+        return ""
     return format_html(
         "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
         '{{detail: {}}}))"',
