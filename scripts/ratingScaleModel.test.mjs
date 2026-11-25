@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  addCriterion, addTier, chipFitsLines, compactTiers, computeScore, criteriaBody, draftPayload,
+  addCriterion, addTier, criterionStep, formatResult, compactTiers, computeScore, criteriaBody, draftPayload,
   moveInTier, moveToTier, newDraft, overallSummary, ratingFormValues, validateDraft,
 } from '../frontend/ui/ratingScaleModel.js';
 
@@ -66,9 +66,10 @@ test('form values and the manual override summary', () => {
   assert.equal(manual.computed, 8);
 });
 
-test('the chip lists lines only for a few star-row criteria', () => {
-  const stars = n => Array.from({ length: n }, (_, index) => ({ id: String(index), min: 1, max: 5, weight: 1 }));
-  assert.equal(chipFitsLines({ criteria: stars(3) }), true);
-  assert.equal(chipFitsLines({ criteria: stars(6) }), false);
-  assert.equal(chipFitsLines({ criteria: [{ id: 'p', min: 0, max: 100, weight: 1 }] }), false);
+test('wheels step by halves up to a maximum of 10 and by whole numbers above', () => {
+  assert.equal(criterionStep({ min: 1, max: 10 }), 0.5);
+  assert.equal(criterionStep({ min: 0, max: 100 }), 1);
+  assert.equal(formatResult(8.4), '8.4');
+  assert.equal(formatResult(9), '9.0');
+  assert.equal(formatResult(''), '');
 });

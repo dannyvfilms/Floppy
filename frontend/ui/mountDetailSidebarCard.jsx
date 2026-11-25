@@ -6,7 +6,6 @@ import { CollectionGroup, CollectionRow, CollectionSectionHeading } from './Coll
 import { palette } from './mountCollectionCopyFields';
 import { DetailGenres, DetailMetadata, DetailStudios, DetailWatchProviders } from './DetailSecondary';
 import { detailSecondaryModel } from './detailSecondaryModel';
-import { RatingBreakdown } from './RatingBreakdown';
 
 // The legacy CSS hides promoted facts and the genre card once the hero carousel shows them.
 const CAROUSEL_ACTIVE = '.detail-carousel-grid:has(#detail-carousel-wrap:not(:empty))';
@@ -74,8 +73,6 @@ export function mountDetailSidebarCard(host, props) {
   // The replaced headings carried the gap between sidebar cards (mt-6).
   const spaced = ['genres', 'studios'].includes(props.kind);
   if (spaced) host.style.marginTop = '1.5rem';
-  const dispose = mountRoot(host, props.kind === 'rating'
-    ? <RatingBreakdown rating={props.payload.rating} palette={palette} variant="web" />
-    : <Card props={props} />);
+  const dispose = mountRoot(host, <Card props={props} />);
   return () => { dispose(); hooks.forEach(name => wrapper.classList.add(name)); if (spaced) host.style.marginTop = ''; };
 }

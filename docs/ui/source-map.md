@@ -1486,7 +1486,9 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/Rail.web.jsx` (also warms posters ahead of the scroll once the screen's own have loaded)
 - `frontend/ui/RatingChip.jsx`
 - `frontend/ui/NumberPickerRow.jsx`
-- `frontend/ui/RatingBreakdown.jsx`
+- `frontend/ui/inlineNumbers.js`
+- `frontend/ui/inlineNumbers.native.js`
+- `frontend/ui/inlineNumbers.web.js`
 - `frontend/ui/RatingCriteriaSheet.jsx`
 - `frontend/ui/RatingScaleEditor.jsx`
 - `frontend/ui/RatingSheet.jsx`

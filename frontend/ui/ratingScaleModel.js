@@ -40,9 +40,9 @@ export function groupByTier(criteria, tiers = 0) {
   }));
 }
 
-/** Step a value picker moves in: tenths on a short range, whole numbers on a wide one. */
+/** Step a wheel moves in: halves when the range tops out at 10 or below, whole numbers above that. */
 export function criterionStep(criterion) {
-  return Number(criterion.max) - Number(criterion.min) <= 10 ? 0.1 : 1;
+  return Number(criterion.max) <= 10 ? 0.5 : 1;
 }
 
 export function clampValue(criterion, value) {
@@ -50,22 +50,15 @@ export function clampValue(criterion, value) {
   return round1(number);
 }
 
+/** A calculated or typed overall always shows one decimal (8.4, 9.0). */
+export function formatResult(value) {
+  return isFilled(value) ? Number(value).toFixed(1) : '';
+}
+
 export function formatScore(value) {
   if (!isFilled(value)) return '';
   const number = Number(value);
   return Number.isInteger(number) ? String(number) : number.toFixed(1);
-}
-
-/** Star rows suit a criterion that counts 1..N whole steps, up to 10, and only a few of them. */
-export function starRow(criterion) {
-  const { min, max } = criterion;
-  return Number(min) === 1 && Number.isInteger(Number(max)) && Number(max) <= 10 ? Number(max) : 0;
-}
-
-/** The chip popup lists a line per criterion when each is a star row and they fit; otherwise open the sheet. */
-export function chipFitsLines(scale, limit = 4) {
-  const criteria = scale?.criteria || [];
-  return criteria.length > 0 && criteria.length <= limit && criteria.every(item => starRow(item) > 0);
 }
 
 // ----- form fields (shared by the web track form and the native API body) -----

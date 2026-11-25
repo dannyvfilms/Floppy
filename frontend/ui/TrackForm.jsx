@@ -373,7 +373,7 @@ export function TrackForm({
     if (field.name === 'score' && field.ratingScale) {
       const summary = overallSummary(field.ratingScale, values);
       return <RatingScaleButton key={field.name} grouped icon={icon} label={field.label} error={error} palette={palette}
-        placeholder={labels.addRating || 'Add Rating'} value={summary.shown} manual={summary.manual}
+        placeholder={labels.addRating || 'Add Rating'} value={summary.shown}
         onPress={openRating} />;
     }
     if (type === 'select') {
@@ -444,7 +444,7 @@ export function TrackForm({
       control = <FormField label={field.label} required={field.required} help={field.help}
         error={fieldErrors[field.name]} palette={palette}>
         <RatingScaleButton label={field.label} palette={inputPalette} placeholder={labels.addRating || 'Add Rating'}
-          value={summary.shown} manual={summary.manual} error={fieldErrors[field.name]}
+          value={summary.shown} error={fieldErrors[field.name]}
           onPress={openRating} />
       </FormField>;
     } else if (type === 'select') {

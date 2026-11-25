@@ -5,7 +5,7 @@ import { RatingCriteriaSheet } from './RatingCriteriaSheet';
 import { palette as basePalette } from './mountCollectionCopyFields';
 
 const sheetPalette = { ...basePalette, surfaceDim: 'var(--color-page-bg)' };
-import { overallSummary, ratingFormValues } from './ratingScaleModel';
+import { formatResult, overallSummary, ratingFormValues } from './ratingScaleModel';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { rootStyle } from './rootStyle.web';
 
@@ -78,8 +78,10 @@ function readPalette(host) {
   };
 }
 
-function readLayout(host) {
+function readLayout(host, props = {}) {
   const detail = host.closest('.detail-carousel-grid, .detail-flat-top');
+  // A custom scale's chip is always the two-row card, like the provider score cards.
+  if (props.ratingScale) return 'card';
   if (!detail) return 'pill';
   if (window.innerWidth < 768) return 'card';
   const carousel = host.closest('.detail-carousel-grid')?.querySelector('#detail-carousel-wrap');
@@ -109,7 +111,7 @@ function Adapter({ host, props }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
   const [palette, setPalette] = useState(() => readPalette(host));
-  const [layout, setLayout] = useState(() => props.layout || readLayout(host));
+  const [layout, setLayout] = useState(() => props.layout || readLayout(host, props));
   const wrapper = host.parentElement;
 
   useEffect(() => {
@@ -121,7 +123,7 @@ function Adapter({ host, props }) {
   }, [wrapper]);
 
   useEffect(() => {
-    const update = () => { setPalette(readPalette(host)); setLayout(props.layout || readLayout(host)); };
+    const update = () => { setPalette(readPalette(host)); setLayout(props.layout || readLayout(host, props)); };
     update();
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
@@ -164,6 +166,7 @@ function Adapter({ host, props }) {
   // Custom rating scale: criterion values live here until Done, then post together.
   const scale = props.ratingScale || null;
   const [sheet, setSheet] = useState(false);
+  const [shownText, setShownText] = useState(null);
   const [form, setForm] = useState(() => (scale ? { ...ratingFormValues(scale), score: props.value ?? '' } : {}));
   useEffect(() => {
     if (scale) setForm({ ...ratingFormValues(scale), score: props.value ?? '' });
@@ -174,6 +177,7 @@ function Adapter({ host, props }) {
   function saveCriteria() {
     const summary = overallSummary(scale, form);
     setValue(summary.shown);
+    setShownText(formatResult(summary.shown));
     window.htmx?.ajax('POST', props.postUrl, {
       source: host, swap: 'none',
       headers: { 'X-CSRFToken': props.csrfToken },
@@ -192,14 +196,11 @@ function Adapter({ host, props }) {
 
   return <><RatingChip
     scale={scale}
-    criteriaValues={scale ? form : null}
-    onCriteriaChange={changeForm}
-    onCriteriaDone={saveCriteria}
     onOpenSheet={openSheet}
     value={value}
     scaleMax={props.scaleMax}
-    displayValue={props.displayValue}
-    cardDisplayValue={props.cardDisplayValue}
+    displayValue={shownText ?? props.displayValue}
+    cardDisplayValue={shownText ?? props.cardDisplayValue}
     derived={props.derived}
     layout={layout}
     labels={props.labels}

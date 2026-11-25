@@ -17,7 +17,6 @@ import { AdaptivePresentationSheet } from '../components/AdaptivePresentationShe
 import { TrackPresentation } from './TrackPresentation';
 import { RatingStarIcon } from '../../../frontend/ui/RatingStarIcon.native';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
-import { RatingBreakdown } from '../../../frontend/ui/RatingBreakdown';
 import { RatingCriteriaSheet } from '../../../frontend/ui/RatingCriteriaSheet';
 import { criteriaBody, overallSummary, ratingFormValues } from '../../../frontend/ui/ratingScaleModel';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
@@ -1039,9 +1038,6 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
   };
   const chip = viewerRating?.editable ? <RatingChip
     scale={customScale}
-    criteriaValues={customScale ? criteriaForm : null}
-    onCriteriaChange={(name, value) => setCriteriaForm(current => ({ ...current, [name]: value }))}
-    onCriteriaDone={saveCriteriaForm}
     onOpenSheet={() => { criteriaSnapshot.current = criteriaForm; setCriteriaSheet(true); }}
     value={viewerRating.value}
     scaleMax={viewerRating.scaleMax || 10}
@@ -1138,12 +1134,7 @@ export function useDetailFeatures({ model, ready, dataReady, version, refresh, o
       onEdit={entry => openTrack(false, entry.identity)}
       onOpenHistory={() => { refreshStaleHistory(); setDialog({ ...NO_DIALOG, kind: 'history' }); }} palette={palette} /> : null;
   const sectionSlots = { collection: collectionSlot, notes: notesSlot, history: historySlot };
-  // The custom scale's per-criterion values, in the Collection block's grouped style.
-  const ratingBreakdownSlot = customScale && Object.keys(customScale.values || {}).length && !isEpisode
-    ? <DetailBlock grouped title="Your Rating" palette={palette}>
-      <RatingBreakdown rating={{ ...customScale, overall: viewerRating?.value }} palette={palette} />
-    </DetailBlock> : null;
-  const sectionsSlot = <>{ratingBreakdownSlot}{collectionSlot}{notesSlot}{noticeSlot}</>;
+  const sectionsSlot = <>{collectionSlot}{notesSlot}{noticeSlot}</>;
 
   const sortedEpisodes = [...episodes.rows]
     .sort((left, right) => (episodes.order === 'desc' ? -1 : 1) * ((Number(left.number) || 0) - (Number(right.number) || 0)))

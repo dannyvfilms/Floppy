@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CollectionGroup, CollectionRow, CollectionTextRow, separatorStyle } from './CollectionCopies';
 import { Icon } from './Icon';
 import { actionIcons } from './actionIcons';
-import { NumberStepper } from './NumberPickerRow';
+import { NumberInput, NumberStepper } from './NumberPickerRow';
+import { useInlineNumbers } from './inlineNumbers';
 import { RatingSheet } from './RatingSheet';
 import { ReorderList } from './ReorderList';
 import { systemFillColor } from './separatorColor';
@@ -46,6 +47,7 @@ export function RatingScaleEditor({
   const labels = { ...DEFAULT_LABELS, ...suppliedLabels };
   const [picker, setPicker] = useState(null);
   const [checked, setChecked] = useState(false);
+  const inline = useInlineNumbers();
   if (!draft) return null;
   const errors = checked ? validateDraft(draft) : {};
   const tiers = groupByTier(draft.criteria, draft.tiers);
@@ -59,19 +61,20 @@ export function RatingScaleEditor({
   }
 
   const pill = (criterion, which) => {
-    const open = picker && picker.id === criterion.id && picker.which === which;
-    return <Pressable accessibilityRole="button" accessibilityState={{ expanded: Boolean(open) }}
+    const active = picker && picker.id === criterion.id && picker.which === which;
+    return <Pressable accessibilityRole="button" accessibilityState={{ expanded: Boolean(active) }}
       accessibilityLabel={`${criterion.name || labels.criterionName} ${which === 'min' ? 'minimum' : 'maximum'}: ${formatScore(criterion[which])}`}
-      onPress={() => setPicker(open ? null : { id: criterion.id, which })}
+      onPress={() => setPicker(active ? null : { id: criterion.id, which })}
       style={({ pressed }) => [styles.pill, { backgroundColor: fill, opacity: pressed ? 0.72 : 1,
-        borderColor: open ? palette.accent : 'transparent' }]}>
+        borderColor: active ? palette.accent : 'transparent' }]}>
       <Text style={[styles.pillText, { color: palette.text }]}>{formatScore(criterion[which])}</Text>
     </Pressable>;
   };
 
   const arrow = (criterion, direction, label) => {
     const target = criterion.weight + direction;
-    if (target < 1 || target > draft.tiers) return null;
+    // An unavailable arrow keeps its space so the range inputs line up from row to row.
+    if (target < 1 || target > draft.tiers) return <View key={direction} style={styles.iconButton} />;
     return <Pressable key={direction} accessibilityRole="button" accessibilityLabel={`${label}: ${criterion.name || labels.criterionName}`}
       hitSlop={6} onPress={() => onChange(moveToTier(draft, criterion.id, target))} style={styles.iconButton}>
       <View style={direction < 0 ? { transform: [{ rotate: '180deg' }] } : undefined}>
@@ -79,37 +82,48 @@ export function RatingScaleEditor({
       </View>
     </Pressable>;
   };
+  const trash = criterion => draft.criteria.length > 1 ? <Pressable accessibilityRole="button" hitSlop={6}
+    accessibilityLabel={`${labels.remove}: ${criterion.name || labels.criterionName}`}
+    onPress={() => onChange(removeCriterion(draft, criterion.id))} style={styles.iconButton}>
+    <Icon spec={actionIcons.trash} color={palette.textMuted} size={18} />
+  </Pressable> : <View style={styles.iconButton} />;
+  const actions = criterion => <>{draft.tiers > 1 ? <>{arrow(criterion, -1, labels.moveUp)}{arrow(criterion, 1, labels.moveDown)}</> : null}{trash(criterion)}</>;
 
+  // One line per criterion, like the Tracking date rows: handle, name, then the range. Desktop types the range into
+  // whole-number inputs; phones and native show pills and open a wheel (or stepper) below the row, with the
+  // move and remove buttons.
   const criterionBlock = (criterion, handle) => {
     const active = picker && picker.id === criterion.id ? picker.which : null;
     const message = errors[criterion.id];
+    const nameInput = <TextInput accessibilityLabel={labels.criterionName} value={criterion.name}
+      placeholder={labels.criterionName} placeholderTextColor={palette.textMuted} selectionColor={palette.accent}
+      onChangeText={name => edit(criterion.id, { name })}
+      style={[styles.nameInput, { color: palette.text }]} />;
     return <View key={criterion.id}>
       <View style={styles.nameRow}>
         {handle}
-        <TextInput accessibilityLabel={labels.criterionName} value={criterion.name}
-          placeholder={labels.criterionName} placeholderTextColor={palette.textMuted} selectionColor={palette.accent}
-          onChangeText={name => edit(criterion.id, { name })}
-          style={[styles.nameInput, { color: palette.text }]} />
-        {draft.tiers > 1 ? <>{arrow(criterion, -1, labels.moveUp)}{arrow(criterion, 1, labels.moveDown)}</> : null}
-        {draft.criteria.length > 1 ? <Pressable accessibilityRole="button" hitSlop={6}
-          accessibilityLabel={`${labels.remove}: ${criterion.name || labels.criterionName}`}
-          onPress={() => onChange(removeCriterion(draft, criterion.id))} style={styles.iconButton}>
-          <Icon spec={actionIcons.trash} color={palette.textMuted} size={18} />
-        </Pressable> : null}
+        {nameInput}
+        {inline ? <>
+          <NumberInput value={criterion.min} min={-1000} max={1000} label={`${criterion.name || labels.criterionName} minimum`}
+            palette={palette} width={64} onChange={next => edit(criterion.id, { min: next === '' ? '' : Number(next) })} />
+          <Text style={[styles.rangeLabel, { color: palette.textMuted }]}>{labels.to}</Text>
+          <NumberInput value={criterion.max} min={-1000} max={1000} label={`${criterion.name || labels.criterionName} maximum`}
+            palette={palette} width={64} onChange={next => edit(criterion.id, { max: next === '' ? '' : Number(next) })} />
+          {actions(criterion)}
+        </> : <>
+          {pill(criterion, 'min')}
+          <Text style={[styles.rangeLabel, { color: palette.textMuted }]}>{labels.to}</Text>
+          {pill(criterion, 'max')}
+        </>}
       </View>
-      <View style={styles.rangeRow}>
-        <Text style={[styles.rangeLabel, { color: palette.textMuted }]}>{labels.range}</Text>
-        {pill(criterion, 'min')}
-        <Text style={[styles.rangeLabel, { color: palette.textMuted }]}>{labels.to}</Text>
-        {pill(criterion, 'max')}
-      </View>
-      {active ? <View style={styles.panel}>
+      {!inline && active ? <View style={styles.panel}>
         {renderWheel ? renderWheel({
           value: Number(criterion[active]), min: -1000, max: 1000, step: 1, label: `${criterion.name} ${active}`, palette,
           onChange: next => edit(criterion.id, { [active]: Number(next) }),
         }) : <NumberStepper value={criterion[active]} min={-1000} max={1000} step={1}
           label={`${criterion.name || labels.criterionName} ${active === 'min' ? 'minimum' : 'maximum'}`} palette={palette}
           onChange={next => edit(criterion.id, { [active]: next === '' ? '' : Number(next) })} />}
+        <View style={styles.panelActions}>{actions(criterion)}</View>
       </View> : null}
       {message ? <Text accessibilityLiveRegion="polite" style={[styles.error, { color: palette.danger }]}>{message}</Text> : null}
     </View>;
@@ -152,10 +166,10 @@ export function RatingScaleEditor({
 }
 
 const styles = StyleSheet.create({
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 50, paddingTop: 4 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 50 },
+  panelActions: { flexDirection: 'row', alignItems: 'center', gap: 18, paddingTop: 10 },
   nameInput: { flex: 1, minWidth: 80, fontSize: 17, paddingVertical: 8 },
   iconButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 10, paddingLeft: 26 },
   rangeLabel: { fontSize: 14 },
   pill: { borderRadius: 17, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 5, minWidth: 48, alignItems: 'center' },
   pillText: { fontSize: 16 },

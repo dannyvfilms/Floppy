@@ -4019,7 +4019,8 @@
     "frontend/ui/NumberPickerRow.jsx": {
       "components": [
         "NumberPickerRow",
-        "NumberStepper"
+        "NumberStepper",
+        "NumberInput"
       ],
       "register": "RATING",
       "verification": {
@@ -4091,26 +4092,6 @@
         "ios": {
           "status": "verified",
           "evidence": "Ran in Expo Go on the iPhone 16e simulator (iOS 18.6) against the local server with a throwaway account: the Edit Entry score row as a button, the sheet with Overall, Calculated, Override and Use calculated score, and criterion values."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export; no runtime pass."
-        }
-      }
-    },
-    "frontend/ui/RatingBreakdown.jsx": {
-      "components": [
-        "RatingBreakdown"
-      ],
-      "register": "RATING",
-      "verification": {
-        "web": {
-          "status": "verified",
-          "evidence": "Rendered in Chromium in the media details sidebar at desktop width with a calculated rating."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled in the Expo bundle for the detail page; the Your Rating block was not scrolled into view on the simulator."
         },
         "android": {
           "status": "unverified",
@@ -4805,7 +4786,8 @@
         "overallSummary",
         "ratingFormValues",
         "criteriaBody",
-        "chipFitsLines"
+        "formatResult",
+        "criterionStep"
       ],
       "register": "RATING",
       "verification": {
@@ -4820,6 +4802,26 @@
         "android": {
           "status": "verified",
           "evidence": "Pure logic shared with iOS and web; no platform code."
+        }
+      }
+    },
+    "frontend/ui/inlineNumbers.js": {
+      "components": [
+        "useInlineNumbers"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Returns false; mobile web, iOS and Android keep pills and wheels."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Pills and wheel rows seen on the iPhone 16e simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run."
         }
       }
     }
@@ -6070,6 +6072,50 @@
         "android": {
           "status": "unverified",
           "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+        }
+      }
+    },
+    "frontend/ui/inlineNumbers.web.js": {
+      "kind": "adapter",
+      "components": [
+        "useInlineNumbers"
+      ],
+      "register": "RATING",
+      "purpose": "Desktop web (1024 px and up) types criterion values and ranges into number inputs; narrower web keeps pills and wheels.",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Inputs seen in Chromium at 1280 px; pills seen at 390 px."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not used on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not used on Android."
+        }
+      }
+    },
+    "frontend/ui/inlineNumbers.native.js": {
+      "kind": "adapter",
+      "components": [
+        "useInlineNumbers"
+      ],
+      "register": "RATING",
+      "purpose": "Native always shows pills that open the system wheel; only desktop web types numbers.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not used on web."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Pill and wheel rows seen on the iPhone 16e simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run."
         }
       }
     }
