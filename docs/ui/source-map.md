@@ -1624,6 +1624,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/serviceWorkerStatus.native.js`
 - `frontend/ui/serviceWorkerStatus.web.js`
 - `frontend/ui/statistics-fallback.css`
+- `frontend/ui/useDeferredYoutubeWatch.js`
 - `frontend/users/UsersManagement.jsx`
 - `src/static/js/searchParentFallback.js`
 - `src/templates/app/components/date_time_picker_legacy.html`

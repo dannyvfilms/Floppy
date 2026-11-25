@@ -336,5 +336,6 @@
     "scale_max": 10,
     "value": 7.0
   },
-  "youtube_watch": null
+  "youtube_watch": null,
+  "youtube_watch_pending": false
 }
