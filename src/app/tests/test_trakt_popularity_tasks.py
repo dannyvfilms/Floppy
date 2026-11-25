@@ -48,6 +48,9 @@ class TraktPopularityTaskTests(TestCase):
                 "trakt_rating_count": 1200,
                 "trakt_popularity_score": 1234.5,
                 "trakt_popularity_rank": 42,
+                # A complete snapshot includes the persisted Trakt link
+                # identity; without it the item counts as refresh-worthy.
+                "provider_external_ids": {"trakt_slug": "movie", "trakt_id": "1"},
             }
         if fetched_days_ago is not None:
             trakt_kwargs["trakt_popularity_fetched_at"] = timezone.now() - timedelta(

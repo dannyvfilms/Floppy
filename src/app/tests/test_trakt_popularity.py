@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import trakt
@@ -159,6 +160,163 @@ class TraktPopularityServiceTests(TestCase):
             media_type=MediaTypes.ANIME.value,
             season_number=None,
         )
+
+    @patch("app.services.trakt_popularity.lookup_item_summary")
+    def test_refresh_persists_trakt_slug_and_id_for_links(
+        self, mock_lookup_item_summary
+    ):
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Frieren",
+            image="https://example.com/frieren.jpg",
+        )
+        mock_lookup_item_summary.return_value = {
+            "rating": 8.9,
+            "votes": 123456,
+            "trakt_ids": {
+                "trakt": "210970",
+                "slug": "frieren-beyond-journey-s-end",
+                "tmdb": "52991",
+            },
+            "matched_id_type": "tmdb",
+            "matched_lookup_value": "52991",
+        }
+
+        trakt_popularity.refresh_trakt_popularity(
+            item,
+            route_media_type=MediaTypes.TV.value,
+            force=True,
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(
+            item.provider_external_ids["trakt_slug"],
+            "frieren-beyond-journey-s-end",
+        )
+        self.assertEqual(item.provider_external_ids["trakt_id"], "210970")
+
+    @patch("app.services.trakt_popularity.lookup_item_summary")
+    def test_refresh_season_keeps_show_slug_not_season_id(
+        self, mock_lookup_item_summary
+    ):
+        item = Item.objects.create(
+            media_id="81723",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="The Gilded Age Season 1",
+            image="https://example.com/season.jpg",
+            season_number=1,
+        )
+        mock_lookup_item_summary.return_value = {
+            "rating": 7.9,
+            "votes": 1849,
+            "trakt_ids": {
+                "trakt": "998877",  # season id, not linkable as /shows/<id>
+                "slug": "the-gilded-age",
+                "tmdb": "81723",
+            },
+            "matched_id_type": "tmdb",
+        }
+
+        trakt_popularity.refresh_trakt_popularity(
+            item,
+            route_media_type=MediaTypes.SEASON.value,
+            force=True,
+        )
+
+        item.refresh_from_db()
+        self.assertEqual(
+            item.provider_external_ids["trakt_slug"], "the-gilded-age"
+        )
+        self.assertNotIn("trakt_id", item.provider_external_ids)
+
+    def test_trakt_page_url_builds_links_from_stored_ids(self):
+        self.assertEqual(
+            trakt_popularity.trakt_page_url(
+                {"trakt_slug": "frieren-beyond-journey-s-end", "trakt_id": "210970"},
+                MediaTypes.TV.value,
+            ),
+            "https://trakt.tv/shows/frieren-beyond-journey-s-end",
+        )
+        self.assertEqual(
+            trakt_popularity.trakt_page_url(
+                {"trakt_id": "123"},
+                MediaTypes.MOVIE.value,
+            ),
+            "https://trakt.tv/movies/123",
+        )
+        self.assertEqual(
+            trakt_popularity.trakt_page_url(
+                {"trakt_slug": "the-gilded-age"},
+                MediaTypes.SEASON.value,
+                season_number=1,
+            ),
+            "https://trakt.tv/shows/the-gilded-age/seasons/1",
+        )
+        self.assertIsNone(
+            trakt_popularity.trakt_page_url(
+                {"imdb_id": "tt1"},
+                MediaTypes.MOVIE.value,
+            )
+        )
+        self.assertIsNone(
+            trakt_popularity.trakt_page_url(
+                {"trakt_slug": "x", "trakt_id": "9"},
+                MediaTypes.SEASON.value,
+                season_number=None,
+            )
+        )
+        self.assertIsNone(
+            trakt_popularity.trakt_page_url(
+                {"trakt_slug": "x"},
+                MediaTypes.EPISODE.value,
+            )
+        )
+
+    def test_needs_refresh_when_trakt_link_id_missing(self):
+        item = Item.objects.create(
+            media_id="1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Snapshot Without Ids",
+            trakt_rating=8.0,
+            trakt_rating_count=100,
+            trakt_popularity_score=100.0,
+            trakt_popularity_rank=5,
+            trakt_popularity_fetched_at=timezone.now(),
+        )
+        self.assertTrue(trakt_popularity.needs_refresh(item))
+
+        item.provider_external_ids = {"trakt_slug": "x"}
+        self.assertFalse(trakt_popularity.needs_refresh(item))
+
+        # A recorded "no Trakt match" falls back to the staleness interval
+        # instead of re-querying on every check.
+        item.provider_external_ids = {"trakt_lookup": "none"}
+        self.assertFalse(trakt_popularity.needs_refresh(item))
+
+    @patch("app.services.trakt_popularity.lookup_item_summary")
+    def test_refresh_marks_unmatched_lookup(self, mock_lookup_item_summary):
+        item = Item.objects.create(
+            media_id="999",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Unknown Film",
+            image="https://example.com/x.jpg",
+        )
+        mock_lookup_item_summary.return_value = None
+
+        with self.assertRaises(LookupError):
+            trakt_popularity.refresh_trakt_popularity(
+                item,
+                route_media_type=MediaTypes.MOVIE.value,
+                force=True,
+            )
+
+        item.refresh_from_db()
+        self.assertEqual(item.provider_external_ids["trakt_lookup"], "none")
 
     def test_compute_popularity_score_is_deterministic(self):
         score = trakt_popularity.compute_popularity_score(8.0, 1200000)
