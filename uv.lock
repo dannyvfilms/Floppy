@@ -2382,7 +2382,7 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.14.12"
+version = "21.15.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
@@ -2391,9 +2391,9 @@ dependencies = [
     { name = "platformdirs" },
     { name = "python-discovery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/2c/1a69b3346931e9a7db9cc00cc0fa847c843a85fa7cf52a598f57261c68df/virtualenv-21.14.12.tar.gz", hash = "sha256:bbcfb78e36c22ad70c6917c4aecb5e63477d3c138e9f88c946f320e31859c76a", size = 5562800, upload-time = "2026-10-21T01:58:51.724Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/89/e84f19b1a87f70637694494018fdedb395aed90da17872d31e1eb2314d41/virtualenv-21.15.13.tar.gz", hash = "sha256:f3ad23551343034e613f9c4d8279f282958a19729f5fc2bcb758afcf95fe3a01", size = 5735175, upload-time = "2026-11-23T19:54:07.74Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/92/f3b8af2d36ddec4dc61dc25655dc010e419ff456cb4ca0e720c8112f1047/virtualenv-21.14.12-py3-none-any.whl", hash = "sha256:7820aeaef23f1f59a96458edfc7f9d3deac937155718de15f1c9a64471e15551", size = 5556824, upload-time = "2026-10-21T01:58:48.505Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/d8/bc11d9ca589a030f9af2dd99f8329e250a9072d0e1d7dcaa4c291ed468ea/virtualenv-21.15.13-py3-none-any.whl", hash = "sha256:2744de3b2ba59027ed7eb87c773d4907f56287f4db23b459e8172dcdb41c208d", size = 5750972, upload-time = "2026-11-23T19:54:05.968Z" },
 ]
 
 [[package]]
