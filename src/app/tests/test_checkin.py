@@ -718,7 +718,7 @@ class CheckInShowTests(TestCase):
             ),
             self.captureOnCommitCallbacks(execute=False),
         ):
-            checkin.cancel(self.user, "tv", "1668")
+            checkin.cancel(self.user, "tv", "1668", source=self.source)
 
         self.assertEqual(cleared(self.user.id), ALL)
 
