@@ -286,7 +286,8 @@ class ImportActivityView(drf_views.APIView):
         except Resolver404:
             return Response({"detail": "Choose a valid activity action."}, status=HTTP.BAD_REQUEST)
         if match.url_name not in {
-            "delete_import_schedule", "cancel_pending_import", "cancel_import_run", "rollback_import_run",
+            "delete_import_schedule", "edit_import_schedule",
+            "cancel_pending_import", "cancel_import_run", "rollback_import_run",
             "bulk_delete_by_import_source", "mal_mapping_ignore", "mal_episode_mapping_save",
             "mal_episode_mapping_revert", "mal_full_sync_retry_failed",
             "mal_mapping_search", "mal_mapping_episodes", "mal_full_sync_preview",

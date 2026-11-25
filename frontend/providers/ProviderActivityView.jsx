@@ -5,7 +5,9 @@ import { Button } from '../ui/Button';
 import { Chip } from '../settings/Chip';
 import { Dialog } from '../ui/controls/Dialog';
 import { Form, useForm } from '../ui/controls/Form';
+import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
+import { TextField } from '../ui/TextField';
 import { Icon } from '../ui/Icon';
 import { isLightTheme, toneText } from '../settings/statusTones';
 
@@ -45,6 +47,12 @@ const DEFAULT_LABELS = {
   schedulesTitle: 'Active Periodic Imports',
   noSchedules: 'No periodic imports configured',
   removeSchedule: 'Remove schedule',
+  editSchedule: 'Edit schedule',
+  editScheduleTitle: 'Edit import frequency',
+  frequency: 'Frequency',
+  importTime: 'Import Time',
+  saveSchedule: 'Save schedule',
+  customSchedule: 'Custom schedule',
   username: 'Username',
   mode: 'Mode',
   lastImport: 'Last Import',
@@ -136,6 +144,47 @@ function SubmitButton({ label, tone, palette, textOnly = false }) {
     onPress={() => form.submit()} />;
 }
 
+const DAY_FREQUENCIES = new Set(['daily', '2days', 'weekly']);
+
+function ScheduleEditDialog({ schedule, frequencies, csrf, returnTo, copy, colors, buttons, onSubmit, onClose, onSaved }) {
+  const [frequency, setFrequency] = useState(schedule.edit?.frequency || '');
+  const [time, setTime] = useState(schedule.edit?.time || '00:00');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const options = schedule.edit?.frequency
+    ? frequencies
+    : [{ value: '', label: copy.customSchedule, disabled: true }, ...frequencies];
+  async function save() {
+    if (busy || !frequency) return;
+    setBusy(true); setError('');
+    try {
+      const result = await onSubmit({
+        action: schedule.edit.action, csrf, returnTo,
+        values: { task_name: schedule.name, frequency, time },
+      });
+      if (result === false) return;
+      onSaved?.();
+      onClose();
+    } catch (reason) { setError(reason?.message || 'The request failed. Try again.'); }
+    finally { setBusy(false); }
+  }
+  return <Dialog open title={copy.editScheduleTitle} onClose={onClose} palette={colors}
+    closeLabel={copy.close}>
+    <View style={styles.stack}>
+      <Text style={[styles.copy, { color: colors.textSecondary }]}>{schedule.sourceLabel || schedule.source}</Text>
+      <SelectField label={copy.frequency} name="frequency" value={frequency}
+        options={options} onChange={event => setFrequency(event.target.value)} palette={colors} />
+      {DAY_FREQUENCIES.has(frequency) ? <TextField label={copy.importTime} name="time" value={time}
+        onChangeText={setTime} type="time" palette={colors} /> : null}
+      {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
+      <View style={styles.actions}>
+        <Button label={copy.saveSchedule} busy={busy} disabled={busy || !frequency} onPress={save} palette={buttons} />
+        <Button label={copy.close} tone="surface" disabled={busy} onPress={onClose} palette={buttons} />
+      </View>
+    </View>
+  </Dialog>;
+}
+
 /**
  * Universal provider activity tab. The adapter owns the activity request,
  * paging destination, clipboard and form transport; this component only keeps
@@ -174,6 +223,7 @@ export function ProviderActivityView({
   const [retry, setRetry] = useState(0);
   const [openDetails, setOpenDetails] = useState(() => new Set());
   const [detail, setDetail] = useState(null);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [copied, setCopied] = useState('');
   const copyTimer = useRef(null);
   const onFetchRef = useRef(onFetch);
@@ -185,7 +235,7 @@ export function ProviderActivityView({
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
   useEffect(() => {
-    if (openDetails.size) return undefined;
+    if (openDetails.size || editingSchedule) return undefined;
     const loader = onFetchRef.current;
     if (typeof loader !== 'function') {
       if (!dataRef.current) setError(true);
@@ -210,7 +260,7 @@ export function ProviderActivityView({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [page, retry, openDetails.size, pollInterval]);
+  }, [page, retry, openDetails.size, editingSchedule, pollInterval]);
 
   function changePage(nextPage) {
     if (nextPage < 1) return;
@@ -286,11 +336,15 @@ export function ProviderActivityView({
             <View style={styles.rowHeading}>
               {showSources ? <Source row={schedule} colors={colors} /> : null}
               <Text style={[styles.rowTitle, { color: colors.text }]}>{schedule.schedule}</Text>
-              <Form key={schedule.name} action={schedule.action} csrf={model.csrf} returnTo={model.next}
-                defaultValues={{ task_name: schedule.name }}
-                onSubmit={onSubmit} onConfirm={onConfirm}>
-                <SubmitButton label={copy.removeSchedule} tone="danger-solid" palette={buttons} />
-              </Form>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {schedule.edit ? <Button label={copy.editSchedule} tone="surface"
+                  onPress={() => setEditingSchedule(schedule)} palette={buttons} /> : null}
+                <Form key={schedule.name} action={schedule.action} csrf={model.csrf} returnTo={model.next}
+                  defaultValues={{ task_name: schedule.name }}
+                  onSubmit={onSubmit} onConfirm={onConfirm}>
+                  <SubmitButton label={copy.removeSchedule} tone="danger-solid" palette={buttons} />
+                </Form>
+              </View>
             </View>
             {schedule.username ? <Text style={[styles.copy, { color: colors.textSecondary }]}>
               {copy.username}: {schedule.username}
@@ -402,6 +456,12 @@ export function ProviderActivityView({
         </List>
       </Section> : null}
     </> : null}
+
+    {editingSchedule ? <ScheduleEditDialog schedule={editingSchedule}
+      frequencies={data?.scheduleFrequencies || []} csrf={model.csrf} returnTo={model.next}
+      copy={copy} colors={colors} buttons={buttons} onSubmit={onSubmit}
+      onClose={() => setEditingSchedule(null)}
+      onSaved={() => setRetry(value => value + 1)} /> : null}
 
     <Dialog open={Boolean(detail)} title={detail?.statusLabel || copy.detailsTitle}
       closeLabel={copy.close} onClose={closeDetail} palette={colors}

@@ -18,21 +18,32 @@
   </p>
   <div class="space-y-3{% if provider_navigation %} ui-activity-list{% endif %}"{% if provider_navigation %} tabindex="0"{% endif %}>
     {% for periodic_import in import_tasks.schedules %}
-      <div class="{% if provider_navigation %}bg-[var(--color-surface)]{% else %}bg-[var(--color-surface-strong)]{% endif %} rounded-lg p-4">
+      <div class="{% if provider_navigation %}bg-[var(--color-surface)]{% else %}bg-[var(--color-surface-strong)]{% endif %} rounded-lg p-4"
+           {% if periodic_import.editable %}x-data="{ editing: false }" :data-keep-open="editing"{% endif %}>
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-3">
             {% source_display periodic_import.source %}
             <span class="text-sm text-[var(--color-text-muted)]">{{ periodic_import.schedule }}</span>
           </div>
-          <form action="{% url 'delete_import_schedule' %}" method="post">
-            {% csrf_token %}
-            <input type="hidden"
-                   name="task_name"
-                   value="{{ periodic_import.task.name }}">
-            <button class="text-red-400 hover:text-white p-2 rounded-md transition-all duration-200 hover:bg-red-500 cursor-pointer">
-              {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
-            </button>
-          </form>
+          <div class="flex items-center gap-1">
+            {% if periodic_import.editable %}
+              <button @click="editing = !editing"
+                      class="text-[var(--color-text-muted)] hover:text-white p-2 rounded-md transition-all duration-200 hover:bg-indigo-500 cursor-pointer"
+                      aria-label="{% translate 'Edit schedule' %}">
+                {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+              </button>
+            {% endif %}
+            <form action="{% url 'delete_import_schedule' %}" method="post">
+              {% csrf_token %}
+              <input type="hidden"
+                     name="task_name"
+                     value="{{ periodic_import.task.name }}">
+              <button class="text-red-400 hover:text-white p-2 rounded-md transition-all duration-200 hover:bg-red-500 cursor-pointer"
+                      aria-label="{% translate 'Remove schedule' %}">
+                {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
+              </button>
+            </form>
+          </div>
         </div>
         <div class="text-sm text-[var(--color-text-muted)] space-y-1">
           {% if periodic_import.username %}<div>{% blocktranslate with value1=periodic_import.username %}Username: {{ value1 }}{% endblocktranslate %}</div>{% endif %}
@@ -40,6 +51,45 @@
           <div>{% blocktranslate with value1=periodic_import.last_run|user_datetime_format:user %}Last Import: {{ value1 }}{% endblocktranslate %}</div>
           <div>{% blocktranslate with value1=periodic_import.next_run|user_datetime_format:user %}Next Import: {{ value1 }}{% endblocktranslate %}</div>
         </div>
+        {% if periodic_import.editable %}
+          <form x-cloak
+                x-show="editing"
+                action="{% url 'edit_import_schedule' %}"
+                method="post"
+                class="mt-3 space-y-3"
+                x-data="{ frequency: '{{ periodic_import.edit_frequency }}', days: ['daily', '2days', 'weekly'] }">
+            {% csrf_token %}
+            <input type="hidden"
+                   name="task_name"
+                   value="{{ periodic_import.task.name }}">
+            <div class="relative">
+              <select x-model="frequency"
+                      name="frequency"
+                      required
+                      class="w-full py-2 px-3 pr-9 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+                {% if not periodic_import.edit_frequency %}
+                  <option value=""
+                          disabled
+                          selected>{% translate "Custom schedule" %}</option>
+                {% endif %}
+                {% for option in import_tasks.schedule_frequencies %}
+                  <option value="{{ option.value }}"
+                          {% if option.value == periodic_import.edit_frequency %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+              {% include "app/icons/chevron-down.svg" with classes="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+            </div>
+            <div x-cloak x-show="days.includes(frequency)">
+              <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Time" %}</label>
+              <input name="time"
+                     value="{{ periodic_import.edit_time|default:'00:00' }}"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 scheme-dark"
+                     type="time">
+            </div>
+            <button type="submit"
+                    class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 rounded-md text-white text-sm font-medium transition-colors cursor-pointer">{% translate "Save schedule" %}</button>
+          </form>
+        {% endif %}
       </div>
     {% empty %}
       <div class="{% if provider_navigation %}bg-[var(--color-surface)]{% else %}bg-[var(--color-surface-strong)]{% endif %} rounded-lg p-6 text-center">

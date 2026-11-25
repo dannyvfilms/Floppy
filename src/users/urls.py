@@ -228,6 +228,11 @@ urlpatterns = [
         name="delete_import_schedule",
     ),
     path(
+        "edit_import_schedule",
+        views.edit_import_schedule,
+        name="edit_import_schedule",
+    ),
+    path(
         "rollback_import_run/<int:run_id>",
         views.rollback_import_run,
         name="rollback_import_run",
