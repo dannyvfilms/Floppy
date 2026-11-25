@@ -448,6 +448,80 @@ class DetailExternalLinkBrandTests(TestCase):
             "https://steamdb.info/app/1116480/",
         )
 
+class DetailLinkSectionsTraktTests(TestCase):
+    def test_adds_trakt_link_from_stored_ids(self):
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Frieren",
+            provider_external_ids={
+                "trakt_slug": "frieren-beyond-journey-s-end",
+                "trakt_id": "210970",
+            },
+        )
+
+        sections = build_detail_link_sections(
+            {},
+            MediaTypes.TV.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+            item=item,
+        )
+
+        external_entries = sections[-1]["entries"]
+        self.assertIn(
+            ("Trakt", "https://trakt.tv/shows/frieren-beyond-journey-s-end"),
+            [(entry["label"], entry["url"]) for entry in external_entries],
+        )
+
+    def test_adds_season_trakt_link_through_show_slug(self):
+        item = Item.objects.create(
+            media_id="81723",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="The Gilded Age Season 1",
+            season_number=1,
+            provider_external_ids={"trakt_slug": "the-gilded-age"},
+        )
+
+        sections = build_detail_link_sections(
+            {},
+            MediaTypes.SEASON.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+            item=item,
+        )
+
+        external_entries = sections[-1]["entries"]
+        self.assertIn(
+            ("Trakt", "https://trakt.tv/shows/the-gilded-age/seasons/1"),
+            [(entry["label"], entry["url"]) for entry in external_entries],
+        )
+
+    def test_no_trakt_link_without_stored_ids(self):
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+        )
+
+        sections = build_detail_link_sections(
+            {},
+            MediaTypes.MOVIE.value,
+            Sources.TMDB.value,
+            Sources.TMDB.value,
+            item=item,
+        )
+
+        labels = [
+            entry["label"]
+            for section in sections
+            for entry in section["entries"]
+        ]
+        self.assertNotIn("Trakt", labels)
+
 
 class OtherBookFormatsTests(TestCase):
     """Cross-format links between a user's ebook and audiobook of one work."""
