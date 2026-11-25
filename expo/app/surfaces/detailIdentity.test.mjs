@@ -52,3 +52,11 @@ test('season and episode links retain their provider parent and coordinates', ()
   assert.equal(episode.seasonNumber, 2);
   assert.equal(episode.episodeNumber, 4);
 });
+
+test('deferred watch mode is added to the existing game detail query', () => {
+  const identity = { mediaType: 'game', source: 'igdb', mediaId: '99', detailType: 'game' };
+  assert.equal(
+    detailEndpoint(identity, { youtubeWatch: 'deferred' }),
+    '/api/v1/media/game/igdb/99/detail/?detail_type=game&youtube_watch=deferred',
+  );
+});

@@ -3,6 +3,8 @@ import { Image, Linking, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DetailView } from '../../../frontend/pages/DetailView';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import { detailSecondaryOrder } from '../../../frontend/ui/detailSecondaryModel';
+import { useDeferredYoutubeWatch } from '../../../frontend/ui/useDeferredYoutubeWatch';
 import WindowedRail from '../surfaces/WindowedRail';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { useDevicePose } from '../data/useDevicePose';
@@ -306,8 +308,13 @@ export default function DetailScreen({ params, onBack, navigate }) {
 
   const children = actionableModel?.children;
   const hasChildren = Boolean(children?.seasons?.length || children?.episodes?.length || children?.issues?.length);
+  const pageLoading = loading || (features.enabled && !features.headerReady);
+  const showTime = detailSecondaryOrder(model.secondary?.layout, ['game_lengths'], 'content').length > 0;
+  const youtubeWatchPath = !pageLoading && dataReady && showTime ? model.youtubeWatchPath : null;
+  const youtubeWatch = useDeferredYoutubeWatch(youtubeWatchPath, getActiveAuthSession()?.request);
   const viewModel = {
     ...actionableModel,
+    secondary: youtubeWatchPath ? { ...actionableModel.secondary, youtubeWatch } : actionableModel.secondary,
     // A film has no seasons, episodes or issues: the web page shows no such section.
     children: hasChildren && !features.replacesChildren ? {
       ...children,
@@ -347,7 +354,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
       railComponent={WindowedRail}
       labels={model.labels}
       palette={palette}
-      loading={loading || (features.enabled && !features.headerReady)}
+      loading={pageLoading}
       error={error}
       hideContent={loadFailed}
       onRetry={item ? () => setAttempt(value => value + 1) : undefined}

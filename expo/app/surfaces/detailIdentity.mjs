@@ -50,7 +50,7 @@ export function identityFromDetailItem(item) {
   return null;
 }
 
-export function detailEndpoint(identity) {
+export function detailEndpoint(identity, { youtubeWatch } = {}) {
   const path = `/api/v1/media/${encodeURIComponent(identity.mediaType)}/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.mediaId)}/detail/`;
   const params = new URLSearchParams();
   if (identity.publicView) params.set('public_view', '1');
@@ -58,6 +58,7 @@ export function detailEndpoint(identity) {
   if (identity.seasonNumber != null) params.set('season_number', String(identity.seasonNumber));
   if (identity.episodeNumber != null) params.set('episode_number', String(identity.episodeNumber));
   if (identity.episodePage != null) params.set('episode_page', String(identity.episodePage));
+  if (youtubeWatch) params.set('youtube_watch', youtubeWatch);
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 }

@@ -28,6 +28,8 @@ class VideoGameTag(models.Model):
     # YouTube's own game id (a channel-style `UC...` browse id), stable across videos.
     game_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
     release_year = models.CharField(max_length=8, blank=True, default="")
+    # Null predates runtime collection. Zero means YouTube supplied no runtime.
+    runtime_seconds = models.PositiveIntegerField(null=True, blank=True)
     checked_at = models.DateTimeField()
     failures = models.PositiveSmallIntegerField(default=0)
 

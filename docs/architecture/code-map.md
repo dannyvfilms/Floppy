@@ -71,6 +71,12 @@ Django apps live under `src/`. Paths below are repository-relative.
   `collection_helpers.py` (collection metadata), `cache_utils.py` (view-cache
   keys and clearing). `src/app/helpers.py` takes small value and request
   helpers with no narrower subject. Do not add a new `utils` module.
+- **YouTube game watch time.** `src/app/services/youtube_game.py` reads and
+  backfills the tag and published runtime from the watch page.
+  `src/app/services/youtube_game_watch.py` matches that tag to a game and
+  totals the viewer's recorded positions or completed video runtimes.
+  The PWA and Expo use `frontend/ui/useDeferredYoutubeWatch.js` to request the
+  private summary after the detail renders.
 
 ### Helper homes
 

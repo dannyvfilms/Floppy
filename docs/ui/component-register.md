@@ -630,6 +630,22 @@ sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` an
 places the viewer rating beside provider scores; `ProgressCard` has an opt-in
 detail presentation. Native metadata adapters preserve server formatting and
 viewer rating preferences. `detailHeroLayout` and `detailArtworkCrop` anchor artwork geometry.
+`MediumExtras` owns the game Time card in shared React Native on the PWA
+(`mountPeople`) and on iOS and Android (`DetailMediumExtras`). The card uses
+recorded playback positions or published runtimes for completed videos.
+Its shared Time Watched row shows a spinner while the mounted adapter loads
+the viewer's summary. A successful empty response removes the row. Time to
+Beat still has its server fallback, so the PWA Time surface remains
+partial/coexisting until the detail shell retires that fallback.
+`useDeferredYoutubeWatch` shares request cancellation and timeout handling
+between the PWA and Expo adapters. `detailYoutubeWatchModel` maps the API
+summary into props for the shared Time card.
+The shared channel breakdown shows the watch duration first, followed by a
+middle dot and the percentage.
+Desktop and mobile Chromium exercised the follow-up request and channel
+expansion, including the duration-first values. The iOS simulator and Android
+emulator each rendered the Calculating and resolved states with a delayed
+fixture response and the expanded duration-first rows.
 `DetailActivitySubtitle` renders the same activity dates and duration on desktop,
 mobile web and Expo, with a white separator. Web retains its history button and
 server fallback; Expo supplies formatted dates through its detail adapter. This

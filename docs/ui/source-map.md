@@ -507,6 +507,20 @@ Status: `Legacy`
 
 ## DETAIL
 
+The game Time card is shared through `frontend/ui/People.jsx` (`MediumExtras`).
+The expandable breakdown shows each channel's duration, a middle dot and its share.
+Web uses `src/users/templatetags/ui_tags.py` and `frontend/ui/mountPeople.jsx`,
+with `game_lengths_section.html` as the Time to Beat server fallback.
+iOS and Android use `DetailMediumExtras` with the same data via
+`expo/app/surfaces/DetailSlot.jsx` and `frontend/ui/detailSecondaryModel.js`.
+`frontend/ui/useDeferredYoutubeWatch.js` loads just the watch-time summary
+after either surface displays its detail, independently of the rest of the card.
+`src/app/services/youtube_game_watch.py` supplies game matching and watch time.
+`src/app/services/youtube_game.py` stores published
+runtime in the shared YouTube tag lookup so completed imports can contribute
+time even without a recorded playback position. Ownership
+coexists until the PWA detail shell can retire the server-rendered Time content.
+
 Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
 `DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
 sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
@@ -782,7 +796,6 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
-- `src/templates/app/components/youtube_watch_section.html`
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
