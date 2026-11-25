@@ -1,4 +1,4 @@
-<svg class="{{ classes }}" type="negative" viewBox="0 0 80 80" preserveAspectRatio="xMidYMid" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg width="1em" height="1em" class="{{ classes }}" type="negative" viewBox="0 0 80 80" preserveAspectRatio="xMidYMid" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
         <g transform="translate(0, 1.23)">
           <g>
             <mask id="mask-2" fill="white">

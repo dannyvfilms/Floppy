@@ -276,6 +276,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/detail_score_chip.html`
 - `src/templates/app/components/detail_score_chip_slot.html`
 - `src/templates/app/components/detail_score_chips.html`
+- `src/templates/app/components/rt_extras.html`
 - `src/templates/app/components/media_card_rate_button.html`
 - `src/templates/app/components/media_card_rating.html`
 - `src/templates/app/components/media_card_rating_oob.html`
