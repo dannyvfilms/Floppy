@@ -334,6 +334,46 @@ class ApiTests(ScaleTestCase):
         self.anime.refresh_from_db()
         self.assertEqual(self.anime.score, Decimal("4.0"))
 
+    def test_chip_with_nothing_filled_keeps_historical_score(self):
+        """Pressing Done on an untouched sheet must not clear a score from before the scale."""
+        self.user.custom_rating_scale = self.scale
+        self.user.save()
+        response = self.client.post(self._score_url(), {"criteria_submitted": "1", "score": ""})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.anime.refresh_from_db()
+        self.assertEqual(self.anime.score, Decimal(6))
+
+    def test_flat_override_keeps_the_ratings_own_scale(self):
+        """A flat score after switching to a built-in scale keeps the old scale's values."""
+        self.user.custom_rating_scale = self.scale
+        self.user.save()
+        url = f"/api/v1/media/anime/mal/{self.anime.item.media_id}/"
+        self.client.patch(url, {"criteria": {self.by_name["Visuals"]: 8}}, content_type="application/json")
+        self.user.custom_rating_scale = None
+        self.user.save()
+        response = self.client.patch(url, {"score": 9}, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        row = rating_scales.get_entry_rating(self.anime)
+        self.assertEqual(row.scale_id, self.scale.id)
+        self.assertTrue(row.is_manual)
+
+    def test_criteria_only_patch_is_an_outbound_rating_edit(self):
+        """A body with criteria and no score opens the rating-edit scope."""
+        from app.models import Movie
+        from integrations.models import RatingSyncEdit
+
+        self.user.custom_rating_scale = self.scale
+        self.user.save()
+        item = Item.objects.create(
+            media_id="77", source=Sources.TMDB.value, media_type=MediaTypes.MOVIE.value,
+            title="M", image="http://example.com/m.jpg",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value, score=5)
+        url = "/api/v1/media/movie/tmdb/77/"
+        response = self.client.patch(url, {"criteria": {self.by_name["Visuals"]: 8}}, content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(RatingSyncEdit.objects.filter(user=self.user, item=item).exists())
+
     def _score_url(self):
         from django.urls import reverse
 

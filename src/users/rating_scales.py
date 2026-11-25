@@ -296,10 +296,14 @@ def apply_rating(user, values, manual_score=None):
 
 
 @transaction.atomic
-def save_entry_rating(user, entry, cleaned, computed, *, manual):
-    """Persist per-criterion values beside the entry's score."""
+def save_entry_rating(user, entry, cleaned, computed, *, manual, scale=None):
+    """Persist per-criterion values beside the entry's score.
+
+    `scale` pins the scale the values belong to (a manual override of an
+    existing rating keeps that rating's scale, whatever the user selected since).
+    """
     content_type = ContentType.objects.get_for_model(entry)
-    scale = user.custom_rating_scale
+    scale = scale or user.custom_rating_scale
     if not cleaned and not manual:
         EntryRating.objects.filter(
             content_type=content_type,
@@ -348,6 +352,7 @@ def criteria_from_body(user, body, entry=None):
                 "values": {key: Decimal(str(v)) for key, v in existing.values.items()},
                 "computed": existing.computed_score,
                 "manual": True,
+                "scale": existing.scale,
             }, None
         return None, None
     scale = user.custom_rating_scale

@@ -134,6 +134,7 @@ def _persist_pending_entry_rating(sender, instance, **kwargs):
         pending["values"],
         pending["computed"],
         manual=pending["manual"],
+        scale=pending.get("scale"),
     )
 
 

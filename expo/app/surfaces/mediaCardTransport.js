@@ -161,8 +161,10 @@ function field(name, label, type, value, extra = {}) {
   return { name, label, type, value: value == null ? '' : String(value), ...extra };
 }
 
-// The viewer's rating scale: 5 or 10 stars, 0 when ratings are turned off, 10 when it cannot be read.
+// The viewer's rating scale: 5 or 10 stars, 0 when ratings are turned off, 10 when it cannot be read or a custom scale is active.
 function ratingScaleMax(prefs) {
+  // An active custom scale is always scored out of 10, whatever built-in value (even Disabled) is kept beside it.
+  if (prefs?.preferences?.custom_rating_scale) return 10;
   const scale = Number(prefs?.preferences?.rating_scale);
   return scale === 0 || scale === 5 || scale === 10 ? scale : 10;
 }

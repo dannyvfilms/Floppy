@@ -77,6 +77,7 @@ def update_media_score(request, media_type, instance_id):
     toggle = request.POST.get("toggle")
     score = None
     pending_rating = None
+    keeps_score = False
     if request.POST.get("criteria_submitted") and request.user.custom_rating_scale_id:
         # Custom scale: the chip popup sends one value per criterion.
         body = {
@@ -96,6 +97,8 @@ def update_media_score(request, media_type, instance_id):
         if rating_error:
             return HttpResponseBadRequest(rating_error)
         score_raw = None if body["score"] is None else str(body["score"])
+        # Nothing filled in on an entry with only a historical score: leave it alone.
+        keeps_score = pending_rating is None
         toggle = None
     elif request.user.custom_rating_scale_id and (score_raw or "").strip() not in {"", "null"}:
         # A flat score on a custom scale is a manual override of the calculation.
@@ -106,6 +109,7 @@ def update_media_score(request, media_type, instance_id):
                 "values": {k: Decimal(str(v)) for k, v in existing.values.items()},
                 "computed": existing.computed_score,
                 "manual": True,
+                "scale": existing.scale,
             }
     if score_raw is not None:
         score_raw = score_raw.strip()
@@ -121,7 +125,8 @@ def update_media_score(request, media_type, instance_id):
     if toggle and score is not None and media.score == score:
         score = None
 
-    media.score = score
+    if not keeps_score:
+        media.score = score
     media._pending_entry_rating = pending_rating
     media.save()
     logger.info(

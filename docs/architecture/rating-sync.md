@@ -117,7 +117,7 @@ Editing a scale never rewrites saved scores: a renamed or reordered criterion ke
 id, a removed criterion is archived, and deleting a scale that has ratings archives it.
 Changed ranges or tiers apply the next time an entry's criteria are saved.
 
-Deferred (not part of the first stage, tracked on #1748): media-type profiles (one
+Deferred (not part of the first stage, tracked on #1748): criteria for podcast show ratings (the chip there keeps the flat score), media-type profiles (one
 scale for the user today), CSV `criterion:<key>` import and export columns, and AniList
 `advancedScores` import and push. Until then the AniList importer keeps reading its
 overall score, and a push sends the final score as before.

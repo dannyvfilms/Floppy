@@ -140,8 +140,12 @@ def rating_stars(context, post_url):
 
 def _custom_chip_scale(user, instance):
     """Return the custom scale payload for a media row's chip, or None."""
+    from app.models import PodcastShowTracker
     from users import rating_scales
 
+    if isinstance(instance, PodcastShowTracker):
+        # The show-rating writer takes one flat score; criteria for podcasts are deferred.
+        return None
     if (
         instance is None
         or getattr(instance, "pk", None) is None
