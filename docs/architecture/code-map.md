@@ -132,6 +132,7 @@ See `docs/deployment-bundled.md`.
 | An import or scheduled sync | `src/integrations/imports/<source>.py` | A run that finds no change writes nothing (see the rules below) |
 | A new media type | Follow the playbook | `docs/agents/media_type_integration.md` |
 | A value helper (parse, format, coerce) | The module of the subject it serves: a parser for one provider's response stays in that provider's module, a Statistics formatter in `src/app/stats_utils.py`. Only a helper that several subjects need goes in `src/app/helpers.py` | Search first (below) |
+| A user-defined rating scale (named criteria, ranges, weight tiers) and how an entry's criteria become its 0-10 score | `src/users/rating_scales.py` (rules, saving, API payloads); models in `src/users/rating_scale_models.py`; tests `users.tests.test_rating_scales`; UI rules in `frontend/ui/ratingScaleModel.js` | `docs/architecture/rating-sync.md` (final score only leaves Floppy) |
 | A shared UI component | `frontend/ui/` | `docs/architecture/ui-modernization.md`; register it in `docs/ui/component-register.md` |
 | A test | `src/<app>/tests/test_<subject>.py` | Tag benchmarks and browser tests `slow`: `AGENTS.md`, Testing |
 

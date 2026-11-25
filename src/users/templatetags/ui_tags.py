@@ -138,6 +138,19 @@ def rating_stars(context, post_url):
     })
 
 
+def _custom_chip_scale(user, instance):
+    """Return the custom scale payload for a media row's chip, or None."""
+    from users import rating_scales
+
+    if (
+        instance is None
+        or getattr(instance, "pk", None) is None
+        or not getattr(user, "custom_rating_scale_id", None)
+    ):
+        return None
+    return rating_scales.entry_payload(user, instance)
+
+
 def _number_or_value(value):
     """Render integral display scores without a trailing `.0`."""
     try:
@@ -252,6 +265,10 @@ def rating_chip(
     }
     if layout:
         props["layout"] = layout
+    custom = None if compact else _custom_chip_scale(user, instance)
+    if custom is not None:
+        props["ratingScale"] = custom
+        props["scaleMax"] = 10
     return render_to_string("app/components/rating_chip.html", {
         "props": props,
         "props_id": f"rating-chip-{uuid4().hex}",

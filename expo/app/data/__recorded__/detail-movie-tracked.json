@@ -301,6 +301,7 @@
     {
       "can_edit": true,
       "completed_episode_count": null,
+      "criteria": null,
       "display_score": 7.0,
       "end_date": "2026-01-15T12:00:00+00:00",
       "formatted_progress": "1",
@@ -330,6 +331,7 @@
   "tracking_entries_count": 1,
   "tracking_entries_has_more": false,
   "viewer_rating": {
+    "criteria": null,
     "enabled": true,
     "scale_max": 10,
     "value": 7.0

@@ -275,6 +275,19 @@
         </div>
       {% endif %}
 
+      {# Custom rating scale breakdown #}
+      {% if not public_view and current_instance and user.custom_rating_scale_id %}
+        {% detail_sidebar_props "rating" as rating_props %}
+        {% if rating_props.payload.rating %}
+        <div class="mt-6 mb-6" id="detail-sidebar-rating">
+          {% translate "Your Rating" as rating_title %}{% detail_sidebar_props "heading" rating_title as rating_heading %}{{ rating_heading|json_script:"detail-sidebar-rating-heading" }}
+          <div class="mb-4" data-detail-sidebar-card-root data-props-id="detail-sidebar-rating-heading"><h2 class="text-xl font-bold">{{ rating_title }}</h2></div>
+          {{ rating_props|json_script:"detail-sidebar-rating-props" }}
+          <div data-detail-sidebar-card-root data-props-id="detail-sidebar-rating-props"></div>
+        </div>
+        {% endif %}
+      {% endif %}
+
       {# Collection #}
       {% if not public_view and media_type != MediaTypes.PODCAST.value %}
         <div {% detail_section_attrs user detail_family "sidebar" "collection" %}>

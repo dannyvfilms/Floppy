@@ -147,6 +147,19 @@ def project_details(metadata_details, media_type, viewer):
     return details, display_details, promotion
 
 
+def rating_breakdown(user, entry):
+    """Return the custom-scale breakdown for the sidebar, or None without one."""
+    from users import rating_scales
+
+    if entry is None or not getattr(user, "custom_rating_scale_id", None):
+        return None
+    payload = rating_scales.entry_payload(user, entry)
+    if payload is None or not payload["values"]:
+        return None
+    payload["overall"] = None if entry.score is None else float(entry.score)
+    return payload
+
+
 def web_sidebar_payload(context, kind, title=""):
     """Return the detail sidebar's data in the shape the shared React cards read.
 
@@ -156,6 +169,10 @@ def web_sidebar_payload(context, kind, title=""):
     """
     if kind == "heading":
         return {"kind": kind, "title": title, "payload": {}}
+    if kind == "rating":
+        return {"kind": kind, "title": title, "payload": {
+            "rating": rating_breakdown(context.get("user"), context.get("current_instance")),
+        }}
 
     from urllib.parse import quote
 

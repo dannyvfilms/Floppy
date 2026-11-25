@@ -16,6 +16,7 @@ from api.authentication import APIKeyAuthentication, BearerAuthentication
 from api.errors import failure_response
 from app import cache_utils, history_cache, statistics_cache
 from app.models import Item
+from users import rating_scales
 from users.forms import NotificationSettingsForm
 from users.models import PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH
 from users.views import SIDEBAR_MEDIA_TYPES
@@ -131,6 +132,7 @@ def _active_auto_pause_libraries(user):
 # Fields whose change requires the web view's statistics-cache refresh.
 _STATS_SENSITIVE_FIELDS = {
     "rating_scale",
+    "custom_rating_scale",
     "top_talent_sort_by",
     "week_start_day",
     "duration_format",
@@ -155,6 +157,13 @@ def _serialize_preferences(user):
         "metadata_language": user.metadata_language,
         "auto_pause_rules": user.auto_pause_rules or [],
         "auto_pause_libraries": _active_auto_pause_libraries(user),
+        "custom_rating_scale": (
+            str(user.custom_rating_scale_id) if user.custom_rating_scale_id else None
+        ),
+        "rating_scales": [
+            rating_scales.scale_payload(scale)
+            for scale in rating_scales.user_scales(user)
+        ],
     }
     readable = (
         _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS + _TEXT_PREFERENCE_FIELDS
@@ -214,6 +223,30 @@ class UserPreferencesView(drf_views.APIView):
 
         fields_to_update = []
         changed = set()
+        # Choosing a built-in scale clears the custom one unless the request names it.
+        if (
+            "rating_scale" in request.data
+            and "custom_rating_scale" not in request.data
+            and user.custom_rating_scale_id
+        ):
+            user.custom_rating_scale = None
+            fields_to_update.append("custom_rating_scale")
+            changed.add("custom_rating_scale")
+        if "custom_rating_scale" in request.data:
+            wanted = request.data["custom_rating_scale"]
+            scale = None
+            if wanted:
+                scale = rating_scales.user_scales_by_id(user, wanted)
+                if scale is None:
+                    return Response(
+                        {"detail": "Unknown rating scale."},
+                        status=HTTP.BAD_REQUEST,
+                    )
+            if (scale.id if scale else None) != user.custom_rating_scale_id:
+                user.custom_rating_scale = scale
+                if "custom_rating_scale" not in fields_to_update:
+                    fields_to_update.append("custom_rating_scale")
+                changed.add("custom_rating_scale")
         for field in _CHOICE_PREFERENCE_FIELDS:
             if field not in request.data:
                 continue
@@ -326,7 +359,7 @@ class UserPreferencesView(drf_views.APIView):
                     user.game_logging_style,
                     debounce_seconds=0,
                 )
-            if "rating_scale" in changed:
+            if changed & {"rating_scale", "custom_rating_scale"}:
                 history_cache.invalidate_history_cache(
                     user.id,
                     force=True,
@@ -699,3 +732,79 @@ class UserTokenRegenerateView(drf_views.APIView):
             )
         request.user.regenerate_token()
         return Response({"token": request.user.token}, status=HTTP.OK)
+
+
+# /api/v1/user/rating-scales/
+class RatingScalesView(drf_views.APIView):
+    """List the viewer's custom rating scales or create one."""
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        """Return every live scale with its criteria and weight tiers."""
+        return Response(
+            {
+                "active": (
+                    str(request.user.custom_rating_scale_id)
+                    if request.user.custom_rating_scale_id
+                    else None
+                ),
+                "results": [
+                    rating_scales.scale_payload(scale)
+                    for scale in rating_scales.user_scales(request.user)
+                ],
+            },
+            status=HTTP.OK,
+        )
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={201: OpenApiTypes.OBJECT})
+    def post(self, request):
+        """Create a scale from `{name, criteria: [{name, min, max, weight}]}`."""
+        if request.user.is_demo:
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
+        try:
+            scale = rating_scales.save_scale(request.user, request.data)
+        except rating_scales.RatingScaleError as error:
+            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+        return Response(rating_scales.scale_payload(scale), status=HTTP.CREATED)
+
+
+# /api/v1/user/rating-scales/<id>/
+class RatingScaleDetailView(drf_views.APIView):
+    """Edit or delete one custom rating scale."""
+
+    def _scale(self, request, scale_id):
+        return rating_scales.user_scales_by_id(request.user, scale_id)
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    def put(self, request, scale_id):
+        """Replace the scale's name and criteria; criterion ids keep history."""
+        if request.user.is_demo:
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
+        scale = self._scale(request, scale_id)
+        if scale is None:
+            return Response({"detail": "Not found."}, status=HTTP.NOT_FOUND)
+        try:
+            scale = rating_scales.save_scale(request.user, request.data, scale=scale)
+        except rating_scales.RatingScaleError as error:
+            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+        return Response(rating_scales.scale_payload(scale), status=HTTP.OK)
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def delete(self, request, scale_id):
+        """Delete the scale, or archive it when saved ratings still use it."""
+        if request.user.is_demo:
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
+        scale = self._scale(request, scale_id)
+        if scale is None:
+            return Response({"detail": "Not found."}, status=HTTP.NOT_FOUND)
+        outcome = rating_scales.delete_scale(request.user, scale)
+        return Response({"result": outcome}, status=HTTP.OK)
