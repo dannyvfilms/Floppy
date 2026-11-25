@@ -81,7 +81,13 @@
     var rect = el.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return false;
     var cs = window.getComputedStyle(el);
-    return cs.visibility !== 'hidden' && cs.display !== 'none';
+    if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+    // Controls kept in the page but faded out until hover (media card actions)
+    // are not there yet, so focus must not land on them.
+    for (var node = el; node && node.nodeType === 1; node = node.parentElement) {
+      if (window.getComputedStyle(node).opacity === '0') return false;
+    }
+    return true;
   }
 
   function topDialog() {
@@ -145,7 +151,17 @@
       document.dispatchEvent(new KeyboardEvent('keydown', escape));
       return;
     }
-    if (window.history.length > 1) window.history.back();
+    // Popups that are not dialogs (rating popup, search suggestions) close on
+    // Escape. Try that first; leave the page only if nothing on it reacted.
+    var changed = false;
+    var watcher = new MutationObserver(function () { changed = true; });
+    watcher.observe(document.body, { childList: true, subtree: true });
+    var esc = { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true };
+    (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', esc));
+    window.setTimeout(function () {
+      watcher.disconnect();
+      if (!changed && window.history.length > 1) window.history.back();
+    }, 120);
   }
 
   function search() {
