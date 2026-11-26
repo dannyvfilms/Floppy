@@ -205,8 +205,8 @@ export function CollectionExpandRow({ icon, label, summary, items = [], info, bu
       accessibilityLabel={[label, summary, busyLabel, expanded ? 'collapse' : 'expand'].filter(Boolean).join(', ')}
       onPress={() => setExpanded(value => !value)}>
       <View style={styles.expandEnd}>
-        {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
         {busyLabel ? <ActivityIndicator size="small" color={palette.textMuted} accessible={false} /> : null}
+        {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
         <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
           <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
         </View>

@@ -1422,15 +1422,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Mounted by the web bulk adapter for the status dialog and the Add Plays job dock and by the native Library slot; the browser status dialog and job dock were not exercised after this shared swap. Chromium on desktop and phone assigned a known game from the shared picker after selecting matching videos."
+          "evidence": "Mounted by the web bulk adapter for the status dialog and the Add Plays job dock and by the native Library slot; the status dialog and job dock were outside the picker review. Desktop and phone Chromium rendered the Assign game subtitles with the seeded viewer's watch times."
         },
         "ios": {
           "status": "verified",
-          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no simulator run or interaction pass. The iOS Simulator rendered the native toolbar and shared game picker with a seeded video selection."
+          "evidence": "The iOS Simulator rendered the shared Assign game picker with release year and watch-time subtitles in a fixture preview."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass. The Android Expo bundle compiled. The emulator reopened an older Expo Go preview during the Videos check."
+          "status": "verified",
+          "evidence": "The Android Emulator exercised search, selection and watch-time subtitles in the shared Assign game picker with fixture data."
         }
       }
     },
@@ -1938,15 +1938,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards. Desktop and mobile Chromium verified that the MediumExtras Time card shows an activity indicator beside the changing total and keeps the channel breakdown expanded."
+          "evidence": "Desktop and phone Chromium verified the MediumExtras activity indicator sits to the left of Calculating and of the partial duration with the channel breakdown expanded. Filmography remains server-owned and uses shared media cards."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The iOS Simulator rendered the MediumExtras activity indicator alongside a partial watch total and cleared it after a deferred fixture settled. Prior Expo verification covered the duration-first channel breakdown."
+          "evidence": "The iOS Simulator rendered the MediumExtras activity indicator to the left of Calculating and the partial watch total in the fixture preview."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The Android emulator rendered the MediumExtras spinner alongside the partial total using a deferred fixture. Prior Expo verification covered the expanded duration-first channel breakdown."
+          "evidence": "The Android Emulator rendered the MediumExtras activity indicator to the left of Calculating and the partial watch total and exercised the expanded breakdown with fixture data."
         }
       }
     },
@@ -1988,15 +1988,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Earlier CollectionContextCard rendering was inspected in the PWA on a physical Duo. The user confirmed the collection show-more collapsed state in the PWA; final show-less spacing and episode-based resolution updates have not been independently verified; the browser provider was unavailable. The Django modal retains its editing forms."
+          "evidence": "Desktop and phone Chromium verified the CollectionExpandRow indicator before the interim watch duration with the breakdown expanded. Earlier CollectionContextCard rendering was inspected in the PWA on a physical Duo. The Django modal retains its editing forms."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "The detail sheet and missing episode row were inspected on a physical Duo; the shared show-more extraction has not been rechecked. The expanded episode-based resolution breakdown and copy editing remain unverified."
+          "evidence": "The iOS Simulator rendered the CollectionExpandRow indicator before the interim duration with fixture data. The expanded episode-based resolution breakdown and copy editing remain unverified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Collection screen; copy add/edit/remove, medium fields and the season cascade were not exercised on an emulator or device."
+          "evidence": "The Android Emulator rendered the CollectionExpandRow indicator before the interim watch duration and expanded the breakdown with fixture data. Copy add/edit/remove, medium fields and the season cascade were outside this review."
         }
       }
     },

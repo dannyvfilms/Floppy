@@ -53,7 +53,10 @@ from app.models import (
     Video,
     VideoGameLink,
 )
-from app.services.youtube_game_watch import invalidate_watch_summaries
+from app.services.youtube_game_watch import (
+    cached_watched_for_games,
+    invalidate_watch_summaries,
+)
 from lists import views_list_actions
 from users.models import SavedView
 
@@ -142,6 +145,7 @@ class BulkVideoGameOptionSerializer(serializers.Serializer):
     title = serializers.CharField()
     source = serializers.CharField()
     year = serializers.IntegerField(allow_null=True)
+    watch_time_label = serializers.CharField(help_text="The caller's currently recorded video watch time.")
 
 
 class BulkResultSerializer(serializers.Serializer):
@@ -411,16 +415,26 @@ class LibraryBulkVideoGameView(_BulkView):
         query = request.query_params.get("q", "").strip()[:120]
         if len(query) < MIN_GAME_QUERY_LENGTH:
             return Response([])
-        games = (
+        games = list(
             self._games(request.user)
             .filter(Q(title__icontains=query) | Q(original_title__icontains=query) | Q(localized_title__icontains=query))
             .order_by("title", "source", "pk")
-            .values_list("pk", "title", "source", "release_datetime")[:30]
+            .only("title", "source", "media_id", "release_datetime")[:30],
         )
-        return Response([
-            {"id": pk, "title": title, "source": source, "year": released.year if released else None}
-            for pk, title, source, released in games
-        ])
+        watch = cached_watched_for_games(request.user, games)
+        return Response(
+            [
+                {
+                    "id": game.pk,
+                    "title": game.title,
+                    "source": game.source,
+                    "year": game.release_datetime.year if game.release_datetime else None,
+                    "watch_time_label": watch[game.pk]["hours_label"] if watch[game.pk] else "0m",
+                }
+                for game in games
+            ],
+            headers={"Cache-Control": "private, no-store"},
+        )
 
     @extend_schema(
         operation_id="bulkLibraryVideoGame",

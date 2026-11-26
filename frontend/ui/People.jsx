@@ -452,9 +452,9 @@ export function MediumExtras({
       } else if (pending) {
         rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}>
           <View accessibilityLiveRegion="polite" accessibilityState={{ busy: true }} style={styles.watchPending}>
-            <Text style={[styles.watchPendingText, { color: colors.textSecondary }]}>{watched}</Text>
             <ActivityIndicator size="small" color={colors.textMuted}
               accessibilityLabel={youtubeWatch.seconds ? copy.youtubeCalculating : undefined} accessible={Boolean(youtubeWatch.seconds)} />
+            <Text style={[styles.watchPendingText, { color: colors.textSecondary }]}>{watched}</Text>
           </View>
         </CollectionRow>);
       } else {

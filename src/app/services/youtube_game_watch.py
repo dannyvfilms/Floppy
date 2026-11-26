@@ -8,6 +8,7 @@ video with no recorded position.
 import logging
 import re
 import unicodedata
+from collections import defaultdict
 from hashlib import sha256
 from uuid import uuid4
 
@@ -77,30 +78,60 @@ def invalidate_watch_summaries(user_id=None, *, using=None):
     )
 
 
-def cached_watched_for_game(user, game_item):
-    """Cache the total and every channel together, including an empty result."""
+def _watch_cache_keys(user, games):
     keys = (_viewer_generation_key(user.pk), TAG_GENERATION_KEY)
     generations = cache.get_many(keys)
     viewer_generation, tag_generation = [
         generations.get(key) or cache.get_or_set(key, uuid4().hex, GENERATION_TTL)
         for key in keys
     ]
-    identity = sha256(f"{game_item.title}\n{game_item.release_datetime}".encode()).hexdigest()
-    key = f"youtube-game-watch:v2:{user.pk}:{game_item.pk}:{identity}:{viewer_generation}:{tag_generation}"
+    for game in games:
+        identity = sha256(f"{game.title}\n{game.release_datetime}".encode()).hexdigest()
+        yield game.pk, f"youtube-game-watch:v2:{user.pk}:{game.pk}:{identity}:{viewer_generation}:{tag_generation}"
+
+
+def cached_watched_for_game(user, game_item):
+    """Cache the total and every channel together, including an empty result."""
+    _, key = next(_watch_cache_keys(user, [game_item]))
     # The wrapper lets a cached None distinguish an empty result from a miss.
     return cache.get_or_set(
         key, lambda: {"watch": watched_for_game(user, game_item)}, SUMMARY_TTL,
     )["watch"]
 
 
+def cached_watched_for_games(user, games):
+    """Read the same summaries as game detail, filling any misses as a batch."""
+    if not games:
+        return {}
+    keys = dict(_watch_cache_keys(user, games))
+    stored = cache.get_many(keys.values())
+    missing = [game for game in games if keys[game.pk] not in stored]
+    if missing:
+        fresh = {keys[pk]: {"watch": summary} for pk, summary in _watched_for_games(user, missing).items()}
+        cache.set_many(fresh, SUMMARY_TTL)
+        stored.update(fresh)
+    return {pk: stored[key]["watch"] for pk, key in keys.items()}
+
+
+def _tagged_games(games):
+    by_title = defaultdict(list)
+    by_identity = defaultdict(list)
+    for game in games:
+        by_title[normalize_title(game.title)].append(game)
+        by_identity[game.source, game.media_id].append(game)
+    tags = VideoGameTag.objects.filter(status=VideoGameTag.Status.FOUND).values_list(
+        "item_id", "game_title", "release_year", "game_id",
+    )
+    for item_id, title, year, game_id in tags.iterator():
+        identity = YOUTUBE_GAME_IDENTITIES.get(game_id)
+        candidates = by_identity.get(identity, ()) if identity else by_title.get(normalize_title(title), ())
+        for game in candidates:
+            if tag_matches_game(title, year, game, youtube_game_id=game_id):
+                yield item_id, game.pk
+
+
 def _tagged_item_ids(game_item):
-    return [
-        item_id
-        for item_id, title, year, game_id in VideoGameTag.objects.filter(
-            status=VideoGameTag.Status.FOUND,
-        ).values_list("item_id", "game_title", "release_year", "game_id")
-        if tag_matches_game(title, year, game_item, youtube_game_id=game_id)
-    ]
+    return [item_id for item_id, _ in _tagged_games([game_item])]
 
 
 def _game_backfill_key(user_id, game_id):
@@ -177,39 +208,55 @@ def watched_for_game(user, game_item):
     """
     if game_item.media_type != MediaTypes.GAME.value:
         return None
-    manual = Video.objects.filter(user=user, game_link__game_item=game_item)
+    return _watched_for_games(user, [game_item])[game_item.pk]
+
+
+def _watched_for_games(user, games):
+    rows_by_game = {game.pk: [] for game in games}
+    videos = Video.objects.filter(user=user)
     fields = ("pk", "progress", "length_seconds", "channel", "status", "item__video_game_tag__runtime_seconds")
-    rows = list(manual.values_list(*fields))
+    manual = videos.filter(game_link__game_item_id__in=rows_by_game)
+    for game_id, *row in manual.values_list("game_link__game_item_id", *fields).iterator():
+        rows_by_game[game_id].append(row)
     # Start from the (few) found tags, not the user's whole video table: walking
     # every video row to reach its tag is one random read per row on a cold disk.
-    # The tag titles are matched here, then only the matching items' videos load.
-    tagged_items = _tagged_item_ids(game_item)
-    if tagged_items:
-        rows += list(
-            Video.objects.filter(
-                user=user,
-                item_id__in=tagged_items,
-                game_link__isnull=True,
-            ).values_list(*fields),
-        )
-    if not rows:
-        return None
-    lengths = {pk: client_length or published_length or 0 for pk, _, client_length, _, _, published_length in rows}
-    play_seconds = {}
+    games_by_item = defaultdict(list)
+    for item_id, game_id in _tagged_games(games):
+        games_by_item[item_id].append(game_id)
+    if games_by_item:
+        tagged = videos.filter(item_id__in=games_by_item, game_link__isnull=True)
+        for item_id, *row in tagged.values_list("item_id", *fields).iterator():
+            for game_id in games_by_item[item_id]:
+                rows_by_game[game_id].append(row)
+
+    lengths = {
+        pk: client_length or published_length or 0
+        for rows in rows_by_game.values()
+        for pk, _, client_length, _, _, published_length in rows
+    }
+    play_seconds = defaultdict(int)
+    timed_by_position = set()
     untimed_plays = set()
-    estimated = False
     plays = VideoPlay.objects.filter(video_id__in=lengths).values_list("video_id", "progress")
     for video_id, position in plays.iterator():
         length = lengths[video_id]
         if position:
-            estimated = True
-            watched = min(position, length) if length else position
+            timed_by_position.add(video_id)
+            play_seconds[video_id] += min(position, length) if length else position
         else:
-            watched = length
+            play_seconds[video_id] += length
             if not length:
                 untimed_plays.add(video_id)
-        play_seconds[video_id] = play_seconds.get(video_id, 0) + watched
+    return {
+        pk: _summarize_watches(rows, lengths, play_seconds, timed_by_position, untimed_plays)
+        for pk, rows in rows_by_game.items()
+    }
 
+
+def _summarize_watches(rows, lengths, play_seconds, timed_by_position, untimed_plays):
+    if not rows:
+        return None
+    estimated = False
     # Position can pass the runtime after a rewatch or a seek past the end.
     by_channel = {}
     seconds = 0
@@ -218,6 +265,7 @@ def watched_for_game(user, game_item):
         length = lengths[pk]
         if pk in play_seconds:
             watched = play_seconds[pk]
+            estimated |= pk in timed_by_position
         elif progress:
             estimated = True
             watched = min(progress, length) if length else progress

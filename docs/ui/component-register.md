@@ -496,7 +496,8 @@ Shared MediaCard preserves the accepted status-specific icon shapes and colors, 
 ### BULK — Multi-item selection and actions
 
 - Videos provides Assign game in the browser bulk bar and native `BulkToolbar`. Both use the React-owned `BulkGameDialog` to pick a known edition and confirm the selection. The web bar remains a browser adapter for the existing menu and Alpine selection. Retire that bridge when React owns browser selection across library and list pages.
-- Videos verification: desktop and phone Chromium combined the title and Channel filters, selected both matches and persisted the chosen edition. The iOS Simulator rendered the shared search, selection and game picker with fixture data. The Android Expo bundle compiled. Expo Go reopened an older preview on the emulator during this check.
+- `BulkGameDialog` is fully React-owned on web, iOS and Android. Each result shows its release year and the viewer's recorded video watch time. Search reads the same cached summaries as game detail and leaves backfill to the detail and scheduled paths.
+- Videos verification: desktop and phone Chromium verified the watch-time subtitles with a seeded account. The iOS Simulator rendered the subtitles with fixture data. The Android Emulator verified the subtitles and picker selection with fixture data.
 - Purpose/usage: the Select Items bar on media lists, custom lists and smart lists, the Update Status confirmation and Add Plays to History for TV and anime. Slow work runs as a job in a docked card, so the page stays usable. (Formerly two entries, `BULK` and `BULK_ACTIONS`.)
 - Status: `Partial / coexisting`. React owns the toolbar (Library group: Update Status, Add to List, Add to Collection, Apply Tag; History group: Add Plays to History), the two dialogs and the job dock. Selection state, select mode and the card checkboxes are still legacy Alpine (`bulkSelection.js`, and `mountMediaCard.jsx` reading the same Alpine scope). Browser verification: toolbar, menus, dock review, background progress across navigation and partial failure exercised in the built-in browser. Native iOS and Android: not verified.
 - Native readiness: `DOM`. Its presentation (`controls.jsx`, `mountBulkActions.jsx`, `mountBulkToolbar.jsx`, 711 lines) is React DOM with CSS classes and has 52 browser-API references; a rewrite to `react-native` primitives is owed before native.
@@ -648,10 +649,13 @@ summary into props for the shared Time card.
 Opening the Time card's game starts a bounded backfill of its missing data.
 The deferred loader checks for a newer total while the worker fills runtimes
 and looks up possible matches. The Calculating row covers an empty total.
-Once a duration is available, `MediumExtras` keeps the spinner beside it
-until the worker finishes. The shared `CollectionExpandRow` renders the
-indicator and includes its status in the disclosure's accessible label,
+`MediumExtras` puts the spinner to the left of the Calculating label or
+interim duration so the value stays right-aligned until the worker finishes.
+The shared React Native `CollectionExpandRow` renders the interim indicator and
+includes its status in the disclosure's accessible label,
 without closing an expanded breakdown.
+Spinner placement was verified separately in desktop and phone Chromium, the
+iOS Simulator and the Android Emulator. The native renders used fixture data.
 The shared channel breakdown shows the watch duration first, followed by a
 middle dot and the percentage.
 Desktop and mobile Chromium exercised the follow-up request and channel

@@ -83,7 +83,8 @@ Django apps live under `src/`. Paths below are repository-relative.
   Each recorded video play contributes its position or full runtime, and
   completed videos without play records contribute once.
   `src/api/fork_views_library.py` owns bulk video game assignment and known
-  game search for the Videos library on all platforms.
+  game search for the Videos library on all platforms. The watch service reads
+  and populates the detail summary cache in a batch for the search results.
 
 ### Helper homes
 

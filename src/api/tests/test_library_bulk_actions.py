@@ -1,12 +1,55 @@
 from django.urls import reverse
+from django.utils import timezone
 
-from app.models import CollectionEntry, Item, Video, VideoGameLink
+from app.models import (
+    CollectionEntry,
+    Item,
+    Status,
+    Video,
+    VideoGameLink,
+    VideoGameTag,
+    VideoPlay,
+)
 from lists.models import CustomList, CustomListItem
 
 from .base import FloppyApiTestCase
 
 
 class LibraryBulkVideoGameTests(FloppyApiTestCase):
+    def test_game_search_shows_cached_watch_time_for_the_viewer_and_edition(self):
+        url = reverse("api_library_bulk_video_game")
+        game = Item.objects.create(media_id="known-game", source="igdb", media_type="game", title="Test Game")
+        edition = Item.objects.create(
+            media_id="known-edition", source="igdb", media_type="game", title="Test Game: Deluxe",
+        )
+        first = Item.objects.create(media_id="videobulk01", source="youtube", media_type="video", title="First video")
+        second = Item.objects.create(media_id="videobulk02", source="youtube", media_type="video", title="Second video")
+        VideoGameTag.objects.create(
+            item=first, game_title=game.title, status=VideoGameTag.Status.FOUND, runtime_seconds=3600,
+            checked_at=timezone.now(),
+        )
+        own = Video.objects.create(item=first, user=self.user1, status=Status.COMPLETED.value)
+        VideoPlay.objects.create(video=own, external_id="first", progress=0, end_date=timezone.now())
+        VideoPlay.objects.create(video=own, external_id="repeat", progress=600, end_date=timezone.now())
+        manual = Video.objects.create(item=second, user=self.user1, progress=30)
+        VideoGameLink.objects.create(video=manual, game_item=edition)
+        Video.objects.create(item=first, user=self.user2, progress=120)
+
+        def watch_labels(headers):
+            response = self.client.get(url, {"q": "Test Game"}, **headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["Cache-Control"], "private, no-store")
+            return {option["id"]: option["watch_time_label"] for option in response.data}
+
+        self.assertEqual(watch_labels(self.auth_headers), {game.pk: "1h 10m", edition.pk: "30s"})
+        self.assertEqual(watch_labels(self.auth_headers2), {game.pk: "2m", edition.pk: "0m"})
+        with self.captureOnCommitCallbacks(execute=True):
+            assigned = self.client.post(url, {"item_ids": [first.pk], "game_id": edition.pk},
+                                        format="json", **self.auth_headers)
+        self.assertEqual(assigned.status_code, 200)
+        self.assertEqual(watch_labels(self.auth_headers), {game.pk: "0m", edition.pk: "1h 10m"})
+        self.assertEqual(watch_labels(self.auth_headers2), {game.pk: "2m", edition.pk: "0m"})
+
     def test_search_and_assign_only_the_callers_selected_videos(self):
         url = reverse("api_library_bulk_video_game")
         game = Item.objects.create(media_id="known-game", source="igdb", media_type="game", title="Test Game: Deluxe")

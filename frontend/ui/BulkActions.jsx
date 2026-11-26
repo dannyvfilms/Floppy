@@ -267,7 +267,7 @@ export function BulkGameDialog({ count, palette, onSearch, onAssign, onClose }) 
     {matches?.length === 0 ? <Text accessibilityLiveRegion="polite"
       style={{ color: colors.textMuted }}>No known games match.</Text> : null}
     {matches?.map(game => <BulkOptionRow key={game.id} label={game.title}
-      detail={[game.year, game.source.toUpperCase()].filter(Boolean).join(' · ')}
+      detail={[game.year, game.watch_time_label && `${game.watch_time_label} watched`].filter(Boolean).join(' · ')}
       selected={choice?.id === game.id} disabled={busy} palette={palette} onPress={() => setChoice(game)} />)}
   </BulkActionDialog>;
 }
