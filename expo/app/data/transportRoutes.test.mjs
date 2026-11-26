@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeTrackForm, initialTrackValues } from '../../../frontend/ui/mediaCardForms.js';
+import { normalizeTrackForm, initialTrackValues, validateTrackValues } from '../../../frontend/ui/mediaCardForms.js';
 import { createCalendarTransport } from './calendarTransport.js';
 import {
   createStatisticsTransport,
@@ -160,6 +160,35 @@ test('an untracked comic issue submits its required zero progress and date field
     const updated = calls.find(call => call.options.method === 'PATCH');
     assert.equal(updated.options.body.entry_source, '');
     assert.equal(updated.options.body.status, null);
+  } finally { resetMediaCardTransport(); }
+});
+
+test('game time played is not capped by the placeholder max_progress', async () => {
+  const { calls, session } = authFixture(path => path.endsWith('/state/')
+    ? { tracked: true, consumptions: [{ status: 2, progress: 775, start_date: null, end_date: null }] }
+    : path === '/api/v1/media/game/igdb/1001/' ? { title: 'Ezio Collection', max_progress: 1 } : null);
+  configureMediaCardTransport({ auth: session });
+  try {
+    const identity = { mediaType: 'game', source: 'igdb', mediaId: '1001' };
+    const loaded = await loadTrack(identity);
+    const model = normalizeTrackForm(loaded.model);
+    assert.equal(model.fields.find(field => field.name === 'progress').max, null);
+    assert.deepEqual(validateTrackValues(model, { ...initialTrackValues(model), status: 'Dropped' }), {});
+    await saveTrack(identity, model, { ...initialTrackValues(model), status: 'Dropped' }, true);
+    const updated = calls.find(call => call.options.method === 'PATCH');
+    assert.equal(updated.options.body.status, 'Dropped');
+    assert.equal(updated.options.body.progress, 775);
+  } finally { resetMediaCardTransport(); }
+});
+
+test('a book without a known page count is not capped at the placeholder max_progress', async () => {
+  const { session } = authFixture(path => path.endsWith('/state/')
+    ? { tracked: true, consumptions: [{ status: 1, progress: 120 }] }
+    : path === '/api/v1/media/book/openlibrary/OL1W/' ? { title: 'A Book', max_progress: 1 } : null);
+  configureMediaCardTransport({ auth: session });
+  try {
+    const loaded = await loadTrack({ mediaType: 'book', source: 'openlibrary', mediaId: 'OL1W' });
+    assert.equal(loaded.model.fields.find(field => field.name === 'progress').max, null);
   } finally { resetMediaCardTransport(); }
 });
 

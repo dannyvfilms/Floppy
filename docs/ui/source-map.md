@@ -605,6 +605,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
 - `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
+- 2026-11-23 native Track sheet progress cap: `expo/app/surfaces/mediaCardTransport.js` (`progressMax`).
 
 ## CHILDREN
 
