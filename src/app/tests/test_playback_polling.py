@@ -23,10 +23,13 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const timers = new Map(), events = new Map();
 let clock = 0, serial = 0, requests = 0;
+// getElementById returns this for the layout probe too; no probe card means
+// syncActivePlaybackColumns has nothing to measure and returns early.
 const container = {id: 'active-playback-container', isConnected: true,
-                   matches: () => false};
+                   dataset: {}, matches: () => false};
 const context = {
-  window: {}, document: {readyState: 'complete',
+  window: {matchMedia: () => ({matches: false})},
+  document: {readyState: 'complete',
     getElementById: () => container, querySelectorAll: () => [],
     body: {addEventListener: (name, fn) => events.set(name, fn)}},
   loadVisibleReleaseYears: () => {}, performance: {now: () => clock},

@@ -689,7 +689,7 @@ Status: `Legacy`
 
 - `src/templates/app/components/detail_progress_card_slot.html`
 - `src/templates/app/components/progress_breakdown.html`
-- `src/templates/app/components/progress_changer.html`
+- `src/templates/app/components/progress_changer.html` Phone web hero stacking (#2174, #2175): the absolutely positioned `.detail-mobile-hero` is taller than the header on tall phones, so `.detail-carousel-grid__synopsis` is now positioned at `z-index: 1` beside the chips and actions in `src/static/css/input.css` (CSS only; no component change; the React synopsis island and the legacy fragment share that grid item). Browser: dark theme at 393px verified before/after; iOS: Expo `DetailScreen` rendered the synopsis legibly (runtime, no change needed); Android: Not verified.
 
 ## OWNERSHIP
 
