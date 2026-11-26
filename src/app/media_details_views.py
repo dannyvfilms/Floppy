@@ -55,6 +55,7 @@ from app.detail_builders import (
     build_detail_link_sections,
 )
 from app.detail_related import (
+    add_trakt_related_recommendations,
     drop_recommendations_if_hidden,
     enrich_detail_related_cards,
     enrich_detail_seasons,
@@ -1770,6 +1771,14 @@ def media_details(
         public_view=public_view,
     )
 
+    if render_secondary_only:
+        add_trakt_related_recommendations(
+            media_metadata,
+            source=source,
+            media_type=media_type,
+            media_id=media_id,
+            user=request.user,
+        )
     drop_recommendations_if_hidden(request, media_metadata)
 
     # Enrich related items with user tracking data

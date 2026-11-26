@@ -9,12 +9,13 @@ from django.db.models.functions import Coalesce, Greatest
 from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app import carousel
+from app import carousel, image_cache
 from app import models as app_models
 from app.activity_builders import (
     _build_detail_activity_state,
@@ -33,7 +34,11 @@ from app.detail_builders import (
     build_book_formats,
     build_detail_link_sections,
 )
-from app.detail_related import enrich_detail_related_cards, enrich_detail_seasons
+from app.detail_related import (
+    add_trakt_related_recommendations,
+    enrich_detail_related_cards,
+    enrich_detail_seasons,
+)
 from app.detail_secondary_props import (
     genre_library_counts,
     nonempty_list,
@@ -277,7 +282,7 @@ def _secondary_detail(metadata, item, source, media_type, route_media_type, view
     }
 
 
-def _media_card(entry, *, public_view, viewer=None, can_write=False):
+def _media_card(entry, *, public_view, viewer=None, can_write=False, cache_image=False, request=None):
     """Build the shared MediaCard model used by related/recommendation rails."""
     raw = entry.get("item") if isinstance(entry, dict) and "item" in entry else entry
     tracked = entry.get("media") if isinstance(entry, dict) else None
@@ -288,6 +293,9 @@ def _media_card(entry, *, public_view, viewer=None, can_write=False):
     media_id = str(raw.get("media_id") or "")
     title = raw.get("card_title") or raw.get("title") or ""
     image = raw.get("image") or ""
+    image_src = card_image_url(image)
+    if cache_image:
+        image_src = image_cache.rewrite_image_url(image_src, request=request)
     if not source or not media_id or not title:
         return None
     try:
@@ -311,7 +319,7 @@ def _media_card(entry, *, public_view, viewer=None, can_write=False):
             "mediaType": media_type,
             "shape": "square" if media_type in {"music", "podcast"} else "poster",
             "href": href,
-            "image": {"src": card_image_url(image), "fallback": "", "source": "primary"},
+            "image": {"src": image_src, "fallback": "", "source": "primary"},
             "title": title,
             "altTitle": raw.get("original_title") or raw.get("alternative_title"),
             "statusChip": {"kind": "status", "status": status, "hideOnMobile": False}
@@ -609,6 +617,15 @@ class DetailPageView(drf_views.APIView):
                 logger.warning("Unable to enrich detail seasons for %s/%s", source, media_id)
         if viewer is not None and not getattr(viewer, "show_recommendations", True):
             metadata["related"].pop("recommendations", None)
+            metadata["related"].pop("trakt_recommendations", None)
+        else:
+            add_trakt_related_recommendations(
+                metadata,
+                source=source,
+                media_type=media_type,
+                media_id=media_id,
+                user=viewer,
+            )
         if not public_view:
             try:
                 enrich_detail_related_cards(
@@ -694,6 +711,7 @@ class DetailPageView(drf_views.APIView):
         related = metadata.get("related") or {}
         section_labels = {
             "recommendations": "Recommendations",
+            "trakt_recommendations": gettext("Trakt Related"),
             "sequels": "Sequels",
             "prequels": "Prequels",
             "similar": "Similar media",
@@ -708,7 +726,20 @@ class DetailPageView(drf_views.APIView):
             for key, entries in related.items():
                 if key == "seasons":
                     continue
-                cards = [card for entry in _nonempty_list(entries) if (card := _media_card(entry, public_view=public_view, viewer=viewer, can_write=can_write))]
+                cards = [
+                    card
+                    for entry in _nonempty_list(entries)
+                    if (
+                        card := _media_card(
+                            entry,
+                            public_view=public_view,
+                            viewer=viewer,
+                            can_write=can_write,
+                            cache_image=key == "trakt_recommendations",
+                            request=request,
+                        )
+                    )
+                ]
                 if cards:
                     related_sections.append({"id": key, "label": section_labels.get(key, key.replace("_", " ").title()), "items": cards})
 

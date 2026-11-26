@@ -5,13 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 from django.conf import settings
+from django.core.cache import cache
 
-from app.models import MediaTypes
+from app.models import MediaTypes, Sources
 from app.providers import credentials, services
 
 TRAKT_BASE_URL = "https://api.trakt.tv"
 TRAKT_API_PROVIDER = "TRAKT"
 TRAKT_API_VERSION = "2"
+RELATED_RECOMMENDATIONS_CACHE_TIMEOUT = 60 * 60 * 24
+RELATED_RECOMMENDATIONS_LIMIT = 25
 
 TRAKT_SEARCH_TYPES = {
     MediaTypes.MOVIE.value: "movie",
@@ -21,18 +24,18 @@ TRAKT_SEARCH_TYPES = {
 }
 
 
-def is_configured() -> bool:
+def is_configured(*, user=None) -> bool:
     """Return whether Trakt API access is configured."""
-    return bool(credentials.get("trakt", "client_id"))
+    return bool(credentials.get("trakt", "client_id", user=user))
 
 
-def _headers() -> dict[str, str]:
+def _headers(user=None) -> dict[str, str]:
     """Return Trakt request headers."""
     return {
         "Content-Type": "application/json",
         "User-Agent": f"Floppy/{settings.VERSION}",
         "trakt-api-version": TRAKT_API_VERSION,
-        "trakt-api-key": credentials.get("trakt", "client_id"),
+        "trakt-api-key": credentials.get("trakt", "client_id", user=user),
     }
 
 
@@ -51,11 +54,12 @@ def _lookup_media_by_external_id(
     external_id: str | int,
     *,
     media_type: str,
+    user=None,
 ) -> dict[str, Any] | None:
     """Return normalized movie/show metadata from a Trakt external-ID lookup."""
     trakt_media_type = TRAKT_SEARCH_TYPES.get(media_type)
     normalized_id = str(external_id or "").strip()
-    if not trakt_media_type or not normalized_id or not is_configured():
+    if not trakt_media_type or not normalized_id or not is_configured(user=user):
         return None
 
     response = services.api_request(
@@ -66,7 +70,7 @@ def _lookup_media_by_external_id(
             "type": trakt_media_type,
             "extended": "full",
         },
-        headers=_headers(),
+        headers=_headers(user=user),
     )
 
     entries = response if isinstance(response, list) else []
@@ -89,6 +93,87 @@ def _lookup_media_by_external_id(
         }
 
     return None
+
+
+def related_recommendations(media_type: str, tmdb_id: str | int, *, user=None):
+    """Return Trakt related movies/shows mapped onto Floppy's TMDb cards."""
+    trakt_media_type = TRAKT_SEARCH_TYPES.get(media_type)
+    if media_type not in (MediaTypes.MOVIE.value, MediaTypes.TV.value):
+        return []
+
+    normalized_id = str(tmdb_id or "").strip()
+    if not normalized_id or not is_configured(user=user):
+        return []
+
+    credential_key = credentials.cache_suffix("trakt", "client_id", user=user)
+    cache_key = f"trakt_related_{trakt_media_type}_{normalized_id}_{credential_key}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    match = _lookup_media_by_external_id(
+        "tmdb",
+        normalized_id,
+        media_type=media_type,
+        user=user,
+    )
+    trakt_ids = (match or {}).get("trakt_ids") or {}
+    trakt_id = trakt_ids.get("trakt") or trakt_ids.get("slug")
+    if not trakt_id:
+        cache.set(cache_key, [], RELATED_RECOMMENDATIONS_CACHE_TIMEOUT)
+        return []
+
+    response = services.api_request(
+        TRAKT_API_PROVIDER,
+        "GET",
+        f"{TRAKT_BASE_URL}/{trakt_media_type}s/{trakt_id}/related",
+        params={
+            "extended": "full",
+            "page": 1,
+            "limit": RELATED_RECOMMENDATIONS_LIMIT,
+        },
+        headers=_headers(user=user),
+    )
+    entries = response if isinstance(response, list) else (
+        response.get("results", []) if isinstance(response, dict) else []
+    )
+    recommendations = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        ids = entry.get("ids") or {}
+        destination_id = ids.get("tmdb")
+        title = str(entry.get("title") or "").strip()
+        if destination_id in (None, "") or not title:
+            continue
+
+        images = entry.get("images") or {}
+        posters = images.get("poster") or []
+        image = posters[0] if isinstance(posters, list) and posters else posters
+        if isinstance(image, str) and image.startswith("//"):
+            image = f"https:{image}"
+        elif isinstance(image, str) and image.startswith(
+            ("media.trakt.tv/", "walter-r2.trakt.tv/")
+        ):
+            image = f"https://{image}"
+        elif not isinstance(image, str) or not image.startswith("https://"):
+            image = ""
+
+        recommendations.append(
+            {
+                "source": Sources.TMDB.value,
+                "media_type": media_type,
+                "media_id": str(destination_id),
+                "title": title,
+                "image": image,
+                "year": entry.get("year"),
+                "certification": entry.get("certification"),
+                "trakt_id": str(ids.get("trakt") or ""),
+            }
+        )
+
+    cache.set(cache_key, recommendations, RELATED_RECOMMENDATIONS_CACHE_TIMEOUT)
+    return recommendations
 
 
 def _lookup_season_by_show_id(

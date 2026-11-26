@@ -3,6 +3,7 @@ from decimal import ROUND_DOWN, Decimal, InvalidOperation
 
 from django.templatetags.static import static
 from django.utils.text import slugify
+from django.utils.translation import gettext
 
 from app import helpers
 from app.models import Item, MediaTypes, Sources
@@ -1312,6 +1313,9 @@ def _build_detail_person_rows(media_metadata, item=None):
     raw_recommendations = (media_metadata.get("related") or {}).get(
         "recommendations"
     ) or []
+    raw_trakt_recommendations = (media_metadata.get("related") or {}).get(
+        "trakt_recommendations"
+    ) or []
     # enrich_items_with_user_data wraps each item as {"item": <dict>, "media": <model>}.
     # Normalize any unwrapped raw dicts (shell render, before enrichment runs) into
     # the same shape so home_grid.html can read entry.item / entry.media uniformly.
@@ -1320,6 +1324,12 @@ def _build_detail_person_rows(media_metadata, item=None):
         if (isinstance(r, dict) and "item" in r and "media" in r)
         else {"item": r, "media": None}
         for r in raw_recommendations
+    ]
+    trakt_recommendations = [
+        r
+        if (isinstance(r, dict) and "item" in r and "media" in r)
+        else {"item": r, "media": None}
+        for r in raw_trakt_recommendations
     ]
 
     total_cast = media_metadata.get("total_cast_count")
@@ -1350,6 +1360,12 @@ def _build_detail_person_rows(media_metadata, item=None):
             "detail-recommendations",
             "Recommendations",
             recommendations,
+            card_width_class="w-44",
+        ), "card_surface": "detail_recommendations"},
+        "trakt_recommendations_row": {**_build_static_row(
+            "detail-trakt-recommendations",
+            gettext("Trakt Related"),
+            trakt_recommendations,
             card_width_class="w-44",
         ), "card_surface": "detail_recommendations"},
     }

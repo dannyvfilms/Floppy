@@ -732,7 +732,11 @@ def detail_related(context):
     page_context = context.flatten()
     sections = []
     for name, related_items in (media.get("related") or {}).items():
-        if name in {"seasons", "recommendations"} or not related_items:
+        if name in {
+            "seasons",
+            "recommendations",
+            "trakt_recommendations",
+        } or not related_items:
             continue
         items = []
         for index, result in enumerate(related_items):
