@@ -12,6 +12,16 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from api.authentication import APIKeyAuthentication, BearerAuthentication
+from app.anime_seasons import (
+    ANIME_SEASON_FORMATS,
+    ANIME_SEASON_SORTS,
+    ANIME_SEASON_STATUSES,
+    ANIME_SEASONS,
+    anime_season_cards,
+    anime_seasons_page_model,
+    load_anime_season,
+    normalize_query,
+)
 from app.discover import tab_cache as discover_tab_cache
 from app.discover_presentation import MATCH_LABELS
 from app.discover_views import (
@@ -218,6 +228,39 @@ class DiscoverStatusView(DiscoverEnabledMixin, drf_views.APIView):
                 "is_refreshing": status["is_refreshing"],
                 "recently_built": status["recently_built"],
                 "built_at": status["built_at"],
+            },
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/discover/anime-seasons/
+class AnimeSeasonsView(DiscoverEnabledMixin, drf_views.APIView):
+    """One MyAnimeList season as the Anime Seasons page model, with its cards."""
+
+    @extend_schema(
+        operation_id="getDiscoverAnimeSeason",
+        parameters=[
+            OpenApiParameter("season", str, enum=list(ANIME_SEASONS)),
+            OpenApiParameter("year", int),
+            OpenApiParameter("format", str, enum=list(ANIME_SEASON_FORMATS)),
+            OpenApiParameter("sort", str, enum=list(ANIME_SEASON_SORTS)),
+            OpenApiParameter("direction", str, enum=["asc", "desc"]),
+            OpenApiParameter(
+                "statuses",
+                str,
+                description="Comma list of: " + ", ".join(ANIME_SEASON_STATUSES),
+            ),
+        ],
+        responses={200: dict, 404: DetailErrorSerializer},
+    )
+    def get(self, request):
+        """Return the page model the web page renders, plus each card's model."""
+        query = normalize_query(request.query_params)
+        entries, total, error = load_anime_season(request.user, query)
+        return Response(
+            {
+                **anime_seasons_page_model(query, entries, total, error),
+                "results": anime_season_cards(request.user, request, entries),
             },
             status=HTTP.OK,
         )

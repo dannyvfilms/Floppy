@@ -35,6 +35,7 @@ export const pages = {
     status: 'shared',
   },
   history: { id: 'history', webRoute: '/history', nativeScreen: 'expo/app/screens/HistoryScreen.jsx', view: 'frontend/pages/HistoryView.jsx', webAdapter: 'frontend/ui/mountHistoryFeed.jsx', status: 'shared' },
+  animeSeasons: { id: 'animeSeasons', webRoute: '/discover/anime-seasons', nativeScreen: 'expo/app/screens/AnimeSeasonsScreen.jsx', view: 'frontend/pages/AnimeSeasonsPageView.jsx', webAdapter: 'frontend/ui/mountAnimeSeasonsPage.jsx', status: 'shared' },
   progress: { id: 'progress', webRoute: '/progress', nativeScreen: 'expo/app/screens/ProgressScreen.jsx', view: 'frontend/pages/ProgressPageView.jsx', webAdapter: 'frontend/ui/mountProgressPage.jsx', status: 'shared' },
   statistics: { id: 'statistics', webRoute: '/statistics', nativeScreen: 'expo/app/screens/StatisticsScreen.jsx', view: 'frontend/pages/StatisticsView.jsx', webAdapter: 'frontend/ui/mountStatisticsSummary.jsx', status: 'shared' },
   calendar: { id: 'calendar', webRoute: '/calendar', nativeScreen: 'expo/app/screens/CalendarScreen.jsx', view: 'frontend/pages/CalendarView.jsx', webAdapter: 'frontend/ui/mountReleaseCalendar.jsx', status: 'shared' },

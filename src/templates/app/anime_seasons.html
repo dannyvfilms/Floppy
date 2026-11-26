@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load app_tags %}
+{% block title %}
+    {% translate "Anime Seasons - Floppy" %}
+{% endblock title %}
+{% block content %}
+    {# The shared AnimeSeasonsPageView draws the heading, season stepper, filter toolbar and states; the server keeps the cards. #}
+    <div data-page-slot-scope>
+        {{ page_props|json_script:"anime-seasons-page-props" }}
+        <div data-anime-seasons-page-root data-props-id="anime-seasons-page-props"></div>
+        <div data-page-slot="anime-seasons-content">
+            {% if entries %}
+                <div class="media-grid">
+                    {% for entry in entries %}
+                        {% media_card "search" item=entry.item media=entry.media title=entry.title card_media_type="anime" subtitle_override=entry.release_date %}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+{% endblock content %}

@@ -1,6 +1,7 @@
 from django.urls import path, register_converter
 
 from app import (
+    anime_seasons_views,
     checkin_views,
     converters,
     cover_views,
@@ -47,6 +48,11 @@ urlpatterns = [
     ),
     path("", views.home, name="home"),
     path("discover", views.discover_page, name="discover"),
+    path(
+        "discover/anime-seasons",
+        anime_seasons_views.anime_seasons_page,
+        name="anime_seasons",
+    ),
     path("discover/rows", views.discover_rows, name="discover_rows"),
     path("discover/refresh", views.refresh_discover, name="refresh_discover"),
     path("discover/action", views.discover_action, name="discover_action"),

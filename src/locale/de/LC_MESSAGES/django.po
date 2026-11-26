@@ -12207,3 +12207,105 @@ msgstr "Für „Als Nächstes“ muss die Serienbibliothek aktiviert sein."
 #: users/home_screen.py
 msgid "All media supports library and Up Next rows."
 msgstr "Alle Medien unterstützt Bibliothekszeilen und „Als Nächstes“."
+
+msgid "Anime Seasons - Floppy"
+msgstr "Anime-Saisons - Floppy"
+
+
+
+msgid "Anime Seasons"
+msgstr "Anime-Saisons"
+
+msgid "Previous season"
+msgstr "Vorherige Saison"
+
+msgid "Next season"
+msgstr "Nächste Saison"
+
+
+msgctxt "anime season"
+msgid "Season"
+msgstr "Saison"
+
+msgctxt "anime season"
+msgid "Winter"
+msgstr "Winter"
+
+msgctxt "anime season"
+msgid "Spring"
+msgstr "Frühling"
+
+msgctxt "anime season"
+msgid "Summer"
+msgstr "Sommer"
+
+msgctxt "anime season"
+msgid "Fall"
+msgstr "Herbst"
+
+msgid "All formats"
+msgstr "Alle Formate"
+
+msgid "TV"
+msgstr "TV"
+
+msgid "OVA"
+msgstr "OVA"
+
+msgid "ONA"
+msgstr "ONA"
+
+msgid "Sort"
+msgstr "Sortierung"
+
+
+msgid "MyAnimeList has no anime listed for this season yet."
+msgstr "MyAnimeList listet für diese Saison noch keine Anime."
+
+msgid "Add a MyAnimeList client ID in the provider settings to browse seasonal anime."
+msgstr "Füge in den Anbieter-Einstellungen eine MyAnimeList-Client-ID hinzu, um Anime nach Saison zu durchsuchen."
+
+msgid "Open MyAnimeList settings"
+msgstr "MyAnimeList-Einstellungen öffnen"
+
+msgid "Seasonal anime from MyAnimeList."
+msgstr "Anime nach Saison von MyAnimeList."
+
+msgid "MyAnimeList is not set up"
+msgstr "MyAnimeList ist nicht eingerichtet"
+
+msgid "This season could not be loaded"
+msgstr "Diese Saison konnte nicht geladen werden"
+
+msgid "Not tracked"
+msgstr "Nicht erfasst"
+
+msgid "No anime found"
+msgstr "Keine Anime gefunden"
+
+msgid "No anime match these filters."
+msgstr "Keine Anime passen zu diesen Filtern."
+
+msgid "anime"
+msgstr "Anime"
+
+msgid "Loading the season…"
+msgstr "Saison wird geladen …"
+
+msgid "All statuses"
+msgstr "Alle Status"
+
+msgid "Clear all filters"
+msgstr "Alle Filter zurücksetzen"
+
+msgid "Clear status filter"
+msgstr "Statusfilter zurücksetzen"
+
+msgid "ascending"
+msgstr "aufsteigend"
+
+msgid "descending"
+msgstr "absteigend"
+
+msgid "Try again"
+msgstr "Erneut versuchen"

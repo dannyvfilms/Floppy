@@ -7,6 +7,7 @@ import { EXTRA_SCREENS } from './app/extraScreens';
 import { installNativeIconRenderer } from './app/iconRenderer';
 import { installNativeCardMenu } from './app/surfaces/cardMenuInstall';
 import floppyLogo from './assets/floppy-logo.png';
+import AnimeSeasonsScreen from './app/screens/AnimeSeasonsScreen';
 import AuthScreen from './app/screens/AuthScreen';
 import CalendarScreen from './app/screens/CalendarScreen';
 import DetailScreen from './app/screens/DetailScreen';
@@ -44,6 +45,7 @@ const STACK_SCREENS = {
   Lists: ListsScreen,
   History: HistoryScreen,
   Progress: ProgressScreen,
+  AnimeSeasons: AnimeSeasonsScreen,
   Statistics: StatisticsScreen,
   Search: SearchScreen,
   ...EXTRA_SCREENS,
@@ -136,6 +138,7 @@ export default function App() {
     if (base && base !== '/' && path.startsWith(`${base}/`)) path = path.slice(base.length);
     if (path === '/') { openTab('home'); return; }
     if (path === '/discover') { openTab('discover'); return; }
+    if (path === '/discover/anime-seasons' || path === '/discover/anime-seasons/') { navigate('AnimeSeasons'); return; }
     if (path === '/calendar') { openTab('calendar'); return; }
     if (path.startsWith('/settings') || path === '/appearance') { openTab('settings'); return; }
     if (path === '/create') { navigate('Search', { createEntry: true }); return; }

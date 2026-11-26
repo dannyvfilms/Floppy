@@ -20533,3 +20533,80 @@ msgstr "Promociona otra cuenta antes de eliminar al último superusuario."
 
 #~ msgid "Enabled - show recommendations"
 #~ msgstr "Activadas - mostrar recomendaciones"
+
+msgid "Anime Seasons - Floppy"
+msgstr "Temporadas de anime - Floppy"
+
+msgid "Anime Seasons"
+msgstr "Temporadas de anime"
+
+msgid "Previous season"
+msgstr "Temporada anterior"
+
+msgid "Next season"
+msgstr "Temporada siguiente"
+
+msgctxt "anime season"
+msgid "Season"
+msgstr "Temporada"
+
+msgctxt "anime season"
+msgid "Winter"
+msgstr "Invierno"
+
+msgctxt "anime season"
+msgid "Spring"
+msgstr "Primavera"
+
+msgctxt "anime season"
+msgid "Summer"
+msgstr "Verano"
+
+msgctxt "anime season"
+msgid "Fall"
+msgstr "Otoño"
+
+msgid "All formats"
+msgstr "Todos los formatos"
+
+msgid "OVA"
+msgstr "OVA"
+
+msgid "ONA"
+msgstr "ONA"
+
+msgid "MyAnimeList has no anime listed for this season yet."
+msgstr "MyAnimeList aún no tiene anime para esta temporada."
+
+msgid "Add a MyAnimeList client ID in the provider settings to browse seasonal anime."
+msgstr "Añade un ID de cliente de MyAnimeList en los ajustes del proveedor para explorar el anime de temporada."
+
+msgid "Open MyAnimeList settings"
+msgstr "Abrir ajustes de MyAnimeList"
+
+msgid "Seasonal anime from MyAnimeList."
+msgstr "Anime de temporada de MyAnimeList."
+
+msgid "MyAnimeList is not set up"
+msgstr "MyAnimeList no está configurado"
+
+msgid "This season could not be loaded"
+msgstr "No se pudo cargar esta temporada"
+
+msgid "Not tracked"
+msgstr "Sin seguimiento"
+
+msgid "No anime found"
+msgstr "No se encontró ningún anime"
+
+msgid "No anime match these filters."
+msgstr "Ningún anime coincide con estos filtros."
+
+msgid "anime"
+msgstr "anime"
+
+msgid "Loading the season…"
+msgstr "Cargando la temporada…"
+
+msgid "Clear status filter"
+msgstr "Borrar el filtro de estado"
