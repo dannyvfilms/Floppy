@@ -295,7 +295,11 @@ def fetch_username(user, access_token):
 
 
 def connect_account(user, code, code_verifier, redirect_uri):
-    """Exchange an auth code and create or refresh the user's MAL connection."""
+    """Connect the user's MAL account without enabling outgoing sync.
+
+    New connections stay read-only from Floppy's perspective until the user
+    separately enables outgoing sync. Reauthorization preserves that choice.
+    """
     token_response = exchange_code_for_tokens(user, code, code_verifier, redirect_uri)
 
     mal_account, _ = MALAccount.objects.get_or_create(
@@ -304,6 +308,7 @@ def connect_account(user, code, code_verifier, redirect_uri):
             "access_token": "",
             "refresh_token": "",
             "token_expires_at": timezone.now(),
+            "sync_enabled": False,
         },
     )
     _store_tokens(mal_account, token_response)
@@ -312,13 +317,11 @@ def connect_account(user, code, code_verifier, redirect_uri):
         fetch_username(user, decrypt(mal_account.access_token))
         or mal_account.mal_username
     )
-    mal_account.sync_enabled = True
     mal_account.connection_broken = False
     mal_account.last_error_message = ""
     mal_account.save(
         update_fields=[
             "mal_username",
-            "sync_enabled",
             "connection_broken",
             "last_error_message",
             "updated_at",

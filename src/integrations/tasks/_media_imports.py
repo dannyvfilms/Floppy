@@ -387,9 +387,9 @@ def import_simkl(
 
 
 @shared_task(name="Import from MyAnimeList")
-def import_mal(username, user_id, mode):
+def import_mal(username, user_id, mode, private=False):
     """Celery task for importing anime and manga data from MyAnimeList."""
-    return import_media(mal.importer, username, user_id, mode)
+    return import_media(mal.importer, username, user_id, mode, private=private)
 
 
 @shared_task(name="Import from AniList")

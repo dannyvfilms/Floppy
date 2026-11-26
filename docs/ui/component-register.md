@@ -1099,6 +1099,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 ### SET-PROVIDERS — Catalog and capability tabs
 
+- MyAnimeList Connection and Import tabs now use the shared provider React presentation: web `provider_page`/`mountProvider` → `ProviderSettingsView`/`ImportSettings`, and Expo `ProviderDetailView` → `ProviderImportPanel`. The Import tab offers public username and connected-account private-list modes; connection authorization no longer opts the user into outgoing sync. Status: partial/coexisting; only these MAL tabs move, while Sync/Activity and other providers retain their existing owners. Retirement: when the remaining provider bodies and their fallbacks are migrated and parity-verified. Web: update with the actual browser comparison; iOS and Android: report runtime evidence independently.
+
 - Shared ProviderSettingsView and ProviderDetailView receive guidesSessionRequired from the provider adapter. Bearer responses omit credential-bearing webhook/install/configure guides and show password sign-in guidance; other connection forms, settings and browser/session defaults remain. Existing partial/coexisting ownership and full-parity retirement conditions remain. Transport/server regressions cover redaction; browser appearance and actual iOS/Android runtime for this state are not verified.
 
 - Shared TextField has optional input/label styles and a decimal keyboard for native ManualEntryView; existing consumers retain defaults. Browser: manual parent flow exercised in Expo, final form geometry pending. iOS and Android not verified; remaining web fields retire with parity and shared adoption. Native readiness: `Primitives`.

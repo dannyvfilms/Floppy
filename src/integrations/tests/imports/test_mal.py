@@ -22,6 +22,7 @@ from integrations.imports import (
     helpers,
     mal,
 )
+from integrations.models import MALAccount
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 app_mock_path = (
@@ -190,6 +191,49 @@ class ImportMAL(TestCase):
         self.assertNotIn(MediaTypes.MANGA.value, imported_counts)
         self.assertIn("manga", warnings)
         self.assertIn("private", warnings)
+
+    @patch("integrations.imports.mal.mal_sync.get_valid_access_token")
+    @patch("integrations.imports.mal.app.providers.services.api_request")
+    def test_private_import_uses_connected_account_and_bearer_auth(
+        self, mock_api_request, mock_access_token
+    ):
+        """Private list requests use @me and the connected OAuth bearer token."""
+        MALAccount.objects.create(
+            user=self.user,
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=datetime.now(UTC),
+            sync_enabled=False,
+        )
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
+            anime_response = json.load(file)
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
+            manga_response = json.load(file)
+        mock_access_token.return_value = "current-access-token"
+        mock_api_request.side_effect = [anime_response, manga_response]
+
+        mal.importer(None, self.user, "new", private=True)
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 6)
+        self.assertEqual(Manga.objects.filter(user=self.user).count(), 3)
+        requested_urls = [call.args[2] for call in mock_api_request.call_args_list]
+        self.assertEqual(
+            requested_urls,
+            [
+                "https://api.myanimelist.net/v2/users/@me/animelist",
+                "https://api.myanimelist.net/v2/users/@me/mangalist",
+            ],
+        )
+        for call in mock_api_request.call_args_list:
+            self.assertEqual(
+                call.kwargs["headers"],
+                {"Authorization": "Bearer current-access-token"},
+            )
+        mock_access_token.assert_called_once()
+
+    def test_private_import_without_connected_account_fails_closed(self):
+        with self.assertRaises(helpers.MediaImportError):
+            mal.importer(None, self.user, "new", private=True)
 
     @patch("app.models.media.Media.process_status")
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")

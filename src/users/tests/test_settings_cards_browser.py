@@ -3,6 +3,7 @@
 import json
 import os
 import re
+from datetime import timedelta
 from unittest import skipUnless
 from unittest.mock import patch
 from urllib.parse import urlsplit
@@ -11,13 +12,14 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings, tag
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_celery_results.models import TaskResult
 from playwright.sync_api import expect, sync_playwright
 
 from app.providers import credentials
 from app.tests.live_server import SerialStaticLiveServerTestCase
-from integrations.models import AudiobookshelfAccount, ImportRun
+from integrations.models import AudiobookshelfAccount, ImportRun, MALAccount
 
 # The header search form, the sidebar, the popup host, the bulk-actions dock and
 # the settings shell are React islands on every signed-in page, so the card
@@ -490,6 +492,47 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             gap = card.locator(".ui-activity-content").evaluate("element => element.querySelector('.ui-activity-list').getBoundingClientRect().top - element.querySelector('p').getBoundingClientRect().bottom")
             self.assertGreaterEqual(gap, 11, title)
         expect(panel.get_by_role("button", name="Undo this import")).to_be_visible()
+        self.assertEqual(self.errors, [])
+
+    def test_mal_private_import_copy_and_username_visibility(self):
+        """Private import shows the connected-account copy and hides public username."""
+        MALAccount.objects.create(
+            user=self.user,
+            mal_username="preview-account",
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=timezone.now() + timedelta(hours=1),
+            sync_enabled=False,
+        )
+        response = self.page.goto(f"{self.live_server_url}/settings/providers/mal?tab=import")
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 200)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
+        expect(self.select_trigger("Import Mode")).to_contain_text("History")
+        expect(self.select_trigger("Override mode")).to_contain_text("New Items Only")
+        expect(self.page.locator("#import-username")).to_be_visible()
+
+        self.choose_option("List visibility", "Private list")
+
+        expect(self.page.locator("#import-username")).to_have_count(0)
+        expect(self.page.get_by_text(
+            "Private list from your connected MyAnimeList account; no username is needed.",
+            exact=True,
+        )).to_be_visible()
+        expect(self.page.get_by_role("button", name="Import", exact=True)).to_be_visible()
+        with patch("integrations.views._queue_task_or_message", return_value=True) as queue_import:
+            with self.page.expect_navigation(wait_until="domcontentloaded"):
+                self.page.get_by_role("button", name="Import", exact=True).click()
+        request = queue_import.call_args.args[0]
+        self.assertIn(request.POST.get("private"), {"true", "on", "1"})
+        self.assertEqual(request.POST.get("mode"), "new")
+        self.assertNotIn("user", request.POST)
+        self.assertEqual(queue_import.call_args.kwargs["username"], "@me")
+        self.assertTrue(queue_import.call_args.kwargs["private"])
+        self.assertEqual(queue_import.call_args.kwargs["mode"], "new")
+        self.assertEqual(queue_import.call_args.kwargs["user_id"], self.user.pk)
+        self.user.mal_account.refresh_from_db()
+        self.assertFalse(self.user.mal_account.sync_enabled)
         self.assertEqual(self.errors, [])
 
     def test_directory_uses_available_width_and_preserves_live_filters_and_back(self):

@@ -18,7 +18,7 @@ from app.providers import credentials
 from integrations import pending_auth
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
-from integrations.models import PlexAccount
+from integrations.models import MALAccount, PlexAccount
 from integrations.views import TRAKT_DEVICE_SESSION_KEY
 
 
@@ -79,6 +79,95 @@ class OAuthStateViewTests(TestCase):
         self.assertEqual(
             self.client.session.get("_auth_user_id"),
             str(self.user.pk),
+        )
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_private_mal_import_queues_only_user_identity(self, mock_import):
+        """A private import resolves the connected account in its worker."""
+        MALAccount.objects.create(
+            user=self.user,
+            mal_username="connected-name",
+            access_token="encrypted-access-token",
+            refresh_token="encrypted-refresh-token",
+            token_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        response = self.client.post(
+            reverse("import_mal"),
+            {"private": "on", "frequency": "once", "mode": "new"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_import.assert_called_once_with(
+            username="@me",
+            user_id=self.user.pk,
+            mode="new",
+            private=True,
+        )
+        self.assertNotIn("encrypted-access-token", repr(mock_import.call_args))
+        self.assertNotIn("encrypted-refresh-token", repr(mock_import.call_args))
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_private_mal_schedule_stores_mode_and_user_not_tokens(self, mock_import):
+        """Recurring private imports look up the current OAuth account at run time."""
+        account = MALAccount.objects.create(
+            user=self.user,
+            mal_username="connected-name",
+            access_token="encrypted-access-token",
+            refresh_token="encrypted-refresh-token",
+            token_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        response = self.client.post(
+            reverse("import_mal"),
+            {
+                "private": "on",
+                "frequency": "daily",
+                "time": "03:00",
+                "mode": "overwrite",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_import.assert_not_called()
+        task = PeriodicTask.objects.get(task="Import from MyAnimeList")
+        kwargs = json.loads(task.kwargs)
+        self.assertEqual(
+            kwargs,
+            {
+                "username": "@me",
+                "user_id": self.user.pk,
+                "mode": "overwrite",
+                "private": True,
+            },
+        )
+        self.assertNotIn(account.access_token, task.kwargs)
+        self.assertNotIn(account.refresh_token, task.kwargs)
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_private_mal_import_requires_a_connected_account(self, mock_import):
+        response = self.client.post(
+            reverse("import_mal"),
+            {"private": "on", "frequency": "once", "mode": "new"},
+            follow=True,
+        )
+
+        self.assertContains(response, "Connect your MyAnimeList account")
+        mock_import.assert_not_called()
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_public_mal_import_still_queues_the_supplied_username(self, mock_import):
+        response = self.client.post(
+            reverse("import_mal"),
+            {"user": "public-name", "frequency": "once", "mode": "new"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_import.assert_called_once_with(
+            username="public-name",
+            user_id=self.user.pk,
+            mode="new",
+            private=False,
         )
 
     def test_simkl_state_is_consumed_and_replay_is_rejected(self):

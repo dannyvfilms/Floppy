@@ -9,6 +9,7 @@ from integrations.models import (
     ExternalReferenceReviewStatus,
     IntegrationToken,
     JellyfinAccount,
+    MALAccount,
     SyncBinding,
 )
 
@@ -32,6 +33,23 @@ class ProvidersTests(FloppyApiTestCase):
             "get", "api_providers", headers=self.auth_headers, params={"q": "jellyfin"}
         ).json()
         self.assertEqual({row["slug"] for row in data["items"]}, {"jellyfin"})
+
+    def test_private_import_is_available_with_outgoing_sync_off(self):
+        MALAccount.objects.create(
+            user=self.user1,
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_expires_at=timezone.now(),
+            sync_enabled=False,
+        )
+
+        data = self.call_api(
+            "get", "api_provider_detail", headers=self.auth_headers,
+            args=("mal",), params={"tab": "connection"},
+        ).json()
+
+        self.assertTrue(data["connection"]["privateImportAvailable"])
+        self.assertIn("Outgoing sync is off.", data["connection"]["account"]["messages"]["connected"])
 
     def test_option_form_saves_toggles_and_text(self):
         url = "api_provider_form"

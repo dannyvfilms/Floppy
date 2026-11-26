@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -13,6 +14,7 @@ from integrations.models import (
     AudiobookshelfAccount,
     LastFMAccount,
     LastFMHistoryImportStatus,
+    MALAccount,
     PlexAccount,
 )
 from integrations.plex import PlexAuthError
@@ -86,6 +88,76 @@ class ImportDataViewTests(TestCase):
         account.save(update_fields=["connection_broken"])
         self.assertContains(self.client.get(url, {"tab": "connection"}), reverse("audiobookshelf_connect"))
         self.assertNotContains(self.client.get(url, {"tab": "import"}), reverse("import_audiobookshelf"))
+
+    def test_mal_import_tab_exposes_private_import_without_serializing_tokens(self):
+        url = reverse("provider_detail", args=["mal"])
+
+        disconnected = self.client.get(url, {"tab": "import"})
+        page = disconnected.context["provider_page"]
+        self.assertEqual(page["contentOwner"], "react")
+        self.assertFalse(page["imports"]["configured"])
+        self.assertEqual(page["imports"]["publicUrl"], reverse("import_mal"))
+        self.assertEqual(page["imports"]["privateUrl"], reverse("import_mal"))
+
+        account = MALAccount.objects.create(
+            user=self.user,
+            mal_username="connected-name",
+            access_token="secret-access-token",
+            refresh_token="secret-refresh-token",
+            token_expires_at=timezone.now() + timedelta(days=1),
+        )
+        connected = self.client.get(url, {"tab": "import"})
+        page = connected.context["provider_page"]
+        self.assertTrue(page["imports"]["configured"])
+        self.assertTrue(page["imports"]["privateImportAvailable"])
+        self.assertEqual(
+            [option["value"] for option in page["imports"]["visibilityOptions"]],
+            ["public", "private"],
+        )
+        self.assertFalse(page["imports"]["privateImport"])
+        self.assertNotIn(account.access_token, str(page))
+        self.assertNotIn(account.refresh_token, str(page))
+
+    def test_mal_connection_tab_is_shared_and_does_not_enable_sync(self):
+        MALAccount.objects.create(
+            user=self.user,
+            mal_username="connected-name",
+            access_token="secret-access-token",
+            refresh_token="secret-refresh-token",
+            token_expires_at=timezone.now() + timedelta(days=1),
+            sync_enabled=False,
+        )
+
+        response = self.client.get(
+            reverse("provider_detail", args=["mal"]), {"tab": "connection"}
+        )
+
+        page = response.context["provider_page"]
+        self.assertEqual(page["contentOwner"], "react")
+        self.assertEqual(page["account"]["submitLabel"], "Connect MyAnimeList account")
+        self.assertIn("Outgoing sync is off", page["account"]["messages"]["connected"])
+        self.assertNotIn("secret-access-token", str(page))
+        self.assertNotIn("secret-refresh-token", str(page))
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_private_import_form_can_be_submitted_from_connected_mal_page(self, mock_import):
+        MALAccount.objects.create(
+            user=self.user,
+            mal_username="connected-name",
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        response = self.client.post(
+            reverse("import_mal"),
+            {"private": "on", "frequency": "once", "mode": "new"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_import.assert_called_once_with(
+            username="@me", user_id=self.user.pk, mode="new", private=True
+        )
 
     def test_import_data_ignores_structured_recurring_wrapper_results(self):
         """Recurring wrapper payloads should not break the import page."""

@@ -486,7 +486,7 @@ class MALOAuthCallbackView(TestCase):
 
         account.refresh_from_db()
         self.assertFalse(account.connection_broken)
-        self.assertTrue(account.sync_enabled)
+        self.assertFalse(account.sync_enabled)
         self.assertEqual(account.mal_username, "OldName")
 
     @patch("requests.Session.get")
@@ -516,10 +516,24 @@ class MALOAuthCallbackView(TestCase):
         account = MALAccount.objects.get(user=self.user)
         self.assertEqual(account.mal_username, "MyMalUser")
         self.assertEqual(decrypt(account.access_token), "new-access-token")
-        self.assertTrue(account.sync_enabled)
+        self.assertFalse(account.sync_enabled)
         self.assertFalse(account.connection_broken)
         self.assertNotIn(state_token, self.client.session)
         self.assertEqual(mock_post.call_args.kwargs["data"]["code"], "authcode")
+
+    @patch("integrations.mal_sync.exchange_code_for_tokens")
+    def test_reauthorization_preserves_explicitly_enabled_sync(self, exchange, *_mocks):
+        """Reauthorizing does not turn off a sync the user already enabled."""
+        exchange.return_value = {
+            "access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600,
+        }
+        account = make_mal_account(self.user, sync_enabled=True)
+
+        with patch("integrations.mal_sync.fetch_username", return_value="MyMalUser"):
+            mal_sync.connect_account(self.user, "code", "verifier", "http://x/callback")
+
+        account.refresh_from_db()
+        self.assertTrue(account.sync_enabled)
 
     @patch("requests.Session.post")
     def test_callback_mal_error_shows_message(self, mock_post, *_mocks):

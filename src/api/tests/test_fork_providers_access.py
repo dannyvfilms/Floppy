@@ -1,11 +1,14 @@
 # Tests for provider endpoints that the existing fork tests did not
 # exercise yet (import route, schedule list, device approval, connection
 # direction/pause, metadata match preview/apply).
+from datetime import timedelta
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.utils import timezone
+
 from app.models import Item, MediaTypes, Movie, Sources
-from integrations.models import SyncBinding
+from integrations.models import MALAccount, SyncBinding
 from integrations.oauth_models import OAuthClient, OAuthDeviceAuthorization
 from lists.models import CustomListItem
 
@@ -60,6 +63,72 @@ class ProviderImportTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
         self.assertIn("detail", response.json())
+
+    def test_mal_detail_reports_private_import_availability_without_tokens(self):
+        account = MALAccount.objects.create(
+            user=self.user1,
+            mal_username="connected-name",
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=timezone.now() + timedelta(days=1),
+            sync_enabled=False,
+        )
+
+        response = self.call_api(
+            "get",
+            "api_provider_detail",
+            args=("mal",),
+            params={"tab": "import"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertTrue(response.json()["connection"]["privateImportAvailable"])
+        self.assertNotIn(account.access_token, response.content.decode())
+        self.assertNotIn(account.refresh_token, response.content.decode())
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_private_import_delegates_connected_account_mode_without_username(self, mock_import):
+        MALAccount.objects.create(
+            user=self.user1,
+            mal_username="connected-name",
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=timezone.now() + timedelta(days=1),
+        )
+
+        response = self.call_api(
+            "post",
+            "api_provider_import",
+            args=("mal",),
+            payload={"private": True, "mode": "new", "frequency": "once"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        mock_import.assert_called_once_with(
+            username="@me", user_id=self.user1.pk, mode="new", private=True
+        )
+
+    @patch("integrations.views.tasks.import_mal.delay")
+    def test_string_false_does_not_request_private_import(self, mock_import):
+        response = self.call_api(
+            "post",
+            "api_provider_import",
+            args=("mal",),
+            payload={
+                "user": "public-name",
+                "private": "false",
+                "mode": "new",
+                "frequency": "once",
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        mock_import.assert_called_once_with(
+            username="public-name", user_id=self.user1.pk, mode="new", private=False
+        )
 
 
 class DeviceApprovalTests(FloppyApiTestCase):

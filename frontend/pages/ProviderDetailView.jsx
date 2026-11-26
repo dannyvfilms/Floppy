@@ -289,6 +289,7 @@ export function ProviderDetailView({
       {detail.importPreferences && onSavePreferences ? <ImportPreferencesCard model={importPreferencesModel(detail.importPreferences)}
         onSave={onSavePreferences} palette={palette} buttonPalette={buttonPalette} /> : null}
       <ProviderImportPanel slug={slug} connection={connection} schedules={schedules} hasFileImport={Boolean(detail.fileImport)}
+        labels={{ ...copy, ...(detail.page.imports?.panelLabels || {}) }}
         defaults={detail.importPreferences?.values} palette={palette} buttonPalette={buttonPalette}
         onSync={onSync} onImport={onImport} onDeleteSchedule={onDeleteSchedule} />
       {detail.fileImport ? <FileImportCard model={detail.fileImport} copy={copy} onImportFile={onImportFile}
