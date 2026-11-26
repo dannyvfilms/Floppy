@@ -1,6 +1,6 @@
 import NativeStatusBar from './app/components/NativeStatusBar';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Image, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 import { getActiveAuthSession, subscribeAuthSession } from './app/data/authSession';
 import { restoreAuthSession } from './app/data/authTransport';
 import { EXTRA_SCREENS } from './app/extraScreens';
@@ -91,6 +91,22 @@ export default function App() {
     if (previous) setLibraryType(previous.libraryType);
   };
   const active = stack[stack.length - 1];
+  const canGoBack = Boolean(active) || tab !== 'home' || tabHistory.length > 0;
+
+  // Android's back button and back gesture walk the same in-app history as the
+  // header's back arrow; only on Home with nothing behind it does the system
+  // take over and leave the app. Open modals (drawer, pickers) close first
+  // through their own onRequestClose.
+  const backState = useRef({ canGoBack, back });
+  backState.current = { canGoBack, back };
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!backState.current.canGoBack) return false;
+      backState.current.back();
+      return true;
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Web requires a session before it renders any app page; native does the
   // same instead of showing a demo library that looks like real data.
