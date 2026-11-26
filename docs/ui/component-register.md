@@ -641,6 +641,10 @@ partial/coexisting until the detail shell retires that fallback.
 `useDeferredYoutubeWatch` shares request cancellation and timeout handling
 between the PWA and Expo adapters. `detailYoutubeWatchModel` maps the API
 summary into props for the shared Time card.
+Opening the Time card's game starts a bounded backfill of its missing data.
+The deferred loader checks for a newer total while the worker fills runtimes
+and looks up possible matches. The existing Calculating row covers an empty
+total during that work, and available watch time can appear before it finishes.
 The shared channel breakdown shows the watch duration first, followed by a
 middle dot and the percentage.
 Desktop and mobile Chromium exercised the follow-up request and channel

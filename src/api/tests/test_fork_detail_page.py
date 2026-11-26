@@ -62,17 +62,25 @@ class DetailPageTests(FloppyApiTestCase):
         self.assertEqual(public.status_code, HTTP.OK)
         self.assertIsNone(public.json()["youtube_watch"])
 
-        with patch("api.fork_views_detail.youtube_game_watch.watched_for_game") as calculate:
+        with (
+            patch("api.fork_views_detail.youtube_game_watch.watched_for_game") as calculate,
+            patch("api.fork_views_detail.youtube_game_watch.request_game_backfill") as enqueue,
+        ):
             deferred = self.client.get(path, {"youtube_watch": "deferred"}, **self.auth_headers)
             self.assertEqual(deferred.status_code, HTTP.OK)
             self.assertTrue(deferred.json()["youtube_watch_pending"])
             self.assertIsNone(deferred.json()["youtube_watch"])
             self.client.get(path, {"youtube_watch": "only", "public_view": "1"}, **self.auth_headers)
             calculate.assert_not_called()
+            enqueue.assert_not_called()
 
         metadata.reset_mock()
-        summary = self.client.get(path, {"youtube_watch": "only"}, **self.auth_headers)
-        self.assertEqual(summary.json(), {"youtube_watch": private.json()["youtube_watch"]})
+        with patch("api.fork_views_detail.youtube_game_watch.request_game_backfill", return_value=True) as enqueue:
+            summary = self.client.get(path, {"youtube_watch": "only"}, **self.auth_headers)
+        self.assertEqual(summary.json(), {
+            "youtube_watch": private.json()["youtube_watch"], "youtube_watch_pending": True,
+        })
+        enqueue.assert_called_once()
         self.assertEqual(summary["Cache-Control"], "private, no-store")
         metadata.assert_not_called()
 

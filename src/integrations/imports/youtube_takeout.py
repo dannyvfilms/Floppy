@@ -28,6 +28,7 @@ from django.utils import timezone
 
 from app.helpers import has_real_image
 from app.models import Item, MediaTypes, Sources, Status, Video, VideoPlay
+from app.services.youtube_game_watch import invalidate_watch_summaries
 from app.video_helpers import approved_thumbnail_url, set_channel_as_author
 from integrations import import_progress
 from integrations.imports.helpers import MediaImportError
@@ -586,6 +587,8 @@ class YouTubeTakeoutImporter:
             # Lock the video so a plays API call cannot insert the same day meanwhile.
             video = Video.objects.select_for_update().get(pk=video.pk)
             plays_created = self._add_plays(video, video_id, times)
+            if plays_created and not video_created:
+                invalidate_watch_summaries(self.user.pk)
             latest = max(times)
             if not video.end_date or latest > video.end_date:
                 video.end_date = latest

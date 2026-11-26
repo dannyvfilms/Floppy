@@ -76,7 +76,12 @@ Django apps live under `src/`. Paths below are repository-relative.
   `src/app/services/youtube_game_watch.py` matches that tag to a game and
   totals the viewer's recorded positions or completed video runtimes.
   The PWA and Expo use `frontend/ui/useDeferredYoutubeWatch.js` to request the
-  private summary after the detail renders.
+  private summary after the detail renders. That request can start a bounded
+  game-specific backfill on the default worker in `src/app/tasks_youtube_game.py`.
+  The scheduled and opened-game paths share a provider cooldown after HTTP 429
+  so a rate limit does not mark the individual video unavailable.
+  Each recorded video play contributes its position or full runtime, and
+  completed videos without play records contribute once.
 
 ### Helper homes
 

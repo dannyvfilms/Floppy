@@ -510,9 +510,13 @@ class DetailPageView(drf_views.APIView):
             detail_type == app_models.MediaTypes.GAME.value and item is not None and not public_view
         )
         if watch_mode == "only":
+            youtube_watch_pending = (
+                can_show_youtube_watch and youtube_game_watch.request_game_backfill(viewer, item)
+            )
             response = Response({
                 "youtube_watch": youtube_game_watch.cached_watched_for_game(viewer, item)
                 if can_show_youtube_watch else None,
+                "youtube_watch_pending": youtube_watch_pending,
             })
             response["Cache-Control"] = "private, no-store"
             return response

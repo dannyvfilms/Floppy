@@ -1513,9 +1513,11 @@ def refresh_history_cache_on_video_play_change(sender, instance, **kwargs):
     """Schedule history cache refresh when a video play is saved or removed."""
     if kwargs.get("raw"):
         return
+    user_id = instance.video.user_id
+    youtube_game_watch.invalidate_watch_summaries(user_id, using=kwargs.get("using"))
     day_key = history_cache.history_day_key(instance.end_date)
     _handle_media_cache_change(
-        instance.video.user_id,
+        user_id,
         MediaTypes.VIDEO.value,
         reason="video_play_change",
         history_specs=_history_specs([day_key] if day_key else []),

@@ -138,6 +138,11 @@ class CeleryTaskPriorityTests(SimpleTestCase):
             with self.subTest(schedule=name):
                 self.assertNotIn("priority", entry.get("options", {}))
 
+    def test_opened_game_lookup_has_priority_on_the_default_queue(self):
+        route = settings.CELERY_TASK_ROUTES["Backfill opened game's YouTube history"]
+        self.assertNotIn("queue", route)
+        self.assertEqual(route["priority"], settings.CELERY_TASK_PRIORITY_INTERACTIVE)
+
 
 class CeleryDispatchRoutingTests(SimpleTestCase):
     """Exercise every non-eager dispatch path against the real route merge."""

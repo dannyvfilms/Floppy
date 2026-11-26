@@ -8,12 +8,16 @@ a title is never guessed from the video's words.
 import json
 import logging
 import re
+from contextlib import suppress
 from datetime import timedelta
+from http import HTTPStatus
 
 import requests
+from django.core.cache import cache
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
+from app.cache_safety import ON_ERROR_PROCEED, acquire_lock, cache_add, release_lock
 from app.models import Item, MediaTypes, Sources, VideoGameLink, VideoGameTag, VideoPlay
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,9 @@ NOT_FOUND_RECHECK = timedelta(days=7)
 RECHECK_WATCHED_WITHIN = timedelta(days=30)
 UNAVAILABLE_BACKOFF = timedelta(hours=6)
 MAX_FAILURES = 5
+RATE_LIMIT_KEY = "youtube-game:provider-cooldown"
+RATE_LIMIT_BACKOFF_SECONDS = 1800
+RATE_LIMITED = "rate_limited"
 
 
 BAD_ID = "invalid video id"
@@ -49,6 +56,10 @@ UNPARSEABLE = "unparseable ytInitialData"
 
 class WatchPageUnavailableError(Exception):
     """The page could not be fetched or no longer has the expected shape."""
+
+
+class WatchPageRateLimitedError(WatchPageUnavailableError):
+    """YouTube asked this worker to pause rather than retry another video."""
 
 
 def _walk(node, depth=0):
@@ -105,6 +116,12 @@ def fetch_watch_page(video_id):
             timeout=TIMEOUT,
             stream=True,
         ) as response:
+            if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                retry_after = response.headers.get("Retry-After", "")
+                cooldown = RATE_LIMIT_BACKOFF_SECONDS
+                with suppress(ValueError):
+                    cooldown = max(cooldown, int(retry_after))
+                raise WatchPageRateLimitedError(cooldown)
             response.raise_for_status()
             body = response.raw.read(MAX_BYTES + 1, decode_content=True)
     except requests.RequestException as exc:
@@ -149,6 +166,11 @@ def refresh_game_tag(item_id):
     try:
         data, runtime = fetch_watch_page(item.media_id)
         games = extract_games(data)
+    except WatchPageRateLimitedError as exc:
+        cooldown = exc.args[0]
+        if cache_add(RATE_LIMIT_KEY, timeout=cooldown) is not False:
+            logger.warning("youtube_game: provider rate limited cooldown_seconds=%s", cooldown)
+        return RATE_LIMITED
     except WatchPageUnavailableError as exc:
         logger.info("youtube_game: unavailable item=%s reason=%s", item.pk, exc)
         status = VideoGameTag.Status.FOUND if already_found else VideoGameTag.Status.UNAVAILABLE
@@ -194,6 +216,23 @@ def lookup_due(item):
     if tag.status == VideoGameTag.Status.NOT_FOUND:
         return age >= NOT_FOUND_RECHECK and _watched_recently(item.pk)
     return tag.failures < MAX_FAILURES and age >= UNAVAILABLE_BACKOFF
+
+
+def refresh_due_item(item_id):
+    """Share one lookup across the scheduled, live and game-page queues."""
+    if cache.get(RATE_LIMIT_KEY):
+        return RATE_LIMITED
+    key = f"youtube-game:lookup:{item_id}"
+    if not acquire_lock(key, timeout=60, on_error=ON_ERROR_PROCEED):
+        return None
+    try:
+        if VideoGameTag.objects.filter(
+            item_id=item_id, checked_at__gt=timezone.now() - UNAVAILABLE_BACKOFF,
+        ).exists():
+            return None
+        return refresh_game_tag(item_id)
+    finally:
+        release_lock(key)
 
 
 def _recent_play(item_ref):
@@ -246,6 +285,7 @@ def backfill_due_items(limit=20):
         ids += list(
             base.filter(due).exclude(pk__in=ids).values_list("pk", flat=True)[: limit - len(ids)]
         )
-    for pk in ids:
-        refresh_game_tag(pk)
+    for index, pk in enumerate(ids):
+        if refresh_due_item(pk) == RATE_LIMITED:
+            return index
     return len(ids)

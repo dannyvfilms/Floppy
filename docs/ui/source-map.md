@@ -517,6 +517,9 @@ iOS and Android use `DetailMediumExtras` with the same data via
 `expo/app/surfaces/DetailSlot.jsx` and `frontend/ui/detailSecondaryModel.js`.
 `frontend/ui/useDeferredYoutubeWatch.js` loads just the watch-time summary
 after either surface displays its detail, independently of the rest of the card.
+It checks for updated totals while `src/app/tasks_youtube_game.py` processes
+the opened game's eligible videos with user-facing priority on the default
+Celery worker.
 `src/app/services/youtube_game_watch.py` supplies game matching and watch time.
 `src/app/services/youtube_game.py` stores published
 runtime in the shared YouTube tag lookup so completed imports can contribute

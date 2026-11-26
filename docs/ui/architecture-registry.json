@@ -4584,15 +4584,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium rendered the game detail before the deferred watch-time request completed, then expanded the returned channel breakdown without another request on desktop and phone."
+          "evidence": "Chromium verified that the game detail rendered before enrichment completed, then refreshed the total and expanded channel breakdown on desktop and phone."
         },
         "ios": {
           "status": "verified",
-          "evidence": "The iOS Simulator preview rendered the shared calculating spinner and replaced it with the delayed fixture total."
+          "evidence": "The iOS Simulator rendered the shared Time card before and after the total and expanded channel breakdown updated from a delayed fixture."
         },
         "android": {
           "status": "verified",
-          "evidence": "The Android emulator preview rendered the shared calculating spinner and replaced it with the delayed fixture total."
+          "evidence": "The Android emulator rendered the shared Time card and its updated total and expanded channel breakdown from a deferred fixture."
         }
       }
     },
