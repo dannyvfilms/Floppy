@@ -111,7 +111,7 @@ function writeIntent(data, intent, props) {
     }
     return;
   }
-  if (intent.type === 'field' || intent.type === 'toggleField' || intent.type === 'clearField' || intent.type === 'fieldMode') {
+  if (['field', 'toggleField', 'clearField', 'fieldMode', 'fieldText'].includes(intent.type)) {
     const section = props.options?.sections?.find((item) => item.key === intent.key);
     if (!section) {
       return;
@@ -120,6 +120,11 @@ function writeIntent(data, intent, props) {
       if (section.modeState) {
         data[section.modeState] = intent.value;
       }
+      return;
+    }
+    if (intent.type === 'fieldText') {
+      data[section.state] = intent.value;
+      data[section.modeState] = intent.mode;
       return;
     }
     if (intent.type === 'clearField') {
@@ -207,6 +212,10 @@ function Adapter({ host, props }) {
       return;
     }
     writeIntent(data, intent, props);
+    if (props.options?.sections?.some(section => section.key === 'title') &&
+        (intent.type === 'fieldText' || intent.key === 'author' || intent.type === 'clear')) {
+      window.dispatchEvent(new CustomEvent('bulk-actions-clear'));
+    }
     if (intent.type === 'set' && intent.key === 'view' && typeof data.layoutHref === 'function') {
       window.location.assign(data.layoutHref(intent.value));
       return;

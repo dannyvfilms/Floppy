@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { mountRoot } from '../settings/root';
 import { Button } from './Button';
 import { Dialog } from './controls/Dialog';
 import { SelectField } from './SelectField';
 import { TextField } from './TextField';
-import { BulkActionDialog, BulkActionRow, BulkFieldRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkNote } from './BulkActions';
+import { BulkActionDialog, BulkActionRow, BulkFieldRow, BulkGameDialog, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkNote } from './BulkActions';
 import { BulkJobDock } from './BulkJobDock';
 import { TagBulkDialog } from './TagManagement';
 import { rootStyle } from './rootStyle.web';
@@ -267,6 +267,24 @@ function Adapter({ config }) {
   const [palette] = useState(readPalette);
   const all = useJobs();
   const seq = useRef(0);
+  const searchForGame = useCallback(async query => {
+    const response = await fetch(`${request.url}?q=${encodeURIComponent(query)}`);
+    if (!response.ok) throw new Error('Could not search for games.');
+    return response.json();
+  }, [request]);
+  async function assignGame(gameId) {
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': request.csrfToken },
+      body: JSON.stringify({ item_ids: request.itemIds.map(Number), game_id: gameId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.item_ids?.[0] || 'Could not assign the game.');
+    notify(`Game assigned to ${plural(data.updated, 'video')}.`);
+    setRequest(null);
+    window.dispatchEvent(new CustomEvent('bulk-actions-done'));
+    finished();
+  }
   useEffect(() => {
     const open = event => setRequest(event.detail);
     window.addEventListener('bulk-actions-open', open);
@@ -294,6 +312,8 @@ function Adapter({ config }) {
       close={() => setRequest(null)} />}
     {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)} palette={palette}
       start={form => startPlays(config, newJob({ kind: 'plays', phase: 'starting', form }), true)} />}
+    {request?.kind === 'game' && <BulkGameDialog count={request.itemIds.length} palette={palette}
+      onSearch={searchForGame} onAssign={assignGame} onClose={() => setRequest(null)} />}
     {all.length > 0 && <BulkJobDock label="Bulk jobs">{all.map(job => <JobCard key={job.id} config={config} job={job} palette={palette} />)}</BulkJobDock>}
   </>;
 }

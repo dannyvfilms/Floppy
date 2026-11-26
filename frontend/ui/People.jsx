@@ -431,15 +431,10 @@ export function MediumExtras({
   if (gameLengths || youtubeWatch || playedLabel) {
     const rows = [];
     if (playedLabel) rows.push(<CollectionRow key="played" icon={actionIcons.play} label={copy.timePlayed} value={playedLabel} palette={colors} />);
-    if (youtubeWatch?.pending) {
-      rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}>
-        <View accessibilityLiveRegion="polite" accessibilityState={{ busy: true }} style={styles.watchPending}>
-          <Text style={[styles.watchPendingText, { color: colors.textSecondary }]}>{copy.youtubeCalculating}</Text>
-          <ActivityIndicator size="small" color={colors.textMuted} accessible={false} />
-        </View>
-      </CollectionRow>);
-    } else if (youtubeWatch) {
-      const watched = youtubeWatch.seconds ? youtubeWatch.hoursLabel : copy.youtubeTimeUnavailable;
+    if (youtubeWatch) {
+      const { pending } = youtubeWatch;
+      const watched = youtubeWatch.seconds ? youtubeWatch.hoursLabel
+        : pending ? copy.youtubeCalculating : copy.youtubeTimeUnavailable;
       const channels = (youtubeWatch.channels || []).filter(channel => channel.seconds > 0)
         .map(channel => {
           const minutes = Math.floor(channel.seconds / 60);
@@ -450,9 +445,21 @@ export function MediumExtras({
           return { key: channel.name, label: channel.name, value: `${duration} · ${channel.percent}%` };
         });
       // The Collection Summary's disclosure: the total stays visible, the channel split opens inline.
-      rows.push(channels.length
-        ? <CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} summary={watched} palette={colors} items={channels} />
-        : <CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} value={watched} palette={colors} />);
+      if (channels.length) {
+        rows.push(<CollectionExpandRow key="watched" icon={actionIcons.eye} label={copy.timeWatched}
+          summary={watched} busyLabel={pending ? copy.youtubeCalculating : undefined}
+          palette={colors} items={channels} />);
+      } else if (pending) {
+        rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} palette={colors}>
+          <View accessibilityLiveRegion="polite" accessibilityState={{ busy: true }} style={styles.watchPending}>
+            <Text style={[styles.watchPendingText, { color: colors.textSecondary }]}>{watched}</Text>
+            <ActivityIndicator size="small" color={colors.textMuted}
+              accessibilityLabel={youtubeWatch.seconds ? copy.youtubeCalculating : undefined} accessible={Boolean(youtubeWatch.seconds)} />
+          </View>
+        </CollectionRow>);
+      } else {
+        rows.push(<CollectionRow key="watched" icon={actionIcons.eye} label={copy.timeWatched} value={watched} palette={colors} />);
+      }
     }
     if (gameLengths?.available && gameLengths.cards?.length) {
       const items = gameLengths.cards.map((card, index) => ({ key: card.label || index, label: card.label, value: card.value }));

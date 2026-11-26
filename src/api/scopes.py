@@ -258,6 +258,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_library.LibraryPreferencesView": {"GET": "user:read", "PATCH": "user:write"},
     "api.fork_views_library.LibraryShareView": {"POST": "lists:write"},
     "api.fork_views_library.LibraryBulkStatusView": {"POST": _W},
+    "api.fork_views_library.LibraryBulkVideoGameView": {"GET": _R, "POST": _W},
     "api.fork_views_library.LibraryBulkTagView": {"POST": _W},
     "api.fork_views_tracking.TagsView": {"GET": _R, "POST": _W},
     "api.fork_views_tracking.TagDetailView": {"PATCH": _W, "DELETE": _W},

@@ -24,6 +24,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.manager import TITLE_FILTER_LOOKUPS
 from app.templatetags.app_tags import media_url
 from users.models import MediaSortChoices
 
@@ -110,6 +111,8 @@ class MediaListFilters:
     statuses: tuple[str, ...] = ()
     include_no_status: bool = False
     search: str = ""
+    title: str = ""
+    title_mode: str = "contains"
     # View state (the A to Z rail): parsed from the query, never saved as a smart rule.
     initial: str = ""
     separate_entries: bool = False
@@ -218,6 +221,8 @@ class MediaListFilters:
             "tag": list(self.tags),
             "tag_mode": self.tag_mode,
             "search": self.search,
+            "title": self.title,
+            "title_mode": self.title_mode,
         }
         for field in ("completed_date", "release_date", "date_added"):
             within = getattr(self, f"{field}_within")
@@ -481,6 +486,8 @@ def parse_media_list_filters(request, *, strict: bool = True) -> MediaListFilter
         statuses=statuses,
         include_no_status=include_no_status,
         search=params.text("search"),
+        title=params.text("title").strip()[:120],
+        title_mode=_parse_choice(params, "title_mode", TITLE_FILTER_LOOKUPS, "contains"),
         initial=normalize_initial(params.text("initial")),
         separate_entries=_parse_choice(params, "separate_entries", {"0", "1"}, "0") == "1",
         group_by=_parse_choice(params, "group_by", {"item", "series", "franchise"}, "item"),

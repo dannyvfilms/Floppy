@@ -61,9 +61,10 @@ function DropdownMenuContent({ onClose, children, palette, closeLabel, anchor, e
 export function DropdownItem({ label, icon, detail, chevron = false, checked = false, selected = false, disabled = false, danger = false, onPress, palette,
   numberOfLines, accessibilityRole = 'menuitem', testID }) {
   const color = danger ? palette.danger : palette.textSecondary;
+  const checkable = accessibilityRole === 'checkbox' || accessibilityRole === 'radio';
   return <Pressable accessibilityRole={accessibilityRole} accessibilityLabel={label}
-    aria-checked={accessibilityRole === 'checkbox' ? checked : undefined}
-    accessibilityState={{ disabled, selected, ...(accessibilityRole === 'checkbox' ? { checked } : {}) }} disabled={disabled} onPress={onPress} testID={testID}
+    aria-checked={checkable ? checked : undefined}
+    accessibilityState={{ disabled, selected, ...(checkable ? { checked } : {}) }} disabled={disabled} onPress={onPress} testID={testID}
     style={({ hovered, pressed }) => [styles.item, (hovered || pressed || selected) && !disabled && { backgroundColor: palette.surfaceMuted },
       disabled && { opacity: 0.5 }]}>
     {icon || null}

@@ -315,6 +315,11 @@ MEDIA_LIST_FILTER_PARAMS = [
         description="Legacy alias for `tag=<value>&tag_mode=not`.",
     ),
     OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY),
+    OpenApiParameter(name="title", type=str, location=OpenApiParameter.QUERY),
+    OpenApiParameter(
+        name="title_mode", type=str, location=OpenApiParameter.QUERY,
+        enum=["contains", "not_contains", "is", "is_not", "starts_with", "ends_with"],
+    ),
     OpenApiParameter(
         name="sort",
         type=str,

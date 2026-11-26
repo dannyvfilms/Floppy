@@ -43,6 +43,8 @@ class FilterValues:
     include_no_status: bool = False
     status_match: str = STATUS_MATCH_LATEST
     search: str = ""
+    title: str = ""
+    title_mode: str = "contains"
     initial: str = ""
     game_group_by: str = "item"
     game_group: str = ""

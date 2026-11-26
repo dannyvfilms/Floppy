@@ -65,6 +65,7 @@ from app.models import (
     Tag,
     prefill_episode_runtime_index,
 )
+from app.models.manager import title_filter_q
 from app.providers import tmdb
 from app.release_years import prefill_display_release_years
 from app.search_views import _mark_grouped_anime_route
@@ -1952,6 +1953,8 @@ def media_list(request, media_type):
 
     list_sql_filters = {
         "initial": initial,
+        "title": parsed_filters.title,
+        "title_mode": parsed_filters.title_mode,
         "genre": genre_filter,
         "implied_genre": implied_genre_filter,
         "year": year_filter,
@@ -2160,7 +2163,10 @@ def media_list(request, media_type):
         filtered_items = []
         candidate_items = list(
             Item.objects.filter(id__in=candidate_item_ids)
-            .filter(initial_condition(initial, request.user))
+            .filter(
+                initial_condition(initial, request.user),
+                title_filter_q(parsed_filters.title, parsed_filters.title_mode),
+            )
             .order_by("title", "id"),
         )
         for item in candidate_items:
@@ -3829,6 +3835,9 @@ def media_list(request, media_type):
                 else ""
             ),
         )
+
+    if route_media_type == MediaTypes.VIDEO.value and context.get("bulk_action_data"):
+        context["bulk_action_data"]["videoGameUrl"] = reverse("api_library_bulk_video_game")
 
     if context.get("is_artist_list", False):
         table_type = "artist"

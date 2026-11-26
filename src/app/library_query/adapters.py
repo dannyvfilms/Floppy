@@ -76,6 +76,8 @@ def filter_values_from_media_list_filters(filters: MediaListFilters) -> FilterVa
         include_no_status=filters.include_no_status,
         status_match=STATUS_MATCH_LATEST,
         search=filters.search,
+        title=filters.title,
+        title_mode=filters.title_mode,
         initial=filters.initial,
         game_group_by=filters.group_by,
         game_group=filters.group,

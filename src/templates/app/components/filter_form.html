@@ -85,6 +85,10 @@
   <input type="hidden" name="origin" x-model="origin">
   <input type="hidden" name="format" x-model="format">
   <input type="hidden" name="author" x-model="author">
+  {% if media_type == "video" %}
+    <input type="hidden" name="title" x-model="title">
+    <input type="hidden" name="title_mode" x-model="title_mode">
+  {% endif %}
   {% if filter_data.show_providers %}
     <input type="hidden" name="provider" x-model="provider">
   {% endif %}

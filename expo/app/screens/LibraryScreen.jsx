@@ -140,11 +140,12 @@ export function filtersFromQuery(params, current) {
     fields: { ...current.fields, genre: params.get('genre') || '', year: params.get('year') || '',
       rating: params.get('rating') || 'all', collection: params.get('collection') || 'all',
       progress: params.get('progress') || 'all', release: params.get('release') || 'all',
-      ...Object.fromEntries(['implied_genre', 'source', 'media_status', 'language', 'country', 'format', 'author', 'provider']
+      ...Object.fromEntries(['implied_genre', 'source', 'media_status', 'language', 'country', 'format', 'author', 'provider', 'title']
         .map(key => [key, params.get(key) || ''])),
       platform: params.getAll('platform'),
       tags: [...params.getAll('tag'), ...params.getAll('tags')] },
-    modes: { ...current.modes, tags: params.get('tag_mode') || 'or', platform: params.get('platform_mode') || 'or' },
+    modes: { ...current.modes, tags: params.get('tag_mode') || 'or', platform: params.get('platform_mode') || 'or',
+      title: params.get('title_mode') || 'contains' },
     ranges: {
       ...current.ranges,
       rating: { ...current.ranges.rating, from: params.get('rating_min') || '', to: params.get('rating_max') || '' },
@@ -189,8 +190,8 @@ function LibraryPage({ params, navigate }) {
   const [filterData, setFilterData] = useState(null);
   const [notice, setNotice] = useState('');
   const [selectingAll, setSelectingAll] = useState(false);
-  const [search, setSearch] = useState('');
-  const [querySearch, setQuerySearch] = useState('');
+  const [search, setSearch] = useState(() => new URLSearchParams(params?.query).get('search') || '');
+  const [querySearch, setQuerySearch] = useState(search);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(null);
   const [loading, setLoading] = useState(transport.mode === 'server');
@@ -358,6 +359,10 @@ function LibraryPage({ params, navigate }) {
       setFilters(current => ({ ...current, ranges: { ...current.ranges, [intent.key]: intent.value } }));
     } else if (intent.type === 'field') {
       setFilters(current => ({ ...current, fields: { ...current.fields, [intent.key]: intent.value } }));
+    } else if (intent.type === 'fieldText') {
+      setFilters(current => ({ ...current,
+        fields: { ...current.fields, [intent.key]: intent.value },
+        modes: { ...current.modes, [intent.key]: intent.mode } }));
     } else if (intent.type === 'toggleField') {
       setFilters(current => {
         const values = current.fields[intent.key] || [];

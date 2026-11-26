@@ -449,16 +449,16 @@
       "register": "FILTERS",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted by frontend/ui/mountFilterBar.jsx on the library and custom-list filter toolbars; npm run build:ui compiled the adapter and targeted Django filter/list tests passed. No browser interaction, theme, keyboard or screen-reader pass was performed."
+          "status": "verified",
+          "evidence": "Desktop and phone Chromium applied the shared Videos Title filter with Is and Contains, preserved Channel, and verified Select all matching and game assignment."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared bar through the native shell; no simulator run was performed."
+          "status": "verified",
+          "evidence": "The iOS Simulator rendered the shared Videos Title text and operator menu with fixture data."
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared filter bar on Library; no filter, range or saved-view interaction and no TalkBack pass."
+          "evidence": "The Android 15 Pixel 7 AVD previously rendered the shared bar. Expo Go reopened an older fixture during the Videos Title check."
         }
       }
     },
@@ -673,11 +673,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Calendar checkbox menu was inspected in mobile Chromium; broader sidebar regression remains pending."
+          "evidence": "The Calendar checkbox menu was inspected in mobile Chromium. Desktop and phone Chromium verified that Title radio rows report their checked state."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Physical Duo showed the Collection Format menu and the user selected a value. Sidebar and multi-select regression remain pending."
+          "evidence": "Physical Duo showed the Collection Format menu and the user selected a value. The iOS Simulator rendered the Title operator check mark in the fixture."
         },
         "android": {
           "status": "unverified",
@@ -1408,6 +1408,7 @@
         "BulkActionDialog",
         "BulkActionRow",
         "BulkFieldRow",
+        "BulkGameDialog",
         "BulkJobCard",
         "BulkJobMessage",
         "BulkJobProblems",
@@ -1420,16 +1421,16 @@
       "register": "BULK_ACTIONS",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted by the web bulk adapter for the status dialog and the Add Plays job dock and by the native Library slot; the browser status dialog and job dock were not exercised after this shared swap."
+          "status": "verified",
+          "evidence": "Mounted by the web bulk adapter for the status dialog and the Add Plays job dock and by the native Library slot; the browser status dialog and job dock were not exercised after this shared swap. Chromium on desktop and phone assigned a known game from the shared picker after selecting matching videos."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no simulator run or interaction pass."
+          "status": "verified",
+          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no simulator run or interaction pass. The iOS Simulator rendered the native toolbar and shared game picker with a seeded video selection."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass."
+          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass. The Android Expo bundle compiled. The emulator reopened an older Expo Go preview during the Videos check."
         }
       }
     },
@@ -1937,15 +1938,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards. Desktop and mobile Chromium exercised and expanded the MediumExtras game Time card, verifying duration-first channel rows."
+          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards. Desktop and mobile Chromium verified that the MediumExtras Time card shows an activity indicator beside the changing total and keeps the channel breakdown expanded."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The expanded MediumExtras game Time card showed duration-first channel rows on the iOS Simulator using a seeded detail API response."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The iOS Simulator rendered the MediumExtras activity indicator alongside a partial watch total and cleared it after a deferred fixture settled. Prior Expo verification covered the duration-first channel breakdown."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The expanded MediumExtras game Time card showed duration-first channel rows on the Android Emulator using a seeded detail API response."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails. The Android emulator rendered the MediumExtras spinner alongside the partial total using a deferred fixture. Prior Expo verification covered the expanded duration-first channel breakdown."
         }
       }
     },
@@ -1980,7 +1981,8 @@
         "CollectionEpisodeList",
         "CollectionEpisodeToggle",
         "CollectionShowMore",
-        "CollectionSectionHeading"
+        "CollectionSectionHeading",
+        "CollectionExpandRow"
       ],
       "register": "OWNERSHIP",
       "verification": {
@@ -4584,15 +4586,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium verified that the game detail rendered before enrichment completed, then refreshed the total and expanded channel breakdown on desktop and phone."
+          "evidence": "Chromium verified that game detail rendered before enrichment completed and kept its spinner and expanded channel breakdown while the total was still updating on desktop and phone."
         },
         "ios": {
           "status": "verified",
-          "evidence": "The iOS Simulator rendered the shared Time card before and after the total and expanded channel breakdown updated from a delayed fixture."
+          "evidence": "The iOS Simulator rendered the shared Time card with its spinner and partial total while a fixture was pending, then cleared the spinner when the total settled."
         },
         "android": {
           "status": "verified",
-          "evidence": "The Android emulator rendered the shared Time card and its updated total and expanded channel breakdown from a deferred fixture."
+          "evidence": "The Android emulator rendered the shared Time card with its spinner and partial total, then rendered the settled total after a deferred fixture resolved."
         }
       }
     },
@@ -5034,7 +5036,7 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium at 1440px on the TV Shows table: a two-item selection rendered the one-line icon bar and Deselect All, and the ellipsis opened Add Plays to History."
+          "evidence": "Chromium at 1440px on the TV Shows table: a two-item selection rendered the one-line icon bar and Deselect All, and the ellipsis opened Add Plays to History. Chromium rendered the labelled Assign game button in the Videos toolbar on desktop and phone and opened the shared picker."
         },
         "ios": {
           "status": "unverified",
@@ -6377,7 +6379,7 @@
     },
     "frontend/ui/mountBulkActions.jsx": {
       "register": "BULK_ACTIONS",
-      "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
+      "purpose": "Django/browser integration for shared bulk actions and the Videos game picker. It opens dialogs, submits video game links, polls Add Plays jobs and renders their docked progress and results."
     },
     "frontend/ui/mountStatisticsSections.jsx": {
       "register": "STATISTICS",

@@ -123,6 +123,11 @@ urlpatterns = [
         name="api_library_bulk_tags",
     ),
     re_path(
+        r"^library/bulk/video-game/?$",
+        fork_views_library.LibraryBulkVideoGameView.as_view(),
+        name="api_library_bulk_video_game",
+    ),
+    re_path(
         r"^library/saved-views/reorder/?$",
         fork_views_library.LibrarySavedViewsReorderView.as_view(),
         name="api_library_saved_views_reorder",

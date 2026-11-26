@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Text, TextInput, View } from 'react-native';
-import { BulkActionDialog, BulkOptionRow, BulkToolbar } from '../../../frontend/ui/BulkActions';
+import { BulkActionDialog, BulkGameDialog, BulkOptionRow, BulkToolbar } from '../../../frontend/ui/BulkActions';
 import { palette, radius, spacing } from '../theme';
 
 const STATUSES = [
@@ -93,10 +93,21 @@ export default function LibraryBulkActions({ rows, selectedRows, transport, sele
       onClear={onClearSelection} onCancel={onToggleSelect}
       onUpdateStatus={() => setDialog('status')} onAddToList={() => setDialog('list')}
       onAddToCollection={() => setDialog('collection')} onApplyTag={() => setDialog('tag')}
+      onAssignGame={rows[0]?.identity?.mediaType === 'video' ? () => setDialog('game') : undefined}
       onAddPlays={['tv', 'anime'].includes(rows[0]?.identity?.mediaType) && selected.every(row => ['tv', 'anime'].includes(row.identity.mediaType))
         ? () => { setPreview(null); setDialog('plays'); } : undefined} />
     {error ? <Text accessibilityRole="alert" style={{ color: palette.danger }}>{error}</Text> : null}
-    <BulkActionDialog open={Boolean(dialog)} title={title} description={description}
+    {dialog === 'game' ? <BulkGameDialog count={selected.length} palette={palette}
+      onSearch={transport.findBulkVideoGames} onClose={() => setDialog('')}
+      onAssign={async gameId => {
+        const { updated } = await transport.bulkAssignVideoGame({
+          itemIds: selected.map(row => row.identity.itemId), gameId,
+        });
+        AccessibilityInfo.announceForAccessibility?.(`Game assigned to ${updated} selected videos.`);
+        setDialog('');
+        onDone?.();
+      }} /> : null}
+    <BulkActionDialog open={Boolean(dialog && dialog !== 'game')} title={title} description={description}
       confirmLabel={dialog === 'plays' && preview ? 'Add plays' : dialog === 'plays' ? 'Preview' : 'Apply'}
       busy={busy} confirmDisabled={dialog === 'list' ? !listId : dialog === 'tag' ? !tagId : false}
       palette={palette} onConfirm={confirm} onClose={() => setDialog('')}>

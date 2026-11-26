@@ -1176,6 +1176,21 @@ paths:
           - not
           - or
       - in: query
+        name: title
+        schema:
+          type: string
+      - in: query
+        name: title_mode
+        schema:
+          type: string
+          enum:
+          - contains
+          - ends_with
+          - is
+          - is_not
+          - not_contains
+          - starts_with
+      - in: query
         name: updated_since
         schema:
           type: string
@@ -1521,6 +1536,21 @@ paths:
           - and
           - not
           - or
+      - in: query
+        name: title
+        schema:
+          type: string
+      - in: query
+        name: title_mode
+        schema:
+          type: string
+          enum:
+          - contains
+          - ends_with
+          - is
+          - is_not
+          - not_contains
+          - starts_with
       - in: query
         name: updated_since
         schema:

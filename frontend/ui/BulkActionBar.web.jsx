@@ -1,6 +1,8 @@
 import React from 'react';
 import { Button } from './Button';
 import { ActionMenu } from './controls/Menu';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 // The universal menu takes concrete theme values. These are the same semantic
 // tokens the legacy `.ui-menu` rules read, so it follows the active theme.
@@ -20,6 +22,7 @@ const Glyph = ({ children }) => <svg aria-hidden="true" viewBox="0 0 24 24" fill
   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 
 const glyphs = {
+  game: <Icon spec={actionIcons.link} size={18} color="currentColor" />,
   status: <Glyph><circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" /></Glyph>,
   list: <Glyph><path d="M11 12H3" /><path d="M16 6H3" /><path d="M16 18H3" />
     <path d="M18 9v6" /><path d="M21 12h-6" /></Glyph>,
@@ -40,12 +43,15 @@ export function BulkActionBar({ count, actions = [], disabled = false, deselectD
       {glyphs.check}
       <span><strong>{count.toLocaleString()}</strong> {count === 1 ? 'item' : 'items'} selected</span>
     </div>
-    <div className="ui-bulk-buttons">
+    <div className="ui-bulk-buttons" style={actions.some(action => action.showLabel) ? { flexWrap: 'wrap' } : undefined}>
       {actions.map(action => action.items
         ? <ActionMenu key={action.key} icon={glyphs[action.icon]} label={action.label} disabled={disabled}
           items={action.items} empty={action.empty} palette={menuPalette} />
         : <Button key={action.key} type="button" secondary disabled={disabled}
-          aria-label={action.label} title={action.label} onClick={action.onSelect}>{glyphs[action.icon]}</Button>)}
+          aria-label={action.label} title={action.label} onClick={action.onSelect}
+          attrs={action.showLabel ? { style: { width: 'auto', flexShrink: 0, paddingInline: 10, whiteSpace: 'nowrap', gap: 6 } } : undefined}>
+          {glyphs[action.icon]}{action.showLabel ? <span>{action.label}</span> : null}
+        </Button>)}
     </div>
     {onSelectAll ? <button type="button" className="ui-bulk-deselect"
       disabled={selectAllDisabled || selecting} onClick={onSelectAll}>

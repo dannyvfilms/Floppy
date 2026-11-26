@@ -274,6 +274,7 @@ export function libraryQuery({
   Object.entries(modes).forEach(([key, value]) => {
     if (key === 'tags' && value) query.tag_mode = value;
     if ((key === 'platforms' || key === 'platform') && value) query.platform_mode = value;
+    if (key === 'title' && query.title && value) query.title_mode = value;
   });
   return query;
 }
@@ -392,6 +393,11 @@ export const FILTER_MODES = [
 export function libraryFilterSections(data) {
   const info = data || {};
   const sections = [staticSection('rating'), staticSection('collection')];
+  if (info.title_modes?.length) {
+    sections.unshift({
+      key: 'title', label: 'Title', type: 'text', modeValue: 'contains', modes: info.title_modes,
+    });
+  }
   if (info.show_progress) sections.push(staticSection('progress'));
   sections.push(
     optionSection('genre', 'Genre', info.genres),
@@ -507,6 +513,14 @@ export function createRemoteLibraryActions(request) {
     bulkPlaysStatus({ operationId }) {
       return request(`/api/v1/library/bulk/plays/${encodeURIComponent(operationId)}/`);
     },
+    findBulkVideoGames(query) {
+      return request('/api/v1/library/bulk/video-game/', { query: { q: query } });
+    },
+    bulkAssignVideoGame({ itemIds, gameId }) {
+      return request('/api/v1/library/bulk/video-game/', {
+        method: 'POST', json: { item_ids: itemIds, game_id: gameId },
+      });
+    },
     loadLists() {
       return request('/api/v1/lists/', { query: { limit: 200, offset: 0 } });
     },
@@ -592,6 +606,8 @@ export function createLocalLibraryActions(reason) {
     reorderSavedViews: async () => ({ local: true, reason }),
     startBulkPlays: async () => ({ local: true, reason }),
     bulkPlaysStatus: async () => ({ local: true, reason }),
+    findBulkVideoGames: async () => [],
+    bulkAssignVideoGame: async () => { throw new Error(reason); },
     loadLists: async () => [],
     loadTags: async () => ({ results: [] }),
     bulkStatus: async () => ({ local: true, reason }),

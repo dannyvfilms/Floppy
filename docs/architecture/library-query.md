@@ -31,6 +31,11 @@ Surfaces whose unit is not one item keep their own pipeline:
 
 ## Contract
 
+- **Videos Title comparisons** use `title` and `title_mode` against the stored
+  title without regard to case. The results and Select all matching combine
+  Title with Channel and the other filters. The existing `search` parameter
+  still searches across titles and provider IDs.
+
 - **Alphabet selection is web view state.** The optional `initial` URL parameter
   selects an ASCII letter, `0-9`, or `other`; empty/invalid values mean All. SQL
   reads the viewer's preferred displayed title with its existing fallback order,

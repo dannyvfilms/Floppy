@@ -14,6 +14,17 @@ DEFAULT_RELATIVE_UNITS = [
     ("years", _("Years")),
 ]
 
+def title_filter_modes():
+    """Choices shared by the web and native Title filter."""
+    return [
+        {"value": "contains", "label": _("Contains")},
+        {"value": "not_contains", "label": _("Does not contain")},
+        {"value": "is", "label": _("Is")},
+        {"value": "is_not", "label": _("Is not")},
+        {"value": "starts_with", "label": _("Starts with")},
+        {"value": "ends_with", "label": _("Ends with")},
+    ]
+
 CLEAR_ALL_VALUES = {
     "rating": "all",
     "collection": "all",
@@ -86,7 +97,7 @@ def _section_options(platforms, *, multi):
     return _options(platforms)
 
 
-def _sections(context, filter_data, state, *, platform_multi):
+def _sections(context, filter_data, state, *, platform_multi, show_title):
     sections = []
     show = filter_data.get
     if show("show_group_by") and context.get("group_by_choices"):
@@ -189,9 +200,15 @@ def _sections(context, filter_data, state, *, platform_multi):
         sections.append(_section(
             "format", _("Format"), "format", _options(filter_data["formats"]),
         ))
+    if show_title:
+        sections.insert(0, _section(
+            "title", _("Title"), "title", [], kind="text", searchable=False,
+            modes=title_filter_modes(), mode_key="title_mode", mode_value="contains",
+        ))
     if show("show_authors") and _has_any(filter_data, "authors"):
         sections.append(_section(
-            "author", _("Author"), "author", _options(filter_data["authors"]),
+            "author", _("Channel") if filter_data.get("author_is_channel") else _("Author"),
+            "author", _options(filter_data["authors"]),
             searchable=True,
         ))
     if show("show_providers"):
@@ -296,7 +313,10 @@ def build_filter_bar_props(context, *, endpoint, target, form_id, surface,
         sort_choices = [(value, label) for value, label in sort_choices
                         if value != "author"]
 
-    sections = _sections(context, filter_data, state, platform_multi=platform_multi)
+    sections = _sections(
+        context, filter_data, state, platform_multi=platform_multi,
+        show_title=surface == "library" and context.get("media_type") == "video",
+    )
     fields, modes = _field_state(state, sections)
     relative_units = _options(
         filter_data.get("relative_date_units") or DEFAULT_RELATIVE_UNITS,

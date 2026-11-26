@@ -1,7 +1,8 @@
 import { Modal } from './Modal';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { TextField } from './TextField';
 import { Title } from './Title';
 
 const FALLBACK_PALETTE = {
@@ -33,6 +34,7 @@ const defaultLabels = {
   addToCollection: 'Add to Collection',
   applyTag: 'Apply Tag',
   addPlays: 'Add Plays to History',
+  assignGame: 'Assign game',
   working: 'Working…',
   close: 'Close',
   cancelAction: 'Cancel',
@@ -102,6 +104,7 @@ export function BulkToolbar({
   onAddToCollection,
   onApplyTag,
   onAddPlays,
+  onAssignGame,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
@@ -111,6 +114,7 @@ export function BulkToolbar({
     { key: 'list', label: copy.addToList, onPress: onAddToList },
     { key: 'collection', label: copy.addToCollection, onPress: onAddToCollection },
     { key: 'tag', label: copy.applyTag, onPress: onApplyTag },
+    { key: 'game', label: copy.assignGame, onPress: onAssignGame },
     { key: 'plays', label: copy.addPlays, onPress: onAddPlays },
   ].filter(action => typeof action.onPress === 'function');
   return <View style={[styles.toolbar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -195,7 +199,7 @@ export function BulkActionDialog({
         {description ? <Text style={[styles.dialogText, { color: colors.textSecondary }]}>
           {description}
         </Text> : null}
-        {children ? <ScrollView style={styles.options} contentContainerStyle={styles.optionsContent}>
+        {children ? <ScrollView style={styles.options} contentContainerStyle={styles.optionsContent} keyboardShouldPersistTaps="handled">
           {children}
         </ScrollView> : null}
         <View style={styles.dialogActions}>
@@ -207,6 +211,65 @@ export function BulkActionDialog({
       </View>
     </View>
   </Modal>;
+}
+
+export function BulkGameDialog({ count, palette, onSearch, onAssign, onClose }) {
+  const [query, setQuery] = useState('');
+  const [matches, setMatches] = useState(null);
+  const [choice, setChoice] = useState(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const term = query.trim();
+  useEffect(() => {
+    if (term.length < 2) return undefined;
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await onSearch(term);
+        if (active) setMatches(results);
+      } catch (cause) {
+        if (active) setError(cause?.message || 'Could not search for games.');
+      }
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [term, onSearch]);
+
+  async function assign() {
+    if (!count || !choice || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onAssign(choice.id);
+    } catch (cause) {
+      setError(cause?.message || 'Could not assign the game.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const colors = mergePalette(palette);
+  return <BulkActionDialog open title="Assign game" confirmLabel="Assign game"
+    description={`Choose the game that should receive watch time from ${pluralize(count, 'selected video')}.`}
+    confirmDisabled={!count || !choice} busy={busy} palette={palette}
+    onConfirm={assign} onClose={busy ? undefined : onClose}>
+    <TextField label="Search for a game" placeholder="Search known games" value={query} maxLength={120}
+      disabled={busy} palette={palette} onChangeText={value => {
+        if (value.trim() !== term) {
+          setMatches(null);
+          setChoice(null);
+          setError('');
+        }
+        setQuery(value);
+      }} />
+    {error ? <Text accessibilityRole="alert" style={{ color: colors.danger }}>{error}</Text> : null}
+    {term.length >= 2 && !error && !matches ? <Text accessibilityLiveRegion="polite"
+      style={{ color: colors.textMuted }}>Searching…</Text> : null}
+    {matches?.length === 0 ? <Text accessibilityLiveRegion="polite"
+      style={{ color: colors.textMuted }}>No known games match.</Text> : null}
+    {matches?.map(game => <BulkOptionRow key={game.id} label={game.title}
+      detail={[game.year, game.source.toUpperCase()].filter(Boolean).join(' · ')}
+      selected={choice?.id === game.id} disabled={busy} palette={palette} onPress={() => setChoice(game)} />)}
+  </BulkActionDialog>;
 }
 
 export function BulkJobProgress({ label, done, total = 0, palette, labels }) {

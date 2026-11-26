@@ -12,26 +12,27 @@ export function useDeferredYoutubeWatch(path, request) {
     if (!path || !request) return undefined;
     const controller = new AbortController();
     let retry;
+    let timeout;
     let latest;
-    const timeout = setTimeout(() => {
-      setResponse({ path, request, watch: latest ?? unavailable });
-      controller.abort();
-    }, 300000);
     async function load() {
+      timeout = setTimeout(() => {
+        setResponse({ path, request, watch: latest ?? unavailable });
+        controller.abort();
+      }, 30000);
       try {
         const result = await request(path, { query: { youtube_watch: 'only' }, signal: controller.signal });
         if (controller.signal.aborted) return;
         latest = detailYoutubeWatchModel(result.youtube_watch);
         if (result.youtube_watch_pending) {
-          setResponse({ path, request, watch: latest?.seconds ? latest : pending });
+          setResponse({ path, request, watch: latest?.seconds ? { ...latest, pending: true } : pending });
           retry = setTimeout(load, 5000);
         } else {
-          clearTimeout(timeout);
           setResponse({ path, request, watch: latest });
         }
       } catch {
-        clearTimeout(timeout);
         if (!controller.signal.aborted) setResponse({ path, request, watch: latest ?? unavailable });
+      } finally {
+        clearTimeout(timeout);
       }
     }
     load();

@@ -546,6 +546,40 @@ class MediaListViewTests(TestCase):
         self.assertIn("Rick Astley · 3:33", lines)
         self.assertContains(response, 'class="media-grid media-grid-video"')
 
+    def test_video_title_filter_operators_combine_with_channel_for_bulk_selection(self):
+        """Both library transports resolve matching item IDs through the same Title filter."""
+        video_ids = {}
+        for title, channel in (
+            ("Redstone", "Builder"), ("Redstone Tools", "Builder"),
+            ("Old Redstone", "Builder"), ("Other", "Builder"), ("Redstone News", "News"),
+        ):
+            item = Item.objects.create(
+                media_id=title, source=Sources.YOUTUBE.value, media_type=MediaTypes.VIDEO.value,
+                title=title, authors=[channel],
+            )
+            Video.objects.create(item=item, user=self.user, status=Status.COMPLETED.value, channel=channel)
+            video_ids[title] = item.pk
+
+        url = reverse("medialist", args=[MediaTypes.VIDEO.value])
+        self.assertContains(self.client.get(url), '"key": "title", "label": "Title"')
+        for mode, matches in (
+            ("contains", ["Redstone", "Redstone Tools", "Old Redstone"]),
+            ("not_contains", ["Other"]),
+            ("is", ["Redstone"]),
+            ("is_not", ["Redstone Tools", "Old Redstone", "Other"]),
+            ("starts_with", ["Redstone", "Redstone Tools"]),
+            ("ends_with", ["Redstone", "Old Redstone"]),
+        ):
+            with self.subTest(mode=mode):
+                filters = {"title": "redSTONE", "title_mode": mode, "author": "builder"}
+                web = self.client.get(url, {**filters, "bulk_ids": "1"})
+                api = self.client.get("/api/v1/media/video/item-ids/", filters)
+                expected = {video_ids[title] for title in matches}
+                self.assertEqual(web.status_code, 200)
+                self.assertEqual(api.status_code, 200)
+                self.assertEqual(set(web.json()["item_ids"]), expected)
+                self.assertEqual(set(api.json()["item_ids"]), expected)
+
     def test_season_media_list_with_status_filter_does_not_500(self):
         """Season rows derive end_date from episodes, so the SQL latest-status
         subquery must not be used for them (#1222).

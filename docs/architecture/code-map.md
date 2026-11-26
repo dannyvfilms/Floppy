@@ -82,6 +82,8 @@ Django apps live under `src/`. Paths below are repository-relative.
   so a rate limit does not mark the individual video unavailable.
   Each recorded video play contributes its position or full runtime, and
   completed videos without play records contribute once.
+  `src/api/fork_views_library.py` owns bulk video game assignment and known
+  game search for the Videos library on all platforms.
 
 ### Helper homes
 

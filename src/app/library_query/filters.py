@@ -40,7 +40,11 @@ from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, Filter
 from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
 from app.models.item import Item
-from app.models.manager import item_ids_with_json_array_value_ci, release_year_q
+from app.models.manager import (
+    item_ids_with_json_array_value_ci,
+    release_year_q,
+    title_filter_q,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -650,6 +654,7 @@ FILTERS: tuple[FilterDef, ...] = (
         | Q(localized_title__icontains=v.search.strip())
         | Q(media_id__icontains=v.search.strip()),
     ),
+    FilterDef("title", _text("title"), sql=lambda v, ctx: title_filter_q(v.title, v.title_mode)),
     FilterDef(
         "initial",
         lambda v: bool(normalize_initial(v.initial)),

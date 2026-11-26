@@ -176,6 +176,24 @@ def _filter_queryset_by_item_json_array_ci(
     )
 
 
+TITLE_FILTER_LOOKUPS = {
+    "contains": "icontains",
+    "not_contains": "icontains",
+    "is": "iexact",
+    "is_not": "iexact",
+    "starts_with": "istartswith",
+    "ends_with": "iendswith",
+}
+
+
+def title_filter_q(title, mode, prefix=""):
+    """Apply a case-insensitive comparison to the item's title."""
+    if not title:
+        return Q()
+    match = Q(**{f"{prefix}title__{TITLE_FILTER_LOOKUPS.get(mode, 'icontains')}": title})
+    return ~match if mode in {"not_contains", "is_not"} else match
+
+
 def release_year_q(year, prefix=""):
     """Return the condition for an item released in ``year`` (or "unknown").
 
@@ -491,7 +509,8 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         from app.library_query.alphabet import initial_condition
 
         queryset = queryset.filter(
-            initial_condition(filters.get("initial"), user, prefix="item__")
+            initial_condition(filters.get("initial"), user, prefix="item__"),
+            title_filter_q(filters.get("title"), filters.get("title_mode"), prefix="item__"),
         )
 
         genre = str(filters.get("genre") or "").strip()

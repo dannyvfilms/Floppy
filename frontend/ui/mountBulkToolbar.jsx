@@ -91,6 +91,10 @@ function Toolbar({ config }) {
         csrfToken: config.csrfToken,
         tags: config.tagOptions || config.tags.map(name => ({ id: name, name })),
       }) },
+    ...(config.videoGameUrl ? [{
+      key: 'game', icon: 'game', label: 'Assign game', showLabel: true,
+      onSelect: () => open({ kind: 'game', url: config.videoGameUrl, csrfToken: config.csrfToken }),
+    }] : []),
     { key: 'more', icon: 'more', label: 'More actions',
       items: [{ label: 'Add Plays to History', onSelect: () => open({ kind: 'plays' }) }] },
   ];

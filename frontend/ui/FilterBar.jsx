@@ -145,6 +145,10 @@ function sectionSummary(section, filters) {
     return '';
   }
   const labels = (section.options || []);
+  if (section.type === 'text') {
+    const mode = (filters.modes || {})[section.key] || section.modeValue;
+    return `${optionLabel(section.modes, mode)} “${value}”`;
+  }
   if (section.type === 'multi') {
     const mode = (filters.modes || {})[section.key] || section.modeValue;
     const selected = (value || []).map((item) => {
@@ -249,6 +253,7 @@ export function FilterBar({
   const [panelSearch, setPanelSearch] = useState('');
   const triggerNodes = { filters: useRef(null), status: useRef(null), sort: useRef(null) };
   const [rangeDraft, setRangeDraft] = useState(null);
+  const [textDraft, setTextDraft] = useState(null);
   const ranges = options.ranges || [];
   const savedViews = options.savedViews || [];
   const sections = options.sections || [];
@@ -313,6 +318,12 @@ export function FilterBar({
   function openSection(section, parent = null) {
     setRangeDraft(null);
     setPanelSearch('');
+    if (section.type === 'text') {
+      setTextDraft({
+        value: sectionValue(filters, section) || '',
+        mode: filters.modes?.[section.key] || section.modeValue,
+      });
+    }
     if (toolbar) {
       setMenu(current => ({ ...(current || { key: 'filters', anchor: null }), panel: `section:${section.key}`, parent }));
     } else {
@@ -404,8 +415,32 @@ export function FilterBar({
     });
   const rootRanges = ranges.filter((range) => !['releaseDate', 'completedDate', 'dateAdded'].includes(range.key));
 
+  function textSectionRows(section) {
+    if (!textDraft) return null;
+    const apply = () => {
+      emit({ type: 'fieldText', key: section.key, value: textDraft.value.trim(), mode: textDraft.mode });
+      closeSheet();
+    };
+    return <>
+      <DropdownField accessibilityLabel={section.label} placeholder={section.label}
+        value={textDraft.value} maxLength={120}
+        returnKeyType="done" onSubmitEditing={apply} palette={menuPalette}
+        onChangeText={value => setTextDraft(current => ({ ...current, value }))} />
+      {section.modes.map(item => <DropdownItem key={item.value} accessibilityRole="radio"
+        label={item.label} checked={textDraft.mode === item.value} palette={menuPalette}
+        onPress={() => setTextDraft(current => ({ ...current, mode: item.value }))} />)}
+      <DropdownSeparator palette={menuPalette} />
+      <DropdownItem label={copy.apply} palette={menuPalette} onPress={apply} />
+      <DropdownItem label={copy.clear} palette={menuPalette} onPress={() => {
+        emit({ type: 'fieldText', key: section.key, value: '', mode: section.modeValue });
+        closeSheet();
+      }} />
+    </>;
+  }
+
   // The rows of a section's options: any/all modes, a search field when long, a clear row, then the options.
   const sectionRows = (section) => {
+    if (section.type === 'text') return textSectionRows(section);
     const isMulti = section.type === 'multi';
     const value = sectionValue(filters, section);
     const mode = (filters.modes || {})[section.key] || section.modeValue;
@@ -683,10 +718,7 @@ export function FilterBar({
               sections={sections}
               onToggleType={(value) => toggleMulti('mediaTypes', value)}
               onOpenRange={openRange}
-              onOpenSection={(section) => {
-                setOpenSheet(`section:${section.key}`);
-                setRangeDraft(null);
-              }}
+              onOpenSection={openSection}
               onClear={clearAll} /> : null}
 
             {openSheet === 'status' ? <StatusSheet
@@ -714,7 +746,7 @@ export function FilterBar({
               onChoose={(value) => chooseSingle('view', value)}
               onSavedView={chooseSavedView} /> : null}
 
-            {activeSection ? <SectionSheet
+            {activeSection?.type === 'text' ? textSectionRows(activeSection) : activeSection ? <SectionSheet
               section={activeSection}
               value={sectionValue(filters, activeSection)}
               mode={(filters.modes || {})[activeSection.key] || activeSection.modeValue}

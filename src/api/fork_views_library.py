@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Exists, OuterRef, Q
 from django.http import Http404, HttpRequest, QueryDict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -24,6 +24,7 @@ from app.collection_views import (
     _SEASON_OR_SHOW_MEDIA_TYPES,
     _expand_collection_entry_to_episodes,
 )
+from app.filter_bar import title_filter_modes
 from app.library_query import LibraryQueryExecutor
 from app.library_query.adapters import from_media_list_filters
 from app.media_list_filters import (
@@ -40,7 +41,19 @@ from app.media_list_views import (
     _normalize_filter_value,
     build_filter_data_from_item_values,
 )
-from app.models import BasicMedia, CollectionEntry, Item, ItemTag, MediaTypes, Tag
+from app.models import (
+    BasicMedia,
+    CollectionEntry,
+    Game,
+    Item,
+    ItemTag,
+    MediaTypes,
+    Sources,
+    Tag,
+    Video,
+    VideoGameLink,
+)
+from app.services.youtube_game_watch import invalidate_watch_summaries
 from lists import views_list_actions
 from users.models import SavedView
 
@@ -57,6 +70,7 @@ MAX_BULK_ITEMS = 5000
 MAX_SAVED_VIEW_QUERY_LENGTH = 4000
 MAX_BULK_SHOWS = 1000
 MAX_BULK_COLLECTION_ITEMS = 500
+MIN_GAME_QUERY_LENGTH = 2
 
 
 
@@ -82,6 +96,7 @@ class LibraryFilterOptionsSerializer(serializers.Serializer):
     show_formats = serializers.BooleanField()
     show_authors = serializers.BooleanField()
     author_is_channel = serializers.BooleanField()
+    title_modes = serializers.ListField(child=serializers.DictField())
     show_providers = serializers.BooleanField()
     show_progress = serializers.BooleanField()
 
@@ -114,6 +129,19 @@ class BulkTagRequestSerializer(BulkItemsSerializer):
     tag_id = serializers.IntegerField(min_value=1)
     action = serializers.ChoiceField(choices=["add", "remove"], default="add")
 
+class BulkVideoGameRequestSerializer(BulkItemsSerializer):
+    """Assign a known game to the selected videos."""
+
+    game_id = serializers.IntegerField(min_value=1)
+
+
+class BulkVideoGameOptionSerializer(serializers.Serializer):
+    """Identify a game and distinguish similar editions in the picker."""
+
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    source = serializers.CharField()
+    year = serializers.IntegerField(allow_null=True)
 
 
 class BulkResultSerializer(serializers.Serializer):
@@ -259,6 +287,7 @@ class LibraryFilterOptionsView(drf_views.APIView):
             "show_formats": media_type in AUTHOR_MEDIA_TYPES,
             "show_authors": media_type in AUTHOR_FILTER_MEDIA_TYPES,
             "author_is_channel": media_type == MediaTypes.VIDEO.value,
+            "title_modes": title_filter_modes() if media_type == MediaTypes.VIDEO.value else [],
             "show_providers": has_providers
             and bool(
                 (region and region != "UNSET") or user.pinned_watch_providers,
@@ -359,6 +388,68 @@ class LibraryBulkStatusView(_BulkView):
         return _bulk_response(
             *_call_web_view(bulk_action_views.bulk_status_update, request, form),
         )
+
+
+class LibraryBulkVideoGameView(_BulkView):
+    """Search known games or assign one to the caller's selected videos."""
+
+    request_serializer = BulkVideoGameRequestSerializer
+
+    def _games(self, user):
+        tracked = Game.objects.filter(user=user, item_id=OuterRef("pk"))
+        return Item.objects.filter(media_type=MediaTypes.GAME.value).filter(
+            ~Q(source=Sources.MANUAL.value) | Q(Exists(tracked)),
+        )
+
+    @extend_schema(
+        operation_id="searchBulkVideoGames",
+        parameters=[OpenApiParameter("q", str, description="Game title, at least two characters.")],
+        responses=BulkVideoGameOptionSerializer(many=True),
+    )
+    def get(self, request):
+        """Find matching local game editions available to the viewer."""
+        query = request.query_params.get("q", "").strip()[:120]
+        if len(query) < MIN_GAME_QUERY_LENGTH:
+            return Response([])
+        games = (
+            self._games(request.user)
+            .filter(Q(title__icontains=query) | Q(original_title__icontains=query) | Q(localized_title__icontains=query))
+            .order_by("title", "source", "pk")
+            .values_list("pk", "title", "source", "release_datetime")[:30]
+        )
+        return Response([
+            {"id": pk, "title": title, "source": source, "year": released.year if released else None}
+            for pk, title, source, released in games
+        ])
+
+    @extend_schema(
+        operation_id="bulkLibraryVideoGame",
+        request=BulkVideoGameRequestSerializer,
+        responses={200: BulkResultSerializer},
+    )
+    def post(self, request):
+        """Apply one link to each selected video in a single transaction."""
+        data = self.validated(request)
+        item_ids = set(data["item_ids"])
+        with transaction.atomic():
+            game = self._games(request.user).filter(pk=data["game_id"]).first()
+            if game is None:
+                return Response({"detail": "Game not found."}, status=HTTP.NOT_FOUND)
+            videos = list(Video.objects.select_for_update().filter(
+                user=request.user, item_id__in=item_ids,
+            ).order_by("pk").values_list("pk", flat=True))
+            if len(videos) != len(item_ids):
+                return Response(
+                    {"detail": "Select only videos in your library."}, status=HTTP.BAD_REQUEST,
+                )
+            VideoGameLink.objects.bulk_create(
+                [VideoGameLink(video_id=video_id, game_item=game) for video_id in videos],
+                update_conflicts=True, update_fields=["game_item"], unique_fields=["video"],
+            )
+            # Bulk upserts skip the single-link cache invalidation signal.
+            invalidate_watch_summaries(request.user.pk)
+        return Response({"success": True, "updated": len(videos)})
+
 
 class LibraryBulkTagView(_BulkView):
     """Add or remove one tag across the selected items."""

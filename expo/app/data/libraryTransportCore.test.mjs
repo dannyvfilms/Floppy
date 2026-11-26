@@ -144,6 +144,22 @@ test('filter options, matching ids, preferences and share view call their endpoi
   assert.equal(calls[4].options.body.query.limit, undefined);
 });
 
+test('Videos sends Title and its operator together with the Channel filter', async () => {
+  const { libraryFilterSections } = await import('./libraryTransportCore.js');
+  const modes = [{ value: 'is', label: 'Is' }, { value: 'contains', label: 'Contains' }];
+  const title = libraryFilterSections({ title_modes: modes })[0];
+  assert.equal(title.type, 'text');
+  assert.deepEqual(title.modes, modes);
+  const calls = [];
+  const transport = createRemoteLibraryActions(async (path, options) => {
+    calls.push({ path, options });
+    return { item_ids: [] };
+  });
+  await transport.loadItemIds({ mediaType: 'video',
+    fields: { title: 'Redstone', author: 'builder' }, modes: { title: 'is' } });
+  assert.deepEqual(calls[0].options.query, { title: 'Redstone', title_mode: 'is', author: 'builder' });
+});
+
 test('podcast shows map to show rows and card actions carry the item identity', async () => {
   const { cardActionsFor } = await import('./libraryTransportCore.js');
   assert.equal(libraryPath('podcast', 'shows'), '/api/v1/podcasts/shows/');

@@ -1,6 +1,6 @@
 import { Modal } from './Modal';
 import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Badge } from './Badge';
 import { actionIcons } from './actionIcons';
 import { Button } from './Button';
@@ -193,7 +193,7 @@ export function CollectionRow({ icon, image, tone, after, label, value, onPress,
 // `value` is free text in the same place (a duration, a percentage); `onPress` makes a link. Rows that carry values
 // A row with no items is a plain row.
 // `info` ({ label, onPress }) adds a small i button right after the label that opens a link.
-export function CollectionExpandRow({ icon, label, summary, items = [], info, palette: suppliedPalette }) {
+export function CollectionExpandRow({ icon, label, summary, items = [], info, busyLabel, palette: suppliedPalette }) {
   const [expanded, setExpanded] = useState(false);
   const palette = mergePalette(suppliedPalette);
   if (!items.length) return <CollectionRow icon={icon} label={label} palette={palette} />;
@@ -202,10 +202,11 @@ export function CollectionExpandRow({ icon, label, summary, items = [], info, pa
       after={info ? <Pressable accessibilityRole="link" accessibilityLabel={info.label} onPress={info.onPress} hitSlop={10}>
         <Icon spec={actionIcons.info} size={18} color={palette.textMuted} />
       </Pressable> : undefined}
-      accessibilityLabel={`${label}${summary ? `, ${summary}` : ''}, ${expanded ? 'collapse' : 'expand'}`}
+      accessibilityLabel={[label, summary, busyLabel, expanded ? 'collapse' : 'expand'].filter(Boolean).join(', ')}
       onPress={() => setExpanded(value => !value)}>
       <View style={styles.expandEnd}>
         {summary ? <Text style={[styles.rowValue, { color: palette.textSecondary }]}>{summary}</Text> : null}
+        {busyLabel ? <ActivityIndicator size="small" color={palette.textMuted} accessible={false} /> : null}
         <View style={expanded ? { transform: [{ rotate: '180deg' }] } : undefined}>
           <Icon spec={actionIcons.chevronDown} size={16} color={palette.textMuted} />
         </View>

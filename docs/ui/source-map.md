@@ -325,6 +325,8 @@ Status: `Web Migrated`
 
 Status: `Partial / coexisting`
 
+- The shared `DropdownMenu.jsx` radio row exposes the active Title operator through its checked state. `FilterBar.jsx` reuses it for web and native Title comparisons.
+
 - `frontend/ui/FilterBar.jsx`
 - `frontend/ui/SettingsMenu.jsx`
 - `frontend/ui/keyboardOverlapContext.js`
@@ -400,6 +402,10 @@ Status: `Partial / coexisting`
 ## BULK
 
 Status: `Partial / coexisting`
+
+- Videos exposes Title in `frontend/ui/FilterBar.jsx` through its text, operator and Apply controls. `mountFilterBar.jsx` commits both values to the web filter form. `expo/app/screens/LibraryScreen.jsx` commits both to native filter state. The shared library query uses Title and Channel for results and matching bulk IDs.
+- Videos selection exposes Assign game through `mountBulkToolbar.jsx` and `LibraryBulkActions.jsx`. Both mount the React-owned `BulkGameDialog` in `BulkActions.jsx`; the browser selection bridge and native query adapters retain their existing owners.
+- `src/api/fork_views_library.py` owns the shared search/write route at `/api/v1/library/bulk/video-game/`. The route validates the caller's video selection, upserts the per-user game links and invalidates the viewer's watch totals and channel breakdowns.
 
 - `frontend/ui/BulkActions.jsx`
 - `expo/app/surfaces/LibraryBulkActions.jsx`
@@ -517,6 +523,10 @@ iOS and Android use `DetailMediumExtras` with the same data via
 `expo/app/surfaces/DetailSlot.jsx` and `frontend/ui/detailSecondaryModel.js`.
 `frontend/ui/useDeferredYoutubeWatch.js` loads just the watch-time summary
 after either surface displays its detail, independently of the rest of the card.
+The loader retains the pending flag with any partial duration. `MediumExtras`
+passes it to the shared `CollectionExpandRow` to show activity beside the total
+while the channel disclosure remains usable.
+Each poll has its own timeout so an active backfill can keep updating the card.
 It checks for updated totals while `src/app/tasks_youtube_game.py` processes
 the opened game's eligible videos with user-facing priority on the default
 Celery worker.

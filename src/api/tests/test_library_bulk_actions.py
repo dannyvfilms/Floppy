@@ -1,7 +1,45 @@
-from app.models import CollectionEntry
+from django.urls import reverse
+
+from app.models import CollectionEntry, Item, Video, VideoGameLink
 from lists.models import CustomList, CustomListItem
 
 from .base import FloppyApiTestCase
+
+
+class LibraryBulkVideoGameTests(FloppyApiTestCase):
+    def test_search_and_assign_only_the_callers_selected_videos(self):
+        url = reverse("api_library_bulk_video_game")
+        game = Item.objects.create(media_id="known-game", source="igdb", media_type="game", title="Test Game: Deluxe")
+        manual = Item.objects.create(media_id="hidden", source="manual", media_type="game", title="Test Game: Private")
+        first = Item.objects.create(media_id="videobulk01", source="youtube", media_type="video", title="First video")
+        second = Item.objects.create(media_id="videobulk02", source="youtube", media_type="video", title="Second video")
+        own = Video.objects.create(item=first, user=self.user1)
+        other = Video.objects.create(item=first, user=self.user2)
+        Video.objects.create(item=second, user=self.user2)
+        VideoGameLink.objects.create(video=own)
+        VideoGameLink.objects.create(video=other)
+
+        options = self.client.get(url, {"q": "Test Game"}, **self.auth_headers)
+        self.assertEqual(options.status_code, 200)
+        self.assertEqual([option["id"] for option in options.data], [game.pk])
+
+        rejected = self.client.post(url, {"item_ids": [first.pk, second.pk], "game_id": game.pk},
+                                    format="json", **self.auth_headers)
+        self.assertEqual(rejected.status_code, 400)
+        self.assertIsNone(own.game_link.game_item_id)
+
+        forbidden = self.client.post(url, {"item_ids": [first.pk], "game_id": manual.pk},
+                                     format="json", **self.auth_headers)
+        self.assertEqual(forbidden.status_code, 404)
+
+        with self.captureOnCommitCallbacks(execute=True) as effects:
+            assigned = self.client.post(url, {"item_ids": [first.pk, first.pk], "game_id": game.pk},
+                                         format="json", **self.auth_headers)
+        self.assertEqual(assigned.status_code, 200, assigned.data)
+        self.assertEqual(assigned.data["updated"], 1)
+        self.assertEqual(len(effects), 1)
+        self.assertEqual(VideoGameLink.objects.get(video=own).game_item_id, game.pk)
+        self.assertIsNone(VideoGameLink.objects.get(video=other).game_item_id)
 
 
 class LibraryBulkAddTests(FloppyApiTestCase):
