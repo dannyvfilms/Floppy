@@ -1822,3 +1822,16 @@ class NetflixRetryTests(TestCase):
             any("auto-matching" in m.lower() for m in messages),
             messages,
         )
+
+    @patch("integrations.tasks.retry_netflix_pending.delay")
+    def test_retry_view_queues_task_with_user_id_keyword(self, mock_delay):
+        """The retry must be queued with ``user_id`` as a keyword argument.
+
+        A positional id lands in Celery's ``task_args`` and the activity
+        feed only reads ``task_kwargs`` for ownership, so the retry run
+        would never appear there (issue #1148).
+        """
+        response = self.client.post(reverse("netflix_pending_retry"))
+
+        self.assertRedirects(response, reverse("netflix_pending"))
+        mock_delay.assert_called_with(user_id=self.user.id)

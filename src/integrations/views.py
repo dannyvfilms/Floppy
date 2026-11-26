@@ -2020,7 +2020,7 @@ def netflix_pending_retry(request):
     Follow-up batch work on the default queue: the page redirects back
     straight away and the pending list shrinks as the task resolves rows.
     """
-    tasks.retry_netflix_pending.delay(request.user.id)
+    tasks.retry_netflix_pending.delay(user_id=request.user.id)
     messages.info(
         request,
         gettext(
