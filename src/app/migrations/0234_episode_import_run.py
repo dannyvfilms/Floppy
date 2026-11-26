@@ -9,7 +9,7 @@ from app.migration_operations import AddFieldIfNotExists
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0232_merge_20261119_2119"),
+        ("app", "0233_video_game_tag_runtime"),
         ("integrations", "0021_importrun"),
     ]
 
