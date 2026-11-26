@@ -180,7 +180,7 @@ function ProviderPageBody({ model, draft, slots, colors }) {
       <Text style={[styles.description, { color: colors.textMuted }]}>{provider.description}</Text>
     </View>
 
-    <View accessibilityRole="navigation" accessibilityLabel={t('Provider sections')}>
+    <View role="navigation" accessibilityLabel={t('Provider sections')}>
       <Tabs items={tabs} selected={model.tab} label={t('Provider sections')}
         palette={{ ...colors, accent: colors.link || colors.accent }}
         onSelect={onNavigate ? selectTab : undefined} />

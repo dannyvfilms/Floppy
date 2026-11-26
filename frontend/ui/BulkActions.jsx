@@ -296,7 +296,7 @@ export function BulkJobCard({
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  return <View accessibilityRole="group" accessibilityLabel={title}
+  return <View role="group" accessibilityLabel={title}
     style={[styles.jobCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <View style={styles.jobHead}>
       <Text role="heading" style={[styles.jobTitle, { color: colors.text }]}>{title}</Text>

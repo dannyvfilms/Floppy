@@ -28,7 +28,7 @@ const PRIMARY_BACKGROUND = '#4f39f6';
 const PRIMARY_HOVER = '#432dd7';
 
 export function ErrorStatusSelector({ options, selected, onSelect, palette, accessibilityLabel }) {
-  return <View accessibilityRole="group" accessibilityLabel={accessibilityLabel} style={styles.statusRow}>
+  return <View role="group" accessibilityLabel={accessibilityLabel} style={styles.statusRow}>
     {options.map(option => {
       const active = option.value === selected;
       return <Chip key={option.value} label={option.label} pill

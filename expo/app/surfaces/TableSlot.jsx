@@ -346,7 +346,7 @@ export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrac
         defaultHidden={COLUMNS.filter(column => column.visible === false).map(column => column.key)}
         palette={TABLE_PALETTE}
         onSave={saveColumns} />
-      <Text accessibilityRole="status" accessibilityLiveRegion="polite" style={styles.caption}>
+      <Text role="status" accessibilityLiveRegion="polite" style={styles.caption}>
         {`Sorted by ${sortLabel}, ${direction === 'asc' ? 'ascending' : 'descending'} · ${tableColumns.length} of ${COLUMNS.length + 1} columns · swipe the table sideways`}
       </Text>
     </View>

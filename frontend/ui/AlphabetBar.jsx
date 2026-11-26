@@ -4,7 +4,7 @@ import { Chip } from '../settings/Chip';
 
 /** Shared presentation; the surface adapter owns URLs, forms and navigation. */
 export function AlphabetBar({ options, label, palette, onNavigate }) {
-  return <View accessibilityRole="navigation" accessibilityLabel={label} style={{ height: '100%', minHeight: 0 }}>
+  return <View role="navigation" accessibilityLabel={label} style={{ height: '100%', minHeight: 0 }}>
     {options.map(option => <Pressable key={option.value} role="link"
       aria-current={option.selected ? 'true' : undefined} accessibilityLabel={option.accessibilityLabel}
       onPress={event => onNavigate(event, option)}

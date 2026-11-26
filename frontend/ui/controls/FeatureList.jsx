@@ -158,7 +158,7 @@ export function FeatureList({
       </>;
 
       if (!interactive) {
-        return <View key={item.key ?? index} accessibilityRole="listitem" testID="feature-row" style={styles.row}>
+        return <View key={item.key ?? index} role="listitem" testID="feature-row" style={styles.row}>
           {body}
         </View>;
       }

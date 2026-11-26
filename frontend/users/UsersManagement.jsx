@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
   passwordField: { marginTop: 16 },
   createAction: { alignSelf: 'flex-start', marginTop: 16 },
   overlay: { flex: 1, justifyContent: 'center', padding: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   dialog: { gap: 12, borderWidth: 1, borderRadius: 12, padding: 16 },
   dialogTitle: { fontSize: 16, fontWeight: '600' },
   dialogCopy: { fontSize: 13, lineHeight: 19 },

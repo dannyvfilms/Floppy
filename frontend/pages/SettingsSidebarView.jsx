@@ -66,7 +66,7 @@ export function SettingsSidebarView({
         upDisabled={index === 0} downDisabled={index === types.length - 1} palette={palette} arrows={arrows} />)}
     </View>
     {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: palette.danger }]}>{error}</Text> : null}
-    {success ? <Text accessibilityRole="status" style={[styles.copy, { color: palette.success }]}>{success}</Text> : null}
+    {success ? <Text role="status" style={[styles.copy, { color: palette.success }]}>{success}</Text> : null}
     <View style={styles.save}>
       <Button label={saving ? 'Saving…' : copy.save} busy={saving} onPress={onSave} palette={buttonPalette} />
     </View>

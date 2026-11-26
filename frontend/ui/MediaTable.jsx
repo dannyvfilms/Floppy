@@ -280,13 +280,13 @@ export function MediaTable({
     </View>;
   }
 
-  const table = <View accessibilityRole="table" accessibilityLabel={caption || copy.columns}
+  const table = <View role="table" accessibilityLabel={caption || copy.columns}
     style={[styles.table, fit && styles.tableFit, { backgroundColor: colors.surface }]}>
-    <View accessibilityRole="row" style={[styles.row, styles.headerRow]}>
+    <View role="row" style={[styles.row, styles.headerRow]}>
       {selectMode ? <View style={[styles.checkColumn, checkSize]} /> : null}
       {columns.map(column => {
         const label = column.label || '';
-        return <View key={column.key} accessibilityRole="columnheader"
+        return <View key={column.key} role="columnheader"
           accessibilityLabel={label}
           style={[styles.cell, styles.headerCell, sizing(column), {
             alignItems: column.align === 'center' ? 'center' : 'flex-start',
@@ -324,7 +324,7 @@ export function MediaTable({
         </View>)}
       </>;
       if (!onOpen) {
-        return <View key={rowKey} accessibilityRole="row"
+        return <View key={rowKey} role="row"
           style={styles.row}>{rowContent}</View>;
       }
       return <Pressable key={rowKey} accessibilityRole="button"

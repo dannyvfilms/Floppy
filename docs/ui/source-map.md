@@ -605,6 +605,8 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
 - `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
+- 2026-11-23 `absoluteFillObject` removal for React Native 0.88: `frontend/ui/SelectField.jsx`, `frontend/ui/BulkActionBar.native.jsx`, `frontend/ui/People.jsx`, `frontend/ui/PeopleToolbar.jsx`, `frontend/ui/PreferencesForm.jsx`, `frontend/ui/DetailPage.jsx`, `frontend/settings/AppearanceEditor.jsx`, `frontend/users/UsersManagement.jsx`, `expo/app/components/BarcodeScannerModal.jsx`; guard `expo/app/styleSheetCompat.test.mjs`.
+- 2026-11-23 Android accessibility roles: `role` instead of `accessibilityRole` for web-only ARIA roles in `frontend/ui/MediaTable.jsx`, `frontend/ui/SetupGuide.jsx`, `frontend/ui/controls/FeatureList.jsx`, `frontend/ui/AlphabetBar.jsx`, `frontend/ui/BulkActions.jsx`, `frontend/providers/ProviderPageView.jsx`, `frontend/pages/SettingsSidebarView.jsx`, `frontend/errors/ErrorRecovery.jsx`, `expo/app/surfaces/TableSlot.jsx`, `expo/app/surfaces/MediaCardSlot.jsx`; guard in `expo/app/styleSheetCompat.test.mjs`.
 
 ## CHILDREN
 

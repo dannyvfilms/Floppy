@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   deselect: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 6, borderRadius: 6 },
   deselectText: { fontSize: 13, fontWeight: '600' },
   overlay: { flex: 1, justifyContent: 'center', padding: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: FALLBACK_PALETTE.overlay },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: FALLBACK_PALETTE.overlay },
   sheet: { maxHeight: '80%', borderWidth: 1, borderRadius: 12, paddingVertical: 10 },
   sheetTitle: { fontSize: 16, fontWeight: '600', paddingHorizontal: 16, paddingBottom: 8 },
   sheetList: { maxHeight: 420 },

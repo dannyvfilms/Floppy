@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 14 },
   error: { fontSize: 12, lineHeight: 17 },
   overlay: { flex: 1, justifyContent: 'center', padding: 16 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   dialog: { width: '100%', maxWidth: 300, alignSelf: 'center', maxHeight: '80%',
     borderWidth: 1, borderRadius: 12, paddingVertical: 8 },
   dialogHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingBottom: 8 },
