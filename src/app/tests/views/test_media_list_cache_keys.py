@@ -26,7 +26,7 @@ from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 MAIN = f"{cache_utils.MEDIA_LIST_CACHE_PREFIX}_"
 FILTERS = f"{cache_utils.MEDIA_LIST_FILTER_CACHE_PREFIX}_"
 TIME_LEFT = f"{cache_utils.TIME_LEFT_CACHE_PREFIX}_"
-DEFAULT_TOKEN = "f0c7e6f70e1ee6d6c1770a92"
+DEFAULT_TOKEN = "ff518712f1f753b2069bbf42"
 
 
 class _RecordingCache:
