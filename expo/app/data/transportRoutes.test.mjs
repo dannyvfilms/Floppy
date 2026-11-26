@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeTrackForm, initialTrackValues } from '../../../frontend/ui/mediaCardForms.js';
+import { normalizeTrackForm, initialTrackValues, scoreInputToStored, validateTrackValues } from '../../../frontend/ui/mediaCardForms.js';
 import { createCalendarTransport } from './calendarTransport.js';
 import {
   createStatisticsTransport,
@@ -933,4 +933,14 @@ test('a missing explicit tracking instance never falls back to editing the lates
     await assert.rejects(loadTrack({ mediaType: 'tv', source: 'tmdb', mediaId: '873', instanceId: 404 }), /not found/);
     assert.ok(calls.every(call => !call.options.method || call.options.method === 'GET'));
   } finally { resetMediaCardTransport(); }
+});
+
+test('a score can be typed in tenths with a decimal comma or point', () => {
+  assert.equal(scoreInputToStored('7,5', 10), '7.5');
+  assert.equal(scoreInputToStored('7.5', 10), '7.5');
+  assert.equal(scoreInputToStored('3,5', 5), '7');
+  assert.equal(scoreInputToStored('', 10), '');
+  const fields = { fields: [{ name: 'score', type: 'number', min: 0, max: 10 }] };
+  assert.deepEqual(validateTrackValues(fields, { score: scoreInputToStored('7,5', 10) }), {});
+  assert.ok(validateTrackValues(fields, { score: scoreInputToStored('11', 10) }).score);
 });

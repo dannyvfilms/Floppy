@@ -17,7 +17,7 @@ import { RatingStars } from './RatingStars';
 import { SelectField } from './SelectField';
 import { TrackTabs, trackTabItems } from './TrackFormTabs';
 import { CollectionGroup, CollectionRow, CollectionSelectRow, CollectionTextRow } from './CollectionCopies';
-import { validateTrackValues } from './mediaCardForms';
+import { scoreInputToStored, validateTrackValues } from './mediaCardForms';
 import { actionIcons } from './actionIcons';
 import { TrackDateRow } from './TrackDateRow';
 import { formatTrackDuration, parseTrackDurationMinutes } from './trackDuration';
@@ -139,13 +139,21 @@ function HeaderBar({ title, subtitle, closeLabel, onClose, closeRef, palette }) 
   </View>;
 }
 
-// Stored 0-10 score <-> the number a viewer picks on a 5 or 10 scale.
+// Stored 0-10 score -> the number a viewer sees on a 5 or 10 scale.
 function scoreToScale(stored, scaleMax) {
   if (stored === '' || stored == null || !Number.isFinite(Number(stored))) return '';
   return String(Number((Number(stored) * scaleMax / 10).toFixed(1)));
 }
-function scoreFromScale(picked, scaleMax) {
-  return picked === '' ? '' : String(Number((Number(picked) * 10 / scaleMax).toFixed(1)));
+
+// Score typed on the viewer's scale (5 or 10) in tenths, as the desktop web form allows (step 0.1).
+// The text is kept while typing ("7," is not a number yet); the form value stays on the stored 0-10 scale.
+function ScoreRow({ field, value, icon, error, placeholder, palette, onChange }) {
+  const scaleMax = field.scaleMax || 10;
+  const [draft, setDraft] = useState(null);
+  const shown = draft ?? scoreToScale(value, scaleMax);
+  return <CollectionTextRow icon={icon} label={field.label} value={shown} error={error}
+    placeholder={placeholder} palette={palette} keyboardType="decimal-pad"
+    onChangeText={next => { setDraft(next); onChange(scoreInputToStored(next, scaleMax)); }} />;
 }
 
 // Progress typed as a duration reads as hrs and min ("2h 15min") until it is being edited.
@@ -397,22 +405,12 @@ export function TrackForm({
       return <DurationRow key={field.name} field={field} value={value} icon={icon} error={error}
         minuteCount={minuteCount} palette={palette} onChange={next => change(field.name, next)} />;
     }
-    // Score: a picker of 1 to the viewer's scale (5 or 10); the value stays on the stored 0-10 scale.
-    if (field.name === 'score' && type === 'number' && field.scaleMax) {
-      const picked = scoreToScale(value, field.scaleMax);
-      const options = [{ value: '', label: 'No Rating', displayLabel: labels.addRating || 'Add Rating' },
-        ...Array.from({ length: field.scaleMax }, (_, index) => ({ value: String(index + 1), label: String(index + 1) }))];
-      // A stored decimal (7.5 on the 10 scale) is not a whole step; keep it selectable until it changes.
-      if (picked && !options.some(option => option.value === picked)) options.push({ value: picked, label: picked });
-      return <CollectionSelectRow key={field.name} icon={icon} label={field.label} error={error} palette={palette}
-        filter popover renderPicker={renderSelectPicker} value={picked} options={options}
-        onChange={event => change(field.name, scoreFromScale(event.target.value, field.scaleMax))} />;
-    }
-    // Without a known scale the score is a numeric input whose placeholder invites a rating.
+    // Score: typed on the viewer's scale (5 or 10, else 10) in tenths, like the desktop web form;
+    // a decimal comma reads as a point. A whole-number picker could not hold 7.5.
     if (field.name === 'score' && type === 'number') {
-      return <CollectionTextRow key={field.name} icon={icon} label={field.label} value={value}
-        error={error} placeholder={labels.addRating || 'Add Rating'} palette={palette}
-        keyboardType="decimal-pad" onChangeText={next => change(field.name, next)} />;
+      return <ScoreRow key={field.name} field={field} value={value} icon={icon} error={error}
+        placeholder={labels.addRating || 'Add Rating'} palette={palette}
+        onChange={next => change(field.name, next)} />;
     }
     // Number and text fields are one inline input; the stepper buttons are a web control.
     return <CollectionTextRow key={field.name} icon={icon} label={field.label} value={value}

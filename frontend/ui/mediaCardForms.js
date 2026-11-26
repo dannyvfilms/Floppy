@@ -181,3 +181,13 @@ export function normalizeBulkEpisodeForm(payload) {
     labels: source.labels || {},
   };
 }
+
+// Score typed on the viewer's scale (5 or 10) in tenths, as the web form allows (step 0.1);
+// a decimal comma ("7,5") reads as a point. Text that is not a number yet ("7,") stays as
+// typed, so the form's number check can name it, until it parses.
+export function scoreInputToStored(text, scaleMax) {
+  const typed = String(text ?? '').trim().replace(',', '.');
+  if (typed === '') return '';
+  if (!/^\d*\.?\d+$/.test(typed)) return typed;
+  return String(Number((Number(typed) * 10 / scaleMax).toFixed(1)));
+}
