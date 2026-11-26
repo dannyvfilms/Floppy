@@ -1552,6 +1552,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/ViewToggle.jsx`
 - `frontend/ui/TrackDialog.jsx`
 - `frontend/ui/TrackForm.jsx`
+- 2026-11-26 Track form score in tenths: `frontend/ui/TrackForm.jsx` (`ScoreRow`), `frontend/ui/mediaCardForms.js` (`scoreInputToStored`).
 - `frontend/ui/TrackFormTabs.jsx`
 - `frontend/ui/TrackTabsGrouped.jsx`
 - `frontend/ui/TrackDateRow.jsx`
