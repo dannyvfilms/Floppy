@@ -15,6 +15,7 @@ from app.providers import credentials
 from integrations import import_progress, mal_sync
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
+from integrations.models import MALAccount
 from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,9 @@ logger = logging.getLogger(__name__)
 HELD_STATUSES = frozenset({Status.PAUSED.value, Status.DROPPED.value})
 
 
-def importer(username, user, mode):
+def importer(username, user, mode, private=False):
     """Import anime and manga from MyAnimeList."""
-    mal_importer = MyAnimeListImporter(username, user, mode)
+    mal_importer = MyAnimeListImporter(username, user, mode, private=private)
     return mal_importer.import_data()
 
 
@@ -86,7 +87,7 @@ def _forward_status(local, target, progress_raised, local_progress):
 class MyAnimeListImporter:
     """Class to handle importing user data from MyAnimeList."""
 
-    def __init__(self, username, user, mode):
+    def __init__(self, username, user, mode, private=False):
         """Initialize the importer with username, user, and mode.
 
         Args:
@@ -97,6 +98,19 @@ class MyAnimeListImporter:
         self.username = username
         self.user = user
         self.mode = mode
+        self.private = private
+        self.access_token = None
+        if private:
+            try:
+                mal_account = user.mal_account
+            except MALAccount.DoesNotExist as error:
+                msg = "Connect your MyAnimeList account before importing its private list."
+                raise MediaImportError(msg) from error
+            if not mal_account.is_connected:
+                msg = "Reconnect your MyAnimeList account before importing its private list."
+                raise MediaImportError(msg)
+            self.access_token = mal_sync.get_valid_access_token(mal_account)
+            self.username = "@me"
         self.warnings = []
         self.base_url = "https://api.myanimelist.net/v2/users"
 
@@ -170,7 +184,10 @@ class MyAnimeListImporter:
             if error.response.status_code == requests.codes.not_found:
                 msg = f"User {self.username} not found."
                 raise MediaImportError(msg) from error
-            if error.response.status_code == requests.codes.forbidden:
+            if (
+                error.response.status_code == requests.codes.forbidden
+                and not self.private
+            ):
                 logger.warning(
                     "MyAnimeList %s list is private for user %s, skipping.",
                     media_type,
@@ -194,7 +211,11 @@ class MyAnimeListImporter:
 
     def _get_whole_response(self, url, params):
         """Fetch whole data from user."""
-        headers = {"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")}
+        headers = (
+            {"Authorization": f"Bearer {self.access_token}"}
+            if self.private
+            else {"X-MAL-CLIENT-ID": credentials.get("mal", "client_id")}
+        )
 
         data = app.providers.services.api_request(
             "MAL",

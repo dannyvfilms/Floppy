@@ -159,7 +159,14 @@ export function importSettingsModel(imports, pageLabels = {}) {
     title: imports.title || translated(labels, 'Import options'),
     description: imports.description || translated(labels, 'Import anime and manga from your AniList profile.'),
     configured: Boolean(imports.configured),
+    privateImportAvailable: imports.privateImportAvailable === undefined
+      ? Boolean(imports.configured)
+      : Boolean(imports.privateImportAvailable),
     privateImport: Boolean(imports.privateImport),
+    compactUsernameImport: Boolean(imports.compactUsernameImport),
+    privateAccountCopy: imports.privateAccountCopy || '',
+    visibilityLabel: imports.visibilityLabel,
+    visibilityOptions: imports.visibilityOptions || undefined,
     username: imports.username,
     modeUnsupported: imports.modeUnsupported
       || translated(labels, 'This import mode is not supported by AniList.')

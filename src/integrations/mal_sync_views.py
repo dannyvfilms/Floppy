@@ -35,12 +35,12 @@ MAL_MAPPING_MIN_QUERY_LENGTH = 3
 
 @require_POST
 def mal_oauth(request):
-    """Initiate the MyAnimeList OAuth2 flow used for status syncing."""
+    """Initiate the MyAnimeList OAuth2 flow for private imports and sync."""
     if not mal_sync.is_sync_configured(request.user):
         messages.error(
             request,
-            "MyAnimeList sync isn't configured. Add your own MyAnimeList "
-            "Client ID and Client secret under Settings > Metadata first.",
+            "MyAnimeList account authorization isn't configured. Add a "
+            "MyAnimeList Client ID and Client secret under Providers first.",
         )
         return _integration_redirect(request)
 
@@ -90,7 +90,7 @@ def mal_callback(request):
         return _integration_redirect(request, next_url=return_to)
 
     try:
-        mal_sync.connect_account(
+        mal_account = mal_sync.connect_account(
             user=request.user,
             code=code,
             code_verifier=state_data["code_verifier"],
@@ -106,11 +106,16 @@ def mal_callback(request):
         )
         return _integration_redirect(request, next_url=return_to)
 
-    messages.success(
-        request,
-        "Connected to MyAnimeList. Status, progress and score changes on "
-        "MAL-tracked anime and manga will now sync automatically.",
-    )
+    if mal_account.sync_enabled:
+        success_message = (
+            "Connected to MyAnimeList. Your existing outgoing sync remains enabled."
+        )
+    else:
+        success_message = (
+            "Connected to MyAnimeList. Private list imports are available; "
+            "outgoing sync remains off until you enable it on the Sync tab."
+        )
+    messages.success(request, success_message)
     return _integration_redirect(request, connected_slug="mal", next_url=return_to)
 
 

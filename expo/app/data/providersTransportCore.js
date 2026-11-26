@@ -62,8 +62,8 @@ export function detailFromPayload(payload, serverUrl = '') {
   };
 }
 
-export function importBody({ username, mode, frequency, time }) {
-  const body = { user: String(username || '').trim() };
+export function importBody({ username, mode, frequency, time, private: isPrivate }) {
+  const body = isPrivate ? { private: true } : { user: String(username || '').trim() };
   if (mode) body.mode = mode;
   body.frequency = frequency || 'once';
   if (time) body.time = time;

@@ -211,6 +211,11 @@ def _connection_block(slug, context, item, request):
         "mode": mode,
         "browserUrl": web_url,
         "account": _clean(connection) if connection else None,
+        "privateImportAvailable": bool(
+            slug == "mal"
+            and context.get("mal_account")
+            and context["mal_account"].is_connected
+        ),
         "canLink": slug in BROWSER_HANDOFF,
         "canTest": slug in TESTABLE,
         "canSync": slug in SYNC_NOW,
@@ -711,9 +716,18 @@ class ProviderSyncView(drf_views.APIView):
 class ProviderImportView(drf_views.APIView):
     """Run a username import once, or create/replace its recurring schedule."""
 
-    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={200: OpenApiTypes.OBJECT},
+        description=(
+            "For MyAnimeList, omit `user` and set `private` to true to import the "
+            "authenticated user's lists via @me. Otherwise provide a public `user` "
+            "or `username`. Private imports require a connected MAL account; the "
+            "server stores no OAuth token in the import schedule."
+        ),
+    )
     def post(self, request, slug):
-        """Body: {"user", "mode", "frequency": once|daily|2days, "time": "HH:MM"}."""
+        """Run a public username import or a connected-account private import."""
         route = IMPORT_ROUTES.get(slug)
         view = _view_for(route) if route else None
         if view is None:
@@ -725,6 +739,13 @@ class ProviderImportView(drf_views.APIView):
             "frequency": body.get("frequency") or "once",
             "time": body.get("time") or str(request.user.import_time)[:5],
         }
+        private = body.get("private") is True or str(body.get("private") or "").lower() in {
+            "true",
+            "on",
+            "1",
+        }
+        if slug == "mal" and private:
+            post["private"] = "on"
         return _call(request, view, post=post)
 
 

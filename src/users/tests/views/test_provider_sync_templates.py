@@ -1,12 +1,16 @@
 """Provider tabs keep account setup, outgoing writes and results separate."""
 
+from datetime import timedelta
 from html.parser import HTMLParser
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
+
+from integrations.models import MALAccount
 
 
 class FormParser(HTMLParser):
@@ -91,17 +95,6 @@ class ProviderSyncTemplateTests(SimpleTestCase):
                 )
                 self.assertNotIn(reverse("mal_disconnect"), parser.actions)
 
-    def test_mal_authorization_explicitly_opts_into_outbound_sync(self):
-        html = render_to_string(
-            "users/providers/mal_connection.html",
-            {"mal_sync_configured": True},
-            request=self.request,
-        )
-
-        self.assertIn("Authorize and enable MyAnimeList sync", html)
-        self.assertIn("Adding API credentials alone does not enable sync", html)
-        self.assertIn(reverse("mal_oauth"), FormParser(html).actions)
-
     def test_tmdb_tabs_separate_authorization_from_rating_writes(self):
         account = SimpleNamespace(username="member")
         context = {"tmdb_rating_sync": {"account": account, "enabled": True}}
@@ -142,3 +135,36 @@ class ProviderSyncTemplateTests(SimpleTestCase):
                 self.assertNotIn(reverse("wetrakr_disconnect"), actions)
                 self.assertNotIn(reverse("wetrakr_connect"), actions)
                 self.assertEqual(reverse("wetrakr_settings") in actions, tab == "sync")
+
+
+@override_settings(MAL_API="instance-id", MAL_API_SECRET="instance-secret")
+class MALAccountConnectionViewTests(TestCase):
+    """The provider page separates private-read access from outgoing sync."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="mal-connection")
+        self.client.force_login(self.user)
+        self.url = reverse("provider_detail", args=["mal"])
+
+    def test_new_account_authorization_is_described_as_private_import_access(self):
+        response = self.client.get(self.url, {"tab": "connection"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "to import private lists.")
+        self.assertContains(response, "Outgoing sync stays off until you enable it")
+        self.assertContains(response, "Connect MyAnimeList account")
+
+    def test_connected_read_only_account_is_shown_with_sync_off(self):
+        MALAccount.objects.create(
+            user=self.user,
+            access_token="access-token",
+            refresh_token="refresh-token",
+            token_expires_at=timezone.now() + timedelta(hours=1),
+            sync_enabled=False,
+        )
+
+        response = self.client.get(self.url, {"tab": "connection"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Private list imports are available.")
+        self.assertContains(response, "Outgoing sync is off.")

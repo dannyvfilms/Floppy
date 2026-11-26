@@ -131,7 +131,10 @@ export function mountProvider(host, model) {
       action: isPrivate ? imports?.privateUrl : imports?.publicUrl,
       csrf,
       returnTo,
-      values: { ...importValues(preferences), ...(isPrivate ? {} : { user: username }) },
+      values: {
+        ...importValues(preferences),
+        ...(isPrivate ? { private: true } : { user: username }),
+      },
     });
   }
 

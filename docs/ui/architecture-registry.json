@@ -854,7 +854,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy providers/Import.jsx and ImportPreferences.jsx browser forms remain the active implementations."
+          "evidence": "Mounted by the web provider adapter for MyAnimeList Connection and Import tabs through ProviderSettingsView; visual after-state and interaction evidence pending. Other provider tabs retain their existing owners."
         },
         "ios": {
           "status": "unverified",

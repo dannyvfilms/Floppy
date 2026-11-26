@@ -1293,8 +1293,18 @@ def import_simkl_private(request):
 @require_POST
 def import_mal(request):
     """View for importing anime and manga data from MyAnimeList."""
-    username = request.POST.get("user")
-    if not username:
+    private = request.POST.get("private") in {"true", "on", "1"}
+    username = (request.POST.get("user") or "").strip()
+    if private:
+        mal_account = getattr(request.user, "mal_account", None)
+        if not mal_account or not mal_account.is_connected:
+            messages.error(
+                request,
+                "Connect your MyAnimeList account before importing a private list.",
+            )
+            return _integration_redirect(request, connected_slug="mal")
+        username = "@me"
+    elif not username:
         messages.error(request, "MyAnimeList username is required.")
         return _integration_redirect(request)
 
@@ -1303,7 +1313,11 @@ def import_mal(request):
 
     if frequency == "once":
         if _queue_task_or_message(request,
-            tasks.import_mal, username=username, user_id=request.user.id, mode=mode
+            tasks.import_mal,
+            username=username,
+            user_id=request.user.id,
+            mode=mode,
+            private=private,
         ) is False:
             return _integration_redirect(request, connected_slug="myanimelist")
         messages.info(
@@ -1319,6 +1333,7 @@ def import_mal(request):
             frequency,
             import_time,
             "MyAnimeList",
+            extra_kwargs={"private": True} if private else None,
         )
     return _integration_redirect(request, connected_slug="myanimelist")
 

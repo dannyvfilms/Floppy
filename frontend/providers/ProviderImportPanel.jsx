@@ -41,6 +41,12 @@ const DEFAULT_LABELS = {
   activityTitle: 'Recent activity',
   noActivity: 'No import activity in the last seven days.',
   queued: 'Request sent.',
+  importDescription: '',
+  usernameLabel: 'MyAnimeList Username',
+  importSource: 'List visibility',
+  publicList: 'Public list',
+  privateList: 'Private list',
+  privateAccountCopy: 'Import from your connected MyAnimeList account; no username is needed.',
 };
 
 function formatWhen(value) {
@@ -70,6 +76,7 @@ export function ProviderImportPanel({
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
   const [form, setForm] = useState({
     username: '',
+    privateImport: false,
     mode: defaults.mode || 'new',
     frequency: 'once',
     time: defaults.time || '03:00',
@@ -108,8 +115,15 @@ export function ProviderImportPanel({
   if (connection.canSchedule) {
     const recurring = form.frequency !== 'once';
     sections.push(<SettingsCard key="import" title={copy.importTitle} palette={card}>
-      <TextField id="import-username" name="user" label={USERNAME_LABELS[slug] || 'Username'}
-        value={form.username} onChangeText={username => setForm(current => ({ ...current, username }))} palette={palette} />
+      {copy.importDescription ? <Text style={[styles.copy, { color: palette.textMuted }]}>{copy.importDescription}</Text> : null}
+      {slug === 'mal' && connection.privateImportAvailable ? <SelectField id="import-source" name="import-source"
+        label={copy.importSource} value={form.privateImport ? 'private' : 'public'} palette={palette}
+        options={[{ value: 'public', label: copy.publicList }, { value: 'private', label: copy.privateList }]}
+        onChange={event => setForm(current => ({ ...current, privateImport: event.target.value === 'private' }))} /> : null}
+      {form.privateImport
+        ? <Text style={[styles.copy, { color: palette.textMuted }]}>{copy.privateAccountCopy}</Text>
+        : <TextField id="import-username" name="user" label={copy.usernameLabel || USERNAME_LABELS[slug] || 'Username'}
+          value={form.username} onChangeText={username => setForm(current => ({ ...current, username }))} palette={palette} />}
       <SelectField id="import-mode" name="mode" label={copy.mode} value={form.mode} palette={palette}
         options={[{ value: 'new', label: copy.modeNew }, { value: 'overwrite', label: copy.modeOverwrite }]}
         onChange={event => setForm(current => ({ ...current, mode: event.target.value }))} />
@@ -120,7 +134,10 @@ export function ProviderImportPanel({
         onChangeText={time => setForm(current => ({ ...current, time }))} palette={palette} /> : null}
       <View style={styles.row}>
         <Button label={pending === 'import' ? copy.starting : copy.start} busy={pending === 'import'}
-          disabled={!!pending || !form.username.trim()} onPress={() => run('import', () => onImport?.(form))}
+          disabled={!!pending || (!form.privateImport && !form.username.trim())}
+          onPress={() => run('import', () => onImport?.(slug === 'mal'
+            ? { ...form, private: form.privateImport }
+            : form))}
           palette={buttonPalette} />
       </View>
     </SettingsCard>);
