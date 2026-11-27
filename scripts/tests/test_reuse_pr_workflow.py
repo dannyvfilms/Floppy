@@ -22,6 +22,7 @@ Run: .venv/bin/python -m unittest scripts/tests/test_reuse_pr_workflow.py
 
 import ast
 import itertools
+import os
 import re
 import shutil
 import subprocess
@@ -375,6 +376,59 @@ class SkippingIsReachableOnlyThroughTheDecisionTests(unittest.TestCase):
         quality = load(DOCKER_IMAGE)["jobs"]["quality"]
         self.assertEqual(quality["uses"], "./.github/workflows/app-tests.yml")
         self.assertIs(quality["with"]["release_quality_gates"], True)
+
+
+class DockerPublishingTests(unittest.TestCase):
+    def test_metadata_rules_and_post_publish_verification(self):
+        jobs = load(DOCKER_IMAGE)["jobs"]
+        standard = next(s for s in jobs["build"]["steps"] if s.get("id") == "meta")
+        bundled = next(s for s in jobs["bundled"]["steps"] if s.get("id") == "meta")
+        self.assertEqual(bundled["with"]["flavor"], "latest=false")
+        self.assertIn("type=semver,pattern={{version}}", standard["with"]["tags"])
+        self.assertIn("type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}", standard["with"]["tags"])
+        self.assertEqual(bundled["with"]["tags"].count("-bundled"), 4)
+        self.assertEqual(set(jobs["verify-image"]["needs"]), {"build", "bundled"})
+        verify = next(s for s in jobs["verify-image"]["steps"] if s.get("name") == "Verify published tag references")
+        self.assertIn('check_tags "$STANDARD_TAGS" "$DIGEST"', verify["run"])
+        self.assertIn('check_tags "$BUNDLED_TAGS" "$BUNDLED_DIGEST"', verify["run"])
+
+    def test_tag_guard_rejects_overlap_and_unsuffixed_tags(self):
+        jobs = load(DOCKER_IMAGE)["jobs"]
+        guard = next(s for s in jobs["bundled"]["steps"] if s.get("name") == "Check publication tag separation")
+        cases = [
+            ("ghcr.io/a:latest", "ghcr.io/a:latest-bundled", True),
+            ("ghcr.io/a:latest", "ghcr.io/a:latest", False),
+            ("ghcr.io/a:release", "ghcr.io/a:latest", False),
+            ("ghcr.io/a:release", "", False),
+        ]
+        for standard, bundled, valid in cases:
+            with self.subTest(standard=standard, bundled=bundled):
+                result = subprocess.run(  # noqa: S603 - executes the checked-in workflow step
+                    ["/bin/bash", "-c", guard["run"]],
+                    env={**os.environ, "STANDARD_TAGS": standard, "BUNDLED_TAGS": bundled},
+                    capture_output=True, check=False,
+                )
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+
+    def test_manual_publish_ref_guard(self):
+        jobs = load(DOCKER_IMAGE)["jobs"]
+        guard = next(s for s in jobs["build"]["steps"] if s.get("name") == "Validate publication ref")
+        for ref, valid in [("refs/heads/latest", True), ("refs/heads/release", True),
+                           ("refs/tags/v26.11.26", True), ("refs/heads/feature", False)]:
+            with self.subTest(ref=ref):
+                result = subprocess.run(  # noqa: S603 - executes the checked-in workflow step
+                    ["/bin/bash", "-c", guard["run"]],
+                    env={**os.environ, "PUBLISH_REF": ref, "PUBLISH_TAGS": "ghcr.io/a:tag"},
+                    capture_output=True, check=False,
+                )
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+
+        result = subprocess.run(  # noqa: S603 - executes the checked-in workflow step
+            ["/bin/bash", "-c", guard["run"]],
+            env={**os.environ, "PUBLISH_REF": "refs/tags/v1.2.3-bundled", "PUBLISH_TAGS": "ghcr.io/a:1.2.3-bundled"},
+            capture_output=True, check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

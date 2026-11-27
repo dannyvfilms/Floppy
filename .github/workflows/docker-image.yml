@@ -327,6 +327,23 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}
             type=raw,value=release,enable=${{ github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v') }}
 
+      - name: Validate publication ref
+        if: github.event_name != 'pull_request'
+        env:
+          PUBLISH_REF: ${{ github.ref }}
+          PUBLISH_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          case "$PUBLISH_REF" in
+            refs/heads/latest|refs/heads/release|refs/tags/v*) ;;
+            *) echo "Dispatch requires latest, release, or a v-prefixed tag"; exit 1 ;;
+          esac
+          test -n "$PUBLISH_TAGS"
+          while IFS= read -r tag; do
+            case "$tag" in
+              *-bundled) echo "Standard image cannot publish bundled tag: $tag"; exit 1 ;;
+            esac
+          done <<< "$PUBLISH_TAGS"
+
       # Pull requests build both architectures to prove the image still
       # cross-compiles, but they must never write to the registry. A pr-N tag
       # has no consumer and lands in the same public package users pull from,
@@ -414,16 +431,34 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}-bundled
             type=semver,pattern={{major}}.{{minor}}-bundled
             type=raw,value=latest-bundled,enable=${{ github.ref == 'refs/heads/latest' }}
             type=raw,value=release-bundled,enable=${{ github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v') }}
 
+      - name: Check publication tag separation
+        if: github.event_name != 'pull_request'
+        env:
+          STANDARD_TAGS: ${{ needs.build.outputs.tags }}
+          BUNDLED_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          python3 - <<'PY'
+          import os
+          standard = set(os.environ['STANDARD_TAGS'].splitlines())
+          bundled = set(os.environ['BUNDLED_TAGS'].splitlines())
+          if not standard or not bundled:
+              raise SystemExit('Publishing requires standard and bundled tags; dispatch on latest, release, or a version tag')
+          if standard & bundled or any(not tag.endswith('-bundled') for tag in bundled):
+              raise SystemExit(f'Unsafe publication tags: overlap={standard & bundled}, bundled={bundled}')
+          PY
+
       # The arm64 layer is built on every run (cross-build proves the pinned
       # packages exist for it); only the registry push is conditional. The
       # smoke test above runs amd64 only.
       - name: Build (and push on publish) bundled multi-arch image
+        id: build-and-push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -437,13 +472,17 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ github.event_name != 'pull_request' && format('{0}/{1}@{2}', env.REGISTRY, env.IMAGE_NAME, needs.build.outputs.digest) || 'ghcr.io/dannyvfilms/floppy:latest' }}
 
+    outputs:
+      digest: ${{ steps.build-and-push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+
   # Verifies what was actually distributed, by immutable digest, in both package
   # namespaces. Read-only registry access; any scanner, registry or attestation
   # failure fails the job, so an outage can never look like a clean scan.
   verify-image:
     name: Verify distributed image
-    needs: [build]
-    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    needs: [build, bundled]
+    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' && needs.bundled.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -468,6 +507,60 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published tag references
+        env:
+          STANDARD_TAGS: ${{ needs.build.outputs.tags }}
+          BUNDLED_TAGS: ${{ needs.bundled.outputs.tags }}
+          BUNDLED_DIGEST: ${{ needs.bundled.outputs.digest }}
+        run: |
+          set -euo pipefail
+          check_tags() {
+            local tags="$1" expected="$2" tag actual
+            test -n "$tags" && test -n "$expected"
+            while IFS= read -r tag; do
+              test -n "$tag" || continue
+              actual=$(docker buildx imagetools inspect "$tag" | awk '$1 == "Digest:" {print $2; exit}')
+              test "$actual" = "$expected" || { echo "Unexpected digest for $tag: $actual (expected $expected)"; return 1; }
+            done <<< "$tags"
+          }
+          check_tags "$STANDARD_TAGS" "$DIGEST"
+          check_tags "$BUNDLED_TAGS" "$BUNDLED_DIGEST"
+
+      - name: Smoke test distributed standard image with SQLite and external Redis
+        run: |
+          set -euo pipefail
+          network="distributed-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          app="$network-app"
+          redis="$network-redis"
+          cleanup() {
+            docker logs "$app" 2>&1 || true
+            docker rm -fv "$app" "$redis" >/dev/null 2>&1 || true
+            docker network rm "$network" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker network create "$network"
+          docker run -d --name "$redis" --network "$network" redis:8-alpine
+          for attempt in {1..30}; do
+            if docker exec "$redis" redis-cli ping | grep -qx PONG; then break; fi
+            test "$attempt" -lt 30
+            sleep 2
+          done
+          docker run -d --name "$app" --network "$network" \
+            -e SECRET=ci-smoke-only-not-a-production-secret \
+            -e REDIS_URL="redis://$redis:6379" -e ADMIN_ENABLED=False \
+            -e DEMO_ACCOUNT_ENABLED=False -e DEBUG=False -e FLOPPY_RESOURCE_TIER=minimal \
+            "$REGISTRY/$IMAGE_NAME@$DIGEST"
+          for attempt in {1..300}; do
+            health=$(docker inspect --format '{{.State.Health.Status}}' "$app")
+            if [ "$health" = healthy ]; then break; fi
+            test "$health" != unhealthy && test "$attempt" -lt 300
+            sleep 2
+          done
+          docker exec "$app" test -s /floppy/db/db.sqlite3
+          docker exec "$app" python manage.py shell -c \
+            'from django.conf import settings; import redis; assert settings.DATABASES["default"]["ENGINE"] == "config.sqlite_backend"; assert redis.Redis.from_url(settings.REDIS_URL).ping()'
+          docker exec "$app" python manage.py migrate --check --noinput
 
       - name: Verify attestation subjects match platform digests
         env:
