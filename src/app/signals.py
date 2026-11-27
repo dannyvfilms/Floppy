@@ -136,6 +136,7 @@ GENRE_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl", "igdb", "bgg")
 # Celery name so a new importer does not need a second registration here.
 TRACKED_TASK_NAMES = frozenset(
     {
+        "Retry Netflix auto-matching",
         "integrations.tasks.import_goodreads",
         "Sync Plex Watchlist",
         "Sync Plex Watched Marks",

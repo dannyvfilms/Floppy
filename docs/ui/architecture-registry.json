@@ -1,5 +1,25 @@
 {
   "universal": {
+    "frontend/pages/NetflixReviewView.jsx": {
+      "components": [
+        "NetflixReviewView"
+      ],
+      "register": "NETFLIX-REVIEW",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium against the local scratch server: pending list with island cards, per-row search, resolve and dismiss keeping show/filter/page, 100-row pages with Prev/Next, ?show=all, ?filter= narrowing with tab/link persistence, per-run undo message and Data-Management source summary."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified on iOS: no native consumer yet; the island is props-only and its contract is unchanged by the web verification."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified on Android: no native consumer yet; the island is props-only and its contract is unchanged by the web verification."
+        }
+      }
+    },
     "frontend/ui/MdblistConnect.jsx": {
       "components": [
         "MdblistConnect"
@@ -6144,6 +6164,10 @@
     }
   },
   "web_adapters": {
+    "frontend/pages/mountNetflixReview.jsx": {
+      "register": "NETFLIX-REVIEW",
+      "purpose": "Browser transport for the Netflix review island: JSON search against the view's ?format=json branch and form POSTs for record/dismiss through transport.web.js; the server keeps the routes, permissions and the no-JavaScript fallback."
+    },
     "frontend/ui/mediaCardQuickStatus.web.js": {
       "register": "MEDIA-CARD",
       "purpose": "Browser transport for quick status changes using the session and consumption API."

@@ -15,6 +15,7 @@ import requests
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Q
 from django.http import (
@@ -23,6 +24,7 @@ from django.http import (
     JsonResponse,
     StreamingHttpResponse,
 )
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -75,6 +77,7 @@ from integrations.imports.koreader import (
     KoreaderClientError,
 )
 from integrations.imports.mylar import MylarClient
+from integrations.imports.netflix import NetflixResolver
 from integrations.imports.radarr import RadarrClient
 from integrations.imports.sonarr import SonarrClient
 from integrations.imports.storyteller import (
@@ -139,6 +142,7 @@ from integrations.models import (
     LastFMAccount,
     MDBListAccount,
     MylarInstance,
+    NetflixPendingRow,
     PlaytimeSnapshot,
     PlexAccount,
     PlexWebhookShare,
@@ -1724,6 +1728,307 @@ def import_hltb(request):
         "The task to import media from HowLongToBeat CSV file has been queued.",
     )
     return _integration_redirect(request, connected_slug="hltb")
+
+
+@require_POST
+def import_netflix(request):
+    """View for importing a Netflix viewing-history CSV."""
+    file = request.FILES.get("netflix_csv")
+
+    if not file:
+        messages.error(request, "A Netflix viewing history CSV file is required.")
+        return _integration_redirect(request)
+
+    staged_file = _stage_upload_or_message(request, file, "Netflix CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
+    mode = request.POST["mode"]
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_netflix,
+        user_id=request.user.id,
+        file=staged_file,
+        mode=mode,
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="netflix")
+    messages.info(
+        request,
+        "The task to import your Netflix viewing history has been queued.",
+    )
+    return _integration_redirect(request, connected_slug="netflix")
+
+
+NETFLIX_REVIEW_PAGE_SIZE = 100
+
+
+def netflix_pending(request):
+    """List unresolved Netflix viewing-history rows, with an inline search.
+
+    The page shell renders server-side for the no-JavaScript fallback; the
+    interactive review is a React island fed by ``review_props``.  The
+    fallback and the island share the same search: ``?q=<title>&type=<type>``
+    re-renders that row's results server-side, and adding ``format=json``
+    returns the same results as JSON for the island.
+
+    The list is filtered by ``?filter=<title>`` and paged (100 rows) via
+    ``?page=N``; both the fallback and the island render one page at a time.
+    """
+    rows = (
+        NetflixPendingRow.objects.filter(user=request.user)
+        .select_related("resolved_item")
+        .order_by("-created_at")
+    )
+    show_all = request.GET.get("show") == "all"
+    if not show_all:
+        rows = rows.filter(status=NetflixPendingRow.Status.PENDING.value)
+    title_filter = (request.GET.get("filter") or "").strip()
+    if title_filter:
+        rows = rows.filter(title__icontains=title_filter)
+
+    try:
+        page_number = int(request.GET.get("page") or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    paginator = Paginator(rows, NETFLIX_REVIEW_PAGE_SIZE)
+    page_number = max(1, min(page_number, max(1, paginator.num_pages)))
+    page_obj = paginator.page(page_number)
+
+    query = (request.GET.get("q") or "").strip()
+    media_type = request.GET.get("type") or MediaTypes.MOVIE.value
+    if media_type not in (MediaTypes.MOVIE.value, MediaTypes.TV.value):
+        media_type = MediaTypes.MOVIE.value
+
+    if request.GET.get("format") == "json":
+        if not query:
+            return JsonResponse({"results": []})
+        resolver = NetflixResolver(request.user)
+        try:
+            results = resolver.search_results(query, media_type)
+        except services.ProviderAPIError:
+            results = []
+        return JsonResponse(
+            {
+                "query": query,
+                "mediaType": media_type,
+                "results": [
+                    {
+                        "media_id": result["media_id"],
+                        "title": result["title"],
+                        "year": result.get("year"),
+                    }
+                    for result in results
+                ],
+            }
+        )
+
+    search = None
+    search_row_id = request.GET.get("search_row")
+    if search_row_id and query:
+        row = get_object_or_404(
+            NetflixPendingRow,
+            pk=search_row_id,
+            user=request.user,
+            status=NetflixPendingRow.Status.PENDING.value,
+        )
+        if not request.GET.get("type"):
+            media_type = row.media_type
+        resolver = NetflixResolver(request.user)
+        try:
+            results = resolver.search_results(query, media_type)
+        except services.ProviderAPIError:
+            results = []
+        search = {
+            "row": row,
+            "query": query,
+            "media_type": media_type,
+            "results": results,
+        }
+
+    review_props = None
+    if page_obj.object_list:
+        review_props = {
+            "csrf": get_token(request),
+            "model": {
+                "showAll": show_all,
+                "actions": {"searchUrl": reverse("netflix_pending")},
+                "rows": [
+                    {
+                        "id": row.id,
+                        "title": row.title,
+                        "watchedAt": (
+                            row.watched_at.isoformat() if row.watched_at else None
+                        ),
+                        "mediaType": row.media_type,
+                        "seasonNumber": row.season_number,
+                        "episodeNumber": row.episode_number,
+                        "status": row.status,
+                        "resolvedTitle": (
+                            row.resolved_item.title if row.resolved_item_id else None
+                        ),
+                        "resolvedAt": (
+                            row.resolved_at.date().isoformat()
+                            if row.resolved_at
+                            else None
+                        ),
+                        "resolveUrl": reverse(
+                            "netflix_pending_resolve", args=[row.id]
+                        ),
+                        "dismissUrl": reverse(
+                            "netflix_pending_dismiss", args=[row.id]
+                        ),
+                    }
+                    for row in page_obj.object_list
+                ],
+            },
+            "labels": {
+                "search": gettext("Search"),
+                "record": gettext("Record play"),
+                "dismiss": gettext("Dismiss row"),
+                "season": gettext("Season"),
+                "episode": gettext("Episode"),
+                "movie": gettext("Movie"),
+                "tv": gettext("TV show"),
+                "titleToSearch": gettext("Title to search"),
+                "mediaType": gettext("Media type"),
+                "searchHint": gettext("Search above, then choose the right title."),
+                "noResults": gettext(
+                    "No results for that title and type. Try the other type or a shorter title."
+                ),
+                "searching": gettext("Searching"),
+                "searchFailed": gettext("Search failed. Try again."),
+                "resolved": gettext("Recorded as “%(title)s”."),
+                "resolvedShort": gettext("Recorded."),
+                "dismissed": gettext("Dismissed, no play recorded."),
+                "empty": gettext(
+                    "Nothing to review: every imported row was matched automatically."
+                ),
+            },
+        }
+
+    return render(
+        request,
+        "integrations/netflix_pending.html",
+        {"rows": page_obj.object_list, "page_obj": page_obj,
+         "title_filter": title_filter, "show_all": show_all, "search": search,
+         "review_props": review_props},
+    )
+
+
+def _netflix_review_return(request):
+    """Redirect back to the review list, keeping the viewer's tab, filter, page.
+
+    The per-row search params (``q``, ``search_row``, ``format``) are not
+    list state, so they are dropped on the way back.
+    """
+    params = request.GET.copy()
+    for key in ("q", "search_row", "format"):
+        params.pop(key, None)
+    url = reverse("netflix_pending")
+    if params:
+        url = f"{url}?{params.urlencode()}"
+    return redirect(url)
+
+
+@require_POST
+def netflix_pending_resolve(request, row_id):
+    """Record the play for one reviewed Netflix row."""
+    row = get_object_or_404(
+        NetflixPendingRow,
+        pk=row_id,
+        user=request.user,
+        status=NetflixPendingRow.Status.PENDING.value,
+    )
+    if row.watched_at is None:
+        messages.error(
+            request,
+            "This row has no readable date, so it can't be recorded.",
+        )
+        return _netflix_review_return(request)
+    watched_at = datetime(
+        row.watched_at.year,
+        row.watched_at.month,
+        row.watched_at.day,
+        tzinfo=timezone.get_current_timezone(),
+    )
+    media_type = request.POST.get("media_type") or row.media_type
+    if media_type not in (MediaTypes.MOVIE.value, MediaTypes.TV.value):
+        media_type = row.media_type
+    tmdb_id = (request.POST.get("tmdb_id") or "").strip()
+    if not tmdb_id:
+        messages.error(request, "Choose a title to record.")
+        return _netflix_review_return(request)
+    season_number = None
+    episode_number = None
+    if media_type == MediaTypes.TV.value:
+        for field in ("season_number", "episode_number"):
+            try:
+                value = int(request.POST.get(field) or 0)
+            except ValueError:
+                value = 0
+            if field == "season_number":
+                season_number = value or None
+            else:
+                episode_number = value or None
+
+    # Plays recorded here belong to the import that parked the row, so an
+    # undo of that run removes them too.
+    resolver = NetflixResolver(request.user, import_run_id=row.import_run_id)
+    item, error = resolver.record_play(
+        row.title,
+        watched_at,
+        media_type,
+        tmdb_id,
+        season_number=season_number,
+        episode_number=episode_number,
+    )
+    if error:
+        messages.error(request, error)
+        return _netflix_review_return(request)
+    row.status = NetflixPendingRow.Status.RESOLVED.value
+    row.media_type = media_type
+    row.season_number = season_number
+    row.episode_number = episode_number
+    row.resolved_item = item
+    row.resolved_at = timezone.now()
+    row.save()
+    messages.success(request, f"{item.title} recorded.")
+    return _netflix_review_return(request)
+
+
+@require_POST
+def netflix_pending_dismiss(request, row_id):
+    """Dismiss one unresolved Netflix row."""
+    row = get_object_or_404(
+        NetflixPendingRow,
+        pk=row_id,
+        user=request.user,
+        status=NetflixPendingRow.Status.PENDING.value,
+    )
+    row.status = NetflixPendingRow.Status.DISMISSED.value
+    row.resolved_at = timezone.now()
+    row.save()
+    messages.success(request, "Row dismissed.")
+    return _netflix_review_return(request)
+
+
+@require_POST
+def netflix_pending_retry(request):
+    """Queue a re-run of auto-matching over every pending row.
+
+    Follow-up batch work on the default queue: the page redirects back
+    straight away and the pending list shrinks as the task resolves rows.
+    """
+    tasks.retry_netflix_pending.delay(user_id=request.user.id)
+    messages.info(
+        request,
+        gettext(
+            "Auto-matching re-run queued. Reload this page in a few "
+            "minutes to see what was recorded."
+        ),
+    )
+    return _netflix_review_return(request)
 
 
 @require_POST

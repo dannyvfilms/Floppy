@@ -2476,6 +2476,8 @@ class Episode(models.Model):
             # without a date (issues #377, #1278).
             "notes",
             "entry_source",
+            # Provenance bookkeeping, not watch content (like entry_source).
+            "import_run",
         ],
     )
 
@@ -2497,6 +2499,14 @@ class Episode(models.Model):
     )
     notes = models.TextField(blank=True, default="")
     entry_source = models.CharField(max_length=50, blank=True, default="")
+    import_run = models.ForeignKey(
+        "integrations.ImportRun",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The import run that created this play, if any.",
+    )
     dropped = models.BooleanField(default=False)
     # A rating for an episode nobody has watched. It is not a play, so the
     # `objects` and `all_objects` managers never return it and no watch

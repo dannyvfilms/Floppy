@@ -59,6 +59,30 @@ class TaskResultOnPublishTests(TestCase):
             TaskResult.objects.filter(task_id=self.HEADERS["id"]).exists(),
         )
 
+    def test_netflix_retry_is_tracked_and_visible_on_publish(self):
+        """The retry run is batch work the user waits on, so it must get a
+        PENDING row on publish and show in the Netflix activity tab.
+        """
+        user = get_user_model().objects.create_user(username="retry-tracked")
+        headers = {
+            "task": "Retry Netflix auto-matching",
+            "id": "00000000-0000-0000-0000-000000000777",
+            "kwargsrepr": f'{{"user_id": {user.id}}}',
+        }
+
+        signals.create_task_result_on_publish(headers=headers)
+
+        self.assertTrue(
+            TaskResult.objects.filter(
+                task_id=headers["id"], status=states.PENDING,
+            ).exists()
+        )
+        rows = user.get_import_tasks(sources={"netflix"})["results"]
+        self.assertEqual(
+            [row["task"].task_name for row in rows],
+            ["Retry Netflix auto-matching"],
+        )
+
 
 class TaskResultOnCompletionTests(TestCase):
     TASK_ID = "00000000-0000-0000-0000-000000000518"

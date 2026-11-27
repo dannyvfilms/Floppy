@@ -243,7 +243,8 @@
     {% translate "Import preferences" as preferences_title %}
     {% translate "Read only" as access_label %}
     {% settings_card title=preferences_title tone="warning" badge=access_label %}
-      <div><h3 class="text-sm text-[var(--color-text-muted)]">{% translate "Import frequency" %}</h3><p>
+      <div><h3 class="text-sm text-[var(--color-text-muted)]">{% translate "Import frequency" %}</h3>
+<p>
         {% if import_slug == 'kavita' %}{% if kavita_account %}{% blocktranslate with minutes=kavita_account.sync_interval_minutes %}Every {{ minutes }} minutes{% endblocktranslate %}{% else %}{% translate "Choose when connecting" %}{% endif %}
         {% elif import_slug == 'komga' %}{% if komga_account %}{% blocktranslate with minutes=komga_account.sync_interval_minutes %}Every {{ minutes }} minutes{% endblocktranslate %}{% else %}{% translate "Choose when connecting" %}{% endif %}
         {% elif import_slug == 'audiobookshelf' %}{% blocktranslate with minutes=audiobookshelf_poll_interval %}Every {{ minutes }} minutes{% endblocktranslate %}
@@ -251,7 +252,8 @@
         {% elif import_slug == 'koito' %}{% translate "Every 15 minutes" %}
         {% elif import_slug == 'psn' %}{% translate "Every 3 hours" %}
         {% else %}{% translate "Every 2 hours" %}{% endif %}</p></div>
-      <div><h3 class="text-sm text-[var(--color-text-muted)]">{% translate "Import mode" %}</h3><p>{% if import_slug == 'kavita' or import_slug == 'komga' or import_slug == 'audiobookshelf' %}{% translate "Sync reading progress" %}{% elif import_slug == 'radarr' or import_slug == 'sonarr' or import_slug == 'mylar' or import_slug == 'kapowarr' %}{% translate "Sync owned collection" %}{% else %}{% translate "Only sync new items" %}{% endif %}</p></div>
+      <div><h3 class="text-sm text-[var(--color-text-muted)]">{% translate "Import mode" %}</h3>
+<p>{% if import_slug == 'kavita' or import_slug == 'komga' or import_slug == 'audiobookshelf' %}{% translate "Sync reading progress" %}{% elif import_slug == 'radarr' or import_slug == 'sonarr' or import_slug == 'mylar' or import_slug == 'kapowarr' %}{% translate "Sync owned collection" %}{% else %}{% translate "Only sync new items" %}{% endif %}</p></div>
       <p class="text-sm text-[var(--color-text-muted)]">{% if import_slug == 'pocketcasts' %}{% translate "Pocket Casts uses a fixed schedule to estimate podcast completion time and imports new items automatically." %}{% elif import_slug == 'kavita' or import_slug == 'komga' %}{% translate "The interval is chosen in Connection. This integration manages its own reading progress sync." %}{% else %}{% translate "This integration manages its own schedule and import behavior." %}{% endif %}</p>
     {% endsettings_card %}
     {% else %}
@@ -276,7 +278,7 @@
         <div class="grid grid-cols-1 {% if provider_tab != 'import' %}md:grid-cols-2{% endif %} gap-4">
           <div>
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Frequency" %}</label>
-            {% if provider_tab == 'import' and import_slug in 'mangabaka,clz,yamtrack_native,hltb,playnite,grouvee,imdb,goodreads,storygraph,youtube,wetrakr,tvtime' %}
+            {% if provider_tab == 'import' and import_slug in 'mangabaka,clz,yamtrack_native,hltb,playnite,grouvee,imdb,goodreads,storygraph,youtube,wetrakr,tvtime,netflix' %}
               <input type="hidden" name="import_frequency" x-model="importFrequency">
               <div class="relative">
                 <select disabled aria-label="{% translate 'Import Frequency' %}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 appearance-none">
@@ -2791,6 +2793,66 @@
           </form>
         </div>
 {% endif %}
+{% if provider_tab != 'import' %}</div></div>{% endif %}
+
+    {% endif %}
+    {% if import_slug == 'netflix' %}
+        {# Netflix #}
+        {% if provider_tab != 'import' %}
+<div x-show="activeModal === 'netflix'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+             @mousedown.self="closeModal()">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+{% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
+        <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
+          <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "netflix" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import your Netflix viewing activity CSV (Title, Date)." %}</p>
+          <form method="post"
+                action="{% url 'import_netflix' %}"
+                enctype="multipart/form-data">
+            {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
+            <input type="hidden" name="frequency" x-model="importFrequency">
+            <input type="hidden" name="time" x-model="importTime">
+            <input type="hidden" name="mode" x-model="importMode">
+            <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
+              <input name="netflix_csv"
+                     accept=".csv"
+                     class="hidden"
+                     type="file"
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
+              {% translate "Select CSV File" %}
+            </label>
+          </form>
+        </div>
+{% endif %}
+        <div class="mt-3 text-sm text-[var(--color-text-muted)]">
+          {% if netflix_pending_count %}
+            <a href="{% url 'netflix_pending' %}" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:underline">
+              {% blocktranslate count counter=netflix_pending_count %}{{ counter }} row from your Netflix import still needs review – open the review page{% plural %}{{ counter }} rows from your Netflix import still need review – open the review page{% endblocktranslate %}
+            </a>
+          {% else %}
+            {% translate "Rows that can't be matched automatically can be resolved on the review page after an import." %}
+          {% endif %}
+        </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}

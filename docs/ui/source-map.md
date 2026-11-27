@@ -1355,6 +1355,16 @@ Status: `Legacy`
 - `src/static/js/matchFixReview.js`
 - `src/templates/integrations/match_fix.html`
 
+## NETFLIX-REVIEW
+
+Status: `Partial / coexisting`
+
+- `frontend/pages/NetflixReviewView.jsx` (shared, props-only row list: per-row TMDB search, S/E inputs, resolve and dismiss actions; RN primitives plus shared `Button`/`TextField`/`SelectField`)
+- `frontend/pages/mountNetflixReview.jsx` (web adapter: JSON search fetch, form POSTs through `transport.web.js`)
+- `src/templates/integrations/netflix_pending.html` (island host `data-netflix-review-root` + `netflix-review-props`; server-rendered rows stay the no-JavaScript fallback; `?show=all` keeps resolved/dismissed history; `?filter=` title filter, `?page=` 100-row pagination and the Re-run auto-matching form — a plain POST to `netflix_pending_retry`, pending tab only — are server chrome around the island, with the per-row search form carrying them as hidden inputs)
+- `src/integrations/views.py` (`netflix_pending` incl. the `?format=json` search branch, `?filter=`/`?page=` and `review_props`, `netflix_pending_resolve` — stamps the recorded play with the row's `import_run` —, `netflix_pending_dismiss`, `netflix_pending_retry` — queues the `retry_netflix_pending` task —, `_netflix_review_return`) and `src/integrations/imports/netflix.py` (`NetflixResolver` shared with the importer, stamping new rows with the ambient `ImportRun`) and `src/integrations/tasks/_media_imports.py` (`retry_netflix_pending` re-runs the parked rows through the resolver, records what resolves and removes those rows)
+- `src/users/views.py` (`rollback_import_run`: the Netflix branch deletes the run's tagged `Episode` rows and `NetflixPendingRow`s; Data Management's `bulk_delete_by_import_source` works from the same stamps)
+
 ## INTEGRATION-PANELS
 
 Status: `Partial / coexisting` (library panel React-owned on the web; Seerr request dialog/status legacy)
@@ -1422,7 +1432,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/StatisticsView.jsx`
 - `frontend/pages/TagsPageView.jsx`
 - `frontend/pages/UtilitiesView.jsx` (native About > Open Utilities > Copy Server URL exercised in Expo; exact connected address copied and prior clipboard restored. WEB About static-cache utilities have a different platform scope; Partial browser parity, iOS/Android unverified.)
-- `frontend/pages/registry.js`
+- `frontend/pages/registry.js` (page registry; `netflixReview` is registered `legacy`: no native screen yet)
 - `frontend/providers/AccountSettings.jsx`
 - `frontend/providers/ProviderContext.jsx`
 - `frontend/providers/ProviderSettingsView.jsx`

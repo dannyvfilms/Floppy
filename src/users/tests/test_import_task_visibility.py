@@ -118,3 +118,60 @@ class ImportTaskRegistryConsistencyTests(TestCase):
         )
         rows = user.get_import_tasks()["schedules"]
         self.assertEqual(rows[0]["source"], "New Source (Recurring)")
+
+
+class NetflixImportVisibilityTests(TestCase):
+    """Netflix imports and the pending-row retry show in the activity feed."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="netflix-activity",
+            password="12345",
+        )
+
+    def _create_result(self, task_name, result):
+        return TaskResult.objects.create(
+            task_id=f"{task_name.lower().replace(' ', '-')}",
+            task_name=task_name,
+            status="SUCCESS",
+            result=result,
+            task_kwargs=f'{{"user_id": {self.user.id}}}',
+        )
+
+    def test_import_and_retry_are_visible_on_the_netflix_tab(self):
+        self._create_result(
+            "Import from Netflix",
+            "Imported 979 of 980 rows; 1 row(s) need review.",
+        )
+        self._create_result(
+            "Retry Netflix auto-matching",
+            "Removed 88 of 979 pending row(s).",
+        )
+
+        rows = self.user.get_import_tasks(sources={"netflix"})["results"]
+        self.assertEqual(
+            sorted(row["task"].task_name for row in rows),
+            ["Import from Netflix", "Retry Netflix auto-matching"],
+        )
+        for row in rows:
+            self.assertEqual(row["source"], "netflix")
+        retry = next(
+            row
+            for row in rows
+            if row["task"].task_name == "Retry Netflix auto-matching"
+        )
+        self.assertEqual(
+            retry["summary"], "Removed 88 of 979 pending row(s).",
+        )
+
+    def test_retry_is_visible_in_the_general_activity(self):
+        self._create_result(
+            "Retry Netflix auto-matching",
+            "Removed 88 of 979 pending row(s).",
+        )
+
+        rows = self.user.get_import_tasks()["results"]
+        self.assertIn(
+            "Retry Netflix auto-matching",
+            [row["task"].task_name for row in rows],
+        )

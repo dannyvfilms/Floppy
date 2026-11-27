@@ -58,6 +58,7 @@ export const pages = {
   providerDetail: { id: 'providerDetail', webRoute: '/settings/providers/<slug>', nativeScreen: 'expo/app/screens/ProviderDetailScreen.jsx', view: 'frontend/pages/ProviderDetailView.jsx', status: 'legacy' },
   connections: { id: 'connections', webRoute: 'sync connections, conflicts and device approval', nativeScreen: 'expo/app/screens/ConnectionsScreen.jsx', view: 'frontend/pages/ConnectionsView.jsx', status: 'legacy' },
   metadataReview: { id: 'metadataReview', webRoute: 'metadata review queue', nativeScreen: 'expo/app/screens/MetadataReviewScreen.jsx', view: 'frontend/pages/MetadataReviewView.jsx', status: 'legacy' },
+  netflixReview: { id: 'netflixReview', webRoute: '/import/netflix/pending', nativeScreen: 'expo/app/screens/UtilitiesScreen.jsx', view: 'frontend/pages/NetflixReviewView.jsx', webAdapter: 'frontend/pages/mountNetflixReview.jsx', status: 'legacy' },
   utilities: { id: 'utilities', webRoute: 'export/import/RSS/install/clipboard', nativeScreen: 'expo/app/screens/UtilitiesScreen.jsx', view: 'frontend/pages/UtilitiesView.jsx', status: 'legacy' },
 };
 

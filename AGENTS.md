@@ -447,6 +447,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/psn_integration.md`: how a PSN sync turns lifetime playtime into dated game entries (remembered totals, Sessions vs Repeats, the setup choice).
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/clz_import.md`: the CLZ importer's header-mapped contract and the shared custom-field resolution layer it sits on.
+- `docs/agents/netflix_import.md`: the Netflix viewing-history importer — locale-tolerant CSV decoding, date-layout detection, title-encoded S/E, and the interactive review page for unresolvable rows.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
