@@ -3075,15 +3075,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Duo PWA rendered the shared detail seasons, cast, crew and recommendations. Wider browser and interaction regression remains pending."
+          "evidence": "Structural regression asserts no generic Trakt Recommendations grid, equal rail card width, and one Trakt Related rail after TMDb Recommendations. Live browser capture shows the intended order; the served revision is unknown, so it is not credited as PR-head runtime verification."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Duo Expo Go rendered detail rows; an in-progress season showed the status, Next chip, release year and progress bar. Wider interaction and posture regression remains pending."
+          "evidence": "Native transport tests cover the Trakt related section label and item identity; shared DetailView keeps it after Recommendations. No current iOS runtime comparison was performed. Wider interaction and posture regression remains pending."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current emulator visual and interaction comparison pending."
+          "evidence": "The shared Expo DetailView uses the existing React Native Rail and MediaCard for Trakt related items after Recommendations; no current Android runtime comparison was performed."
         }
       }
     },

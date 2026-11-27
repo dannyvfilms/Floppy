@@ -66,6 +66,76 @@ class ImageCacheServiceTests(TestCase):
         ):
             self.assertEqual(image_cache.rewrite_image_url(value, request), value)
 
+    def test_trakt_artwork_is_always_proxied_even_when_cache_is_disabled(self):
+        image_cache.set_enabled(False)
+        request = RequestFactory().get("/api/v1/info/")
+        urls = (
+            "https://media.trakt.tv/movies/42897/medium/poster.webp",
+            "https://walter-r2.trakt.tv/images/movies/000/042/897/posters/medium/poster.webp",
+        )
+
+        for source_url in urls:
+            with self.subTest(source_url=source_url):
+                self.assertTrue(image_cache.is_approved_url(source_url))
+                rewritten = image_cache.rewrite_image_url(source_url, request=request)
+                self.assertIn("/image-cache/", rewritten)
+                self.assertNotIn("media.trakt.tv", rewritten)
+
+    def test_trakt_artwork_cache_follows_only_approved_provider_redirects(self):
+        source_url = "https://media.trakt.tv/movies/42897/medium/poster.webp"
+        redirected_url = (
+            "https://walter-r2.trakt.tv/images/movies/000/042/897/"
+            "posters/medium/poster.webp"
+        )
+        body = _png_bytes()
+        redirect = _response(
+            b"",
+            status_code=302,
+            **{"Location": redirected_url, "Content-Type": "text/plain"},
+        )
+        final = _response(body, **{"Content-Length": str(len(body))})
+
+        with patch(
+            "app.image_cache.requests.get",
+            side_effect=[redirect, final],
+        ) as fetch:
+            response = self.client.get(
+                reverse(
+                    "image_cache",
+                    kwargs={"token": image_cache._token_for_url(source_url)},
+                ),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), body)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args_list[0].args[0], source_url)
+        self.assertEqual(fetch.call_args_list[1].args[0], redirected_url)
+
+    def test_trakt_artwork_redirect_cannot_leave_trakt_cdn_hosts(self):
+        source_url = "https://media.trakt.tv/movies/42897/medium/poster.webp"
+        redirected_url = "https://image.tmdb.org/t/p/w500/poster.webp"
+        redirect = _response(
+            b"",
+            status_code=302,
+            **{"Location": redirected_url, "Content-Type": "text/plain"},
+        )
+        final = _response(_png_bytes())
+
+        with patch(
+            "app.image_cache.requests.get",
+            side_effect=[redirect, final],
+        ) as fetch:
+            response = self.client.get(
+                reverse(
+                    "image_cache",
+                    kwargs={"token": image_cache._token_for_url(source_url)},
+                ),
+            )
+
+        self.assertEqual(response.status_code, 404)
+        fetch.assert_called_once()
+
     def test_anonymous_miss_fetches_once_then_hit_returns_cache_headers(self):
         image_cache.set_enabled(True)
         source_url = "https://image.tmdb.org/t/p/original/poster.jpg"

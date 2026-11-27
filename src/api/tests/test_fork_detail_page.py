@@ -346,6 +346,14 @@ class DetailPageTests(FloppyApiTestCase):
                     "title": "Related Movie",
                     "image": "https://example.com/related.jpg",
                 }],
+                "trakt_recommendations": [{
+                    "media_type": "movie",
+                    "source": "tmdb",
+                    "media_id": "related-2",
+                    "title": "Trakt Related Movie",
+                    "image": "https://media.trakt.tv/movies/9453/medium/poster.webp",
+                    "certification": "NC-17",
+                }],
             },
         },
     )
@@ -364,6 +372,11 @@ class DetailPageTests(FloppyApiTestCase):
         self.assertEqual(body["synopsis"], "A full synopsis.")
         self.assertEqual(body["related_sections"][0]["label"], "Recommendations")
         self.assertEqual(body["related_sections"][0]["items"][0]["model"]["title"], "Related Movie")
+        self.assertEqual(body["related_sections"][1]["label"], "Trakt Related")
+        self.assertEqual(body["related_sections"][1]["items"][0]["model"]["title"], "Trakt Related Movie")
+        trakt_image = body["related_sections"][1]["items"][0]["model"]["image"]["src"]
+        self.assertIn("/image-cache/", trakt_image)
+        self.assertNotIn("media.trakt.tv", trakt_image)
 
     @patch(
         "api.fork_views_detail.carousel.resolve_carousel_media",

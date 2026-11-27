@@ -152,8 +152,16 @@ export function DetailView({
     loadMoreLabel={model.children.nextLabel} /> : null;
   const childSection = model.children?.kind === 'issue' ? 'issues'
     : model.children?.episodes?.length ? 'episodes' : 'seasons';
-  const related = (model.relatedSections || []).filter(section => section.id !== 'recommendations');
+  const related = (model.relatedSections || []).filter(section => !['recommendations', 'trakt_recommendations'].includes(section.id));
   const recommendations = (model.relatedSections || []).find(section => section.id === 'recommendations');
+  const traktRecommendations = (model.relatedSections || []).find(section => section.id === 'trakt_recommendations');
+  const recommendationRails = [recommendations, traktRecommendations].filter(section => section?.items?.length).map(section => (
+    <RailComponent key={section.id} title={section.label || (section.id === 'trakt_recommendations' ? 'Trakt Related' : 'Recommendations')}
+      items={section.items} itemWidth={shelfCardWidth || 144} itemGap={16} windowCards palette={palette}
+      renderItem={item => <MediaCard model={{ ...(item.model || item), altTitle: null }} width={shelfCardWidth || 144} palette={palette.mediaCard || palette}
+        onOpen={() => onOpenItem?.(item.model || item)} onOpenLink={onOpenExternal}
+        onRate={score => onRate?.(item.model || item, score)} />} />
+  ));
   const secondarySections = {
     ...sectionSlots,
     ...childSlots,
@@ -164,11 +172,7 @@ export function DetailView({
       model={{ sections: related, steamDlcs: model.steamDlcs || [] }} labels={model.relatedLabels || labels}
       palette={palette.mediaCard || palette} onOpen={onOpenItem} onOpenLink={onOpenExternal}
       onOpenExternal={onOpenExternal} onRate={onRate} /> : null,
-    recommendations: recommendations?.items?.length ? <RailComponent title={recommendations.label || 'Recommendations'}
-      items={recommendations.items} itemWidth={shelfCardWidth || 144} itemGap={16} windowCards palette={palette}
-      renderItem={item => <MediaCard model={{ ...(item.model || item), altTitle: null }} width={shelfCardWidth || 144} palette={palette.mediaCard || palette}
-        onOpen={() => onOpenItem?.(item.model || item)} onOpenLink={onOpenExternal}
-        onRate={score => onRate?.(item.model || item, score)} />} /> : null,
+    recommendations: recommendationRails.length ? <View style={{ gap: 12 }}>{recommendationRails}</View> : null,
   };
   const immersive = Boolean(heroViewport || width < 768) && Boolean(model?.artwork?.backdrop);
 
@@ -231,8 +235,8 @@ export function DetailView({
       {(secondarySections.cast || secondarySections.crew || model.relatedSections?.length || model.steamDlcs?.length) ? <View style={styles.relatedRows}>
       {secondarySections.cast}
       {secondarySections.crew}
-      {(shelfCardWidth ? related.length || model.steamDlcs?.length : model.relatedSections?.length) ? <DetailRelated
-        model={{ sections: shelfCardWidth ? related : model.relatedSections, steamDlcs: model.steamDlcs || [] }}
+      {(related.length || model.steamDlcs?.length) ? <DetailRelated
+        model={{ sections: related, steamDlcs: model.steamDlcs || [] }}
         labels={model.relatedLabels || labels}
         palette={palette.mediaCard || palette}
         onOpen={onOpenItem}
@@ -241,7 +245,7 @@ export function DetailView({
         onRate={onRate}
         web={false}
       /> : null}
-      {shelfCardWidth ? secondarySections.recommendations : null}
+      {secondarySections.recommendations}
       </View> : null}
       </>}
     </> : null}

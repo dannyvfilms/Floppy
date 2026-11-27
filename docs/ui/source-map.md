@@ -546,7 +546,14 @@ crew, seasons and recommendation rails use Home's responsive card width and wind
 rail, with `MediaCard` for people as well as media. Web detail cast and crew use
 the web media card; seasons and recommendations use Home's mounted rail and media
 cards. Ownership remains partial/coexisting until the web detail shell migrates.
-The Duo PWA and Expo Go rendered the changed rows; Android runtime is unverified.
+The optional Trakt related rail follows TMDb's recommendations and is only projected
+when a Trakt client ID is configured; native and web reuse their existing card rails.
+The generic related grid excludes the Trakt section so recommendations appear
+only once, in the bottom `Trakt Related` rail. A live browser capture shows this
+order, but the served revision is unverified; current-branch behavior is covered
+by template/API regression tests. Both web and structured API detail rows proxy Trakt
+artwork through the shared image cache because Trakt prohibits hotlinking. iOS and
+Android runtime verification remain unverified.
 Detail season card indicators are projected by the detail API using the Home card
 rules; the web season cards use the Home card surface. Detail recommendations use
 the Home card surface without the alternative-title control. The web rail owns
@@ -613,7 +620,7 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `expo/app/surfaces/detailIdentity.mjs`
 - `src/api/fork_views_detail.py`
 - `src/api/fork_urls.py`
-- `frontend/pages/DetailView.jsx`
+- `frontend/pages/DetailView.jsx` (shared detail composition and Trakt Related rail)
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `expo/app/surfaces/DetailFeatures.jsx`)
 - `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `expo/app/surfaces/DetailFeatures.jsx`)

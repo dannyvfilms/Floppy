@@ -35,6 +35,7 @@ HTTP_OK = 200
 HTTP_MULTIPLE_CHOICES = 300
 BYTES_PER_UNIT = 1024
 SIGNER_SALT = "floppy.image-cache"
+TRAKT_IMAGE_HOSTS = frozenset({"media.trakt.tv", "walter-r2.trakt.tv"})
 
 # Exact host matching is intentional. Wildcards are limited to suffixes whose
 # parent domain is itself a provider-owned image CDN.
@@ -44,6 +45,8 @@ APPROVED_IMAGE_HOSTS = frozenset(
         "artworks.thetvdb.com",
         "cdn.myanimelist.net",
         "images.igdb.com",
+        "media.trakt.tv",
+        "walter-r2.trakt.tv",
         "covers.openlibrary.org",
         "assets.hardcover.app",
         "comicvine.gamespot.com",
@@ -204,14 +207,16 @@ def _paths(url):
 
 
 def _requires_proxy(url):
-    """Return whether an image can only be fetched with credentials Floppy holds.
+    """Return whether an image must be fetched through Floppy's proxy.
 
     ScreenScraper media needs the developer credentials, which must never reach
-    a browser, so these URLs go through the proxy whatever the caching toggle.
+    a browser, and Trakt prohibits hotlinking its CDN, so these URLs go through
+    the proxy whatever the caching toggle.
     """
     from app.game_artwork.screenscraper import is_screenscraper_url
 
-    return is_screenscraper_url(url)
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    return is_screenscraper_url(url) or host in TRAKT_IMAGE_HOSTS
 
 
 def rewrite_image_url(url, request=None):
@@ -271,11 +276,17 @@ def _open_image_response(url):
     Returns ``(response, content_type)`` for a usable image, or ``(None, None)``;
     the caller closes the response.
     """
+    trakt_redirects_only = is_approved_url(url) and (
+        (urlparse(url).hostname or "").lower().rstrip(".") in TRAKT_IMAGE_HOSTS
+    )
     current_url = url
     response = None
     try:
         for _ in range(MAX_REDIRECTS + 1):
             if not is_approved_url(current_url):
+                return None, None
+            current_host = (urlparse(current_url).hostname or "").lower().rstrip(".")
+            if trakt_redirects_only and current_host not in TRAKT_IMAGE_HOSTS:
                 return None, None
             response = requests.get(
                 _authenticated(current_url),

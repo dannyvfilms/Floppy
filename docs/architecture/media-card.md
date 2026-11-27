@@ -259,6 +259,11 @@ On a sample of IGDB covers the card file averaged 64 KB against 730 KB for the o
 so a picture opened in Detail costs about 9% more disk, and one only seen on cards
 about 90% less.
 
+Trakt prohibits hotlinking its artwork, so `media.trakt.tv` and `walter-r2.trakt.tv`
+are exact approved image-cache hosts and are always proxied, even when general image
+caching is disabled. The detail template and structured detail API both send Trakt
+rail images through `/image-cache/`; redirects must remain within the approved hosts.
+
 On native, `ArtworkImage.native.jsx` draws through `expo-image` (memory and disk cache,
 no fade-in) behind the shared `ArtworkImage` fallback chain, so a card that scrolls
 back or a grid opened again paints without a new download. The browser keeps its

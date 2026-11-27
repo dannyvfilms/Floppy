@@ -496,7 +496,7 @@ def enrich_items_with_user_data(
         media_item = media_lookup.get(key)
         if (
             getattr(target_user, "hide_completed_recommendations", False)
-            and section_name == "recommendations"
+            and section_name in {"recommendations", "trakt_recommendations"}
             and media_item
             and media_item.status == Status.COMPLETED.value
         ):

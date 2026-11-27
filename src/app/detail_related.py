@@ -6,7 +6,7 @@ from django.conf import settings
 
 from app import helpers
 from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.providers import services, trakt
 from app.services import metadata_resolution
 
 logger = logging.getLogger(__name__)
@@ -138,6 +138,46 @@ def enrich_detail_seasons(
     return details, seasons
 
 
+def add_trakt_related_recommendations(
+    metadata, *, source, media_type, media_id, user
+):
+    """Add optional Trakt related cards while retaining TMDb recommendations."""
+    related = metadata.get("related")
+    if (
+        source != Sources.TMDB.value
+        or media_type not in (MediaTypes.MOVIE.value, MediaTypes.TV.value)
+        or not getattr(user, "show_recommendations", True)
+        or not trakt.is_configured(user=user)
+        or not isinstance(related, dict)
+        or "trakt_recommendations" in related
+    ):
+        return
+
+    try:
+        recommendations = trakt.related_recommendations(
+            media_type,
+            media_id,
+            user=user,
+        )
+    except services.ProviderAPIError as error:
+        logger.warning("Trakt related recommendations unavailable: %s", error)
+        return
+
+    if not recommendations:
+        return
+
+    existing_ids = {
+        str(entry.get("media_id"))
+        for entry in related.get("recommendations", [])
+        if isinstance(entry, dict) and entry.get("media_id") not in (None, "")
+    }
+    recommendations = [
+        entry for entry in recommendations if str(entry.get("media_id")) not in existing_ids
+    ]
+    if recommendations:
+        related["trakt_recommendations"] = recommendations
+
+
 def drop_recommendations_if_hidden(request, metadata):
     """Remove the recommendations section when the viewer turned it off.
 
@@ -146,9 +186,11 @@ def drop_recommendations_if_hidden(request, metadata):
     if getattr(request.user, "show_recommendations", True):
         return
     related = metadata.get("related")
-    if related and "recommendations" in related:
+    if related and {"recommendations", "trakt_recommendations"} & related.keys():
         metadata["related"] = {
-            name: items for name, items in related.items() if name != "recommendations"
+            name: items
+            for name, items in related.items()
+            if name not in ("recommendations", "trakt_recommendations")
         }
 
 

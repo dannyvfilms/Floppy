@@ -362,6 +362,76 @@ class MediaDetailsViewTests(TestCase):
             lookup_policy="cached_only",
         )
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_trakt_related_recommendations_render_after_tmdb_recommendations(
+        self, mock_get_metadata
+    ):
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "https://example.com/movie.jpg",
+            "details": {},
+            "related": {
+                "recommendations": [
+                    {
+                        "media_id": "550",
+                        "title": "TMDB pick",
+                        "media_type": MediaTypes.MOVIE.value,
+                        "source": Sources.TMDB.value,
+                        "image": "https://example.com/tmdb.jpg",
+                    }
+                ],
+                "trakt_recommendations": [
+                    {
+                        "media_id": "9453",
+                        "title": "Caligula",
+                        "media_type": MediaTypes.MOVIE.value,
+                        "source": Sources.TMDB.value,
+                        "image": "https://media.trakt.tv/movies/9453/medium/poster.webp",
+                    }
+                ],
+            },
+            "cast": [],
+            "crew": [],
+        }
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="https://example.com/movie.jpg",
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": item.media_id,
+                    "title": "test-movie",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["recommendations_row"]["card_width_class"],
+            response.context["trakt_recommendations_row"]["card_width_class"],
+        )
+        content = response.content.decode()
+        self.assertNotIn("Trakt Recommendations", content)
+        self.assertIn("Recommendations", content)
+        self.assertIn("Trakt Related", content)
+        self.assertLess(content.index("Recommendations"), content.index("Trakt Related"))
+        self.assertIn("TMDB pick", content)
+        self.assertIn("Caligula", content)
+        self.assertIn("/image-cache/", content)
+        self.assertNotIn("media.trakt.tv", content)
+
     @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
     @patch("app.views.credits.sync_item_credits_from_metadata")
     @patch("app.views.metadata_utils.apply_item_metadata", return_value=[])
@@ -10305,8 +10375,10 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.tmdb._build_specials_season_from_tvdb", return_value=None)
     @patch("app.providers.tmdb.services.api_request")
+    @patch("app.providers.trakt.related_recommendations", return_value=[])
     def test_tv_details_keep_cast_and_crew_after_status_saves_and_reopen(
         self,
+        _mock_trakt_recommendations,
         mock_api_request,
         mock_build_specials,
     ):

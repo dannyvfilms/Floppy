@@ -82,6 +82,19 @@
       "total": 0,
       "view_all_text": null,
       "view_all_url": null
+    },
+    "trakt_recommendations_row": {
+      "card_surface": "detail_recommendations",
+      "card_width_class": "w-44",
+      "items": [],
+      "loaded_count": 0,
+      "row_id": "detail-trakt-recommendations",
+      "show_played_chip": false,
+      "summary_inline": null,
+      "title": "Trakt Related",
+      "total": 0,
+      "view_all_text": null,
+      "view_all_url": null
     }
   },
   "facts": [
