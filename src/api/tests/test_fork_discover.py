@@ -1,14 +1,28 @@
 # FORK: tests for discover, home, and collection-parity API endpoints.
+from datetime import timedelta
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import override_settings
+from django.utils import timezone
 
+from app.cache_utils import build_home_row_cache_key
 from app.discover import tab_cache
 from app.discover.schemas import CandidateItem, RowResult
-from app.models import CollectionEntry, DiscoverFeedback, Item, MediaTypes, Sources
+from app.library_query import LibraryQueryExecutor
+from app.models import (
+    Anime,
+    CollectionEntry,
+    DiscoverFeedback,
+    Item,
+    MediaTypes,
+    Sources,
+    Status,
+)
 from app.providers import services
+from events.models import Event
+from users.models import HomeScreenRow, HomeSortChoices
 
 from .base import FloppyApiTestCase
 
@@ -332,6 +346,57 @@ class HomeTests(FloppyApiTestCase):
         self.client.force_login(self.user1)
         response = self.call_api("get", "api_home_row", args=(1,))
         self.assertEqual(response.status_code, HTTP.OK)
+
+    def test_upcoming_cards_keep_next_event_with_cached_order(self):
+        row = HomeScreenRow.objects.create(
+            user=self.user1,
+            media_type=MediaTypes.ANIME,
+            sort_by=HomeSortChoices.UPCOMING,
+            filters={"status": [Status.IN_PROGRESS]},
+        )
+        now = timezone.now()
+        for number in (10, 11):
+            item = Item.objects.create(
+                title=f"Airing Anime {number}",
+                media_type=MediaTypes.ANIME,
+                source=Sources.MAL,
+                media_id=str(217900 + number),
+            )
+            Anime.objects.bulk_create(
+                [Anime(user=self.user1, item=item, status=Status.IN_PROGRESS)]
+            )
+            Event.objects.bulk_create(
+                [Event(item=item, content_number=number, datetime=now + timedelta(days=number - 9))]
+            )
+
+        def row_card(offset=0):
+            response = self.call_api(
+                "get",
+                "api_home_row",
+                args=(row.pk,),
+                params={"limit": 1, "offset": offset},
+                headers=self.auth_headers,
+            )
+            self.assertEqual(response.status_code, HTTP.OK)
+            return response.json()["row"]["items"][0]["card"]
+
+        def assert_next_episode(card, label):
+            self.assertEqual(card["statusChip"]["kind"], "event")
+            self.assertEqual(card["statusChip"]["label"], label)
+            self.assertTrue(card["lines"][0]["parts"][0]["text"].startswith(f"{label} • "))
+
+        cold_card = row_card()
+        cache.delete(build_home_row_cache_key(self.user1.pk, row.pk, 1))
+        with patch.object(
+            LibraryQueryExecutor,
+            "ranked_ids_both_directions",
+            side_effect=AssertionError("a warm shelf should reuse its ranked order"),
+        ):
+            warm_card = row_card()
+            next_card = row_card(offset=1)
+        assert_next_episode(warm_card, "E10")
+        assert_next_episode(next_card, "E11")
+        assert_next_episode(cold_card, "E10")
 
     def _paged_row(self):
         """Return (row_id, total) of a built Home row with at least two items."""

@@ -11,6 +11,7 @@ from django.utils import timezone
 from app.mixins import disable_fetch_releases
 from app.models import TV, Item, ItemTag, MediaTypes, Movie, Sources, Status
 from app.providers import services, tmdb
+from app.services import metadata_resolution
 from integrations import external_references
 from integrations import plex as plex_api
 from integrations.imports.helpers import MediaImportError
@@ -162,23 +163,48 @@ class PlexWatchlistSyncService:
         ):
             self.counts["skipped_ignored"] += 1
             return None
-        tmdb_id = self._resolve_tmdb_id(media_type, external_ids, entry, reference)
-        if not tmdb_id:
-            self.counts["skipped_missing_ids"] += 1
-            self._warn(
-                f"Skipped Plex watchlist entry without resolvable IDs: {entry.get('title') or 'Unknown title'}.",
+        target = external_references.reference_target(reference)
+        corrected = target and reference.review_status == (
+            external_references.ExternalReferenceReviewStatus.CORRECTED.value
+        )
+        tmdb_id = target.media_id if target else external_ids.get("tmdb_id")
+        anime_home = None
+        if media_type == MediaTypes.TV.value and not corrected:
+            anime_home = metadata_resolution.find_existing_anime_home(
+                self.user,
+                tmdb_id=tmdb_id,
+                tvdb_id=external_ids.get("tvdb_id"),
             )
-            return None
+        if not anime_home and not tmdb_id:
+            tmdb_id = self._resolve_tmdb_id(media_type, external_ids, entry)
+            if tmdb_id and media_type == MediaTypes.TV.value:
+                anime_home = metadata_resolution.find_existing_anime_home(
+                    self.user, tmdb_id=tmdb_id,
+                )
 
-        metadata = self._fetch_tmdb_metadata(media_type, tmdb_id, entry)
-        if not metadata:
-            return None
-
-        item = self._get_or_create_item(media_type, tmdb_id, metadata, entry)
+        if anime_home:
+            _, item = anime_home
+        else:
+            if not tmdb_id:
+                self.counts["skipped_missing_ids"] += 1
+                self._warn(
+                    f"Skipped Plex watchlist entry without resolvable IDs: {entry.get('title') or 'Unknown title'}.",
+                )
+                return None
+            metadata = self._fetch_tmdb_metadata(media_type, tmdb_id, entry)
+            if not metadata:
+                return None
+            item = self._get_or_create_item(
+                media_type, tmdb_id, metadata, entry,
+                library_media_type=target.library_media_type if corrected else media_type,
+            )
         if item.id in seen_item_ids:
             return item.id
 
-        _media_obj, created_media = self._get_or_create_user_media(model_class, item)
+        # The anime resolver only returns entries this user already tracks.
+        created_media = False
+        if not anime_home:
+            _media_obj, created_media = self._get_or_create_user_media(model_class, item)
         if self.watchlist_tag:
             ItemTag.objects.get_or_create(tag=self.watchlist_tag, item=item)
         if created_media:
@@ -268,17 +294,8 @@ class PlexWatchlistSyncService:
         media_type: str,
         external_ids: dict[str, str],
         entry: dict,
-        reference=None,
     ) -> str | None:
-        """Resolve the TMDB ID from Plex GUIDs or TMDB find lookups."""
-        target = external_references.reference_target(reference)
-        if target and target.media_type == media_type:
-            return str(target.media_id)
-
-        tmdb_id = external_ids.get("tmdb_id")
-        if tmdb_id:
-            return str(tmdb_id)
-
+        """Resolve a missing TMDB ID through TVDB or IMDb."""
         title = entry.get("title") or "Unknown title"
         for source_key in ("tvdb_id", "imdb_id"):
             external_id = external_ids.get(source_key)
@@ -335,6 +352,8 @@ class PlexWatchlistSyncService:
         tmdb_id: str,
         metadata: dict,
         entry: dict,
+        *,
+        library_media_type: str,
     ) -> Item:
         """Get or create the shared TMDB item for a watchlist entry."""
         defaults = {
@@ -348,6 +367,9 @@ class PlexWatchlistSyncService:
             media_id=str(tmdb_id),
             source=Sources.TMDB.value,
             media_type=media_type,
+            library_media_type=library_media_type,
+            season_number=None,
+            episode_number=None,
             defaults=defaults,
         )
 

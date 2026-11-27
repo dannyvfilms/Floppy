@@ -476,6 +476,7 @@ Status: `Partial / coexisting`
 
 - `src/templates/app/components/home_artwork_poller.html`
 - `src/templates/app/components/home_deferred_groups.html`
+- `src/users/home_screen.py` (Upcoming library shelves hydrate next events for visible cards; the shared Home presentation feeds the web and Expo adapters).
 - `src/templates/app/components/home_grid.html`
 - `src/templates/app/components/home_groups.html`
 - `src/templates/app/home.html`

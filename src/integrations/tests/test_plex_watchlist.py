@@ -8,9 +8,25 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-from app.models import TV, Item, ItemTag, MediaTypes, Movie, Sources, Status, Tag
+from app.models import (
+    TV,
+    Anime,
+    Item,
+    ItemProviderLink,
+    ItemTag,
+    MediaTypes,
+    Movie,
+    Sources,
+    Status,
+    Tag,
+)
 from integrations import plex as plex_api
-from integrations.models import PlexAccount, PlexWatchlistSyncItem
+from integrations.models import (
+    ExternalReference,
+    ExternalReferenceReviewStatus,
+    PlexAccount,
+    PlexWatchlistSyncItem,
+)
 from integrations.plex_watchlist import (
     WATCHLIST_SYNC_INTERVAL_MINUTES,
     WATCHLIST_TASK_NAME,
@@ -206,6 +222,152 @@ class PlexWatchlistSyncServiceTests(TestCase):
                 user=self.user, created_by_sync=True, is_active=True
             ).count(),
         )
+
+    @patch("integrations.plex_watchlist.services.get_media_metadata")
+    @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
+    def test_sync_reuses_tracked_flat_anime_and_preserves_it_on_removal(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
+        mock_metadata.side_effect = self._metadata_side_effect
+        for index, (provider, provider_id) in enumerate(
+            [(Sources.TMDB, "321"), (Sources.TVDB, "456")], start=1
+        ):
+            with self.subTest(provider=provider):
+                item = Item.objects.create(
+                    media_id=str(index),
+                    source=Sources.MAL,
+                    media_type=MediaTypes.ANIME,
+                    title="Existing Anime",
+                )
+                ItemProviderLink.objects.create(
+                    item=item,
+                    provider=provider,
+                    provider_media_type=MediaTypes.TV,
+                    provider_media_id=provider_id,
+                )
+                anime = Anime.objects.create(
+                    user=self.user, item=item, status=Status.PLANNING,
+                )
+                entry = self._show_entry(guid=f"{provider}://{provider_id}")
+                entry["ratingKey"] = str(index)
+                mock_fetch_watchlist.side_effect = [([entry], 1), ([], 0)]
+                service = PlexWatchlistSyncService(self.user, self.account)
+
+                with patch("integrations.plex_watchlist.tmdb.find") as mock_find:
+                    mock_find.return_value = {"tv_results": [{"id": 654}]}
+                    counts, warnings = service.sync()
+                    mock_find.assert_not_called()
+
+                self.assertEqual(warnings, "")
+                self.assertEqual(counts, {"linked_existing": 1})
+                mock_metadata.assert_not_called()
+                self.assertFalse(Item.objects.filter(source=Sources.TMDB).exists())
+                sync_item = PlexWatchlistSyncItem.objects.get(user=self.user, item=item)
+                self.assertFalse(sync_item.created_by_sync)
+                self.assertTrue(sync_item.is_active)
+
+                counts, warnings = service.sync()
+
+                self.assertEqual(warnings, "")
+                self.assertEqual(counts, {"deactivated": 1})
+                sync_item.refresh_from_db()
+                self.assertFalse(sync_item.is_active)
+                anime.refresh_from_db()
+                self.assertEqual(anime.status, Status.PLANNING)
+                self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+    @patch("integrations.plex_watchlist.services.get_media_metadata")
+    @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
+    def test_sync_uses_tv_bucket_and_continues_past_duplicate_tmdb_identities(
+        self, mock_fetch_watchlist, mock_metadata
+    ):
+        items = {
+            bucket: Item.objects.create(
+                media_id="321",
+                source=Sources.TMDB,
+                media_type=MediaTypes.TV,
+                library_media_type=bucket,
+                title="Show Title",
+            )
+            for bucket in (MediaTypes.ANIME, MediaTypes.SEASON)
+        }
+        mock_fetch_watchlist.side_effect = [
+            ([self._show_entry(), self._movie_entry()], 2),
+            ([], 0),
+        ]
+        mock_metadata.side_effect = self._metadata_side_effect
+        service = PlexWatchlistSyncService(self.user, self.account)
+
+        counts, warnings = service.sync()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts["created"], 2)
+        tv_item = TV.objects.get(user=self.user).item
+        self.assertEqual(tv_item.media_id, "321")
+        self.assertEqual(tv_item.library_media_type, MediaTypes.TV)
+        self.assertTrue(Movie.objects.filter(user=self.user).exists())
+
+        counts, warnings = service.sync()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts, {"removed": 2})
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+        grouped = TV.objects.create(
+            user=self.user, item=items[MediaTypes.ANIME], status=Status.IN_PROGRESS,
+        )
+        mock_fetch_watchlist.side_effect = None
+        mock_fetch_watchlist.return_value = ([self._show_entry()], 1)
+
+        counts, warnings = service.sync()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts, {"linked_existing": 1})
+        self.assertEqual(TV.objects.get(user=self.user), grouped)
+
+    @patch("integrations.plex_watchlist.services.get_media_metadata")
+    @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
+    def test_sync_honors_a_corrected_tmdb_bucket(self, mock_fetch, mock_metadata):
+        entry = self._show_entry(guid="tvdb://456")
+        mock_fetch.return_value = ([entry], 1)
+        mock_metadata.side_effect = self._metadata_side_effect
+        item_fields = {
+            "media_id": "789",
+            "source": Sources.TMDB,
+            "media_type": MediaTypes.TV,
+            "title": "Corrected Show",
+        }
+        Item.objects.create(**item_fields, library_media_type=MediaTypes.TV)
+        target = Item.objects.create(**item_fields, library_media_type=MediaTypes.ANIME)
+        other_anime = Item.objects.create(
+            media_id="100",
+            source=Sources.MAL,
+            media_type=MediaTypes.ANIME,
+            title="Incorrect Match",
+        )
+        ItemProviderLink.objects.create(
+            item=other_anime,
+            provider=Sources.TVDB,
+            provider_media_type=MediaTypes.TV,
+            provider_media_id="456",
+        )
+        Anime.objects.create(user=self.user, item=other_anime, status=Status.PLANNING)
+        ExternalReference.objects.create(
+            user=self.user,
+            integration="plex",
+            source_account="unknown-server::acct-1",
+            external_namespace="plex_rating_key",
+            external_identity=entry["ratingKey"],
+            media_type=MediaTypes.TV,
+            corrected_item=target,
+            review_status=ExternalReferenceReviewStatus.CORRECTED,
+        )
+
+        counts, warnings = PlexWatchlistSyncService(self.user, self.account).sync()
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts, {"created": 1, "tv": 1})
+        self.assertEqual(TV.objects.get(user=self.user).item, target)
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")

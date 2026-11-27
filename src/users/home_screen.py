@@ -3205,11 +3205,19 @@ def _row_items(user, row, executor, offset, limit, *, seed):
 
 
 def _row_entries(
-    user, items, *, planning_subtitle: bool = False, podcast_episodes: bool = False,
+    user,
+    items,
+    *,
+    planning_subtitle: bool = False,
+    podcast_episodes: bool = False,
+    upcoming: bool = False,
 ) -> list[HomeRowEntry]:
     """Decorate one window of a shelf as Home cards."""
     with boundary("home_cards"):
         media_lookup = _media_lookup_for_items(user, items)
+        if upcoming:
+            # Cached rankings store item IDs; the visible trackers are loaded again.
+            BasicMedia.objects._annotate_next_event(media_lookup.values())
     from app.media_list_filters import attach_card_collection_platforms
 
     attach_card_collection_platforms(user, items)
@@ -3318,7 +3326,13 @@ def _library_row_window(user, row, offset, limit, *, seed):
     executor = _library_row_executor(user, row, normalized, seed=seed)
     items, total = _row_items(user, row, executor, offset, limit, seed=seed)
     planning = (normalized.get("status") or []) == [Status.PLANNING.value]
-    return _row_entries(user, items, planning_subtitle=planning, podcast_episodes=row.media_type == HOME_ALL_MEDIA_TYPE), total
+    return _row_entries(
+        user,
+        items,
+        planning_subtitle=planning,
+        podcast_episodes=row.media_type == HOME_ALL_MEDIA_TYPE,
+        upcoming=row.sort_by == HomeSortChoices.UPCOMING,
+    ), total
 
 
 def _recently_unrated_episode_entries(user, media_type: str) -> list[HomeRowEntry]:
