@@ -63,6 +63,11 @@ def _href(ctx):
             },
         )
     url = app_tags.media_url(item)
+    # An Up Next card is showing one queued episode, so a click opens that episode;
+    # the hover actions keep a link to the series.
+    queued = _queued_episode_url(ctx)
+    if queued and not ctx.get("public_view") and not ctx.get("public_list_reference"):
+        return queued
     if ctx.get("public_list_reference"):
         from urllib.parse import quote
 
@@ -70,6 +75,15 @@ def _href(ctx):
     if ctx.get("public_view"):
         return f"{url}?public_view=1"
     return url
+
+
+def _queued_episode_url(ctx):
+    """Return the queued episode's page for an Up Next card, else an empty string."""
+    media = ctx.get("media")
+    queue = _safe(media, "next_episode_queue") if ctx.get("show_episode_queue") else None
+    if not queue or queue.get("season_number") is None or queue.get("episode_number") is None:
+        return ""
+    return app_tags.episode_queue_url(ctx.get("item"), media) or ""
 
 
 def _title(ctx, media_type):
@@ -898,6 +912,7 @@ def card_actions(ctx):
                 ),
             )
         items.extend([lists_button(), history_button()])
+        items[:0] = _queued_episode_actions(ctx, item, track_button, return_url, suffix)
 
     overlay_href = (
         _safe(media, "card_tile_url")
@@ -927,6 +942,54 @@ def card_actions(ctx):
         "csrfToken": str(ctx.get("csrf_token") or ""),
         "clickable": bool(getattr(ctx.get("user"), "clickable_media_cards", False)),
     }
+
+
+def _queued_episode_actions(ctx, item, track_button, return_url, suffix):
+    """Return the hover buttons for the episode an Up Next card is showing.
+
+    The card click already opens the queued episode, so the link here goes to the
+    series; marking watched acts on the episode and needs a released one.
+    """
+    media = ctx.get("media")
+    queue = _safe(media, "next_episode_queue") if ctx.get("show_episode_queue") else None
+    if not queue or queue.get("season_number") is None or queue.get("episode_number") is None:
+        return []
+    actions = [
+        {
+            "kind": "link",
+            "tone": TONES["history"],
+            "title": _("Open series details"),
+            "icon": file_icon("chevron-right"),
+            "href": app_tags.media_url(item),
+        },
+    ]
+    if queue.get("released"):
+        season, episode = queue["season_number"], queue["episode_number"]
+        watched = track_button(
+            _("Mark episode watched"),
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": queue["source"],
+                    "media_type": "episode",
+                    "media_id": queue["media_id"],
+                    "season_number": season,
+                },
+            ),
+            {"return_url": return_url, "episode_number": str(episode), "is_create": "1"},
+            f"#track-episode-{queue['media_id']}-{season}-{episode}{suffix}",
+            icon="checkmark",
+        )
+        # Native writes through this identity; without it the card's series identity wins.
+        watched["media"] = {
+            "mediaType": MediaTypes.EPISODE.value,
+            "source": queue["source"],
+            "mediaId": str(queue["media_id"]),
+            "seasonNumber": season,
+            "episodeNumber": episode,
+        }
+        actions.append(watched)
+    return actions
 
 
 def _with_href(actions, href):

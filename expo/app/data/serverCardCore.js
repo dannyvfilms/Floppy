@@ -53,3 +53,17 @@ export function musicCreateFromHref(href) {
   const match = String(href || '').match(/\/music\/(artist|album)\/create\/([^/?#]+)/);
   return match ? { kind: match[1], id: decodeURIComponent(match[2]) } : null;
 }
+
+// Home cards hand every action the card's own identity so Track and Lists write to the
+// right item. An action that names its own (Up Next's "Mark episode watched" carries the
+// queued episode) keeps it; only the rest fall back to the card.
+export function withActionIdentity(card, identity) {
+  return {
+    ...card,
+    identity,
+    actions: card.actions && {
+      ...card.actions,
+      items: card.actions.items.map(action => ({ ...action, media: action.media || identity })),
+    },
+  };
+}

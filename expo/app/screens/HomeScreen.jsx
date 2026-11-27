@@ -13,7 +13,7 @@ import {
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { createMeasuredRowWatcher, measureInWindow } from '../data/homeRowWatcherCore';
-import { routeCardHref } from '../data/serverCardCore';
+import { routeCardHref, withActionIdentity } from '../data/serverCardCore';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
@@ -129,9 +129,7 @@ export default function HomeScreen({ navigate }) {
     if (!identity || model.readOnly) return <MediaCard model={card} palette={palette} width={itemWidth}
       readOnly={model.readOnly} onOpen={() => openCard(card)} onOpenLink={() => openCard(card)}
       onAction={() => openCard(card)} />;
-    const enriched = { ...card, identity, actions: card.actions && {
-      ...card.actions, items: card.actions.items.map(action => ({ ...action, media: identity })),
-    } };
+    const enriched = withActionIdentity(card, identity);
     return <MediaCardSlot items={[{ key: item.key || card.cardKey || card.href, model: enriched }]}
       cardWidth={itemWidth} gridGap={0} onOpenDetail={() => openCard(card)}
       onOpenLink={href => { if (!routeCardHref(href, navigate)) openCard(card); }} />;
