@@ -424,6 +424,8 @@ jobs:
       - name: Run OAuth, reliable sync, custom field, Statistics custom range, data invariant and list filter option tests on PostgreSQL
         run: >-
           scripts/test_postgres.sh integrations.tests.test_oauth_device_flow
+          integrations.tests.test_atomic_delivery_receipts api.tests.test_movie_completion_v1
+          api.tests.test_episode_completion_v1
           api.tests.test_reliable_sync api.tests.test_reliable_sync_postgres
           app.tests.test_reliable_sync_migration
           app.tests.views.test_collection_custom_field_list

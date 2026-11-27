@@ -2562,8 +2562,8 @@ class Episode(models.Model):
         return self.item.__str__()
 
     @serialized_state_write
-    def save(self, *args, **kwargs):
-        """Save the episode instance."""
+    def save(self, *args, defer_season_sync=False, **kwargs):
+        """Save the episode instance and update its season and show."""
         from app.services.completion import (
             finalize_completed_entry,
             prepare_completed_entry,
@@ -2595,6 +2595,11 @@ class Episode(models.Model):
                 .first()
             ) or (None, None)
 
+        if defer_season_sync:
+            # Update the committed season before the episode save signals repopulate
+            # or invalidate readers of its status. A rollback discards this callback.
+            transaction.on_commit(self._sync_season_after_save, robust=True)
+
         planning_entries, merged_fields = prepare_completed_entry(self)
         if merged_fields and kwargs.get("update_fields") is not None:
             kwargs["update_fields"] = tuple(
@@ -2615,6 +2620,12 @@ class Episode(models.Model):
             rating_only=True,
         ).delete()
 
+        if not defer_season_sync:
+            self._sync_season_after_save()
+
+    @serialized_state_write
+    def _sync_season_after_save(self):
+        """Recalculate playback status from all committed plays for this season."""
         season_number = self.item.season_number
         if season_number is None:
             return

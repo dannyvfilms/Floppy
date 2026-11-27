@@ -311,6 +311,52 @@ second viewing recorded elsewhere is not lost. An episode is addressed with
 state in Floppy's sync ledger only. It adds no library entry, does not turn
 a Planning entry into Completed, and does not retract a play.
 
+### Retry-safe completion for tracked TMDB movies and TV episodes
+
+Use the same authenticated account and `scrobble:write` token to check
+`GET /api/v1/scrobble/completions/v1/` and submit the viewing. The movie
+query `?tmdb=603` retains the v1 response `{"version":1,"media_type":"movie"}`.
+
+For television, send the series TMDB ID and both coordinates. For example,
+`?media_type=episode&tmdb=701&season_number=1&episode_number=2` must return
+HTTP 200 with this exact identity:
+
+```json
+{"version":1,"media_type":"episode","tmdb":"701","season_number":1,"episode_number":2}
+```
+
+The episode must already have a local canonical item in the authenticated
+user's tracked season. An older movie-only server can answer a query for a
+series with a movie response when their numeric TMDB IDs coincide. Use the
+episode endpoint only after the returned type, series, season and episode all
+match. SQLite and unknown or alternate episode orders cannot advertise this
+capability.
+
+Generate one UUID per viewing and keep its original playback instant with an
+explicit UTC offset. Send a different UUID for a genuine rewatch, even when it
+follows immediately. Preserve the original account, UUID and complete payload
+across retries.
+
+```http
+POST /api/v1/scrobble/completions/v1/
+Idempotency-Key: <viewing UUID>
+Content-Type: application/json
+
+{"media_type":"episode","tmdb":"701","season_number":1,"episode_number":2,
+ "played_at":"2026-01-01T20:30:00Z","position_seconds":2400,"duration_seconds":2400}
+```
+
+An HTTP 200 acknowledgement contains the UUID, positive play ID, and the
+committed instant in UTC. Episode acknowledgements also echo the full episode
+identity. Validate the acknowledgement. Within receipt retention, resubmitting
+the exact event replays that acknowledgement. Changing the payload under the
+same UUID returns HTTP 409. The play and its receipt commit together in
+PostgreSQL. A renewed token for the same user can replay that user's receipt.
+If a response is lost after a guarded submission, keep retrying within the
+receipt horizon using the same guarded event. An account change or an
+unverified response requires reconciliation. A subsequent legacy scrobble
+could otherwise record the same viewing a second time.
+
 ## 4. Offline retries
 
 Send `client_event_id` (or the `Idempotency-Key` header) on every mutation.
