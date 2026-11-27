@@ -192,6 +192,19 @@ function runtimeMinutes(value) {
   return /^\d+$/.test(text.trim()) ? Number(text) : 0;
 }
 
+// The API sends `max_progress: 1` as a placeholder when it does not know a length: always for
+// games (IGDB has no playtime), and for books, manga, comics and board games without a known
+// count. Used as the field's cap, it failed every stored playtime with "Must be at most 1", so a
+// status change (Paused -> Dropped) could not be saved and typing a time replaced the total.
+const PLACEHOLDER_MAX_TYPES = new Set(['book', 'manga', 'comic', 'boardgame']);
+export function progressMax(mediaType, detail) {
+  if (mediaType === 'game') return null;
+  const max = detail && detail.max_progress ? Number(detail.max_progress) : null;
+  if (!max) return null;
+  if (max <= 1 && PLACEHOLDER_MAX_TYPES.has(mediaType)) return null;
+  return max;
+}
+
 function trackFields(identity, detail, consumption, withTime = false, scaleMax = 10, ratingScale = null) {
   const mediaType = identity.mediaType;
   const fields = [
@@ -212,7 +225,7 @@ function trackFields(identity, detail, consumption, withTime = false, scaleMax =
     fields.push(field('progress', 'Progress', 'number', consumption?.progress ?? (mediaType === 'comicissue' ? 0 : ''), {
       min: 0,
       unit: mediaType === 'game' ? 'minutes' : '',
-      max: detail && detail.max_progress ? detail.max_progress : null,
+      max: progressMax(mediaType, detail),
       help: detail && detail.progress_unit ? String(detail.progress_unit) : '',
     }));
   }
