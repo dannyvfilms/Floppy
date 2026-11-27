@@ -520,7 +520,7 @@ jobs:
             test -n "$tags" && test -n "$expected"
             while IFS= read -r tag; do
               test -n "$tag" || continue
-              actual=$(docker buildx imagetools inspect "$tag" | awk '$1 == "Digest:" {print $2; exit}')
+              actual=$(docker buildx imagetools inspect "$tag" | awk '$1 == "Digest:" && !seen++ {print $2}')
               test "$actual" = "$expected" || { echo "Unexpected digest for $tag: $actual (expected $expected)"; return 1; }
             done <<< "$tags"
           }

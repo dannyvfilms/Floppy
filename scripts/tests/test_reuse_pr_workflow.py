@@ -379,6 +379,29 @@ class SkippingIsReachableOnlyThroughTheDecisionTests(unittest.TestCase):
 
 
 class DockerPublishingTests(unittest.TestCase):
+    def test_tag_verification_consumes_inspection_output_and_detects_mismatch(self):
+        jobs = load(DOCKER_IMAGE)["jobs"]
+        step = next(s for s in jobs["verify-image"]["steps"] if s.get("name") == "Verify published tag references")
+        with tempfile.TemporaryDirectory() as directory:
+            docker = Path(directory) / "docker"
+            docker.write_text(
+                '#!/bin/bash\n'
+                'case "$4" in *-bundled) digest=bundled ;; *) digest=standard ;; esac\n'
+                'printf "Digest: %s\\n" "$digest"\n'
+                'for ((i=0; i<10000; i++)); do printf "manifest details\\n"; done\n',
+                encoding="utf-8",
+            )
+            docker.chmod(0o755)
+            env = {**os.environ, "PATH": f"{directory}:{os.environ['PATH']}",
+                   "STANDARD_TAGS": "image:latest\nlegacy:latest", "DIGEST": "standard",
+                   "BUNDLED_TAGS": "image:latest-bundled", "BUNDLED_DIGEST": "bundled"}
+            for expected, valid in [("bundled", True), ("wrong", False)]:
+                env["BUNDLED_DIGEST"] = expected
+                result = subprocess.run(  # noqa: S603 - executes the checked-in workflow step
+                    ["/bin/bash", "-c", step["run"]], env=env, capture_output=True, check=False,
+                )
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+
     def test_metadata_rules_and_post_publish_verification(self):
         jobs = load(DOCKER_IMAGE)["jobs"]
         standard = next(s for s in jobs["build"]["steps"] if s.get("id") == "meta")
