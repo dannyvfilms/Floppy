@@ -63,6 +63,7 @@ Status: `Partial / coexisting`
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
+- 2026-11-26 Android back gesture: `expo/App.js` (`BackHandler` walks the in-app history).
 
 - `expo/app/components/NativeStatusBar.jsx`, `expo/app/themeColor.js`, `expo/app/theme.js`, `expo/app/systemColor.ios.js`, `expo/app/systemColor.js` (iOS system semantic colors; other hosts retain the existing proof palette)
 - `expo/app/components/Screen.jsx`, `expo/app/components/Screen.ios.jsx` (shared screen presentation; iOS applies the remaining 22-point page margin after the shell's safe-area inset on each side)
