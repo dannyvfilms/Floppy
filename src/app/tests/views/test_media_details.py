@@ -2645,7 +2645,7 @@ class MediaDetailsViewTests(TestCase):
         """Videos YouTube tags with the game show apart from playtime."""
         from django.utils import timezone
 
-        from app.models import Video, VideoGameTag
+        from app.models import Video, VideoGameTag, VideoPlay
 
         mock_get_metadata.return_value = {
             "media_id": "325609",
@@ -2675,12 +2675,16 @@ class MediaDetailsViewTests(TestCase):
             game_title="Dispatch",
             checked_at=timezone.now(),
         )
-        Video.objects.create(
+        video = Video.objects.create(
             item=video_item,
             user=self.user,
             status=Status.IN_PROGRESS.value,
             progress=1800,
             length_seconds=3600,
+        )
+        VideoPlay.objects.create(
+            video=video, external_id="watch", progress=1800,
+            end_date=timezone.now(), from_progress_report=True,
         )
 
         response = self.client.get(
