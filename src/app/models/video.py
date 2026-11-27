@@ -72,12 +72,17 @@ class Video(Media):
             play, created = VideoPlay.objects.get_or_create(
                 video=self,
                 external_id=external_id,
-                defaults={"progress": progress_seconds, "end_date": when},
+                defaults={
+                    "progress": progress_seconds,
+                    "end_date": when,
+                    "from_progress_report": True,
+                },
             )
             if not created:
                 play.progress = max(play.progress, progress_seconds)
                 play.end_date = max(play.end_date, when)
-                play.save(update_fields=["progress", "end_date"])
+                play.from_progress_report = True
+                play.save(update_fields=["progress", "end_date", "from_progress_report"])
         return play, created
 
 
@@ -89,6 +94,10 @@ class VideoPlay(models.Model):
     external_id = models.CharField(max_length=255)
     progress = models.PositiveIntegerField(default=0)
     end_date = models.DateTimeField()
+    # A Takeout row and a progress report can describe the same video-day.
+    # Both false means no source has been recorded for the play.
+    from_takeout = models.BooleanField(default=False)
+    from_progress_report = models.BooleanField(default=False)
 
     class Meta:
         """Same external id updates one play."""

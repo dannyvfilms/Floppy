@@ -21,6 +21,7 @@ from app.models import (
     Studio,
     Video,
     VideoGameTag,
+    VideoPlay,
 )
 from app.providers.services import ProviderAPIError
 from app.services import metadata_resolution
@@ -49,7 +50,8 @@ class DetailPageTests(FloppyApiTestCase):
     def test_video_activity_is_available_for_an_untracked_game_in_private_detail(self, metadata):
         game = Item.objects.create(media_type="game", source="igdb", media_id="121", title="Minecraft: Java Edition")
         item = Item.objects.create(media_type="video", source="youtube", media_id="abcdefghijk", title="Minecraft video")
-        Video.objects.create(item=item, user=self.user1, progress=0)
+        video = Video.objects.create(item=item, user=self.user1, progress=0)
+        VideoPlay.objects.create(video=video, external_id="uncertain", end_date=timezone.now())
         VideoGameTag.objects.create(
             item=item, status=VideoGameTag.Status.FOUND, game_title="Minecraft",
             release_year="2009", game_id="UCQvWX73GQygcwXOTSf_VDVg", checked_at=timezone.now(),

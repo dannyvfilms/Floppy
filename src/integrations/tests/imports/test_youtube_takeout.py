@@ -195,6 +195,7 @@ class YouTubeTakeoutImportTests(TestCase):
         self.assertEqual(counts["created"], 2)
         self.assertEqual(Video.objects.filter(user=self.user).count(), 2)
         self.assertEqual(VideoPlay.objects.count(), 3)
+        self.assertEqual(VideoPlay.objects.filter(from_takeout=True, from_progress_report=False).count(), 3)
         video = Video.objects.get(item__media_id="vidAAAAAAAA")
         self.assertEqual(video.status, Status.COMPLETED.value)
         self.assertEqual(video.entry_source, "youtube")
@@ -260,13 +261,13 @@ class YouTubeTakeoutImportTests(TestCase):
         day = timezone.localtime(
             youtube_takeout.parse_time("2026-03-01T10:00:00Z"),
         ).date()
-        VideoPlay.objects.create(
-            video=video,
-            external_id=f"youtube:vidAAAAAAAA:{day}",
-            end_date=timezone.now(),
-        )
+        video.upsert_play(f"youtube:vidAAAAAAAA:{day}", 100)
         self.run_import([watch("vidAAAAAAAA", "2026-03-01T10:00:00Z")])
         self.assertEqual(VideoPlay.objects.count(), 1)
+        play = VideoPlay.objects.get()
+        self.assertTrue(play.from_takeout)
+        self.assertTrue(play.from_progress_report)
+        self.assertEqual(play.progress, 100)
 
     def test_accepts_the_takeout_zip(self):
         """watch-history.json inside any folder of a zip is found."""

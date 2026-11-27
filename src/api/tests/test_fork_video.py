@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from app import history_cache
 from app.history_cache_day_builder import build_history_day
-from app.models import Item, MediaTypes, Status, Video, VideoPlay
+from app.models import Item, MediaTypes, Status, Video, VideoGameLink, VideoPlay
+from app.services.youtube_game_watch import cached_watched_for_game
 
 from .base import FloppyApiTestCase
 
@@ -88,6 +89,7 @@ class VideoPlayApiTests(FloppyApiTestCase):
         self.assertEqual(video.progress, 600)
         self.assertEqual(video.end_date, before.end_date)
         self._post(progressSeconds=50, externalId="youtube:vid1:2026-10-03")
+        self._post(progressSeconds=0, externalId="youtube:vid1:2026-10-03")
         self.assertEqual(
             VideoPlay.objects.get(external_id__endswith="10-03").progress, 600
         )
@@ -426,7 +428,7 @@ class VideoGameTagTriggerTests(FloppyApiTestCase):
 class VideoPlayManageApiTests(FloppyApiTestCase):
     """List and delete the plays of a video."""
 
-    def _post(self, day, media_id="vid1"):
+    def _post(self, day, media_id="vid1", progress=100):
         """Post one play on the given day."""
         url = reverse(
             "api_video_play",
@@ -437,7 +439,7 @@ class VideoPlayManageApiTests(FloppyApiTestCase):
             {
                 "title": "A Video",
                 "lengthSeconds": 1000,
-                "progressSeconds": 100,
+                "progressSeconds": progress,
                 "externalId": f"youtube:{media_id}:{day}",
             },
             format="json",
@@ -475,6 +477,8 @@ class VideoPlayManageApiTests(FloppyApiTestCase):
             ["youtube:vid1:2026-10-04", "youtube:vid1:2026-10-02"],
         )
         self.assertEqual(response.data["results"][0]["progress_seconds"], 100)
+        self.assertTrue(response.data["results"][0]["from_progress_report"])
+        self.assertFalse(response.data["results"][0]["from_takeout"])
 
     def test_listing_an_unknown_video_is_not_found(self):
         """No video, no list."""
@@ -493,12 +497,23 @@ class VideoPlayManageApiTests(FloppyApiTestCase):
         self.assertEqual(video.status, Status.IN_PROGRESS.value)
 
     def test_deleting_the_last_play_keeps_the_video(self):
-        """The video stays tracked, with no watched date."""
-        self._post("2026-10-02")
-        self.assertEqual(self._delete("youtube:vid1:2026-10-02").status_code, 204)
+        """The video stays completed, with no date or credited game watch time."""
+        self._post("2026-10-02", progress=900)
         video = Video.objects.get()
+        game = Item.objects.create(media_type="game", source="igdb", media_id="19", title="A Game")
+        VideoGameLink.objects.create(video=video, game_item=game)
+        self.assertEqual(cached_watched_for_game(self.user1, game)["seconds"], 900)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self._delete("youtube:vid1:2026-10-02").status_code, 204)
+
+        video.refresh_from_db()
+        self.assertEqual(video.status, Status.COMPLETED.value)
         self.assertIsNone(video.end_date)
         self.assertEqual(VideoPlay.objects.count(), 0)
+        summary = cached_watched_for_game(self.user1, game)
+        self.assertEqual(summary["seconds"], 0)
+        self.assertEqual(summary["videos_without_time"], 0)
 
     def test_deleting_removes_the_day_from_history(self):
         """History no longer shows the deleted play."""

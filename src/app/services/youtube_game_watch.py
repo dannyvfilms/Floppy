@@ -1,9 +1,4 @@
-"""Tie the game YouTube tags on a user's videos to a Floppy game.
-
-Matching uses known provider identities or normalized title and release year.
-Watch time uses the recorded position or the published runtime for a completed
-video with no recorded position.
-"""
+"""Tie YouTube video watches to Floppy games and total the evidence on their plays."""
 
 import logging
 import re
@@ -19,7 +14,7 @@ from django.utils import timezone
 
 from app.cache_safety import cache_add
 from app.helpers import minutes_to_hm
-from app.models import MediaTypes, Sources, Status, Video, VideoGameTag, VideoPlay
+from app.models import MediaTypes, Sources, Video, VideoGameTag, VideoPlay
 from app.services import youtube_game
 
 logger = logging.getLogger(__name__)
@@ -87,7 +82,7 @@ def _watch_cache_keys(user, games):
     ]
     for game in games:
         identity = sha256(f"{game.title}\n{game.release_datetime}".encode()).hexdigest()
-        yield game.pk, f"youtube-game-watch:v2:{user.pk}:{game.pk}:{identity}:{viewer_generation}:{tag_generation}"
+        yield game.pk, f"youtube-game-watch:v3:{user.pk}:{game.pk}:{identity}:{viewer_generation}:{tag_generation}"
 
 
 def cached_watched_for_game(user, game_item):
@@ -176,10 +171,13 @@ def game_backfill_candidates(user_id, game, limit=GAME_BACKFILL_BATCH):
     fresh = Q(item__video_game_tag__isnull=True)
     missing_runtime = Q(item__video_game_tag__runtime_seconds__isnull=True)
     matched = Q(game_link__game_item=game) | Q(game_link__isnull=True, item_id__in=tags)
-    unmeasured_plays = VideoPlay.objects.filter(video_id=OuterRef("pk"), progress=0)
+    plays_needing_runtime = VideoPlay.objects.filter(
+        video_id=OuterRef("pk"),
+        progress=0,
+    )
     timings = videos.filter(
         matched & (fresh | (missing_runtime & retry)),
-        Q(status=Status.COMPLETED.value, progress=0) | Q(Exists(unmeasured_plays)),
+        Exists(plays_needing_runtime),
         length_seconds=0,
     ).order_by("pk").values_list("item_id", flat=True)
     ids = list(timings[:limit])
@@ -198,7 +196,7 @@ def game_backfill_candidates(user_id, game, limit=GAME_BACKFILL_BATCH):
 
 
 def watched_for_game(user, game_item):
-    """Count recorded plays using their positions or the full video runtime.
+    """Count dated plays using their reported positions or a runtime estimate.
 
     A video counts when the user linked it to this game, or when YouTube's tag
     matches it and the user has not unlinked or relinked it elsewhere.
@@ -214,7 +212,7 @@ def watched_for_game(user, game_item):
 def _watched_for_games(user, games):
     rows_by_game = {game.pk: [] for game in games}
     videos = Video.objects.filter(user=user)
-    fields = ("pk", "progress", "length_seconds", "channel", "status", "item__video_game_tag__runtime_seconds")
+    fields = ("pk", "length_seconds", "channel", "item__video_game_tag__runtime_seconds")
     manual = videos.filter(game_link__game_item_id__in=rows_by_game)
     for game_id, *row in manual.values_list("game_link__game_item_id", *fields).iterator():
         rows_by_game[game_id].append(row)
@@ -232,51 +230,44 @@ def _watched_for_games(user, games):
     lengths = {
         pk: client_length or published_length or 0
         for rows in rows_by_game.values()
-        for pk, _, client_length, _, _, published_length in rows
+        for pk, client_length, _, published_length in rows
     }
-    play_seconds = defaultdict(int)
-    timed_by_position = set()
+    reported = defaultdict(int)
+    runtime_estimates = defaultdict(int)
     untimed_plays = set()
     plays = VideoPlay.objects.filter(video_id__in=lengths).values_list("video_id", "progress")
     for video_id, position in plays.iterator():
         length = lengths[video_id]
         if position:
-            timed_by_position.add(video_id)
-            play_seconds[video_id] += min(position, length) if length else position
+            # Seeking can put a reported position beyond the video's length.
+            reported[video_id] += min(position, length) if length else position
+        elif length:
+            runtime_estimates[video_id] += length
         else:
-            play_seconds[video_id] += length
-            if not length:
-                untimed_plays.add(video_id)
+            untimed_plays.add(video_id)
     return {
-        pk: _summarize_watches(rows, lengths, play_seconds, timed_by_position, untimed_plays)
+        pk: _summarize_watches(rows, reported, runtime_estimates, untimed_plays)
         for pk, rows in rows_by_game.items()
     }
 
 
-def _summarize_watches(rows, lengths, play_seconds, timed_by_position, untimed_plays):
+def _summarize_watches(rows, reported, runtime_estimates, untimed_plays):
     if not rows:
         return None
-    estimated = False
-    # Position can pass the runtime after a rewatch or a seek past the end.
     by_channel = {}
-    seconds = 0
+    reported_position_seconds = 0
+    runtime_estimate_seconds = 0
     videos_without_time = 0
-    for pk, progress, _, channel, status, _ in rows:
-        length = lengths[pk]
-        if pk in play_seconds:
-            watched = play_seconds[pk]
-            estimated |= pk in timed_by_position
-        elif progress:
-            estimated = True
-            watched = min(progress, length) if length else progress
-        elif status == Status.COMPLETED.value:
-            watched = length
-        else:
-            watched = 0
+    for pk, _, channel, _ in rows:
+        position_seconds = reported.get(pk, 0)
+        estimate_seconds = runtime_estimates.get(pk, 0)
+        watched = position_seconds + estimate_seconds
         name = (channel or "").strip()
         by_channel[name] = by_channel.get(name, 0) + watched
-        seconds += watched
-        videos_without_time += int(watched == 0 or pk in untimed_plays)
+        reported_position_seconds += position_seconds
+        runtime_estimate_seconds += estimate_seconds
+        videos_without_time += int(pk in untimed_plays)
+    seconds = reported_position_seconds + runtime_estimate_seconds
     channels = [
         {
             "name": name,
@@ -290,11 +281,13 @@ def _summarize_watches(rows, lengths, play_seconds, timed_by_position, untimed_p
         "videos": len(rows),
         "videos_without_time": videos_without_time,
         "seconds": seconds,
+        "reported_position_seconds": reported_position_seconds,
+        "runtime_estimate_seconds": runtime_estimate_seconds,
         "hours_label": (
             f"{seconds}s"
             if 0 < seconds < SECONDS_PER_MINUTE
             else minutes_to_hm(seconds // SECONDS_PER_MINUTE)
         ),
         "channels": channels,
-        "estimated": estimated,
+        "estimated": bool(seconds),
     }

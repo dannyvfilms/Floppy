@@ -44,7 +44,7 @@ import logging
 from django.db import transaction
 from django.db.utils import IntegrityError
 
-from app.models import TV, Episode, Item, Media, MediaTypes, Season, Sources
+from app.models import TV, Episode, Item, Media, MediaTypes, Season, Sources, VideoPlay
 from app.providers import tmdb
 from app.services.sync_lock import invalidate_item_contexts
 from app.services.tracker_fold import fold_tracker_into
@@ -162,8 +162,8 @@ def _move_children(row, twin) -> None:
     """Move rows that cascade from `row` (plays, links) onto `twin`.
 
     Without this, deleting the duplicate tracking row would delete its
-    plays with it. A child the twin already holds (the same play id) is a
-    true duplicate and is dropped.
+    plays with it. Duplicate video plays may contain evidence from different
+    sources, so combine it before dropping the duplicate.
     """
     for relation in type(row)._meta.related_objects:
         if relation.many_to_many or relation.one_to_one:
@@ -176,6 +176,15 @@ def _move_children(row, twin) -> None:
                 with transaction.atomic():
                     child.save(update_fields=[field.attname])
             except IntegrityError:
+                if isinstance(child, VideoPlay):
+                    play = twin.plays.select_for_update().get(external_id=child.external_id)
+                    play.progress = max(play.progress, child.progress)
+                    play.end_date = max(play.end_date, child.end_date)
+                    play.from_takeout |= child.from_takeout
+                    play.from_progress_report |= child.from_progress_report
+                    play.save(update_fields=[
+                        "progress", "end_date", "from_takeout", "from_progress_report",
+                    ])
                 child.delete()
 
 

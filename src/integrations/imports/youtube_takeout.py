@@ -586,8 +586,8 @@ class YouTubeTakeoutImporter:
 
             # Lock the video so a plays API call cannot insert the same day meanwhile.
             video = Video.objects.select_for_update().get(pk=video.pk)
-            plays_created = self._add_plays(video, video_id, times)
-            if plays_created and not video_created:
+            plays_created, provenance_updated = self._add_plays(video, video_id, times)
+            if (plays_created or provenance_updated) and not video_created:
                 invalidate_watch_summaries(self.user.pk)
             latest = max(times)
             if not video.end_date or latest > video.end_date:
@@ -596,21 +596,22 @@ class YouTubeTakeoutImporter:
         return int(video_created), plays_created
 
     def _add_plays(self, video, video_id, times):
-        """Insert one play per day that has none yet. Returns how many were added."""
+        """Record Takeout evidence and return counts of new and newly attested plays."""
         by_day = {}
         for when in sorted(times):
             day = timezone.localtime(when).date().isoformat()
             by_day[f"youtube:{video_id}:{day}"] = when
-        existing = set(
-            VideoPlay.objects.filter(
-                video=video,
-                external_id__in=list(by_day),
-            ).values_list("external_id", flat=True),
+        existing = dict(
+            VideoPlay.objects.filter(video=video, external_id__in=list(by_day))
+            .values_list("external_id", "from_takeout")
         )
         new_plays = [
-            VideoPlay(video=video, external_id=external_id, end_date=when)
+            VideoPlay(video=video, external_id=external_id, end_date=when, from_takeout=True)
             for external_id, when in by_day.items()
             if external_id not in existing
         ]
+        unattested = [external_id for external_id, from_takeout in existing.items() if not from_takeout]
+        if unattested:
+            VideoPlay.objects.filter(video=video, external_id__in=unattested).update(from_takeout=True)
         VideoPlay.objects.bulk_create(new_plays, batch_size=PLAY_BATCH_SIZE)
-        return len(new_plays)
+        return len(new_plays), len(unattested)

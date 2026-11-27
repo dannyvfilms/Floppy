@@ -31,9 +31,11 @@ class LibraryBulkVideoGameTests(FloppyApiTestCase):
         own = Video.objects.create(item=first, user=self.user1, status=Status.COMPLETED.value)
         VideoPlay.objects.create(video=own, external_id="first", progress=0, end_date=timezone.now())
         VideoPlay.objects.create(video=own, external_id="repeat", progress=600, end_date=timezone.now())
-        manual = Video.objects.create(item=second, user=self.user1, progress=30)
+        manual = Video.objects.create(item=second, user=self.user1)
+        manual.upsert_play("manual", 30)
         VideoGameLink.objects.create(video=manual, game_item=edition)
-        Video.objects.create(item=first, user=self.user2, progress=120)
+        other = Video.objects.create(item=first, user=self.user2)
+        other.upsert_play("other", 120)
 
         def watch_labels(headers):
             response = self.client.get(url, {"q": "Test Game"}, **headers)

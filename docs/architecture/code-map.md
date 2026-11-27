@@ -74,14 +74,21 @@ Django apps live under `src/`. Paths below are repository-relative.
 - **YouTube game watch time.** `src/app/services/youtube_game.py` reads and
   backfills the tag and published runtime from the watch page.
   `src/app/services/youtube_game_watch.py` matches that tag to a game and
-  totals the viewer's recorded positions or completed video runtimes.
+  totals credited time from the viewer's dated `VideoPlay` rows.
   The PWA and Expo use `frontend/ui/useDeferredYoutubeWatch.js` to request the
   private summary after the detail renders. That request can start a bounded
   game-specific backfill on the default worker in `src/app/tasks_youtube_game.py`.
   The scheduled and opened-game paths share a provider cooldown after HTTP 429
   so a rate limit does not mark the individual video unavailable.
-  Each recorded video play contributes its position or full runtime, and
-  completed videos without play records contribute once.
+  `src/app/models/video.py` records progress-report evidence and the Takeout
+  importer records export evidence on the same video-day. A play can have both
+  sources. The private play API returns both flags, with both false for older
+  plays whose sources have yet to be established.
+  The private game summary returns `reported_position_seconds` and
+  `runtime_estimate_seconds` alongside their combined `seconds`. A reported
+  position takes precedence, and later zero-position reports preserve it.
+  Any dated play without a usable position can contribute the full runtime
+  as an estimate. Tracker status provides no watch credit by itself.
   `src/api/fork_views_library.py` owns bulk video game assignment and known
   game search for the Videos library on all platforms. The watch service reads
   and populates the detail summary cache in a batch for the search results.

@@ -354,8 +354,10 @@ class MergeFoldTests(TestCase):
         )
         keeper_video = Video.objects.create(user=self.user, item=keeper)
         VideoPlay.objects.create(video=loser_video, external_id="a", end_date=_dt(1))
-        VideoPlay.objects.create(video=loser_video, external_id="b", end_date=_dt(2))
-        VideoPlay.objects.create(video=keeper_video, external_id="b", end_date=_dt(2))
+        VideoPlay.objects.create(
+            video=loser_video, external_id="b", end_date=_dt(2), from_takeout=True,
+        )
+        keeper_video.upsert_play("b", 100, end_date=_dt(2))
 
         item_merge.merge_item(loser, keeper)
 
@@ -366,6 +368,10 @@ class MergeFoldTests(TestCase):
             sorted(keeper_video.plays.values_list("external_id", flat=True)),
             ["a", "b"],
         )
+        merged_play = keeper_video.plays.get(external_id="b")
+        self.assertTrue(merged_play.from_takeout)
+        self.assertTrue(merged_play.from_progress_report)
+        self.assertEqual(merged_play.progress, 100)
 
     def test_a_failure_leaves_both_items_untouched(self):
         TV.objects.create(user=self.user, item=self.loser, score=9)

@@ -100,6 +100,8 @@ class VideoPlayView(APIView):
                         "external_id": play.external_id,
                         "progress_seconds": play.progress,
                         "end_date": play.end_date,
+                        "from_takeout": play.from_takeout,
+                        "from_progress_report": play.from_progress_report,
                     }
                     for play in plays
                 ],

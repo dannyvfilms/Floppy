@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings, tag
 from django.utils import timezone
 
-from app.models import Item, MediaTypes, Sources, Status, VideoGameTag
+from app.models import Item, MediaTypes, Sources, Status, VideoGameTag, VideoPlay
 from app.services import youtube_game
 
 
@@ -271,13 +271,19 @@ class WatchedForGameTests(TestCase):
                 "checked_at": timezone.now(),
             },
         )
-        return Video.objects.create(
+        video = Video.objects.create(
             item=item,
             user=user,
             progress=progress,
             length_seconds=length,
             status=Status.IN_PROGRESS.value,
         )
+        if progress:
+            VideoPlay.objects.create(
+                video=video, external_id=vid, progress=progress, end_date=timezone.now(),
+                from_progress_report=True,
+            )
+        return video
 
     def test_sums_matching_videos_for_one_user_and_caps_at_runtime(self):
         from app.services import youtube_game_watch as watch
@@ -290,6 +296,7 @@ class WatchedForGameTests(TestCase):
             watch.watched_for_game(self.user, self.game),
             {
                 "videos": 2, "videos_without_time": 0, "seconds": 1600,
+                "reported_position_seconds": 1600, "runtime_estimate_seconds": 0,
                 "hours_label": "26m", "channels": [], "estimated": True,
             },
         )
@@ -315,9 +322,10 @@ class WatchedForGameTests(TestCase):
     def test_missing_positions_on_incomplete_videos_do_not_add_time(self):
         from app.services import youtube_game_watch as watch
 
-        history = self._video(self.user, "history", self.game.title, "2023", 0, 1800)
+        history = self._video(self.user, "history", self.game.title, "2023", 0, 0)
         history.channel = "History"
         history.save(update_fields=["channel"])
+        VideoPlay.objects.create(video=history, external_id="unknown-time", end_date=timezone.now())
         summary = watch.watched_for_game(self.user, self.game)
         self.assertEqual(summary["seconds"], 0)
         self.assertEqual(summary["videos_without_time"], 1)
@@ -348,15 +356,18 @@ class WatchedForGameTests(TestCase):
         history.status = Status.COMPLETED.value
         history.save(update_fields=["status"])
         VideoGameTag.objects.filter(item=history.item).update(runtime_seconds=1394)
+        VideoPlay.objects.create(
+            video=history, external_id="takeout", end_date=timezone.now(), from_takeout=True,
+        )
 
         summary = watch.watched_for_game(self.user, self.game)
         self.assertEqual(summary["seconds"], 1394)
         self.assertEqual(summary["videos_without_time"], 0)
-        self.assertFalse(summary["estimated"])
+        self.assertEqual(summary["runtime_estimate_seconds"], 1394)
+        self.assertTrue(summary["estimated"])
 
     @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "game-watch-plays"}})
     def test_recorded_plays_use_their_position_or_full_runtime_and_refresh_the_cache(self):
-        from app.models import VideoPlay
         from app.services import youtube_game_watch as watch
 
         video = self._video(self.user, "repeat", self.game.title, "2023", 900, 0)
@@ -364,17 +375,21 @@ class WatchedForGameTests(TestCase):
         self.assertEqual(watch.cached_watched_for_game(self.user, self.game)["seconds"], 900)
 
         with self.captureOnCommitCallbacks(execute=True):
-            for external_id, progress in (("first", 0), ("second", 0), ("partial", 400), ("seek", 1700)):
+            for external_id, progress in (("first", 0), ("second", 0), ("seek", 1700)):
                 VideoPlay.objects.create(
                     video=video, external_id=external_id, progress=progress, end_date=timezone.now(),
                 )
+            video.upsert_play("zero-position", 0)
         summary = watch.cached_watched_for_game(self.user, self.game)
         self.assertEqual(summary["videos"], 1)
-        self.assertEqual(summary["seconds"], 3400)
+        self.assertEqual(summary["seconds"], 4900)
+        self.assertEqual(summary["reported_position_seconds"], 1900)
+        self.assertEqual(summary["runtime_estimate_seconds"], 3000)
+        self.assertEqual(summary["videos_without_time"], 0)
 
         VideoGameTag.objects.filter(item=video.item).update(runtime_seconds=None)
         summary = watch.watched_for_game(self.user, self.game)
-        self.assertEqual(summary["seconds"], 2100)
+        self.assertEqual(summary["seconds"], 2600)
         self.assertEqual(summary["videos_without_time"], 1)
 
     def test_minecraft_youtube_identity_maps_to_java_edition_once(self):
@@ -430,6 +445,9 @@ class WatchedForGameTests(TestCase):
             video.channel = "Original"
             video.status = Status.COMPLETED.value
             video.save(update_fields=["channel", "status"])
+            VideoPlay.objects.create(
+                video=video, external_id="takeout", end_date=timezone.now(), from_takeout=True,
+            )
 
         with patch.object(watch, "watched_for_game", wraps=watch.watched_for_game) as calculate:
             self.assertEqual(watch.cached_watched_for_game(self.user, self.game)["seconds"], 0)
@@ -490,7 +508,10 @@ class BackfillTests(TestCase):
             ("d" * 11, "Other subject"),
         ):
             item = Item.objects.create(media_type="video", source="youtube", media_id=video_id, title=title)
-            Video.objects.create(user=user, item=item, status=Status.COMPLETED.value)
+            video = Video.objects.create(user=user, item=item, status=Status.COMPLETED.value)
+            VideoPlay.objects.create(
+                video=video, external_id=video_id, end_date=timezone.now(), from_takeout=True,
+            )
         VideoGameTag.objects.create(
             item=Item.objects.get(media_id="a" * 11), status=VideoGameTag.Status.FOUND,
             game_title=MINECRAFT[0], game_id=MINECRAFT[2],
@@ -554,13 +575,15 @@ class ManualLinkWatchTests(TestCase):
             progress=600,
             length_seconds=1000,
         )
-        Video.objects.create(
+        other_video = Video.objects.create(
             item=item,
             user=self.other,
             status="In progress",
             progress=100,
             length_seconds=1000,
         )
+        self.mine.upsert_play("mine", 600)
+        other_video.upsert_play("other", 100)
 
     def test_tag_counts_until_unlinked(self):
         """The tag matches by title; unlinking removes it for that user only."""
