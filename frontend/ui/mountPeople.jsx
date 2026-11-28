@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { PeopleView } from '../pages/PeopleView';
+import { PeopleSearchView } from '../pages/PeopleSearchView';
+import { AdvancedDiscoverView } from '../pages/AdvancedDiscoverView';
 import { ListPeople } from './ListPeople';
 import { personCardModel } from './cardModels';
 import { MediaCard } from './MediaCard.web';
@@ -120,6 +122,7 @@ function CastRail({ props, palette }) {
 
 function Adapter({ props }) {
   const [palette, setPalette] = useState(readPalette);
+  const [advancedProps, setAdvancedProps] = useState(props);
   const youtubeWatch = useDeferredYoutubeWatch(props.youtubeWatchUrl, request);
 
   useEffect(() => {
@@ -140,6 +143,43 @@ function Adapter({ props }) {
       title={props.title}
       palette={palette}
       onOpen={person => window.location.assign(person.url)} />;
+  }
+
+  if (props.kind === 'advanced-discover') {
+    return <AdvancedDiscoverView props={advancedProps} palette={palette} onOpenTitle={openInternal} onOpenSource={openExternal}
+      onSearchPeople={async query => { const result = await request(props.searchUrl, { query: { action: 'people', q: query, type: advancedProps.mediaType } }); return result.people || []; }}
+      onSearch={async filters => { const query = new URLSearchParams(); query.set('format', 'json'); query.set('search', '1');
+        query.set('type', filters.type); query.set('person_role', filters.personRole); query.set('person_logic', filters.personLogic);
+        query.set('certification_country', filters.certificationCountry); query.set('sort', filters.sort); query.set('adult_mode', filters.adultMode);
+        query.set('include_video', String(filters.includeVideo)); query.set('include_null_first_air_dates', String(filters.includeNullFirstAirDates)); query.set('page', String(filters.page));
+        filters.people.forEach(person => { query.append('person', person.person_id); query.set(`person_name_${person.person_id}`, person.name); });
+        filters.certifications.forEach(value => query.append('certification', value));
+        try {
+          const result = await request(`${props.searchUrl}?${query.toString()}`);
+          setAdvancedProps(current => ({ ...current, ...result }));
+        } catch {
+          setAdvancedProps(current => ({ ...current, error: 'TMDB discovery is unavailable right now. Please try again.', results: [], searched: true }));
+        }
+      }} />;
+  }
+
+  if (props.kind === 'search') {
+    return <PeopleSearchView
+      {...props}
+      palette={{
+        text: palette.text,
+        secondary: palette.textSecondary,
+        muted: palette.textMuted,
+        surface: palette.surface,
+        border: palette.border,
+        accent: palette.accent,
+      }}
+      onSearch={async query => {
+        const result = await request('/api/v1/people/search/', { query: { query } });
+        return result.people || [];
+      }}
+      onOpenPerson={person => openInternal(person.href)}
+      onOpenSource={openExternal} />;
   }
 
   if (props.kind === 'cast') {

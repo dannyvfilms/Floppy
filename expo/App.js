@@ -142,6 +142,8 @@ export default function App() {
     const media = path.match(/^\/medialist\/([^/?#]+)/);
     if (media) { openTab('library', media[1]); return; }
     if (path.startsWith('/collection')) { navigate('Collection'); return; }
+    if (path === '/discover/advanced' || path === '/discover/advanced/') { navigate('AdvancedDiscover'); return; }
+    if (path === '/discover/people' || path === '/discover/people/') { navigate('PeopleSearch'); return; }
     if (path.startsWith('/history')) { navigate('History'); return; }
     if (/^\/list\/[^/]+\/?$/.test(path) && item?.id) { navigate('ListDetail', { list: { id: item.id } }); return; }
     if (path.startsWith('/lists')) { navigate('Lists'); return; }
@@ -168,7 +170,7 @@ export default function App() {
   };
 
   const activeHref = active
-    ? ''
+    ? active.screen === 'PeopleSearch' ? '/discover/people' : ''
     : tab === 'home' ? '/'
       : tab === 'discover' ? '/discover'
         : tab === 'calendar' ? '/calendar'

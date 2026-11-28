@@ -791,7 +791,13 @@ Status: `Partial / coexisting`
 
 ## PEOPLE
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+`/discover/people` is the basic TMDB person search; selecting a result opens the existing advanced person profile and filmography at `/person/tmdb/...`. The web uses `PeopleSearchView` through `mountPeople.jsx` over a server-rendered fallback. Expo opens `PeopleSearchScreen` from the same sidebar navigation model, uses the same shared view and calls `/api/v1/people/search/`; result selection routes to the existing `PeopleScreen`. Browser: Chromium runtime search-to-profile flow and desktop/phone screenshots inspected. iOS and Android: not verified; Expo export is structural evidence only.
+
+`/discover/advanced` provides TMDB movie/TV discovery with people, certification and adult-mode filters. Web and Expo use `AdvancedDiscoverView`; web requests the JSON form of the server route, while Expo uses `AdvancedDiscoverScreen` and the shared API. Filmography's Adult titles filter uses its own `default` / `no_adult` / `only` values. Chromium verified the desktop/phone flow in dark mode with Keanu Reeves and benign results; the Adult titles control remained on Exclude, with no adult titles shown. Expo iOS/Android exports compiled; neither platform had a simulator/emulator runtime pass.
+
+The Filmography Adult titles menu is web-verified in Chromium on Keanu Reeves with Show default selected; no adult-only state or title was shown. The web uses the server filter form and shared FilterBar; Expo uses the shared `PeopleToolbar` and API. Expo iOS/Android exports compiled; runtime verification is unavailable.
 
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
 
@@ -814,6 +820,11 @@ The `people_cast` web adapter supplies the episode route's provider to its legac
 - `src/templates/app/components/person_media_strip_row.html`
 - `src/templates/app/components/youtube_player.html`
 - `src/templates/app/person_detail.html`
+- `src/templates/app/discover_people.html` (basic people search with no-JavaScript fallback; links to the advanced person filmography)
+- `frontend/pages/PeopleSearchView.jsx` (shared React Native presentation for search, result states and selection)
+- `expo/app/screens/PeopleSearchScreen.jsx` (Expo adapter and native route)
+- `src/templates/app/advanced_discover.html` and `frontend/pages/AdvancedDiscoverView.jsx` (shared Advanced Discover presentation with server fallback)
+- `expo/app/screens/AdvancedDiscoverScreen.jsx` (Expo adapter and native route)
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
 

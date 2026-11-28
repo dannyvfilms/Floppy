@@ -1,5 +1,7 @@
 import MusicScreen from './screens/MusicScreen';
 import PeopleScreen from './screens/PeopleScreen';
+import AdvancedDiscoverScreen from './screens/AdvancedDiscoverScreen';
+import PeopleSearchScreen from './screens/PeopleSearchScreen';
 import CollectionScreen from './screens/CollectionScreen';
 import TagsScreen from './screens/TagsScreen';
 import SettingsAdvancedScreen from './screens/SettingsAdvancedScreen';
@@ -17,6 +19,8 @@ import OnboardingScreen from './screens/OnboardingScreen';
 export const EXTRA_SCREENS = {
   Music: MusicScreen,
   People: PeopleScreen,
+  AdvancedDiscover: AdvancedDiscoverScreen,
+  PeopleSearch: PeopleSearchScreen,
   Collection: CollectionScreen,
   Tags: TagsScreen,
   SettingsAdvanced: SettingsAdvancedScreen,

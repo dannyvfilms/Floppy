@@ -375,6 +375,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/music/tracks/{track_id}/notes/` | PATCH | `music:write` |
 | `/api/v1/music/tracks/{track_id}/plays/` | GET | `music:read` |
 | `/api/v1/music/tracks/{track_id}/plays/{history_id}/` | DELETE | `music:write` |
+| `/api/v1/people/search/` | GET | `catalog:read` |
 | `/api/v1/people/{source}/{person_id}/` | GET | `catalog:read` |
 | `/api/v1/playback/home-cards/` | GET POST | NEVER |
 | `/api/v1/playback/now-playing/` | GET | `progress:read` |

@@ -735,6 +735,16 @@ urlpatterns = [
         name="api_recommendations",
     ),
     re_path(
+        r"^people/search/?$",
+        fork_views_people.PersonSearchView.as_view(),
+        name="api_people_search",
+    ),
+    re_path(
+        r"^discover/advanced/?$",
+        fork_views_people.AdvancedDiscoverView.as_view(),
+        name="api_advanced_discover",
+    ),
+    re_path(
         r"^people/(?P<source>[^/]+)/(?P<person_id>[^/]+)/?$",
         fork_views_people.PersonView.as_view(),
         name="api_person",

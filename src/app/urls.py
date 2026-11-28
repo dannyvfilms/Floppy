@@ -47,6 +47,8 @@ urlpatterns = [
     ),
     path("", views.home, name="home"),
     path("discover", views.discover_page, name="discover"),
+    path("discover/people", views.discover_people, name="discover_people"),
+    path("discover/advanced", views.advanced_discover, name="advanced_discover"),
     path("discover/rows", views.discover_rows, name="discover_rows"),
     path("discover/refresh", views.refresh_discover, name="refresh_discover"),
     path("discover/action", views.discover_action, name="discover_action"),

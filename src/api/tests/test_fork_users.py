@@ -230,6 +230,7 @@ class SidebarTests(FloppyApiTestCase):
             [item["label"] for item in body["secondary"]],
             [
                 "Calendar",
+                "Discover people",
                 "Collection",
                 "Custom",
                 "History",

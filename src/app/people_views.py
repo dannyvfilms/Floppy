@@ -4,6 +4,9 @@ from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
+from django.utils.text import slugify
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 
 from app import (
@@ -42,6 +45,86 @@ from app.providers import (
 from users.models import MediaSortChoices
 
 logger = __import__("logging").getLogger(__name__)
+MIN_PERSON_SEARCH_LENGTH = 2
+MAX_PERSON_SEARCH_LENGTH = 100
+MAX_DISCOVER_FILTER_VALUES = 20
+
+
+def person_search_results(people):
+    """Add the existing detailed-profile URL to each provider search result."""
+    return [
+        {
+            **person,
+            "href": reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "person_id": person["person_id"],
+                    "name": slugify(person["name"]) or person["person_id"],
+                },
+            ),
+        }
+        for person in people
+    ]
+
+
+@require_GET
+def discover_people(request):
+    """Search TMDB people and link each match to its existing profile page."""
+    query = str(request.GET.get("q") or "").strip()[:MAX_PERSON_SEARCH_LENGTH]
+    people = []
+    error = ""
+    if len(query) >= MIN_PERSON_SEARCH_LENGTH:
+        try:
+            with services.interactive_request_scope():
+                people = tmdb.search_people(query)
+        except services.ProviderAPIError:
+            error = _("People search is currently unavailable. Please try again.")
+
+    people = person_search_results(people)
+
+    return render(
+        request,
+        "app/discover_people.html",
+        {
+            "query": query,
+            "people": people,
+            "error": error,
+            "search_url": reverse("discover_people"),
+            "search_props": {
+                "kind": "search",
+                "query": query,
+                "people": people,
+                "state": "error" if error else "ready",
+                "searchUrl": reverse("discover_people"),
+                "labels": {
+                    "heading": _("Discover people"),
+                    "description": _(
+                        "Search TMDB for a person, then browse their Floppy filmography.",
+                    ),
+                    "label": _("Person name"),
+                    "placeholder": _("Search people…"),
+                    "search": _("Search"),
+                    "shortQuery": _("Enter at least two characters."),
+                    "loading": _("Searching…"),
+                    "empty": _("No people found. Try another name."),
+                    "error": error or _("People search is unavailable right now."),
+                    "department": _("Known for"),
+                    "choose": _("Open profile"),
+                    "attribution": _("People and images provided by TMDB."),
+                },
+                "attributionUrl": "https://www.themoviedb.org/",
+                "palette": {
+                    "text": "var(--color-text)",
+                    "secondary": "var(--color-text-secondary)",
+                    "muted": "var(--color-text-muted)",
+                    "surface": "var(--color-surface)",
+                    "border": "var(--color-surface-border)",
+                    "accent": "var(--color-accent)",
+                },
+            },
+        },
+    )
 
 
 def attach_card_media(user, entries, source):
@@ -149,6 +232,8 @@ def _people_filters_contract(context):
     filter_data = context.get("filter_data") or {}
     return {
         "sort": context.get("current_sort"),
+        "adultMode": context.get("current_adult_mode", "default"),
+        "showAdultFilter": bool((context.get("filter_data") or {}).get("show_adult_filter")),
         "direction": context.get("current_direction"),
         "department": context.get("current_department") or "",
         "year": context.get("current_year") or "",
@@ -280,6 +365,256 @@ def _talent_poll_attempt(request, source_config):
         return max(1, int(request.GET.get("attempt", "1")))
     except ValueError:
         return 1
+
+
+def _advanced_discover_result_contract(entry, user):
+    """Shape a TMDB discovery result with its provider adult marker."""
+    result = _people_credit_contract(entry, Sources.TMDB.value, user)
+    result["isAdult"] = entry.get("adult") is True
+    if result["isAdult"]:
+        result["card"]["cornerChips"] = [
+            *(result["card"].get("cornerChips") or []),
+            {
+                "kind": "runtime-top",
+                "text": _("TMDB Adult"),
+                "title": _("TMDB marks this title as adult"),
+            },
+        ]
+    return result
+
+
+@require_GET
+def advanced_discover(request):
+    """Search TMDB movies or TV with explicit people and certification filters."""
+    media_type = request.GET.get("type", MediaTypes.MOVIE.value)
+    if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
+        return HttpResponseBadRequest("Unsupported TMDB discovery media type.")
+
+    if request.GET.get("action") == "people":
+        query = str(request.GET.get("q") or "").strip()[:MAX_PERSON_SEARCH_LENGTH]
+        if len(query) < MIN_PERSON_SEARCH_LENGTH:
+            return JsonResponse({"people": []})
+        try:
+            with services.interactive_request_scope():
+                matches = tmdb.search_people(query)
+        except services.ProviderAPIError:
+            return JsonResponse({"people": [], "error": True}, status=503)
+        return JsonResponse({"people": matches})
+
+    try:
+        certifications_by_type = {
+            MediaTypes.MOVIE.value: tmdb.discovery_certifications(MediaTypes.MOVIE.value),
+            MediaTypes.TV.value: tmdb.discovery_certifications(MediaTypes.TV.value),
+        }
+    except services.ProviderAPIError:
+        certifications_by_type = {MediaTypes.MOVIE.value: {}, MediaTypes.TV.value: {}}
+    try:
+        country_names = tmdb.discovery_country_names()
+    except services.ProviderAPIError:
+        country_names = {}
+
+    certifications = certifications_by_type[media_type]
+    countries = sorted(certifications)
+    selected_country = str(request.GET.get("certification_country") or "").upper()
+    if selected_country not in certifications:
+        selected_country = ""
+    country_certifications = certifications.get(selected_country, [])
+    allowed_certifications = {
+        entry["certification"] for entry in country_certifications
+    }
+    selected_certifications = []
+    for raw_certification in request.GET.getlist("certification"):
+        for raw_certification_part in str(raw_certification).split("|"):
+            certification = raw_certification_part.strip()
+            if (
+                certification in allowed_certifications
+                and certification not in selected_certifications
+                and len(selected_certifications) < MAX_DISCOVER_FILTER_VALUES
+            ):
+                selected_certifications.append(certification)
+
+    people = []
+    person_ids = []
+    for raw_person_id in request.GET.getlist("person")[:MAX_DISCOVER_FILTER_VALUES]:
+        person_id = str(raw_person_id).strip()
+        if person_id.isdecimal() and int(person_id) > 0 and person_id not in person_ids:
+            person_ids.append(person_id)
+    for person_id in person_ids:
+        name = str(request.GET.get(f"person_name_{person_id}") or "").strip()[:100]
+        if name:
+            people.append({"person_id": person_id, "name": name})
+
+    role = request.GET.get("person_role", "people")
+    role = role if role in {"people", "cast", "crew"} else "people"
+    logic = "|" if request.GET.get("person_logic") == "or" else ","
+    sort = request.GET.get("sort", "release_date")
+    if sort not in {"release_date", "title", "popularity", "votes"}:
+        sort = "release_date"
+    sort_by = {
+        MediaTypes.MOVIE.value: {
+            "release_date": "release_date.desc",
+            "title": "title.asc",
+            "popularity": "popularity.desc",
+            "votes": "vote_count.desc",
+        },
+        MediaTypes.TV.value: {
+            "release_date": "first_air_date.desc",
+            "title": "name.asc",
+            "popularity": "popularity.desc",
+            "votes": "vote_count.desc",
+        },
+    }[media_type][sort]
+    adult_mode = request.GET.get("adult_mode")
+    if adult_mode not in {"exclude", "include", "only"}:
+        adult_mode = "include" if request.GET.get("include_adult") == "true" else "exclude"
+    if not settings.TMDB_NSFW:
+        adult_mode = "exclude"
+    filters = {
+        "include_adult": "false" if adult_mode == "exclude" else "true",
+        "sort_by": sort_by,
+    }
+    if media_type == MediaTypes.MOVIE.value:
+        filters["include_video"] = "true" if request.GET.get("include_video") == "true" else "false"
+    else:
+        filters["include_null_first_air_dates"] = "true" if request.GET.get("include_null_first_air_dates") == "true" else "false"
+    if selected_country:
+        filters["certification_country"] = selected_country
+        if selected_certifications:
+            filters["certification"] = "|".join(selected_certifications)
+    if person_ids:
+        key = {"people": "with_people", "cast": "with_cast", "crew": "with_crew"}[role]
+        filters[key] = logic.join(person_ids)
+
+    results = []
+    error = ""
+    searched = request.GET.get("search") == "1"
+    try:
+        page = max(1, min(int(request.GET.get("page", "1")), 500))
+    except (TypeError, ValueError):
+        page = 1
+    total_pages = 1
+    total_results = 0
+    if searched:
+        try:
+            with services.interactive_request_scope():
+                result_page = tmdb.discover(media_type, filters, page=page)
+            results = result_page.get("results", [])
+            total_pages = result_page.get("total_pages", 1)
+            total_results = result_page.get("total_results", 0)
+            if adult_mode == "only":
+                results = [entry for entry in results if entry.get("adult") is True]
+            tracked_filters = Q()
+            for result_media_type in {entry["media_type"] for entry in results}:
+                result_ids = {
+                    entry["media_id"]
+                    for entry in results
+                    if entry["media_type"] == result_media_type
+                }
+                tracked_filters |= Q(
+                    media_type=result_media_type,
+                    media_id__in=result_ids,
+                )
+            tracked_item_map = {}
+            if results:
+                tracked_item_map = {
+                    (item.media_type, str(item.media_id)): item
+                    for item in Item.objects.filter(
+                        source=Sources.TMDB.value,
+                    ).filter(tracked_filters)
+                }
+            for entry in results:
+                entry["tracked_item"] = tracked_item_map.get(
+                    (entry["media_type"], str(entry["media_id"])),
+                )
+            attach_card_media(request.user, results, Sources.TMDB.value)
+            for entry in results:
+                entry["role"] = ""
+                entry["media"] = entry.get("media")
+                entry["card_item"] = entry.get("card_item") or entry
+        except services.ProviderAPIError:
+            error = _("TMDB discovery is unavailable right now. Please try again.")
+
+    labels = {
+        "heading": _("Advanced discover"),
+        "description": _("Find TMDB movies or TV using people and certifications."),
+        "search": _("Search"),
+        "peopleLabel": _("People"),
+        "peoplePlaceholder": _("Search for a person…"),
+        "personRole": _("Match people as"),
+        "peopleAny": _("Cast, crew, or either"),
+        "cast": _("Cast"),
+        "crew": _("Crew"),
+        "logic": _("Match"),
+        "and": _("All people"),
+        "or": _("Any person"),
+        "country": _("Certification country"),
+        "certification": _("Certification"),
+        "certificationOr": _("Any selected certification"),
+        "sortBy": _("Sort by"),
+        "sortReleaseDate": _("Release date"),
+        "sortTitle": _("Title"),
+        "sortPopularity": _("Popularity"),
+        "sortVotes": _("Votes"),
+        "adultFilter": _("Adult titles"),
+        "adultExclude": _("Exclude adult titles"),
+        "adultInclude": _("Include adult titles"),
+        "adultOnly": _("Adult titles only"),
+        "emptyAdultPage": _("No adult-flagged titles on this TMDB page."),
+        "page": _("Page"),
+        "includeVideo": _("Include video titles"),
+        "includeNullDates": _("Include shows without a first-air date"),
+        "movie": _("Movies"),
+        "tv": _("TV shows"),
+        "mediaType": _("Media type"),
+        "previous": _("Previous"),
+        "next": _("Next"),
+        "remove": _("Remove"),
+        "empty": _("No matching titles found."),
+        "attribution": _("Movie and TV data provided by TMDB."),
+        "advanced": _("Advanced movie and TV search"),
+    }
+    props = {
+        "kind": "advanced-discover",
+        "mediaType": media_type,
+        "people": people,
+        "personRole": role,
+        "personLogic": "or" if logic == "|" else "and",
+        "countries": [{"value": code, "label": code} for code in countries],
+        "certifications": country_certifications,
+        "certificationsByCountry": certifications_by_type,
+        "countriesByType": {
+            type_key: [
+                {"value": code, "label": f"{country_names.get(code, code)} ({code})"}
+                for code in sorted(country_data)
+            ]
+            for type_key, country_data in certifications_by_type.items()
+        },
+        "certificationCountry": selected_country,
+        "selectedCertifications": selected_certifications,
+        "sort": sort,
+        "adultMode": adult_mode,
+        "includeVideo": filters.get("include_video") == "true",
+        "includeNullFirstAirDates": filters.get("include_null_first_air_dates") == "true",
+        "results": [
+            {
+                **_advanced_discover_result_contract(entry, request.user),
+                "role": "",
+            }
+            for entry in results
+        ],
+        "page": page,
+        "totalPages": None if adult_mode == "only" else total_pages,
+        "hasNextPage": page < min(total_pages, 500),
+        "totalResults": None if adult_mode == "only" else total_results,
+        "searchUrl": reverse("advanced_discover"),
+        "adultAllowed": bool(settings.TMDB_NSFW),
+        "error": error,
+        "searched": searched,
+        "labels": labels,
+    }
+    if request.GET.get("format") == "json":
+        return JsonResponse(props)
+    return render(request, "app/advanced_discover.html", {"props": props})
 
 
 @require_GET
@@ -763,6 +1098,13 @@ def person_detail(request, source, person_id, name):
     filter_genre = request.GET.get("genre", "")
     filter_implied_genre = request.GET.get("implied_genre", "")
     filter_source = request.GET.get("source", "")
+    filter_adult_mode = request.GET.get("adult_mode", "default")
+    if source != Sources.TMDB.value or is_author:
+        filter_adult_mode = "default"
+    elif not settings.TMDB_NSFW:
+        filter_adult_mode = "no_adult"
+    elif filter_adult_mode not in {"default", "no_adult", "only"}:
+        filter_adult_mode = "default"
     filter_rating = request.GET.get("rating", "all")
     filter_collection = request.GET.get("collection", "all")
     # Use the same sort key names as MediaSortChoices for consistency with the
@@ -792,6 +1134,10 @@ def person_detail(request, source, person_id, name):
             ]
         if filter_year:
             result = [e for e in result if str(e.get("year") or "") == filter_year]
+        if filter_adult_mode == "no_adult":
+            result = [e for e in result if e.get("adult") is not True]
+        elif filter_adult_mode == "only":
+            result = [e for e in result if e.get("adult") is True]
         return result
 
     def _apply_watched_filters(entries):
@@ -935,6 +1281,9 @@ def person_detail(request, source, person_id, name):
     filter_data["departments"] = all_departments if not is_author else []
     filter_data["tags"] = []
     filter_data["show_progress"] = False
+    filter_data["show_adult_filter"] = (
+        source == Sources.TMDB.value and not is_author and settings.TMDB_NSFW
+    )
 
     # Years: merge watched-item years with years from the full unfiltered filmography
     # so the year filter covers films not yet tracked by the user.
@@ -997,6 +1346,7 @@ def person_detail(request, source, person_id, name):
         "current_source": filter_source,
         "current_rating": filter_rating,
         "current_collection": filter_collection,
+        "current_adult_mode": filter_adult_mode,
         "sort_choices": person_sort_choices,
         "status_choices": [],
         "filter_data": filter_data,

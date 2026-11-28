@@ -89,6 +89,8 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_search.ManualEntryView": {"GET": "catalog:read", "POST": NEVER},
     "api.fork_views_search.SearchMusicCreateView": {"POST": "music:write"},
     "api.fork_views_people.PersonView": {"GET": "catalog:read"},
+    "api.fork_views_people.AdvancedDiscoverView": {"GET": "catalog:read"},
+    "api.fork_views_people.PersonSearchView": {"GET": "catalog:read"},
     "api.fork_views_people.StudioView": {"GET": "catalog:read"},
     "api.fork_views_people.PersonListsView": {"GET": "lists:read"},
     "api.fork_views_people.PersonListDetailView": {

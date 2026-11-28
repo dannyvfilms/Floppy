@@ -14,7 +14,7 @@ from django.utils.translation import pgettext
 from app.icon_specs import ICON_DIR, file_icon, icon_spec, type_icon  # noqa: F401
 from app.templatetags import app_tags
 
-PIN_KEYS = ["calendar", "collection", "custom", "history", "lists", "progress", "statistics", "tags"]
+PIN_KEYS = ["calendar", "collection", "custom", "history", "lists", "people", "progress", "statistics", "tags"]
 SETTINGS_URLS = [
     "account",
     "notifications",
@@ -99,6 +99,13 @@ def sidebar_model(request, user, media_type):
     lists_url = reverse("lists")
     secondary = [
         secondary_link("calendar", _("Calendar"), "calendar", file_icon("calendar")),
+        _link(
+            _("Discover people"),
+            reverse("discover_people"),
+            file_icon("person"),
+            active=path == reverse("discover_people"),
+            pin_key="people",
+        ),
         secondary_link("collection", _("Collection"), "collection_list", file_icon("cube")),
         secondary_link("custom", pgettext("navigation", "Custom"), "create_entry", file_icon("circle-plus")),
         history,

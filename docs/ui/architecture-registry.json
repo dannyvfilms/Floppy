@@ -3107,6 +3107,46 @@
         }
       }
     },
+    "frontend/pages/PeopleSearchView.jsx": {
+      "components": [
+        "PeopleSearchView"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium runtime search-to-profile flow passed at desktop and phone widths; empty, results and person-profile screenshots were inspected. Server fallback and API behavior also have targeted Django coverage."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "The Expo PeopleSearchScreen imports the shared React Native view; no simulator runtime pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "The Expo PeopleSearchScreen imports the shared React Native view; no emulator runtime pass."
+        }
+      }
+    },
+    "frontend/pages/AdvancedDiscoverView.jsx": {
+      "components": [
+        "AdvancedDiscoverView"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium flow exercised people search, certification filters, benign result rendering, default adult exclusion, adult-only empty state and pagination. Dark-mode desktop/phone before-search and after-search captures inspected; no adult titles shown."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Structural: `npm run export -- --platform all` compiled the Expo iOS bundle. No simulator/runtime rendering was available."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Structural: `npm run export -- --platform all` compiled the Expo Android bundle. No emulator/runtime rendering was available."
+        }
+      }
+    },
     "frontend/pages/MusicView.jsx": {
       "components": [
         "MusicView"
@@ -4339,7 +4379,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",

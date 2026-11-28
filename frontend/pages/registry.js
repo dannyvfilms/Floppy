@@ -23,6 +23,8 @@ export const pages = {
   },
   detail: { id: 'detail', webRoute: '/details/<source>/<type>/<id>/<title>', nativeScreen: 'expo/app/screens/DetailScreen.jsx', view: 'frontend/pages/DetailView.jsx', webAdapter: 'frontend/ui/DetailCompositionTheme.web.jsx', status: 'shared' },
   people: { id: 'people', webRoute: '/people/...', nativeScreen: 'expo/app/screens/PeopleScreen.jsx', view: 'frontend/pages/PeopleView.jsx', webAdapter: 'frontend/ui/mountPeople.jsx', status: 'shared' },
+  advancedDiscover: { id: 'advancedDiscover', webRoute: '/discover/advanced', nativeScreen: 'expo/app/screens/AdvancedDiscoverScreen.jsx', view: 'frontend/pages/AdvancedDiscoverView.jsx', webAdapter: 'frontend/ui/mountPeople.jsx', status: 'shared' },
+  peopleSearch: { id: 'peopleSearch', webRoute: '/discover/people', nativeScreen: 'expo/app/screens/PeopleSearchScreen.jsx', view: 'frontend/pages/PeopleSearchView.jsx', webAdapter: 'frontend/ui/mountPeople.jsx', status: 'shared' },
   music: { id: 'music', webRoute: 'music/podcast detail routes', nativeScreen: 'expo/app/screens/MusicScreen.jsx', view: 'frontend/pages/MusicView.jsx', webAdapter: 'frontend/ui/mountMusicAlbums.jsx', status: 'shared' },
   collection: { id: 'collection', webRoute: '/collection', nativeScreen: 'expo/app/screens/CollectionScreen.jsx', view: 'frontend/pages/CollectionView.jsx', webAdapter: 'frontend/ui/mountCollectionBrowser.jsx', status: 'shared' },
   lists: { id: 'lists', webRoute: '/lists', nativeScreen: 'expo/app/screens/ListsScreen.jsx', view: 'frontend/pages/ListsPageView.jsx', webAdapter: 'frontend/ui/mountListsPage.jsx', status: 'shared' },
