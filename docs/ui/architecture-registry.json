@@ -1578,15 +1578,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; src/static/js/copy-item.js remains the browser copy control. No browser pass."
+          "evidence": "Mounted on the web by frontend/ui/mountCopyField.jsx for the Navidrome and Stremio provider URLs and the Access & Tokens account token and one-time app-token secret (credential fields: inline variant, label-only props, adapter-owned input in valueSlot). scripts/accessCopyField.test.mjs renders the adapter over a minimal DOM (copy, failure recovery, empty token, fallback restore, stacked variant); users.tests.test_access_copy_browser (Playwright, slow) covers mount, htmx dispose to restored fallback, blocked chunks and boosted navigation in Chromium with a recorded Clipboard API. The credential migration passed Chromium browser tests (src/users/tests/test_access_copy_browser.py) and before/after screenshot comparisons at 1280px and 390px. The translation and inline accessibility follow-up has no new browser runtime evidence."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; no simulator copy, recovery dialog or accessibility pass."
+          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; iOS runtime is unverified. Native has no inline credential consumer and the credential adapter is web-only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; no emulator copy, recovery dialog or accessibility pass."
+          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; Android runtime is unverified. Native has no inline credential consumer and the credential adapter is web-only."
         }
       }
     },
@@ -5829,7 +5829,7 @@
     },
     "frontend/ui/mountCopyField.jsx": {
       "register": "WEB-UTILITIES",
-      "purpose": "Mount the shared copy field over the server-rendered provider URL fallback: resolve theme tokens and copy through the browser clipboard adapter while the server input and copy control remain the no-JavaScript fallback."
+      "purpose": "Mount the shared copy field over the server-rendered provider URL and Access & Tokens credential fallbacks: resolve theme tokens and copy through the browser clipboard adapter while the server input and copy control remain the no-JavaScript fallback. Credential fields (`credential: true`, `variant: inline`) carry labels only; the adapter moves the server input into CopyField's valueSlot and copies from it, so a token never enters props. The inline variant keeps the server control's input-plus-copy-icon row."
     },
     "frontend/ui/mountCacheStatus.jsx": {
       "register": "WEB-UTILITIES",

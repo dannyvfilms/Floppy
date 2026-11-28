@@ -1,8 +1,8 @@
 // Test-only stand-in for react-native: host components render plain elements so
 // shared components can be rendered with react-dom in node tests.
 import React from 'react';
-const host = tag => React.forwardRef(function Host({ children, style, onPress, testID, accessibilityLabel }, ref) {
-  return React.createElement(tag, { ref, 'data-testid': testID, 'aria-label': accessibilityLabel }, typeof children === 'function' ? children({ pressed: false }) : children);
+const host = tag => React.forwardRef(function Host({ children, style, onPress, testID, accessibilityLabel, accessibilityLiveRegion }, ref) {
+  return React.createElement(tag, { ref, 'data-testid': testID, 'aria-label': accessibilityLabel, 'aria-live': accessibilityLiveRegion }, typeof children === 'function' ? children({ pressed: false }) : children);
 });
 export const View = host('div');
 export const Text = host('span');

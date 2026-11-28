@@ -6,6 +6,7 @@ const icon = children => ({ viewBox: '0 0 24 24', root, children });
 export const actionIcons = {
   download: icon([{ tag: 'path', attrs: { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3' }, children: [] }]),
   close: icon([{ tag: 'path', attrs: { d: 'M18 6 6 18M6 6l12 12' }, children: [] }]),
+  copy: icon([{ tag: 'rect', attrs: { x: '9', y: '9', width: '13', height: '13', rx: '2', ry: '2' }, children: [] }, { tag: 'path', attrs: { d: 'M5 15V5a2 2 0 0 1 2-2h10' }, children: [] }]),
   alarmClock: icon([{"tag": "circle", "attrs": {"cx": "12", "cy": "13", "r": "8"}, "children": []}, {"tag": "path", "attrs": {"d": "M12 9v4l2 2"}, "children": []}, {"tag": "path", "attrs": {"d": "M5 3 2 6"}, "children": []}, {"tag": "path", "attrs": {"d": "m22 6-3-3"}, "children": []}, {"tag": "path", "attrs": {"d": "M6.38 18.7 4 21"}, "children": []}, {"tag": "path", "attrs": {"d": "M17.64 18.67 20 21"}, "children": []}]),
   bellRinging: icon([{"tag": "path", "attrs": {"d": "M10.268 21a2 2 0 0 0 3.464 0"}, "children": []}, {"tag": "path", "attrs": {"d": "M22 8c0-2.3-.8-4.3-2-6"}, "children": []}, {"tag": "path", "attrs": {"d": "M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"}, "children": []}, {"tag": "path", "attrs": {"d": "M4 2C2.8 3.7 2 5.7 2 8"}, "children": []}]),
   grip: { viewBox: '0 0 20 20', root: { fill: 'currentColor' }, children: [

@@ -193,6 +193,8 @@ Status: `Legacy`
 - `src/static/js/copy-item.js`
 - `src/static/js/serviceworker.js`
 
+Page consumers load `copy-item.js` from their own `js` block. On `src/templates/users/access_tokens.html` it is only the fallback: the account-token and one-time app-token controls mount shared `CopyField` (inline variant) via `frontend/ui/mountCopyField.jsx` (`credential: true`, label-only props, server input moved into `valueSlot`). `copy-item.js` copies through one delegated document listener, so restored fallback clones and boosted swaps work. Status: Partial / coexisting. Both inline hosts pass translated recovery text to the shared field, which disables copy while a write is pending and announces success in a polite live region. The credential migration passed Chromium browser tests (`src/users/tests/test_access_copy_browser.py`) and before/after screenshot comparisons at 1280px and 390px. The translation and inline accessibility follow-up has no new browser runtime evidence. iOS runtime is unverified. Android runtime is unverified. Native Access copies through `AccessSettingsSlot`; the inline credential adapter is web-only.
+
 ## ERRORS-DOCS
 
 Status: `Partial / coexisting`
@@ -1174,10 +1176,10 @@ Native `AccessSettingsSlot` consumes shared `AccessSettings.jsx` / `SettingsAcce
 
 - `src/templates/integrations/oauth_applications.html`
 - `src/templates/integrations/oauth_device.html`
-- `src/templates/users/access_tokens.html`
+- `src/templates/users/access_tokens.html` (loads `js/copy-item.js` as the copy fallback)
 - `src/templates/users/components/catalog_grants.html`
-- `src/templates/users/components/integration_tokens.html`
-- `src/templates/users/providers/access_tokens.html`
+- `src/templates/users/components/integration_tokens.html` (one-time secret copy mounts shared `CopyField` inline variant via `frontend/ui/mountCopyField.jsx`, credential mode; legacy control is the fallback)
+- `src/templates/users/providers/access_tokens.html` (account-token copy mounts shared `CopyField` inline variant via `frontend/ui/mountCopyField.jsx`, credential mode; legacy control is the fallback)
 
 ## AUTH
 

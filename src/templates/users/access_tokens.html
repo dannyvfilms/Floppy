@@ -1,5 +1,5 @@
 {% extends "users/base.html" %}
-{% load i18n %}
+{% load i18n static app_tags %}
 {% block title %}{% translate "Access & Tokens - Floppy" %}{% endblock title %}
 {% block settings_content %}
   <div class="space-y-6">
@@ -9,3 +9,8 @@
     {% include "users/providers/access_tokens.html" %}
   </div>
 {% endblock settings_content %}
+
+{% block js %}
+  {# The API token and new app-token copy buttons are wired by copy-item.js. #}
+  <script src="{% static 'js/copy-item.js' %}{% get_static_file_mtime 'js/copy-item.js' %}"></script>
+{% endblock js %}

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 import { ConfirmDialog } from '../settings/ConfirmDialog';
 
 const defaultPalette = {
@@ -13,6 +15,7 @@ const defaultPalette = {
   border: '#52525b',
   success: '#10b981',
   danger: '#ef4444',
+  link: '#818cf8',
   radius: 8,
   focusStyle: {},
 };
@@ -28,10 +31,20 @@ const defaultButtonPalette = {
  * Copyable read-only value. The caller supplies the platform clipboard action;
  * a rejected or false result keeps the value visible and opens the manual
  * recovery instructions instead of losing the user's text.
+ *
+ * A credential is never passed as `value`: the adapter renders it in its own
+ * `valueSlot` and reads it in `onCopy`, so secrets stay out of presentation
+ * props (the same contract as the Access cards' tokenSlot/secretSlot).
+ *
+ * `variant="inline"` keeps the server copy control's look: the value fills the
+ * row and a copy icon sits after it, turning into a check for three seconds
+ * after a copy. `label` then only names the icon button for assistive tech.
  */
 export function CopyField({
   label,
   value,
+  valueSlot,
+  variant = 'stacked',
   help,
   copyLabel = 'Copy',
   copiedLabel = 'Copied!',
@@ -82,22 +95,49 @@ export function CopyField({
       </View>
       : null;
 
+  const recovery = <ConfirmDialog visible={recoveryOpen} title={recoveryTitle} message={recoveryMessage}
+    confirmLabel={retryLabel} cancelLabel={closeLabel} palette={{ ...colors, overlay: 'rgba(0, 0, 0, 0.6)' }}
+    buttonPalette={{ ...buttons, 'danger-solid': buttons.primary }}
+    onCancel={() => setRecoveryOpen(false)}
+    onConfirm={() => { setRecoveryOpen(false); copy(); }} />;
+
+  if (variant === 'inline') {
+    const copied = state === 'copied';
+    const blocked = disabled || (!value && !valueSlot);
+    const busy = state === 'busy';
+    const unavailable = blocked || busy;
+    return <View style={styles.field} testID={testID}>
+      <View style={styles.inlineRow}>
+        <View style={styles.inlineValue}>
+          {valueSlot || <Text selectable accessibilityLabel={`${label}: ${value}`} style={[styles.value, { color: colors.textSecondary }]}>{value}</Text>}
+        </View>
+        <Pressable accessibilityRole="button"
+          accessibilityLabel={copied ? copiedLabel : `${copyLabel} ${label}`}
+          accessibilityState={{ disabled: unavailable, busy }}
+          disabled={unavailable} onPress={unavailable ? undefined : copy}
+          style={[styles.inlineButton, { opacity: blocked ? 0.5 : 1 }]}>
+          {({ hovered }) => <Icon spec={copied ? actionIcons.check : actionIcons.copy} size={20}
+            color={copied ? colors.copiedIcon || colors.success : hovered ? colors.link : colors.textMuted} />}
+        </Pressable>
+      </View>
+      <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>{copied ? copiedLabel : ''}</Text>
+      {state === 'error' ? status : null}
+      {recovery}
+    </View>;
+  }
+
   return <View style={styles.field} testID={testID}>
     <View style={styles.labelRow}>
       <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
-      <Button label={copyLabel} tone="surface" busy={state === 'busy'} disabled={disabled || !value}
+      <Button label={copyLabel} tone="surface" busy={state === 'busy'} disabled={disabled || (!value && !valueSlot)}
         accessibilityLabel={`${copyLabel} ${label}`} onPress={copy} palette={buttons} />
     </View>
-    <View style={[styles.valueBox, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius }]}>
+    {valueSlot || <View style={[styles.valueBox, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius }]}>
       <Text selectable accessibilityLabel={`${label}: ${value}`} style={[styles.value, { color: colors.textSecondary }]}>{value}</Text>
-    </View>
+    </View>}
     {help ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     {status}
-    <ConfirmDialog visible={recoveryOpen} title={recoveryTitle} message={recoveryMessage}
-      confirmLabel={retryLabel} cancelLabel={closeLabel} palette={{ ...colors, overlay: 'rgba(0, 0, 0, 0.6)' }}
-      buttonPalette={{ ...buttons, 'danger-solid': buttons.primary }}
-      onCancel={() => setRecoveryOpen(false)}
-      onConfirm={() => { setRecoveryOpen(false); copy(); }} />
+    {recovery}
   </View>;
 }
 
@@ -112,4 +152,10 @@ const styles = StyleSheet.create({
   error: { gap: 6 },
   errorText: { fontSize: 12, lineHeight: 17 },
   errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // Mirrors the server control: `flex items-center gap-2`, a `flex-1` value
+  // and a `pr-3` icon.
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inlineValue: { flex: 1, minWidth: 0 },
+  inlineButton: { paddingRight: 12 },
+  visuallyHidden: { position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 },
 });

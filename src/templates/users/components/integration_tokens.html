@@ -1,4 +1,4 @@
-{% load app_tags ui_tags %}
+{% load i18n app_tags ui_tags %}
 {# Named, scoped API tokens. The account token above stays for webhooks; these #}
 {# are what a third-party client should be given, because they can be revoked  #}
 {# one at a time and only reach what their permissions name.                   #}
@@ -19,18 +19,36 @@
       <p class="text-[var(--color-text-muted)] text-sm mb-3">
         Copy it now. Floppy stores only a hash, so this is the only time it can be shown.
       </p>
-      <div class="flex items-center gap-2">
-        <input readonly=""
-               id="new-integration-token"
-               aria-label="New token secret"
-               class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-panel)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
-               type="text"
-               value="{{ new_integration_token.secret }}">
-        <span class="flex items-center cursor-pointer group pr-3"
-              title="Copy"
-              data-copy-target="#new-integration-token">
-          {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
-        </span>
+      {# Shared CopyField. Its props hold labels only: the one-time secret stays in the input below, which the adapter moves into the field and copies from. The inner markup is the copy-item.js fallback. #}
+      {# djlint:off #}
+      <script type="application/json" id="new-integration-token-copy-props">{
+        "credential": true,
+        "variant": "inline",
+        "label": "{% translate 'New token secret' as copy_label %}{{ copy_label|escapejs }}",
+        "copyLabel": "{% translate 'Copy' as copy_action %}{{ copy_action|escapejs }}",
+        "copiedLabel": "{% translate 'Copied!' as copied_action %}{{ copied_action|escapejs }}",
+        "errorMessage": "{% translate 'Could not copy automatically.' as copy_error %}{{ copy_error|escapejs }}",
+        "manualLabel": "{% translate 'How to copy manually' as copy_manual %}{{ copy_manual|escapejs }}",
+        "retryLabel": "{% translate 'Try again' as copy_retry %}{{ copy_retry|escapejs }}",
+        "closeLabel": "{% translate 'Close' as copy_close %}{{ copy_close|escapejs }}",
+        "recoveryTitle": "{% translate 'Copy manually' as copy_recovery_title %}{{ copy_recovery_title|escapejs }}",
+        "recoveryMessage": "{% translate 'Select the value above and copy it with your usual shortcut, or tap and hold the value and choose Copy.' as copy_recovery_message %}{{ copy_recovery_message|escapejs }}"
+      }</script>
+      {# djlint:on #}
+      <div data-copy-field-root data-props-id="new-integration-token-copy-props">
+        <div class="flex items-center gap-2">
+          <input readonly=""
+                 id="new-integration-token"
+                 aria-label="New token secret"
+                 class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-panel)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                 type="text"
+                 value="{{ new_integration_token.secret }}">
+          <span class="flex items-center cursor-pointer group pr-3"
+                title="Copy"
+                data-copy-target="#new-integration-token">
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+          </span>
+        </div>
       </div>
     </div>
   {% endif %}

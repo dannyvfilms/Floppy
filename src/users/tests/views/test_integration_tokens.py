@@ -1,5 +1,7 @@
 """Named, scoped API token lifecycle in the integrations settings page."""
 
+import json
+import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -215,3 +217,54 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 404)
         token.refresh_from_db()
         self.assertEqual(token.revoked_at, revoked_at)
+
+    def test_access_copy_fields_mount_without_secrets_in_their_props(self):
+        """Both credential copy fields mount the shared CopyField with label-only props.
+
+        The account token and the one-time secret stay in the server inputs the
+        adapter copies from; copy-item.js stays loaded for the no-React fallback.
+        """
+        response = self.create()
+        self.assertEqual(response.request["PATH_INFO"], reverse("access_tokens"))
+        secret = response.context["new_integration_token"]["secret"]
+        self.user.refresh_from_db()
+        html = response.content.decode()
+
+        for props_id, input_id in (
+            ("access-token-copy-props", "token"),
+            ("new-integration-token-copy-props", "new-integration-token"),
+        ):
+            with self.subTest(props_id=props_id):
+                self.assertIn(
+                    f'data-copy-field-root data-props-id="{props_id}"',
+                    html,
+                )
+                self.assertIn(f'data-copy-target="#{input_id}"', html)
+                match = re.search(
+                    rf'<script type="application/json" id="{props_id}">(.*?)</script>',
+                    html,
+                    re.DOTALL,
+                )
+                self.assertIsNotNone(match)
+                props = json.loads(match.group(1))
+                self.assertIs(props["credential"], True)
+                self.assertEqual(props["variant"], "inline")
+                for key in (
+                    "label",
+                    "copyLabel",
+                    "copiedLabel",
+                    "errorMessage",
+                    "manualLabel",
+                    "retryLabel",
+                    "closeLabel",
+                    "recoveryTitle",
+                    "recoveryMessage",
+                ):
+                    self.assertIn(key, props)
+                    self.assertIsInstance(props[key], str)
+                    self.assertTrue(props[key], key)
+                self.assertNotIn("value", props)
+                self.assertNotIn(secret, match.group(1))
+                self.assertNotIn(self.user.token, match.group(1))
+
+        self.assertContains(response, "js/copy-item.js")

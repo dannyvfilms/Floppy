@@ -9,7 +9,7 @@ class Node {
   removeChild(c) { this.childNodes.splice(this.childNodes.indexOf(c), 1); c.parentNode = null; return c; }
   addEventListener() {} removeEventListener() {}
   get textContent() { return this.nodeType === 3 ? this.nodeValue : this.childNodes.map(c => c.textContent).join(''); }
-  set textContent(v) { this.childNodes = []; if (v !== '' && v != null) this.appendChild(this.ownerDocument.createTextNode(String(v))); }
+  set textContent(v) { this.childNodes.forEach(c => { c.parentNode = null; }); this.childNodes = []; if (v !== '' && v != null) this.appendChild(this.ownerDocument.createTextNode(String(v))); }
 }
 class Element extends Node {
   constructor(name, doc) { super(1, name.toUpperCase(), doc); this.tagName = this.nodeName; this.attributes = {}; this.style = {}; this.namespaceURI = 'http://www.w3.org/1999/xhtml'; }
@@ -29,6 +29,9 @@ export function installFakeDom() {
   doc.defaultView = globalThis;
   globalThis.document = doc;
   globalThis.window = globalThis;
+  // react-dom reads navigator.userAgent once a DOM exists; Node 20 has no global
+  // navigator (Node 21+ does, and keeps its own).
+  if (!globalThis.navigator) globalThis.navigator = { userAgent: 'node' };
   globalThis.HTMLElement = Element;
   globalThis.HTMLIFrameElement = class {};
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
