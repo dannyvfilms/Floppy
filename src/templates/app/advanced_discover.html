@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Advanced discover" %} - Floppy{% endblock title %}
+
+{% block content %}
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <div data-people-hero-root data-props-id="advanced-discover-props-data"></div>
+    {{ props|json_script:"advanced-discover-props-data" }}
+  </div>
+{% endblock content %}

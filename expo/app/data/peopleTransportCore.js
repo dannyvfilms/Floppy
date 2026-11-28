@@ -63,6 +63,18 @@ export function keepLoadedCredits(current, data) {
 export function createRemotePeopleActions(request) {
   return {
     mode: 'server',
+    searchPeople(query) {
+      return request('/api/v1/people/search/', { query: { query } })
+        .then(data => expectObject(data, 'The people search'))
+        .then(data => {
+          if (!Array.isArray(data.people)) throw new Error('The people search did not return the expected data.');
+          return data.people;
+        });
+    },
+    loadAdvancedDiscover(queryString = '') {
+      return request(`/api/v1/discover/advanced/${queryString ? `?${queryString}` : ''}`)
+        .then(data => expectObject(data, 'Advanced discovery'));
+    },
     loadPerson({ source, personId, filters, page }) {
       return request(
         `/api/v1/people/${encodeURIComponent(source)}/${encodeURIComponent(personId)}/`,
@@ -81,6 +93,8 @@ export function createLocalPeopleActions(reason) {
   return {
     mode: 'local',
     reason,
+    searchPeople: local,
+    loadAdvancedDiscover: local,
     loadPerson: local,
     loadStudio: local,
   };

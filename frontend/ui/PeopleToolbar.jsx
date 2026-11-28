@@ -6,7 +6,7 @@ import { Icon } from './Icon';
 import { Modal } from './Modal';
 
 // Filter and sort toolbar for a person's filmography (status-free: rated,
-// collected, department, year, genre, sort and direction), the same controls
+// collected, adult mode, department, year, genre, sort and direction), the same controls
 // the web page's filter toolbar offers. Props only: the adapter owns the
 // request and passes back the chosen values through `onChange`.
 
@@ -17,6 +17,10 @@ const copyDefaults = {
   desc: 'Descending',
   rating: 'Rating',
   collection: 'Collection',
+  adultFilter: 'Adult titles',
+  adultDefault: 'Show default',
+  adultNoAdult: 'No Adult',
+  adultOnly: 'Only Adult',
   department: 'Department',
   year: 'Year',
   genre: 'Genre',
@@ -63,7 +67,8 @@ export function PeopleToolbar({ filters, labels = {}, palette = {}, onChange, te
   const sortChoices = filters.sortChoices || [];
   const sortLabel = sortChoices.find(choice => choice.value === filters.sort)?.label || copy.sort;
   const active = ['rating', 'collection'].filter(key => filters[key] && filters[key] !== 'all').length
-    + ['department', 'year', 'genre'].filter(key => filters[key]).length;
+    + ['department', 'year', 'genre'].filter(key => filters[key]).length
+    + (filters.showAdultFilter && filters.adultMode && filters.adultMode !== 'default' ? 1 : 0);
   const trigger = (key, label) => <Pressable accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ expanded: open === key }}
     onPress={() => setOpen(key)} style={styles.trigger}>
@@ -109,6 +114,14 @@ export function PeopleToolbar({ filters, labels = {}, palette = {}, onChange, te
           { value: 'not_collected', label: copy.notCollected },
         ]}
         onSelect={choose('collection')} />
+      {filters.showAdultFilter ? <Group label={copy.adultFilter} palette={palette}
+        value={filters.adultMode || 'default'}
+        options={[
+          { value: 'default', label: copy.adultDefault },
+          { value: 'no_adult', label: copy.adultNoAdult },
+          { value: 'only', label: copy.adultOnly },
+        ]}
+        onSelect={choose('adultMode')} /> : null}
       <Group label={copy.department} palette={palette} value={filters.department}
         options={filters.departments?.length
           ? [anyOption, ...filters.departments.map(value => ({ value, label: value }))]

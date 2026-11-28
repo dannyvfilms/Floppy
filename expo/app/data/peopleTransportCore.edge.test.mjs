@@ -60,6 +60,22 @@ test('loadStudio addresses the studios route without filters', async () => {
   assert.equal(calls[0], '/api/v1/studios/tmdb/x%20y/');
 });
 
+test('searchPeople requests the shared person-search endpoint and returns matches', async () => {
+  const calls = [];
+  const transport = createRemotePeopleActions(async (path, options) => {
+    calls.push({ path, options });
+    return { query: 'Jane Star', people: [{ person_id: '123', name: 'Jane Star' }] };
+  });
+
+  const people = await transport.searchPeople('Jane Star');
+
+  assert.deepEqual(people, [{ person_id: '123', name: 'Jane Star' }]);
+  assert.deepEqual(calls, [{
+    path: '/api/v1/people/search/',
+    options: { query: { query: 'Jane Star' } },
+  }]);
+});
+
 test('the local people transport rejects every load with the reason', async () => {
   const transport = createLocalPeopleActions('Sign in to your Floppy server to load profiles.');
   assert.equal(transport.mode, 'local');

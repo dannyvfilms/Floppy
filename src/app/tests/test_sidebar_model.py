@@ -38,6 +38,15 @@ class SidebarModelTest(TestCase):
         self.assertEqual(props["userId"], str(self.user.pk))
         self.assertIn("calendar", props["pinKeys"])
 
+    def test_people_discovery_entry_is_active_and_available_in_sidebar(self):
+        """Discover people has a sidebar entry that activates on its page."""
+        props = self.props(reverse("discover_people"))
+        people = next(item for item in props["secondary"] if item["label"] == "Discover people")
+        self.assertEqual(people["href"], reverse("discover_people"))
+        self.assertEqual(people["pinKey"], "people")
+        self.assertIn("people", props["pinKeys"])
+        self.assertTrue(people["active"])
+
     def test_every_icon_parses(self):
         """Each shipped SVG file reduces to shapes the React icon can draw."""
         for path in ICON_DIR.glob("*.svg"):
@@ -63,6 +72,7 @@ class SidebarModelTest(TestCase):
         self.assertIn("sidebarNavigation(", html)
         self.assertNotRegex(html, r"data-sidebar-root[^>]*x-ignore")
         self.assertIn(f'href="{reverse("lists")}"', html)
+        self.assertIn(f'href="{reverse("discover_people")}"', html)
         self.assertIn(f'href="{reverse("account_logout")}"', html)
 
     def test_logout_get_requires_confirmation(self):

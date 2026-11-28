@@ -27,12 +27,14 @@
     statuses: [],
     rating: '{{ current_rating|escapejs }}',
     collection: '{{ current_collection|escapejs }}',
+    adult_mode: '{{ current_adult_mode|escapejs }}',
     progress: 'all',
     genre: '{{ current_genre|escapejs }}',
     implied_genre: '{{ current_implied_genre|escapejs }}',
     year: '{{ current_year|escapejs }}',
     release: 'all',
     source: '{{ current_source|escapejs }}',
+    media_status: '',
     language: '',
     country: '',
     platform: '',
@@ -122,6 +124,9 @@
       if (this.source) { labels.push(this.source.toUpperCase()); }
       if (this.rating !== 'all') { labels.push(this.ratingLabels[this.rating] || this.rating); }
       if (this.collection !== 'all') { labels.push(this.collectionLabels[this.collection] || this.collection); }
+      if (this.adult_mode !== 'default') {
+        labels.push(this.adult_mode === 'no_adult' ? gettext('No Adult') : gettext('Only Adult'));
+      }
       if (this.selectedTags.length) {
         const prefix = this.tagMode === 'not' ? '-' : '+';
         labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
@@ -133,12 +138,14 @@
     clearFilters() {
       this.rating = 'all';
       this.collection = 'all';
+      this.adult_mode = 'default';
       this.progress = 'all';
       this.genre = '';
       this.implied_genre = '';
       this.year = '';
       this.release = 'all';
       this.source = '';
+      this.media_status = '';
       this.department = '';
       this.language = '';
       this.country = '';

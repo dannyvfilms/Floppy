@@ -182,6 +182,7 @@ data; each needs a manual look.
 | Search | `/search` | shared | 398 L / 0 | SearchScreen (29) | 0 | – |
 | Detail | `/details/…` | shared (header + synopsis only on web) | 154 L + 624 L secondary / 15 | DetailScreen (203) | 0 | – |
 | People / studios | `/people/…` | shared (hero, cast, extras parts) | 275 L / 4 | PeopleScreen (514) | 24 (`DEMO_PERSON`, `DEMO_STUDIO`, `'demo'` mode) | – |
+| Discover people | `/discover/people` | shared | server-rendered fallback + shared view | PeopleSearchScreen | 0 | 1 — Runtime / 3 — Structural / 3 — Structural |
 | Music / podcasts | album, artist, show | shared (albums part) | 398 L / 30 | MusicScreen (800) | 4 (+ `musicDemo.js`, 232 L) | – |
 | Collection | `/collection` | shared | 589 L / 181 | CollectionScreen (662) | 8 (owner demo bar) | – |
 | Lists | `/lists` | shared | – | ListsScreen (726) | 6 | – |

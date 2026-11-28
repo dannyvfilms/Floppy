@@ -127,6 +127,16 @@ def _sections(context, filter_data, state, *, platform_multi, show_title):
          {"value": "not_collected", "label": _("Not Collected")}],
         clear_value="all",
     ))
+    if show("show_adult_filter"):
+        sections.append(_section(
+            "adultMode", _("Adult titles"), "adult_mode",
+            _translate_options([
+                ("default", _("Show default")),
+                ("no_adult", _("No Adult")),
+                ("only", _("Only Adult")),
+            ]),
+            clear_value="default",
+        ))
     if show("show_progress"):
         sections.append(_section(
             "progress", _("Progress"), "progress",
@@ -358,6 +368,8 @@ def build_filter_bar_props(context, *, endpoint, target, form_id, surface,
         filters["sort"] = str(context["current_sort"])
     if context.get("current_direction"):
         filters["direction"] = str(context["current_direction"])
+    if context.get("current_adult_mode") is not None:
+        filters["fields"]["adultMode"] = str(context["current_adult_mode"])
     if context.get("current_layout"):
         filters["view"] = str(context["current_layout"])
     if context.get("current_group_by"):

@@ -31,6 +31,9 @@
     <input type="hidden" name="rating_max" x-model="rating_max">
   {% endif %}
   <input type="hidden" name="collection" x-model="collection">
+  {% if filter_data.show_adult_filter %}
+    <input type="hidden" name="adult_mode" x-model="adult_mode">
+  {% endif %}
   {% if filter_data.show_group_by %}
     <input type="hidden" name="group_by" x-model="group_by">
     {% if current_game_group %}

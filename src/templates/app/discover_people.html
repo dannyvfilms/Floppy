@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% translate "Discover people" %} - Floppy
+{% endblock title %}
+
+{% block content %}
+  <div class="max-w-5xl mx-auto px-4 py-6">
+    <div data-people-hero-root data-props-id="people-search-props-data">
+      <h1 class="text-2xl font-bold text-[var(--color-text)]">{% translate "Discover people" %}</h1>
+      <p class="mt-2 mb-5 text-sm text-[var(--color-text-muted)]">
+        {% translate "Search TMDB for a person, then browse their Floppy filmography." %}
+      </p>
+      <form method="get"
+            action="{{ search_url }}"
+            class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <div>
+          <label for="person-query"
+                 class="block mb-2 text-sm font-medium text-[var(--color-text-secondary)]">
+            {% translate "Person name" %}
+          </label>
+          <input id="person-query"
+                 name="q"
+                 type="search"
+                 minlength="2"
+                 maxlength="100"
+                 value="{{ query }}"
+                 placeholder="{% translate 'Search people…' %}"
+                 class="w-full min-h-11 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
+        </div>
+        <button type="submit"
+                class="min-h-11 rounded-md bg-[var(--color-accent)] px-4 py-2 font-semibold text-white">
+          {% translate "Search" %}
+        </button>
+      </form>
+      {% if error %}
+        <p role="status" class="mt-4 text-sm text-[var(--color-text-muted)]">{{ error }}</p>
+      {% elif query|length >= 2 and not people %}
+        <p role="status" class="mt-4 text-sm text-[var(--color-text-muted)]">
+          {% translate "No people found. Try another name." %}
+        </p>
+      {% endif %}
+      {% if people %}
+        <ul class="mt-5 grid gap-2"
+            aria-label="{% translate 'People matching your search' %}">
+          {% for person in people %}
+            <li>
+              <a href="{{ person.href }}"
+                 class="flex min-h-[5.5rem] items-center gap-3 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-3 hover:border-[var(--color-accent)]">
+                {% if person.image %}
+                  <img src="{{ person.image }}"
+                       alt=""
+                       loading="lazy"
+                       class="h-16 w-14 rounded object-cover">
+                {% endif %}
+                <span class="min-w-0 flex-1">
+                  <span class="block font-semibold text-[var(--color-text)]">{{ person.name }}</span>
+                  {% if person.known_for_department %}
+                    <span class="block text-sm text-[var(--color-text-muted)]">{% translate "Known for" %}: {{ person.known_for_department }}</span>
+                  {% endif %}
+                  {% if person.known_for %}
+                    <span class="block text-sm text-[var(--color-text-muted)]">{{ person.known_for|join:", " }}</span>
+                  {% endif %}
+                </span>
+                <span class="text-sm font-semibold text-[var(--color-link)]">{% translate "Open profile" %}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <p class="mt-5 text-xs text-[var(--color-text-muted)]">
+        {% translate "People and images provided by TMDB." %}
+        <a href="https://www.themoviedb.org/"
+           target="_blank"
+           rel="noopener noreferrer"
+           class="underline text-[var(--color-link)]">themoviedb.org</a>
+      </p>
+    </div>
+    {{ search_props|json_script:"people-search-props-data" }}
+  </div>
+{% endblock content %}

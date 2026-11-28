@@ -7,13 +7,14 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.http import HttpResponseBadRequest
 from django.urls import reverse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import people_views
 from app.models import Person
-from app.providers import services
+from app.providers import services, tmdb
 from lists.models import CustomList, CustomListPerson
 
 from .contract_serializers import DetailErrorSerializer
@@ -28,6 +29,7 @@ PERSON_FILTER_PARAMS = (
     "source",
     "rating",
     "collection",
+    "adult_mode",
     "sort",
     "direction",
 )
@@ -84,6 +86,88 @@ class PersonView(drf_views.APIView):
     def get(self, request, source, person_id):
         """Return hero, counts, watched and filmography credits, and filters."""
         return _profile_response(request, people_views.person_detail, source, person_id)
+
+
+# /api/v1/people/search/
+class PersonSearchView(drf_views.APIView):
+    """Search TMDB people for the people-discovery surface."""
+
+    @extend_schema(
+        operation_id="searchPeople",
+        parameters=[
+            OpenApiParameter(
+                name="query",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Person name to search (minimum two characters).",
+            ),
+        ],
+        responses={200: dict, 502: DetailErrorSerializer},
+    )
+    def get(self, request):
+        """Return bounded, normalized TMDB person matches."""
+        query = str(request.query_params.get("query") or "").strip()
+        if len(query) < people_views.MIN_PERSON_SEARCH_LENGTH:
+            return Response({"query": query, "people": []}, status=HTTP.OK)
+        query = query[: people_views.MAX_PERSON_SEARCH_LENGTH]
+        try:
+            with services.interactive_request_scope():
+                people = tmdb.search_people(query)
+        except services.ProviderAPIError as exc:
+            logger.warning("People search provider failed: %s", exc)
+            return Response(
+                {"detail": "TMDB is currently unavailable."},
+                status=HTTP.BAD_GATEWAY,
+            )
+        return Response(
+            {"query": query, "people": people_views.person_search_results(people)},
+            status=HTTP.OK,
+        )
+
+
+class AdvancedDiscoverView(drf_views.APIView):
+    """Search TMDB Discover and return the shared web/native presentation model."""
+
+    @extend_schema(
+        operation_id="advancedTmdbDiscover",
+        parameters=[
+            OpenApiParameter("type", OpenApiTypes.STR, description="movie or tv; defaults to movie."),
+            OpenApiParameter("search", OpenApiTypes.STR, description="Set to 1 to run the discovery query."),
+            OpenApiParameter("person", OpenApiTypes.STR, many=True, explode=True, description="Repeated TMDB person IDs."),
+            OpenApiParameter("person_role", OpenApiTypes.STR, description="people, cast, or crew."),
+            OpenApiParameter("person_logic", OpenApiTypes.STR, description="and or or for staged people IDs."),
+            OpenApiParameter("certification_country", OpenApiTypes.STR),
+            OpenApiParameter(
+                "certification",
+                OpenApiTypes.STR,
+                many=True,
+                explode=True,
+                description="Repeated ratings are ORed within certification_country.",
+            ),
+            OpenApiParameter("include_adult", OpenApiTypes.BOOL),
+            OpenApiParameter("include_video", OpenApiTypes.BOOL, description="Movie only."),
+            OpenApiParameter("include_null_first_air_dates", OpenApiTypes.BOOL, description="TV only."),
+            OpenApiParameter("sort", OpenApiTypes.STR, description="release_date, title, popularity, or votes."),
+            OpenApiParameter("page", OpenApiTypes.INT),
+            OpenApiParameter("format", OpenApiTypes.STR, description="Use json for the shared view contract."),
+        ],
+        responses={200: dict},
+    )
+    def get(self, request):
+        """Return TMDB filters and optionally the provider discovery result."""
+        http_request = getattr(request, "_request", request)
+        http_request.user = request.user
+        query = http_request.GET.copy()
+        query["format"] = "json"
+        http_request.GET = query
+        try:
+            response = people_views.advanced_discover(http_request)
+        except services.ProviderAPIError as exc:
+            logger.warning("Advanced discovery provider failed: %s", exc)
+            return Response({"detail": "TMDB is currently unavailable."}, status=HTTP.BAD_GATEWAY)
+        if response.status_code != HTTP.OK:
+            return Response({"detail": "Advanced discovery is unavailable."}, status=response.status_code)
+        return Response(json.loads(response.content), status=HTTP.OK)
 
 
 # /api/v1/studios/[source]/[studio_id]/

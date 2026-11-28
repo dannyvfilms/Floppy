@@ -290,7 +290,12 @@ from app.music_views import (
     sync_artist_discography_view,
     track_detail,
 )
-from app.people_views import person_detail, studio_detail
+from app.people_views import (
+    advanced_discover,
+    discover_people,
+    person_detail,
+    studio_detail,
+)
 from app.podcast_views import (
     podcast_episode_add,
     podcast_episode_delete,
@@ -2046,6 +2051,7 @@ __all__ = [
     "_tracked_media_entries",
     "_user_tags_for_item",
     "activity_sessions_modal",
+    "advanced_discover",
     "album_delete",
     "album_detail",
     "album_save",
@@ -2090,6 +2096,7 @@ __all__ = [
     "discover",
     "discover_action",
     "discover_page",
+    "discover_people",
     "discover_rows",
     "discover_toggle_hidden",
     "ensure_item_metadata",

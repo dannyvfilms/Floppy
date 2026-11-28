@@ -1,9 +1,9 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -55,49 +55,87 @@ class PersonDetailViewTests(TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
+    @override_settings(TMDB_NSFW=True)
     @patch("app.providers.tmdb.person")
-    def test_filter_toolbar_omits_filters_this_page_cannot_run(self, mock_person):
-        """The shared filter menu must not render controls with no state here.
-
-        This page has no completed-date support and a single-select platform,
-        so emitting those controls would bind Alpine expressions to variables
-        that do not exist and throw on every render.
-        """
+    def test_tmdb_filmography_filter_menu_includes_adult_mode(self, mock_person):
         mock_person.return_value = {
             "person_id": "123",
             "source": Sources.TMDB.value,
             "name": "Jane Star",
-            "image": "http://example.com/jane.jpg",
+            "image": "",
             "biography": "",
             "known_for_department": "Acting",
-            "gender": "female",
-            "birth_date": "1990-01-01",
+            "gender": "unknown",
+            "birth_date": None,
             "death_date": None,
-            "place_of_birth": "Los Angeles",
+            "place_of_birth": "",
             "filmography": [],
         }
 
         response = self.client.get(
             reverse(
                 "person_detail",
-                kwargs={
-                    "source": Sources.TMDB.value,
-                    "person_id": "123",
-                    "name": "jane-star",
-                },
+                kwargs={"source": Sources.TMDB.value, "person_id": "123", "name": "jane-star"},
             ),
+            {"adult_mode": "only"},
         )
-        self.assertEqual(response.status_code, 200)
-        content = response.content.decode()
 
-        for name in (
-            "completed_date_from",
-            "completed_date_within",
-            "release_date_within",
-            "date_added_within",
-            "platform_mode",
-        ):
-            self.assertNotIn(f'name="{name}"', content, name)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="adult_mode"')
+        self.assertContains(response, "Adult titles")
+        self.assertContains(response, "Only Adult")
+        self.assertEqual(response.context["current_adult_mode"], "only")
+
+        from app.filter_bar import build_filter_bar_props
+
+        props = build_filter_bar_props(
+            {
+                "filter_data": {"show_adult_filter": True},
+                "current_adult_mode": "only",
+            },
+            endpoint="/person/tmdb/123/jane-star",
+            target="#filmography-content",
+            form_id="filter-form",
+            surface="library",
+            state={},
+        )
+        adult_section = next(section for section in props["options"]["sections"]
+                             if section["key"] == "adultMode")
+        self.assertEqual(
+            [option["value"] for option in adult_section["options"]],
+            ["default", "no_adult", "only"],
+        )
+        self.assertEqual(props["filters"]["fields"]["adultMode"], "only")
+
+    @override_settings(TMDB_NSFW=False)
+    @patch("app.providers.tmdb.person")
+    def test_tmdb_adult_filmography_is_hidden_when_nsfw_is_disabled(self, mock_person):
+        mock_person.return_value = {
+            "person_id": "123",
+            "source": Sources.TMDB.value,
+            "name": "Jane Star",
+            "filmography": [
+                {
+                    "media_id": "987",
+                    "media_type": MediaTypes.MOVIE.value,
+                    "title": "Adult-only title",
+                    "adult": True,
+                },
+            ],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={"source": Sources.TMDB.value, "person_id": "123", "name": "jane-star"},
+            ),
+            {"adult_mode": "only"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Adult-only title")
+        self.assertEqual(response.context["current_adult_mode"], "no_adult")
+        self.assertFalse(response.context["filter_data"]["show_adult_filter"])
 
     @staticmethod
     def _credit(person, role="Lead", sort_order=0):

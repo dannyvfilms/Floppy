@@ -35,6 +35,7 @@ Django apps live under `src/`. Paths below are repository-relative.
 | SQLite, startup and process runtime | `src/config/` | `docs/architecture/sqlite-runtime-safety.md`, `docs/architecture/sqlite-startup.md` |
 | Django templates and template tags | `src/templates/`, `src/app/templatetags/`, `src/users/templatetags/` | `docs/ui/source-map.md` |
 | React UI (web) and Expo (native) | `frontend/` (shared components in `frontend/ui/`), `expo/` | `docs/architecture/ui-modernization.md`, `docs/ui/component-register.md` |
+| People search and person profiles | `src/app/people_views.py`, `src/app/providers/tmdb.py`, `src/api/fork_views_people.py`, `frontend/pages/PeopleSearchView.jsx`, `expo/app/screens/PeopleSearchScreen.jsx` | `docs/ui/source-map.md`, `docs/architecture/api-scopes.md` |
 | Management commands | `src/<app>/management/commands/`; reports keep their checks in a module the command calls (`src/app/preflight.py` for `floppy_preflight`, `src/app/data_invariants.py` for `check_data_invariants`) | `AGENTS.md` (Testing) |
 | Tests | `src/<app>/tests/`; repository scripts' tests in `scripts/tests/` | `docs/architecture/test-suite-cost.md` |
 | Merge train (keeps approved PRs up to date) | `scripts/merge_train.py` (planning), `scripts/merge_train_ui.py` (UI bundle rebuild and publication), `.github/workflows/merge-train.yml` | `docs/architecture/merge-train-throughput.md` |

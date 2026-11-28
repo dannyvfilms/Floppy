@@ -19,6 +19,22 @@
                     </div>
                   </li>
 
+                  {% url 'discover_people' as discover_people_url %}
+                  <li x-show="isPinned('people') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ discover_people_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == discover_people_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:discover_people_url %}
+                        {% include "app/icons/person.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
+                      {% else %}
+                        {% include "app/icons/person.svg" with classes="w-5 h-5" %}
+                      {% endif %}
+                      <span>{% trans "Discover people" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="people" %}
+                    </div>
+                  </li>
+
                   {% url 'collection_list' as collection_list_url %}
                   <li x-show="isPinned('collection') === {% if pinned_section %}true{% else %}false{% endif %}">
                     <div class="group relative flex items-center">

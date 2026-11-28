@@ -31,6 +31,7 @@ TMDB_CHANGES_CACHE_TIMEOUT = 60 * 60 * 6
 # the least valuable to keep, which makes the default 24 hours the wrong trade at
 # the point Redis is under pressure (issue #521).
 SEARCH_CACHE_TIMEOUT = 60 * 60
+PERSON_SEARCH_RESULT_LIMIT = 20
 # Season blobs are the largest single thing Floppy caches (full episode lists),
 # so they expire sooner than the show payload they hang off.
 SEASON_CACHE_TIMEOUT = 60 * 60 * 12
@@ -475,6 +476,108 @@ def search(media_type, query, page, language=None):
 
         cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
 
+    return data
+
+
+def discovery_certifications(media_type):
+    """Return TMDB's certification options grouped by country."""
+    if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
+        return {}
+    cache_key = f"{Sources.TMDB.value}_{media_type}_certifications_v1"
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            f"{base_url}/certification/{'movie' if media_type == MediaTypes.MOVIE.value else 'tv'}/list",
+            params=base_params(),
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+    certifications = response.get("certifications", {}) if isinstance(response, dict) else {}
+    data = {
+        country: [
+            {"certification": entry.get("certification"), "meaning": entry.get("meaning", "")}
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("certification")
+        ]
+        for country, entries in certifications.items()
+        if isinstance(country, str) and isinstance(entries, list)
+    }
+    cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
+    return data
+
+
+def discovery_country_names():
+    """Return TMDB's country codes and localized names for filter labels."""
+    cache_key = f"{Sources.TMDB.value}_discovery_country_names_v1"
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            f"{base_url}/configuration/countries",
+            params=base_params(language="en-US"),
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+    data = {
+        entry["iso_3166_1"]: entry.get("english_name") or entry["iso_3166_1"]
+        for entry in response
+        if isinstance(entry, dict) and entry.get("iso_3166_1")
+    } if isinstance(response, list) else {}
+    cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
+    return data
+
+
+def discover(media_type, filters, page=1):
+    """Search TMDB Discover with a bounded, caller-validated filter set."""
+    if media_type not in {MediaTypes.MOVIE.value, MediaTypes.TV.value}:
+        error_message = "Unsupported TMDB discovery media type"
+        raise ValueError(error_message)
+    endpoint = "movie" if media_type == MediaTypes.MOVIE.value else "tv"
+    params = {**base_params(), "page": page, **filters}
+    cache_params = {key: value for key, value in params.items() if key != "api_key"}
+    cache_key = f"discover_{endpoint}_{'&'.join(f'{key}={value}' for key, value in sorted(cache_params.items()))}"
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            f"{base_url}/discover/{endpoint}",
+            params=params,
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+    results = []
+    for media in response.get("results", []) if isinstance(response, dict) else []:
+        if not isinstance(media, dict) or not media.get("id"):
+            continue
+        results.append({
+            "media_id": str(media["id"]),
+            "source": Sources.TMDB.value,
+            "media_type": media_type,
+            "adult": media.get("adult") is True,
+            "title": get_title(media),
+            "image": get_image_url(media.get("poster_path")),
+            "year": get_year(media),
+            "release_date": media.get("release_date") or media.get("first_air_date"),
+            "role": "",
+        })
+    data = helpers.format_search_response(
+        page,
+        20,
+        response.get("total_results", len(results)),
+        results,
+    )
+    data["total_pages"] = response.get("total_pages", data["total_pages"])
+    cache.set(cache_key, data, SEARCH_CACHE_TIMEOUT)
     return data
 
 
@@ -2225,6 +2328,7 @@ def _person_filmography_entries(combined_credits):
                 "release_date": get_start_date(
                     media.get("release_date") or media.get("first_air_date"),
                 ),
+                "adult": media.get("adult") if isinstance(media.get("adult"), bool) else None,
                 "credit_type": "cast",
                 "role": media.get("character") or "",
                 "department": "Acting",
@@ -2251,6 +2355,7 @@ def _person_filmography_entries(combined_credits):
                 "release_date": get_start_date(
                     media.get("release_date") or media.get("first_air_date"),
                 ),
+                "adult": media.get("adult") if isinstance(media.get("adult"), bool) else None,
                 "credit_type": "crew",
                 "role": media.get("job") or "",
                 "department": media.get("department") or "",
@@ -2282,6 +2387,67 @@ def _person_filmography_entries(combined_credits):
         reverse=True,
     )
     return filmography
+
+
+def search_people(query, language=None):
+    """Return normalized TMDB person matches for the people-discovery page."""
+    query = str(query or "").strip()
+    if not query:
+        return []
+
+    include_adult = bool(settings.TMDB_NSFW)
+    cache_key = (
+        f"search_{Sources.TMDB.value}_people_{query.casefold()}_"
+        f"adult{int(include_adult)}{_language_suffix(language)}"
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    params = {**base_params(language), "query": query}
+    if include_adult:
+        params["include_adult"] = "true"
+    try:
+        response = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            f"{base_url}/search/person",
+            params=params,
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+
+    people = []
+    results = response.get("results") if isinstance(response, dict) else []
+    for result in results or []:
+        if not isinstance(result, dict):
+            continue
+        person_id = str(result.get("id") or "").strip()
+        name = str(result.get("name") or "").strip()
+        if not person_id.isdecimal() or int(person_id) <= 0 or not name:
+            continue
+        image = get_profile_image_url(result.get("profile_path"), size="h632")
+        if image == settings.IMG_NONE:
+            image = None
+        known_for = []
+        for credit in result.get("known_for") or []:
+            if not isinstance(credit, dict):
+                continue
+            title = str(credit.get("title") or credit.get("name") or "").strip()
+            if title and title not in known_for:
+                known_for.append(title)
+        people.append({
+            "person_id": person_id,
+            "name": name,
+            "image": image,
+            "known_for_department": str(result.get("known_for_department") or ""),
+            "known_for": known_for,
+        })
+        if len(people) >= PERSON_SEARCH_RESULT_LIMIT:
+            break
+
+    cache.set(cache_key, people, SEARCH_CACHE_TIMEOUT)
+    return people
 
 
 def search_person_profile(name, language=None):
